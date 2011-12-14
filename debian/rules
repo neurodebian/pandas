@@ -7,14 +7,23 @@ PACKAGE_ROOT_DIR = debian/${PACKAGE_NAME}
 PYVERS = $(shell pyversions -vs)
 PYVER = $(shell pyversions  -vd)
 
+CYTHONVER := $(shell dpkg -l cython | awk '/^ii/{print $$3;}' || echo 0)
+MIN_CYTHONVER = 0.15.1
+
 # Mega rule
 %:
 	: # Explicit build system to avoid use of all-in-1 Makefile
 	dh $@ --buildsystem=python_distutils
 
+override_dh_auto_configure:
+	dpkg --compare-versions $(CYTHONVER) lt $(MIN_CYTHONVER) && { \
+		echo "I: Using pre-Cython-ed files"; \
+		QUILT_SERIES=series-cython quilt push -a; } || :
+	dh_auto_configure
 
 override_dh_clean:
 	rm -rf build doc/_build *-stamp # pandas.egg-info pandas/datasets/__config__.py
+	QUILT_SERIES=series-cython quilt pop -a || :
 	dh_clean
 	: # prune auto-generated version.py -- will be generated during build again
 	rm -f pandas/version.py
