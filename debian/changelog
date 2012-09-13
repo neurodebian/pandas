@@ -1,3 +1,9 @@
+pandas (0.8.1+git203-g67121af-1) UNRELEASED; urgency=low
+
+  * New upstream snapshot from master at v0.8.1-203-g67121af
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 13 Sep 2012 05:10:43 -0400
+
 pandas (0.8.1-1) unstable; urgency=low
 
   * Primarily a bugfix upstream release.
