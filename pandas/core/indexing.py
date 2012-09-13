@@ -3,6 +3,7 @@
 from pandas.core.common import _asarray_tuplesafe
 from pandas.core.index import Index, MultiIndex
 import pandas.core.common as com
+import pandas.lib as lib
 
 import numpy as np
 
@@ -35,6 +36,12 @@ class _NDFrameIndexer(object):
             return self._getitem_axis(key, axis=0)
 
     def _get_label(self, label, axis=0):
+        # ueber-hack
+        if (isinstance(label, tuple) and
+            isinstance(label[axis], slice)):
+
+            raise IndexingError('no slices here')
+
         try:
             return self.obj.xs(label, axis=axis, copy=False)
         except Exception:
@@ -293,8 +300,15 @@ class _NDFrameIndexer(object):
                 # asarray can be unsafe, NumPy strings are weird
                 keyarr = _asarray_tuplesafe(key)
 
-            if _is_integer_dtype(keyarr) and not _is_integer_index(labels):
-                return self.obj.take(keyarr, axis=axis)
+            if _is_integer_dtype(keyarr):
+                if labels.inferred_type == 'mixed-integer':
+                    indexer = labels.get_indexer(keyarr)
+                    if (indexer >= 0).all():
+                        self.obj.take(indexer, axis=axis)
+                    else:
+                        return self.obj.take(keyarr, axis=axis)
+                elif not labels.inferred_type == 'integer':
+                    return self.obj.take(keyarr, axis=axis)
 
             # this is not the most robust, but...
             if (isinstance(labels, MultiIndex) and
@@ -361,7 +375,7 @@ class _NDFrameIndexer(object):
                         j = labels.get_loc(stop)
                     position_slice = False
             except KeyError:
-                if ltype == 'mixed-integer':
+                if ltype == 'mixed-integer-float':
                     raise
 
             if null_slice or position_slice:
@@ -403,7 +417,20 @@ class _NDFrameIndexer(object):
                     check = labels.levels[0].get_indexer(objarr)
                 else:
                     level = None
-                    indexer = check = labels.get_indexer(objarr)
+                    # XXX
+                    if labels.is_unique:
+                        indexer = check = labels.get_indexer(objarr)
+                    else:
+                        mask = np.zeros(len(labels), dtype=bool)
+                        lvalues = labels.values
+                        for x in objarr:
+                            # ugh
+                            to_or = lib.map_infer(lvalues, x.__eq__)
+                            if not to_or.any():
+                                raise KeyError('%s not in index' % str(x))
+                            mask |= to_or
+
+                        indexer = check = mask.nonzero()[0]
 
                 mask = check == -1
                 if mask.any():
@@ -451,7 +478,7 @@ class _NDFrameIndexer(object):
                     j = labels.get_loc(stop)
                 position_slice = False
         except KeyError:
-            if labels.inferred_type == 'mixed-integer':
+            if labels.inferred_type == 'mixed-integer-float':
                 raise
 
         if null_slice or position_slice:

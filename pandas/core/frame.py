@@ -127,11 +127,11 @@ left_on : label or list, or array-like
 right_on : label or list, or array-like
     Field names to join on in right DataFrame or vector/list of vectors per
     left_on docs
-left_index : boolean, default True
+left_index : boolean, default False
     Use the index from the left DataFrame as the join key(s). If it is a
     MultiIndex, the number of keys in the other DataFrame (either the index
     or a number of columns) must match the number of levels
-right_index : boolean, default True
+right_index : boolean, default False
     Use the index from the right DataFrame as the join key. Same caveats as
     left_index
 sort : boolean, default True
@@ -882,13 +882,15 @@ class DataFrame(NDFrame):
         y : recarray
         """
         if index:
-            arrays = [self.index] + [self[c] for c in self.columns]
+            arrays = [self.index.values] + [self[c].values
+                                            for c in self.columns]
             names = ['index'] + list(map(str, self.columns))
         else:
-            arrays = [self[c] for c in self.columns]
+            arrays = [self[c].values for c in self.columns]
             names = list(map(str, self.columns))
 
-        return np.rec.fromarrays(arrays, names=names)
+        dtype = np.dtype([(x, v.dtype) for x, v in zip(names, arrays)])
+        return np.rec.fromarrays(arrays, dtype=dtype, names=names)
 
     @classmethod
     def from_items(cls, items, columns=None, orient='columns'):
@@ -1030,7 +1032,8 @@ class DataFrame(NDFrame):
     to_wide = deprecate('to_wide', to_panel)
 
     def _helper_csvexcel(self, writer, na_rep=None, cols=None,
-                         header=True, index=True, index_label=None):
+                         header=True, index=True, index_label=None,
+                         float_format=None):
         if cols is None:
             cols = self.columns
 
@@ -1085,16 +1088,18 @@ class DataFrame(NDFrame):
                     row_fields = list(idx)
             for i, col in enumerate(cols):
                 val = series[col][j]
-                if isnull(val):
+                if lib.checknull(val):
                     val = na_rep
+                if float_format is not None and com.is_float(val):
+                    val = float_format % val
 
                 row_fields.append(val)
 
             writer.writerow(row_fields)
 
-    def to_csv(self, path_or_buf, sep=",", na_rep='', cols=None,
-               header=True, index=True, index_label=None,
-               mode='w', nanRep=None, encoding=None):
+    def to_csv(self, path_or_buf, sep=",", na_rep='', float_format=None,
+               cols=None, header=True, index=True, index_label=None,
+               mode='w', nanRep=None, encoding=None, quoting=None):
         """
         Write DataFrame to a comma-separated values (csv) file
 
@@ -1104,6 +1109,8 @@ class DataFrame(NDFrame):
             File path
         na_rep : string, default ''
             Missing data representation
+        float_format : string, default None
+            Format string for floating point numbers
         cols : sequence, optional
             Columns to write
         header : boolean or list of string, default True
@@ -1135,13 +1142,20 @@ class DataFrame(NDFrame):
             f = com._get_handle(path_or_buf, mode, encoding=encoding)
             close = True
 
+
+        if quoting is None:
+            quoting = csv.QUOTE_MINIMAL
+
         try:
             if encoding is not None:
                 csvout = com.UnicodeWriter(f, lineterminator='\n',
-                                           delimiter=sep, encoding=encoding)
+                                           delimiter=sep, encoding=encoding,
+                                           quoting=quoting)
             else:
-                csvout = csv.writer(f, lineterminator='\n', delimiter=sep)
-            self._helper_csvexcel(csvout, na_rep=na_rep, cols=cols,
+                csvout = csv.writer(f, lineterminator='\n', delimiter=sep,
+                                    quoting=quoting)
+            self._helper_csvexcel(csvout, na_rep=na_rep,
+                                  float_format=float_format, cols=cols,
                                   header=header, index=index,
                                   index_label=index_label)
 
@@ -1150,7 +1164,8 @@ class DataFrame(NDFrame):
                 f.close()
 
     def to_excel(self, excel_writer, sheet_name='sheet1', na_rep='',
-                 cols=None, header=True, index=True, index_label=None):
+                 float_format=None, cols=None, header=True, index=True,
+                 index_label=None):
         """
         Write DataFrame to a excel sheet
 
@@ -1161,7 +1176,9 @@ class DataFrame(NDFrame):
         sheet_name : string, default 'sheet1'
             Name of sheet which will contain DataFrame
         na_rep : string, default ''
-            Missing data rep'n
+            Missing data representation
+        float_format : string, default None
+            Format string for floating point numbers
         cols : sequence, optional
             Columns to write
         header : boolean or list of string, default True
@@ -1186,11 +1203,12 @@ class DataFrame(NDFrame):
         """
         from pandas.io.parsers import ExcelWriter
         need_save = False
-        if isinstance(excel_writer, str):
+        if isinstance(excel_writer, basestring):
             excel_writer = ExcelWriter(excel_writer)
             need_save = True
         excel_writer.cur_sheet = sheet_name
-        self._helper_csvexcel(excel_writer, na_rep=na_rep, cols=cols,
+        self._helper_csvexcel(excel_writer, na_rep=na_rep,
+                              float_format=float_format, cols=cols,
                               header=header, index=index,
                               index_label=index_label)
         if need_save:
@@ -1240,7 +1258,8 @@ class DataFrame(NDFrame):
     def to_html(self, buf=None, columns=None, col_space=None, colSpace=None,
                 header=True, index=True, na_rep='NaN', formatters=None,
                 float_format=None, sparsify=None, index_names=True,
-                bold_rows=True):
+                justify=None, force_unicode=False, bold_rows=True,
+                classes=None):
         """
         to_html-specific options
         bold_rows : boolean, default True
@@ -1257,13 +1276,40 @@ class DataFrame(NDFrame):
 
         formatter = fmt.DataFrameFormatter(self, buf=buf, columns=columns,
                                            col_space=col_space, na_rep=na_rep,
+                                           formatters=formatters,
+                                           float_format=float_format,
+                                           sparsify=sparsify,
+                                           justify=justify,
+                                           index_names=index_names,
+                                           header=header, index=index,
+                                           bold_rows=bold_rows)
+        formatter.to_html(classes=classes)
+
+        if buf is None:
+            return formatter.buf.getvalue()
+
+    @Appender(fmt.docstring_to_string, indents=1)
+    def to_latex(self, buf=None, columns=None, col_space=None, colSpace=None,
+                 header=True, index=True, na_rep='NaN', formatters=None,
+                 float_format=None, sparsify=None, index_names=True,
+                 bold_rows=True):
+        """
+        to_latex-specific options
+        bold_rows : boolean, default True
+            Make the row labels bold in the output
+
+        Render a DataFrame to a tabular environment table.
+        You can splice this into a LaTeX document.
+        """
+        formatter = fmt.DataFrameFormatter(self, buf=buf, columns=columns,
+                                           col_space=col_space, na_rep=na_rep,
                                            header=header, index=index,
                                            formatters=formatters,
                                            float_format=float_format,
                                            bold_rows=bold_rows,
                                            sparsify=sparsify,
                                            index_names=index_names)
-        formatter.to_html()
+        formatter.to_latex()
 
         if buf is None:
             return formatter.buf.getvalue()
@@ -1339,7 +1385,8 @@ class DataFrame(NDFrame):
 
     def get_dtype_counts(self):
         counts = {}
-        for _, series in self.iterkv():
+        for i in range(len(self.columns)):
+            series = self.icol(i)
             # endianness can cause dtypes to look different
             dtype_str = str(series.dtype)
             if dtype_str in counts:
@@ -1831,8 +1878,8 @@ class DataFrame(NDFrame):
 
     def xs(self, key, axis=0, level=None, copy=True):
         """
-        Returns a cross-section (row or column) from the DataFrame as a Series
-        object. Defaults to returning a row (axis 0)
+        Returns a cross-section (row(s) or column(s)) from the DataFrame.
+        Defaults to cross-section on the rows (axis=0).
 
         Parameters
         ----------
@@ -1840,12 +1887,62 @@ class DataFrame(NDFrame):
             Some label contained in the index, or partially in a MultiIndex
         axis : int, default 0
             Axis to retrieve cross-section on
+        level : object, defaults to first n levels (n=1 or len(key))
+            In case of a key partially contained in a MultiIndex, indicate
+            which levels are used. Levels can be referred by label or position.
         copy : boolean, default True
             Whether to make a copy of the data
 
+        Examples
+        --------
+        >>> df
+           A  B  C
+        a  4  5  2
+        b  4  0  9
+        c  9  7  3
+        >>> df.xs('a')
+        A    4
+        B    5
+        C    2
+        Name: a
+        >>> df.xs('C', axis=1)
+        a    2
+        b    9
+        c    3
+        Name: C
+        >>> s = df.xs('a', copy=False)
+        >>> s['A'] = 100
+        >>> df
+             A  B  C
+        a  100  5  2
+        b    4  0  9
+        c    9  7  3
+
+
+        >>> df
+                            A  B  C  D
+        first second third
+        bar   one    1      4  1  8  9
+              two    1      7  5  5  0
+        baz   one    1      6  6  8  0
+              three  2      5  3  5  3
+        >>> df.xs(('baz', 'three'))
+               A  B  C  D
+        third
+        2      5  3  5  3
+        >>> df.xs('one', level=1)
+                     A  B  C  D
+        first third
+        bar   1      4  1  8  9
+        baz   1      6  6  8  0
+        >>> df.xs(('baz', 2), level=[0, 'third'])
+                A  B  C  D
+        second
+        three   5  3  5  3
+
         Returns
         -------
-        xs : Series
+        xs : Series or DataFrame
         """
         labels = self._get_axis(axis)
         if level is not None:
@@ -2309,6 +2406,7 @@ class DataFrame(NDFrame):
             else:
                 arrays.append(np.asarray(self.index))
 
+        to_remove = []
         for col in keys:
             if isinstance(col, Series):
                 level = col.values
@@ -2320,7 +2418,7 @@ class DataFrame(NDFrame):
                 level = frame[col].values
                 names.append(col)
                 if drop:
-                    del frame[col]
+                    to_remove.append(col)
             arrays.append(level)
 
         index = MultiIndex.from_arrays(arrays, names=names)
@@ -2329,13 +2427,16 @@ class DataFrame(NDFrame):
             duplicates = index.get_duplicates()
             raise Exception('Index has duplicate keys: %s' % duplicates)
 
+        for c in to_remove:
+            del frame[c]
+
         # clear up memory usage
         index._cleanup()
 
         frame.index = index
         return frame
 
-    def reset_index(self, level=None, drop=False):
+    def reset_index(self, level=None, drop=False, inplace=False):
         """
         For DataFrame with multi-level index, return new DataFrame with
         labeling information in the columns under the index names, defaulting
@@ -2350,12 +2451,17 @@ class DataFrame(NDFrame):
             default
         drop : boolean, default False
             Do not try to insert index into dataframe columns
+        inplace : boolean, default False
+            Modify the DataFrame in place (do not create a new object)
 
         Returns
         -------
         resetted : DataFrame
         """
-        new_obj = self.copy()
+        if inplace:
+            new_obj  = self
+        else:
+            new_obj = self.copy()
 
         def _maybe_cast(values):
             if values.dtype == np.object_:
@@ -2532,8 +2638,6 @@ class DataFrame(NDFrame):
             default use all of the columns
         take_last : boolean, default False
             Take the last observed row in a row. Defaults to the first row
-        skipna : boolean, default True
-            If True then keep NaN
         inplace : boolean, default False
             Whether to drop duplicates in place or to return a copy
 
@@ -2569,16 +2673,21 @@ class DataFrame(NDFrame):
         -------
         duplicated : Series
         """
-        if cols is not None:
-            if isinstance(cols, list):
-                values = [self[x].values for x in cols]
-                keys = lib.fast_zip_fillna(values)
-            else:
-                keys = lib.fast_zip_fillna([self[cols]])
-        else:
-            values = list(self.values.T)
-            keys = lib.fast_zip_fillna(values)
+        # kludge for #1833
+        def _m8_to_i8(x):
+            if issubclass(x.dtype.type, np.datetime64):
+                return x.view(np.int64)
+            return x
 
+        if cols is None:
+            values = list(_m8_to_i8(self.values.T))
+        else:
+            if np.iterable(cols):
+                values = [_m8_to_i8(self[x].values) for x in cols]
+            else:
+                values = [self[cols]]
+
+        keys = lib.fast_zip_fillna(values)
         duplicated = lib.duplicated(keys, take_last=take_last)
         return Series(duplicated, index=self.index)
 
@@ -3030,23 +3139,30 @@ class DataFrame(NDFrame):
         this, other = self.align(other, join='outer', level=level, copy=False)
         new_index, new_columns = this.index, this.columns
 
-        this_vals = this.values
-        other_vals = other.values
+        def _arith_op(left, right):
+            if fill_value is not None:
+                left_mask = isnull(left)
+                right_mask = isnull(right)
+                left = left.copy()
+                right = right.copy()
 
-        if fill_value is not None:
-            this_mask = isnull(this_vals)
-            other_mask = isnull(other_vals)
-            this_vals = this_vals.copy()
-            other_vals = other_vals.copy()
+                # one but not both
+                mask = left_mask ^ right_mask
+                left[left_mask & mask] = fill_value
+                right[right_mask & mask] = fill_value
 
-            # one but not both
-            mask = this_mask ^ other_mask
-            this_vals[this_mask & mask] = fill_value
-            other_vals[other_mask & mask] = fill_value
+            return func(left, right)
 
-        result = func(this_vals, other_vals)
-        return self._constructor(result, index=new_index, columns=new_columns,
-                                 copy=False)
+        if this._is_mixed_type or other._is_mixed_type:
+            # XXX no good for duplicate columns
+            result = {}
+            for col in this:
+                result[col] = func(this[col].values, other[col].values)
+        else:
+            result = _arith_op(this.values, other.values)
+
+        return self._constructor(result, index=new_index,
+                                 columns=new_columns, copy=False)
 
     def _indexed_same(self, other):
         same_index = self.index.equals(other.index)
@@ -3464,7 +3580,7 @@ class DataFrame(NDFrame):
             new_values = blk.values.take(indexer, axis=1)
             # convert integer to float if necessary. need to do a lot more than
             # that, handle boolean etc also
-            new_values = com.ensure_float(new_values)
+            new_values = com._maybe_upcast(new_values)
             if periods > 0:
                 new_values[:, :periods] = nan
             else:
@@ -3864,7 +3980,7 @@ class DataFrame(NDFrame):
         mat = numeric_df.values
 
         if method == 'pearson':
-            correl = lib.nancorr(mat)
+            correl = lib.nancorr(com._ensure_float64(mat))
         else:
             mat = mat.T
             corrf = nanops.get_corr_func(method)
@@ -3900,7 +4016,7 @@ class DataFrame(NDFrame):
         if notnull(mat).all():
             baseCov = np.cov(mat.T)
         else:
-            baseCov = lib.nancorr(mat, cov=True)
+            baseCov = lib.nancorr(com._ensure_float64(mat), cov=True)
 
         return self._constructor(baseCov, index=cols, columns=cols)
 
@@ -4303,7 +4419,7 @@ class DataFrame(NDFrame):
 
     def idxmin(self, axis=0, skipna=True):
         """
-        Return index of first occurence of minimum over requested axis.
+        Return index of first occurrence of minimum over requested axis.
         NA/null values are excluded.
 
         Parameters
@@ -4325,7 +4441,7 @@ class DataFrame(NDFrame):
 
     def idxmax(self, axis=0, skipna=True):
         """
-        Return index of first occurence of maximum over requested axis.
+        Return index of first occurrence of maximum over requested axis.
         NA/null values are excluded.
 
         Parameters

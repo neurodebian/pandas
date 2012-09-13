@@ -137,6 +137,18 @@ class TestTSPlot(unittest.TestCase):
             _check_plot_works(ser.plot)
 
     @slow
+    def test_fake_inferred_business(self):
+        import matplotlib.pyplot as plt
+        fig = plt.gcf()
+        plt.clf()
+        fig.add_subplot(111)
+        rng = date_range('2001-1-1', '2001-1-10')
+        ts = Series(range(len(rng)), rng)
+        ts = ts[:3].append(ts[5:])
+        ax = ts.plot()
+        self.assert_(not hasattr(ax, 'freq'))
+
+    @slow
     def test_plot_offset_freq(self):
         ser = tm.makeTimeSeries()
         _check_plot_works(ser.plot)
@@ -604,6 +616,16 @@ class TestTSPlot(unittest.TestCase):
         for l in ax.get_lines():
             self.assert_(l.get_xdata().freq == 'D')
 
+        plt.close('all')
+        idxh = date_range('1/1/1999', periods=240, freq='T')
+        idxl = date_range('1/1/1999', periods=4, freq='H')
+        high = Series(np.random.randn(len(idxh)), idxh)
+        low = Series(np.random.randn(len(idxl)), idxl)
+        low.plot()
+        ax = high.plot()
+        for l in ax.get_lines():
+            self.assert_(l.get_xdata().freq == 'T')
+
     @slow
     def test_mixed_freq_irreg_period(self):
         ts = tm.makeTimeSeries()
@@ -752,6 +774,8 @@ class TestTSPlot(unittest.TestCase):
         colors = set()
         for line in leg.get_lines():
             colors.add(line.get_color())
+
+        # TODO: color cycle problems
         self.assert_(len(colors) == 4)
 
         plt.clf()
@@ -774,6 +798,8 @@ class TestTSPlot(unittest.TestCase):
         colors = set()
         for line in leg.get_lines():
             colors.add(line.get_color())
+
+        # TODO: color cycle problems
         self.assert_(len(colors) == 4)
 
         #non-ts
@@ -787,6 +813,8 @@ class TestTSPlot(unittest.TestCase):
         colors = set()
         for line in leg.get_lines():
             colors.add(line.get_color())
+
+        # TODO: color cycle problems
         self.assert_(len(colors) == 4)
 
         plt.clf()
@@ -798,7 +826,20 @@ class TestTSPlot(unittest.TestCase):
         colors = set()
         for line in leg.get_lines():
             colors.add(line.get_color())
+
+        # TODO: color cycle problems
         self.assert_(len(colors) == 4)
+
+    @slow
+    def test_format_date_axis(self):
+        rng = date_range('1/1/2012', periods=12, freq='M')
+        df = DataFrame(np.random.randn(len(rng), 3), rng)
+        ax = df.plot()
+        xaxis = ax.get_xaxis()
+        for l in xaxis.get_ticklabels():
+            if len(l.get_text()) > 0:
+                self.assert_(l.get_rotation() == 30)
+
 
 PNG_PATH = 'tmp.png'
 def _check_plot_works(f, freq=None, series=None, *args, **kwargs):

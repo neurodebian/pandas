@@ -74,7 +74,7 @@ class GroupBy(object):
     -----
     After grouping, see aggregate, apply, and transform functions. Here are
     some other brief notes about usage. When grouping by multiple groups, the
-    result index will be a MultiIndex (hierarhical) by default.
+    result index will be a MultiIndex (hierarchical) by default.
 
     Iteration produces (key, group) tuples, i.e. chunking the data by group. So
     you can write code like:
@@ -395,9 +395,10 @@ class GroupBy(object):
         if len(output) == 0:
             return self._python_apply_general(func, *args, **kwargs)
 
-        mask = counts.ravel() > 0
-        for name, result in output.iteritems():
-            output[name] = result[mask]
+        if self.grouper._filter_empty_groups:
+            mask = counts.ravel() > 0
+            for name, result in output.iteritems():
+                output[name] = result[mask]
 
         return self._wrap_aggregated_output(output)
 
@@ -985,14 +986,21 @@ class Grouping(object):
 
             # XXX complete hack
 
-            level_values = index.levels[level].take(inds)
             if grouper is not None:
+                level_values = index.levels[level].take(inds)
                 self.grouper = level_values.map(self.grouper)
             else:
                 self._was_factor = True
-                self._labels = inds
+
+                # all levels may not be observed
+                labels, uniques, counts = algos.factorize(inds, sort=True)
+
+                if len(uniques) < len(level_index):
+                    level_index = level_index.take(uniques)
+
+                self._labels = labels
                 self._group_index = level_index
-                self.grouper = level_values
+                self.grouper = level_index.take(labels)
         else:
             if isinstance(self.grouper, (list, tuple)):
                 self.grouper = com._asarray_tuplesafe(self.grouper)
@@ -1289,7 +1297,8 @@ class SeriesGroupBy(GroupBy):
 
         if isinstance(values[0], dict):
             # # GH #823
-            return DataFrame(values, index=keys).stack()
+            index = _get_index()
+            return DataFrame(values, index=index).stack()
 
         if isinstance(values[0], (Series, dict)):
             return self._concat_objects(keys, values,

@@ -163,6 +163,18 @@ class CheckIndexing(object):
 
         assert_almost_equal(df.values, arr)
 
+    def test_getitem_ix_mixed_integer(self):
+        df = DataFrame(np.random.randn(4, 3),
+                       index=[1, 10, 'C', 'E'], columns=[1, 2, 3])
+
+        result = df.ix[:-1]
+        expected = df.ix[df.index[:-1]]
+        assert_frame_equal(result, expected)
+
+        result = df.ix[[1, 10]]
+        expected = df.ix[Index([1, 10], dtype=object)]
+        assert_frame_equal(result, expected)
+
     def test_getattr(self):
         tm.assert_series_equal(self.frame.A, self.frame['A'])
         self.assertRaises(AttributeError, getattr, self.frame,
@@ -1423,6 +1435,16 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         xp.index.names = [None, 'A', 'B']
         assert_frame_equal(result, xp)
 
+    def test_set_index_nonuniq(self):
+        df = DataFrame({'A' : ['foo', 'foo', 'foo', 'bar', 'bar'],
+                        'B' : ['one', 'two', 'three', 'one', 'two'],
+                        'C' : ['a', 'b', 'c', 'd', 'e'],
+                        'D' : np.random.randn(5),
+                        'E' : np.random.randn(5)})
+        self.assertRaises(Exception, df.set_index, 'A', verify_integrity=True,
+                          inplace=True)
+        self.assert_('A' in df)
+
     def test_set_index_bug(self):
         #GH1590
         df = DataFrame({'val' : [0, 1, 2], 'key': ['a', 'b', 'c']})
@@ -2592,6 +2614,21 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
                        columns=[tm.rands(10) for _ in xrange(20)])
         repr(df)
 
+    def test_repr_column_name_unicode_truncation_bug(self):
+        # #1906
+        df = DataFrame({'Id': [7117434],
+                        'StringCol': ('Is it possible to modify drop plot code'
+                                      ' so that the output graph is displayed '
+                                      'in iphone simulator, Is it possible to '
+                                      'modify drop plot code so that the '
+                                      'output graph is \xe2\x80\xa8displayed '
+                                      'in iphone simulator.Now we are adding '
+                                      'the CSV file externally. I want to Call'
+                                      ' the File through the code..')})
+
+        result = repr(df)
+        self.assert_('StringCol' in result)
+
     def test_head_tail(self):
         assert_frame_equal(self.frame.head(), self.frame[:5])
         assert_frame_equal(self.frame.tail(), self.frame[-5:])
@@ -2688,7 +2725,7 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
 
     def test_operators_none_as_na(self):
         df = DataFrame({"col1": [2,5.0,123,None],
-                        "col2": [1,2,3,4]})
+                        "col2": [1,2,3,4]}, dtype=object)
 
         ops = [operator.add, operator.sub, operator.mul, operator.truediv]
 
@@ -3300,6 +3337,37 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         recons = pan.read_csv(buf, index_col=0)
         assert_frame_equal(recons, self.frame)
 
+    def test_to_csv_float_format(self):
+        filename = '__tmp__.csv'
+        df = DataFrame([[0.123456, 0.234567, 0.567567],
+                        [12.32112, 123123.2, 321321.2]],
+                       index=['A', 'B'], columns=['X', 'Y', 'Z'])
+        df.to_csv(filename, float_format='%.2f')
+
+        rs = pan.read_csv(filename, index_col=0)
+        xp = DataFrame([[0.12, 0.23, 0.57],
+                        [12.32, 123123.20, 321321.20]],
+                       index=['A', 'B'], columns=['X', 'Y', 'Z'])
+        assert_frame_equal(rs, xp)
+        os.remove(filename)
+
+    def test_to_csv_quoting(self):
+        import csv
+
+        df = DataFrame({'A': [1, 2, 3], 'B': ['foo', 'bar', 'baz']})
+
+        buf = StringIO()
+        df.to_csv(buf, index=False, quoting=csv.QUOTE_NONNUMERIC)
+
+        result = buf.getvalue()
+        expected = ('"A","B"\n'
+                    '1,"foo"\n'
+                    '2,"bar"\n'
+                    '3,"baz"\n')
+
+        self.assertEqual(result, expected)
+
+
     def test_to_excel_from_excel(self):
         try:
             import xlwt
@@ -3478,6 +3546,50 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
 
             os.remove(path)
 
+    def test_to_excel_float_format(self):
+        try:
+            import xlwt
+            import openpyxl
+        except ImportError:
+            raise nose.SkipTest
+
+        for ext in ['xls', 'xlsx']:
+            filename = '__tmp__.' + ext
+            df = DataFrame([[0.123456, 0.234567, 0.567567],
+                            [12.32112, 123123.2, 321321.2]],
+                           index=['A', 'B'], columns=['X', 'Y', 'Z'])
+            df.to_excel(filename, 'test1', float_format='%.2f')
+
+            reader = ExcelFile(filename)
+            rs = reader.parse('test1', index_col=None)
+            xp = DataFrame([[0.12, 0.23, 0.57],
+                            [12.32, 123123.20, 321321.20]],
+                           index=['A', 'B'], columns=['X', 'Y', 'Z'])
+            assert_frame_equal(rs, xp)
+            os.remove(filename)
+
+    def test_to_excel_unicode_filename(self):
+        try:
+            import xlwt
+            import openpyxl
+        except ImportError:
+            raise nose.SkipTest
+
+        for ext in ['xls', 'xlsx']:
+            filename = u'\u0192u.' + ext
+            df = DataFrame([[0.123456, 0.234567, 0.567567],
+                            [12.32112, 123123.2, 321321.2]],
+                           index=['A', 'B'], columns=['X', 'Y', 'Z'])
+            df.to_excel(filename, 'test1', float_format='%.2f')
+
+            reader = ExcelFile(filename)
+            rs = reader.parse('test1', index_col=None)
+            xp = DataFrame([[0.12, 0.23, 0.57],
+                            [12.32, 123123.20, 321321.20]],
+                           index=['A', 'B'], columns=['X', 'Y', 'Z'])
+            assert_frame_equal(rs, xp)
+            os.remove(filename)
+
     def test_info(self):
         io = StringIO()
         self.frame.info(buf=io)
@@ -3490,6 +3602,14 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         frame.info()
         frame.info(verbose=False)
         sys.stdout = sys.__stdout__
+
+    def test_info_duplicate_columns(self):
+        io = StringIO()
+
+        # it works!
+        frame = DataFrame(np.random.randn(1500, 4),
+                          columns=['a', 'a', 'b', 'b'])
+        frame.info(buf=io)
 
     def test_dtypes(self):
         self.mixed_frame['bool'] = self.mixed_frame['A'] > 0
@@ -3678,6 +3798,13 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
             rs = df.corr(meth)
             self.assert_(isnull(rs.values).all())
 
+        # dtypes other than float64 #1761
+        df3 = DataFrame({"a":[1,2,3,4], "b":[1,2,3,4]})
+
+        # it works!
+        df3.cov()
+        df3.corr()
+
     def test_cov(self):
         self.frame['A'][:5] = nan
         self.frame['B'][:10] = nan
@@ -3835,11 +3962,13 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         assert_frame_equal(result, expected)
 
         # multi column
-        result = df.drop_duplicates(['A', 'B'])
         expected = df.ix[[0, 1, 2, 3]]
+        result = df.drop_duplicates(np.array(['A', 'B']))
+        assert_frame_equal(result, expected)
+        result = df.drop_duplicates(['A', 'B'])
         assert_frame_equal(result, expected)
 
-        result = df.drop_duplicates(['A', 'B'], take_last=True)
+        result = df.drop_duplicates(('A', 'B'), take_last=True)
         expected = df.ix[[0, 5, 6, 7]]
         assert_frame_equal(result, expected)
 
@@ -4792,6 +4921,13 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         assert_series_equal(the_diff['A'],
                             self.tsframe['A'] - self.tsframe['A'].shift(1))
 
+    def test_diff_mixed_dtype(self):
+        df = DataFrame(np.random.randn(5, 3))
+        df['A'] = np.array([1, 2, 3, 4, 5], dtype=object)
+
+        result = df.diff()
+        self.assert_(result[0].dtype == np.float64)
+
     def test_pct_change(self):
         rs = self.tsframe.pct_change(fill_method=None)
         assert_frame_equal(rs, self.tsframe / self.tsframe.shift(1) - 1)
@@ -4866,6 +5002,15 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         assert_frame_equal(ps, shifted2.shift(-1, 'B'))
 
         self.assertRaises(ValueError, ps.shift, freq='D')
+
+    def test_shift_bool(self):
+        df = DataFrame({'high':[True, False],
+                        'low':[False, False]})
+        rs = df.shift(1)
+        xp = DataFrame(np.array([[np.nan, np.nan],
+                                 [True, False]], dtype=object),
+                       columns=['high', 'low'])
+        assert_frame_equal(rs, xp)
 
     def test_tshift(self):
         # PeriodIndex
@@ -6190,6 +6335,18 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         assert_frame_equal(unstacked_cols.T, self.frame)
         assert_frame_equal(unstacked_cols_df['bar'].T, self.frame)
 
+    def test_unstack_bool(self):
+        df = DataFrame([False, False],
+                       index=MultiIndex.from_arrays([['a', 'b'], ['c', 'l']]),
+                       columns=['col'])
+        rs = df.unstack()
+        xp = DataFrame(np.array([[False, np.nan], [np.nan, False]],
+                                dtype=object),
+                       index=['a', 'b'],
+                       columns=MultiIndex.from_arrays([['col', 'col'],
+                                                       ['c', 'l']]))
+        assert_frame_equal(rs, xp)
+
     def test_unstack_to_series(self):
         # check reversibility
         data = self.frame.unstack()
@@ -6272,6 +6429,12 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         rs = frame.reset_index('A')
         xp = self.frame.reset_index().set_index(['index', 'B'])
         assert_frame_equal(rs, xp)
+
+        #test resetting in place
+        df = self.frame.copy()
+        resetted = self.frame.reset_index()
+        df.reset_index(inplace=True)
+        assert_frame_equal(df, resetted)
 
     def test_reset_index_right_dtype(self):
         time = np.arange(0.0, 10, np.sqrt(2)/2)

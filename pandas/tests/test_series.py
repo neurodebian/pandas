@@ -89,6 +89,17 @@ class CheckNameIntegration(object):
         result = self.ts[5:10]
         self.assertEquals(result.name, self.ts.name)
 
+    def test_getitem_setitem_ellipsis(self):
+        s = Series(np.random.randn(10))
+
+        np.fix(s)
+
+        result = s[...]
+        assert_series_equal(result, s)
+
+        s[...] = 5
+        self.assert_((result == 5).all())
+
     def test_multilevel_name_print(self):
         index = MultiIndex(levels=[['foo', 'bar', 'baz', 'qux'],
                                    ['one', 'two', 'three']],
@@ -192,6 +203,10 @@ class TestNanops(unittest.TestCase):
         df = DataFrame(np.empty((10, 0)))
         self.assert_((df.sum(1) == 0).all())
 
+    def test_nansum_buglet(self):
+        s = Series([1.0, np.nan], index=[0,1])
+        result = np.nansum(s)
+        assert_almost_equal(result, 1)
 
 class SafeForSparse(object):
     pass
@@ -250,6 +265,26 @@ class TestSeries(unittest.TestCase, CheckNameIntegration):
         empty = Series(index=range(10))
         empty2 = Series(np.nan, index=range(10))
         assert_series_equal(empty, empty2)
+
+    def test_constructor_series(self):
+        index1 = ['d', 'b', 'a', 'c']
+        index2 = sorted(index1)
+        s1 = Series([4, 7, -5, 3], index=index1)
+        s2 = Series(s1, index=index2)
+
+        assert_series_equal(s2, s1.sort_index())
+
+    def test_constructor_generator(self):
+        gen = (i for i in range(10))
+
+        result = Series(gen)
+        exp = Series(range(10))
+        assert_series_equal(result, exp)
+
+        gen = (i for i in range(10))
+        result = Series(gen, index=range(10, 20))
+        exp.index = range(10, 20)
+        assert_series_equal(result, exp)
 
     def test_constructor_maskedarray(self):
         data = ma.masked_all((3,), dtype=float)
@@ -487,6 +522,10 @@ class TestSeries(unittest.TestCase, CheckNameIntegration):
         result = s.iget([0, 2, 3, 4, 5])
         expected = s.reindex(s.index[[0, 2, 3, 4, 5]])
         assert_series_equal(result, expected)
+
+    def test_iget_nonunique(self):
+        s = Series([0, 1, 2], index=[0, 1, 0])
+        self.assertEqual(s.iget(2), 2)
 
     def test_getitem_regression(self):
         s = Series(range(5), index=range(5))
@@ -985,6 +1024,26 @@ class TestSeries(unittest.TestCase, CheckNameIntegration):
         rep_str = repr(ser)
         self.assert_("Name: 0" in rep_str)
 
+    def test_repr_bool_fails(self):
+        s = Series([DataFrame(np.random.randn(2,2)) for i in range(5)])
+
+        import sys
+
+        buf = StringIO()
+        sys.stderr = buf
+        # it works (with no Cython exception barf)!
+        repr(s)
+        sys.stderr = sys.__stderr__
+        self.assertEquals(buf.getvalue(), '')
+
+    def test_repr_name_iterable_indexable(self):
+        s = Series([1, 2, 3], name=np.int64(3))
+
+        # it works!
+        repr(s)
+
+        s.name = (u"\u05d0",) * 2
+        repr(s)
 
     def test_timeseries_repr_object_dtype(self):
         index = Index([datetime(2000, 1, 1) + timedelta(i)
@@ -1972,6 +2031,24 @@ class TestSeries(unittest.TestCase, CheckNameIntegration):
     def test_to_dict(self):
         self.assert_(np.array_equal(Series(self.ts.to_dict()), self.ts))
 
+    def test_to_csv_float_format(self):
+        filename = '__tmp__.csv'
+        ser = Series([0.123456, 0.234567, 0.567567])
+        ser.to_csv(filename, float_format='%.2f')
+
+        rs = Series.from_csv(filename)
+        xp = Series([0.12, 0.23, 0.57])
+        assert_series_equal(rs, xp)
+        os.remove(filename)
+
+    def test_to_csv_list_entries(self):
+        s = Series(['jack and jill','jesse and frank'])
+
+        split = s.str.split(r'\s+and\s+')
+
+        buf = StringIO()
+        split.to_csv(buf)
+
     def test_clip(self):
         val = self.ts.median()
 
@@ -2260,6 +2337,13 @@ class TestSeries(unittest.TestCase, CheckNameIntegration):
         self.assert_(result.dtype == np.object_)
         self.assert_(isinstance(result[0], Decimal))
 
+    def test_map_na_exclusion(self):
+        s = Series([1.5, np.nan, 3, np.nan, 5])
+
+        result = s.map(lambda x: x * 2, na_action='ignore')
+        exp = s * 2
+        assert_series_equal(result, exp)
+
     def test_apply(self):
         assert_series_equal(self.ts.apply(np.sqrt), np.sqrt(self.ts))
 
@@ -2290,6 +2374,12 @@ class TestSeries(unittest.TestCase, CheckNameIntegration):
         f = lambda x: x if x > 0 else np.nan
         result = s.apply(f, convert_dtype=False)
         self.assert_(result.dtype == object)
+
+    def test_apply_args(self):
+        s = Series(['foo,bar'])
+
+        result = s.apply(str.split, args=(',',))
+        self.assert_(result[0] == ['foo', 'bar'])
 
     def test_align(self):
         def _check_align(a, b, how='left', fill=None):
@@ -2634,6 +2724,11 @@ class TestSeries(unittest.TestCase, CheckNameIntegration):
         expected = Series([True, False, True, False, False, False, True, True])
         assert_series_equal(result, expected)
 
+    def test_fillna_int(self):
+        s = Series(np.random.randint(-100, 100, 50))
+        self.assert_(s.fillna(inplace=True) is s)
+        assert_series_equal(s.fillna(inplace=False), s)
+
 #-------------------------------------------------------------------------------
 # TimeSeries-specific
 
@@ -2964,6 +3059,12 @@ class TestSeriesNonUnique(unittest.TestCase):
         df = ser.reset_index(name='value2')
         self.assert_('value2' in df)
 
+        #check inplace
+        s = ser.reset_index(drop=True)
+        s2 = ser
+        s2.reset_index(drop=True, inplace=True)
+        assert_series_equal(s, s2)
+
     def test_timeseries_coercion(self):
         idx = tm.makeDateIndex(10000)
         ser = Series(np.random.randn(len(idx)), idx.astype(object))
@@ -3013,6 +3114,7 @@ class TestSeriesNonUnique(unittest.TestCase):
         self.assert_((ser[:5] == -1).all())
         self.assert_((ser[6:10] == -1).all())
         self.assert_((ser[20:30] == -1).all())
+
     def test_repeat(self):
         s = Series(np.random.randn(3), index=['a', 'b', 'c'])
 
@@ -3025,6 +3127,11 @@ class TestSeriesNonUnique(unittest.TestCase):
         exp = Series(s.values.repeat(to_rep),
                      index=s.index.values.repeat(to_rep))
         assert_series_equal(reps, exp)
+
+    def test_unique_data_ownership(self):
+        # it works! #1807
+        Series(Series(["a","c","b"]).unique()).sort()
+
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__,'-vvs','-x','--pdb', '--pdb-failure'],

@@ -11,9 +11,9 @@ import nose
 import numpy as np
 randn = np.random.randn
 
-from pandas import (Index, Series, TimeSeries, DataFrame, isnull,
-                    date_range, Timestamp, DatetimeIndex, Int64Index,
-                    to_datetime, bdate_range)
+from pandas import (Index, Series, TimeSeries, DataFrame,
+                    isnull, date_range, Timestamp, DatetimeIndex,
+                    Int64Index, to_datetime, bdate_range)
 
 from pandas.core.daterange import DateRange
 import pandas.core.datetools as datetools
@@ -1035,6 +1035,82 @@ class TestTimeSeries(unittest.TestCase):
         exp = ts.interpolate()
         assert_series_equal(result, exp)
 
+    def test_frame_datetime64_handling_groupby(self):
+        # it works!
+        df = DataFrame([(3,np.datetime64('2012-07-03')),
+                        (3,np.datetime64('2012-07-04'))],
+                       columns = ['a', 'date'])
+        result = df.groupby('a').first()
+        self.assertEqual(result['date'][3].year, 2012)
+
+    def test_series_interpolate_intraday(self):
+        # #1698
+        import pandas as pd
+        index = pd.date_range('1/1/2012', periods=4, freq='12D')
+        ts = pd.Series([0, 12, 24, 36], index)
+        new_index = index.append(index + pd.DateOffset(days=1)).order()
+
+        exp = ts.reindex(new_index).interpolate(method='time')
+
+        index = pd.date_range('1/1/2012', periods=4, freq='12H')
+        ts = pd.Series([0, 12, 24, 36], index)
+        new_index = index.append(index + pd.DateOffset(hours=1)).order()
+        result = ts.reindex(new_index).interpolate(method='time')
+
+        self.assert_(np.array_equal(result.values, exp.values))
+
+    def test_frame_dict_constructor_datetime64_1680(self):
+        dr = date_range('1/1/2012', periods=10)
+        s = Series(dr, index=dr)
+
+        # it works!
+        DataFrame({'a': 'foo', 'b': s}, index=dr)
+        DataFrame({'a': 'foo', 'b': s.values}, index=dr)
+
+    def test_frame_datetime64_mixed_index_ctor_1681(self):
+        dr = date_range('2011/1/1', '2012/1/1', freq='W-FRI')
+        ts = Series(dr)
+
+        # it works!
+        d = DataFrame({'A': 'foo', 'B': ts}, index=dr)
+        self.assert_(d['B'].isnull().all())
+
+    def test_frame_timeseries_to_records(self):
+        index = date_range('1/1/2000', periods=10)
+        df = DataFrame(np.random.randn(10, 3), index=index,
+                       columns=['a', 'b', 'c'])
+
+        result = df.to_records()
+        result['index'].dtype == 'M8[ns]'
+
+        result = df.to_records(index=False)
+
+    def test_frame_datetime64_duplicated(self):
+        dates = date_range('2010-07-01', end='2010-08-05')
+
+        tst = DataFrame({'symbol': 'AAA', 'date': dates})
+        result = tst.duplicated(['date', 'symbol'])
+        self.assert_((-result).all())
+
+        tst = DataFrame({'date': dates})
+        result = tst.duplicated()
+        self.assert_((-result).all())
+
+    def test_timestamp_compare_with_early_datetime(self):
+        # e.g. datetime.min
+        stamp = Timestamp('2012-01-01')
+
+        self.assertFalse(stamp == datetime.min)
+        self.assertFalse(stamp == datetime(1600, 1, 1))
+        self.assertFalse(stamp == datetime(2700, 1, 1))
+        self.assert_(stamp != datetime.min)
+        self.assert_(stamp != datetime(1600, 1, 1))
+        self.assert_(stamp != datetime(2700, 1, 1))
+        self.assert_(stamp > datetime(1600, 1, 1))
+        self.assert_(stamp >= datetime(1600, 1, 1))
+        self.assert_(stamp < datetime(2700, 1, 1))
+        self.assert_(stamp <= datetime(2700, 1, 1))
+
 def _simple_ts(start, end, freq='D'):
     rng = date_range(start, end, freq=freq)
     return Series(np.random.randn(len(rng)), index=rng)
@@ -1153,6 +1229,32 @@ class TestDatetimeIndex(unittest.TestCase):
         self.assert_(result.equals(ordered))
         self.assert_(result.freq == ordered.freq)
 
+    def test_union_bug_1730(self):
+        rng_a = date_range('1/1/2012', periods=4, freq='3H')
+        rng_b = date_range('1/1/2012', periods=4, freq='4H')
+
+        result = rng_a.union(rng_b)
+        exp = DatetimeIndex(sorted(set(list(rng_a)) | set(list(rng_b))))
+        self.assert_(result.equals(exp))
+
+    def test_union_bug_1745(self):
+        left = DatetimeIndex(['2012-05-11 15:19:49.695000'])
+        right = DatetimeIndex(['2012-05-29 13:04:21.322000',
+                               '2012-05-11 15:27:24.873000',
+                               '2012-05-11 15:31:05.350000'])
+
+        result = left.union(right)
+        exp = DatetimeIndex(sorted(set(list(left)) | set(list(right))))
+        self.assert_(result.equals(exp))
+
+    def test_intersection_bug_1708(self):
+        from pandas import DateOffset
+        index_1 = date_range('1/1/2012', periods=4, freq='12H')
+        index_2 = index_1 + DateOffset(hours=1)
+
+        result = index_1 & index_2
+        self.assertEqual(len(result), 0)
+
     # def test_add_timedelta64(self):
     #     rng = date_range('1/1/2000', periods=5)
     #     delta = rng.values[3] - rng.values[1]
@@ -1202,6 +1304,55 @@ class TestDatetimeIndex(unittest.TestCase):
         idx = date_range('1/1/2000', periods=3, freq='M')
         result = idx.insert(3, datetime(2000, 4, 30))
         self.assert_(result.freqstr == 'M')
+
+    def test_map_bug_1677(self):
+        index = DatetimeIndex(['2012-04-25 09:30:00.393000'])
+        f = index.asof
+
+        result = index.map(f)
+        expected = np.array([f(index[0])])
+        self.assert_(np.array_equal(result, expected))
+
+    def test_groupby_function_tuple_1677(self):
+        df = DataFrame(np.random.rand(100),
+                       index=date_range("1/1/2000", periods=100))
+        monthly_group = df.groupby(lambda x: (x.year,x.month))
+
+        result = monthly_group.mean()
+        self.assert_(isinstance(result.index[0], tuple))
+
+    def test_append_numpy_bug_1681(self):
+        # another datetime64 bug
+        dr = date_range('2011/1/1', '2012/1/1', freq='W-FRI')
+        a = DataFrame()
+        c = DataFrame({'A': 'foo', 'B': dr}, index=dr)
+
+        result = a.append(c)
+        self.assert_((result['B'] == dr).all())
+
+    def test_isin(self):
+        index = tm.makeDateIndex(4)
+        result = index.isin(index)
+        self.assert_(result.all())
+
+        result = index.isin(list(index))
+        self.assert_(result.all())
+
+        assert_almost_equal(index.isin([index[2], 5]),
+                            [False, False, True, False])
+
+    def test_union(self):
+        i1 = Int64Index(np.arange(0, 20, 2))
+        i2 = Int64Index(np.arange(10, 30, 2))
+        result = i1.union(i2)
+        expected = Int64Index(np.arange(0, 30, 2))
+        self.assert_(np.array_equal(result, expected))
+
+    def test_union_with_DatetimeIndex(self):
+        i1 = Int64Index(np.arange(0, 20, 2))
+        i2 = DatetimeIndex(start='2012-01-03 00:00:00', periods=10, freq='D')
+        i1.union(i2) # Works
+        i2.union(i1) # Fails with "AttributeError: can't set attribute"
 
 class TestLegacySupport(unittest.TestCase):
 
@@ -1434,6 +1585,8 @@ class TestLegacySupport(unittest.TestCase):
         df = DataFrame(np.random.rand(len(dti), 5), index=dti)
         self.assertEquals(len(df.ix['2005-11']), 30)
 
+        assert_series_equal(s['2005-11'], s['11-2005'])
+
     def test_partial_slice(self):
         rng = DatetimeIndex(freq='D', start=datetime(2005,1,1), periods=500)
         s = Series(np.arange(len(rng)), index=rng)
@@ -1524,6 +1677,20 @@ class TestLegacySupport(unittest.TestCase):
 
         result = rng[:50].intersection(nofreq)
         self.assert_(result.freq == rng.freq)
+
+    def test_min_max(self):
+        rng = date_range('1/1/2000', '12/31/2000')
+        rng2 = rng.take(np.random.permutation(len(rng)))
+
+        the_min = rng2.min()
+        the_max = rng2.max()
+        self.assert_(isinstance(the_min, Timestamp))
+        self.assert_(isinstance(the_max, Timestamp))
+        self.assertEqual(the_min, rng[0])
+        self.assertEqual(the_max, rng[-1])
+
+        self.assertEqual(rng.min(), rng[0])
+        self.assertEqual(rng.max(), rng[-1])
 
 
 class TestLegacyCompat(unittest.TestCase):
@@ -1675,6 +1842,11 @@ class TestDatetime64(unittest.TestCase):
         arr = to_datetime(['1/1/2005', '1/2/2005', 'Jan 3, 2005', '2005-01-04'])
         idx6 = DatetimeIndex(arr)
 
+        idx7 = DatetimeIndex(['12/05/2007', '25/01/2008'], dayfirst=True)
+        idx8 = DatetimeIndex(['2007/05/12', '2008/01/25'], dayfirst=False,
+                             yearfirst=True)
+        self.assert_(idx7.equals(idx8))
+
         for other in [idx2, idx3, idx4, idx5, idx6]:
             self.assert_( (idx1.values == other.values).all() )
 
@@ -1693,6 +1865,18 @@ class TestDatetime64(unittest.TestCase):
         idx1 = DatetimeIndex(start=sdate, end=edate, freq='W-SUN')
         idx2 = DatetimeIndex(start=sdate, end=edate,
                              freq=dt.Week(weekday=6))
+        self.assertEquals(len(idx1), len(idx2))
+        self.assertEquals(idx1.offset, idx2.offset)
+
+        idx1 = DatetimeIndex(start=sdate, end=edate, freq='QS')
+        idx2 = DatetimeIndex(start=sdate, end=edate,
+                             freq=dt.QuarterBegin(startingMonth=1))
+        self.assertEquals(len(idx1), len(idx2))
+        self.assertEquals(idx1.offset, idx2.offset)
+
+        idx1 = DatetimeIndex(start=sdate, end=edate, freq='BQ')
+        idx2 = DatetimeIndex(start=sdate, end=edate,
+                             freq=dt.BQuarterEnd(startingMonth=12))
         self.assertEquals(len(idx1), len(idx2))
         self.assertEquals(idx1.offset, idx2.offset)
 
@@ -1752,6 +1936,7 @@ class TestDatetime64(unittest.TestCase):
         times = [datetime(2000, 1, 1) + timedelta(minutes=i) for i in range(1000000)]
         s = Series(range(1000000), times)
         s.ix[datetime(1900,1,1):datetime(2100,1,1)]
+
 
 class TestSeriesDatetime64(unittest.TestCase):
 
@@ -1966,3 +2151,4 @@ class TestTimestamp(unittest.TestCase):
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__,'-vvs','-x','--pdb', '--pdb-failure'],
                    exit=False)
+

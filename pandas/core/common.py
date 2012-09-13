@@ -29,7 +29,7 @@ from pandas.util.py3compat import StringIO, BytesIO
 # XXX: HACK for NumPy 1.5.1 to suppress warnings
 try:
     np.seterr(all='ignore')
-    np.set_printoptions(suppress=True)
+    # np.set_printoptions(suppress=True)
 except Exception: # pragma: no cover
     pass
 
@@ -61,7 +61,7 @@ def isnull(obj):
     elif isinstance(obj, PandasObject):
         # TODO: optimize for DataFrame, etc.
         return obj.apply(isnull)
-    elif hasattr(obj, '__array__'):
+    elif isinstance(obj, list) or hasattr(obj, '__array__'):
         return _isnull_ndarraylike(obj)
     else:
         return obj is None
@@ -70,12 +70,16 @@ def _isnull_ndarraylike(obj):
     from pandas import Series
     values = np.asarray(obj)
 
-    if values.dtype.kind in ('O', 'S'):
+    if values.dtype.kind in ('O', 'S', 'U'):
         # Working around NumPy ticket 1542
         shape = values.shape
-        result = np.empty(shape, dtype=bool)
-        vec = lib.isnullobj(values.ravel())
-        result[:] = vec.reshape(shape)
+
+        if values.dtype.kind in ('S', 'U'):
+            result = np.zeros(values.shape, dtype=bool)
+        else:
+            result = np.empty(shape, dtype=bool)
+            vec = lib.isnullobj(values.ravel())
+            result[:] = vec.reshape(shape)
 
         if isinstance(obj, Series):
             result = Series(result, index=obj.index, copy=False)
@@ -445,7 +449,11 @@ def pad_2d(values, limit=None, mask=None):
         mask = isnull(values)
     mask = mask.view(np.uint8)
 
-    _method(values, mask, limit=limit)
+    if np.all(values.shape):
+        _method(values, mask, limit=limit)
+    else:
+        # for test coverage
+        pass
 
 def backfill_2d(values, limit=None, mask=None):
     if is_float_dtype(values):
@@ -461,7 +469,11 @@ def backfill_2d(values, limit=None, mask=None):
         mask = isnull(values)
     mask = mask.view(np.uint8)
 
-    _method(values, mask, limit=limit)
+    if np.all(values.shape):
+        _method(values, mask, limit=limit)
+    else:
+        # for test coverage
+        pass
 
 def _consensus_name_attr(objs):
     name = objs[0].name
@@ -705,11 +717,16 @@ def _index_labels_to_array(labels):
 
     return labels
 
-def _stringify(col):
+def _stringify(col, encoding='UTF8'):
     # unicode workaround
     try:
         return unicode(col)
     except UnicodeError:
+        try:
+            if isinstance(col, str):
+                return col.decode(encoding)
+        except UnicodeError:
+            pass
         return console_encode(col)
 
 def _stringify_seq(values):
@@ -839,7 +856,7 @@ def console_encode(value):
 
     try:
         import sys
-        return value.encode(sys.stdin.encoding, 'replace')
+        return value.encode(sys.stdin.encoding or 'utf-8', 'replace')
     except (AttributeError, TypeError):
         return value.encode('ascii', 'replace')
 
@@ -923,11 +940,14 @@ else:
 
 _NS_DTYPE = np.dtype('M8[ns]')
 
-def _concat_compat(to_concat):
+def _concat_compat(to_concat, axis=0):
+    # filter empty arrays
+    to_concat = [x for x in to_concat if x.shape[axis] > 0]
+
     if all(x.dtype == _NS_DTYPE for x in to_concat):
         # work around NumPy 1.6 bug
-        new_values = np.concatenate([x.view(np.int64) for x in to_concat])
+        new_values = np.concatenate([x.view(np.int64) for x in to_concat],
+                                    axis=axis)
         return new_values.view(_NS_DTYPE)
     else:
-        return np.concatenate(to_concat)
-
+        return np.concatenate(to_concat, axis=axis)

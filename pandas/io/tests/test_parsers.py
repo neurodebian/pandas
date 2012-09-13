@@ -83,11 +83,26 @@ g,7,seven
                                    np.nan, 'seven']})
         assert_frame_equal(xp.reindex(columns=df.columns), df)
 
-        df = read_csv(StringIO(data), na_values={'One': [], 'Three': []})
+        df = read_csv(StringIO(data), na_values={'One': [], 'Three': []},
+                      keep_default_na=False)
         xp = DataFrame({'One' : ['a', 'b', '', 'd', 'e', 'nan', 'g'],
                         'Two' : [1,2,3,4,5,6,7],
                         'Three' : ['one', 'two', 'three', 'nan', 'five',
                                    '', 'seven']})
+        assert_frame_equal(xp.reindex(columns=df.columns), df)
+
+        df = read_csv(StringIO(data), na_values=['a'], keep_default_na=False)
+        xp = DataFrame({'One' : [np.nan, 'b', '', 'd', 'e', 'nan', 'g'],
+                        'Two' : [1, 2, 3, 4, 5, 6, 7],
+                        'Three' : ['one', 'two', 'three', 'nan', 'five', '',
+                                   'seven']})
+        assert_frame_equal(xp.reindex(columns=df.columns), df)
+
+        df = read_csv(StringIO(data), na_values={'One': [], 'Three': []})
+        xp = DataFrame({'One' : ['a', 'b', np.nan, 'd', 'e', np.nan, 'g'],
+                        'Two' : [1,2,3,4,5,6,7],
+                        'Three' : ['one', 'two', 'three', np.nan, 'five',
+                                   np.nan, 'seven']})
         assert_frame_equal(xp.reindex(columns=df.columns), df)
 
 
@@ -252,6 +267,21 @@ KORD,19990127 22:00:00, 21:56:00, -0.5900, 1.7100, 5.1000, 0.0000, 290.0000
         d = datetime(1999, 1, 27, 19, 0)
         self.assert_(df.index[0] == d)
 
+    def test_multiple_date_cols_int_cast(self):
+        data =  ("KORD,19990127, 19:00:00, 18:56:00, 0.8100\n"
+                 "KORD,19990127, 20:00:00, 19:56:00, 0.0100\n"
+                 "KORD,19990127, 21:00:00, 20:56:00, -0.5900\n"
+                 "KORD,19990127, 21:00:00, 21:18:00, -0.9900\n"
+                 "KORD,19990127, 22:00:00, 21:56:00, -0.5900\n"
+                 "KORD,19990127, 23:00:00, 22:56:00, -0.5900")
+        date_spec = {'nominal': [1, 2], 'actual': [1, 3]}
+        import pandas.io.date_converters as conv
+
+        # it works!
+        df = read_csv(StringIO(data), header=None, parse_dates=date_spec,
+                      date_parser=conv.parse_date_time)
+        self.assert_('nominal' in df)
+
     def test_single_line(self):
         df = read_csv(StringIO('1,2'), names=['a', 'b'], sep=None)
         assert_frame_equal(DataFrame({'a': [1], 'b': [2]}), df)
@@ -367,6 +397,15 @@ KORD6,19990127, 23:00:00, 22:56:00, -0.5900, 1.7100, 4.6000, 0.0000, 280.0000"""
         rs = read_csv(StringIO(data), names=names, index_col='message')
         assert_frame_equal(xp, rs)
         self.assert_(xp.index.name == rs.index.name)
+
+    def test_converter_index_col_bug(self):
+        #1835
+        data = "A;B\n1;2\n3;4"
+        rs = read_csv(StringIO(data), sep=';', index_col='A',
+                      converters={'A' : lambda x: x})
+        xp = DataFrame({'B' : [2, 4]}, index=Index([1, 3], name='A'))
+        assert_frame_equal(rs, xp)
+        self.assert_(rs.index.name == xp.index.name)
 
     def test_multiple_skts_example(self):
         data = "year, month, a, b\n 2001, 01, 0.0, 10.\n 2001, 02, 1.1, 11."
@@ -827,6 +866,24 @@ True,3
         data = read_csv(StringIO(data))
         self.assert_(data['A'].dtype == np.bool_)
 
+        data = """A,B
+YES,1
+no,2
+yes,3
+No,3
+Yes,3
+"""
+        data = read_csv(StringIO(data))
+        self.assert_(data['A'].dtype == np.bool_)
+
+        data = """A,B
+TRUE,1
+FALSE,2
+TRUE,3
+"""
+        data = read_csv(StringIO(data))
+        self.assert_(data['A'].dtype == np.bool_)
+
     def test_int_conversion(self):
         data = """A,B
 1.0,1
@@ -1167,7 +1224,7 @@ eight,1,2,3"""
         try:
             # it works!
             df = read_csv(StringIO(text), verbose=True, index_col=0)
-            self.assert_(buf.getvalue() == 'Found 1 NA values in the index\n')
+            self.assert_(buf.getvalue() == 'Filled 1 NA values in column a\n')
         finally:
             sys.stdout = sys.__stdout__
 
@@ -1378,6 +1435,8 @@ a,b,c,d
 
     @slow
     def test_file(self):
+        import urllib2
+
         # FILE
         if sys.version_info[:2] < (2, 6):
             raise nose.SkipTest("file:// not supported with Python < 2.6")
@@ -1385,9 +1444,24 @@ a,b,c,d
         localtable = os.path.join(dirpath, 'salary.table')
         local_table = read_table(localtable)
 
-        url_table = read_table('file://localhost/'+localtable)
+        try:
+            url_table = read_table('file://localhost/'+localtable)
+        except urllib2.URLError:
+            # fails on some systems
+            raise nose.SkipTest
+
         assert_frame_equal(url_table, local_table)
 
+    def test_parse_tz_aware(self):
+        import pytz
+        # #1693
+        data = StringIO("Date,x\n2012-06-13T01:39:00Z,0.5")
+
+        # it works
+        result = read_csv(data, index_col=0, parse_dates=True)
+        stamp = result.index[0]
+        self.assert_(stamp.minute == 39)
+        self.assert_(result.index.tz is pytz.utc)
 
 class TestParseSQL(unittest.TestCase):
 

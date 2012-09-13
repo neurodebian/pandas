@@ -49,12 +49,21 @@ if sys.version_info[0] >= 3:
             "\n$ pip install distribute")
 
 else:
-    setuptools_kwargs = {
-        'install_requires': ['python-dateutil < 2',
-                             'pytz',
-                             'numpy >= 1.6'],
-        'zip_safe' : False,
-    }
+    if sys.version_info[1] == 5:
+        # dateutil >= 2.1 doesn't work on Python 2.5
+        setuptools_kwargs = {
+            'install_requires': ['python-dateutil < 2',
+                                 'pytz',
+                                 'numpy >= 1.6'],
+            'zip_safe' : False,
+        }
+    else:
+        setuptools_kwargs = {
+            'install_requires': ['python-dateutil',
+                                 'pytz',
+                                 'numpy >= 1.6'],
+            'zip_safe' : False,
+        }
     if not _have_setuptools:
         try:
             import numpy
@@ -172,9 +181,9 @@ CLASSIFIERS = [
 ]
 
 MAJOR = 0
-MINOR = 8
-MICRO = 1
-ISRELEASED = True
+MINOR = 9
+MICRO = 0
+ISRELEASED = False
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
 QUALIFIER = ''
 
@@ -402,6 +411,14 @@ extensions = [algos_ext, lib_ext, period_ext, sparse_ext]
 
 if not ISRELEASED:
     extensions.extend([sandbox_ext])
+
+if suffix == '.pyx' and 'setuptools' in sys.modules:
+    # undo dumb setuptools bug clobbering .pyx sources back to .c
+    for ext in extensions:
+        if ext.sources[0].endswith('.c'):
+            root, _ = os.path.splitext(ext.sources[0])
+            ext.sources[0] = root + suffix
+
 
 # if _have_setuptools:
 #     setuptools_kwargs["test_suite"] = "nose.collector"

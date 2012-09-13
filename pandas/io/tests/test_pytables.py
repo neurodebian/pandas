@@ -338,8 +338,20 @@ class TestHDFStore(unittest.TestCase):
         self.assert_(recons._data.is_consolidated())
 
         # empty
-        self.assertRaises(ValueError, self._check_roundtrip, df[:0],
-                          tm.assert_frame_equal)
+        self._check_roundtrip(df[:0], tm.assert_frame_equal)
+
+    def test_empty_series_frame(self):
+        s0 = Series()
+        s1 = Series(name='myseries')
+        df0 = DataFrame()
+        df1 = DataFrame(index=['a', 'b', 'c'])
+        df2 = DataFrame(columns=['d', 'e', 'f'])
+
+        self._check_roundtrip(s0, tm.assert_series_equal)
+        self._check_roundtrip(s1, tm.assert_series_equal)
+        self._check_roundtrip(df0, tm.assert_frame_equal)
+        self._check_roundtrip(df1, tm.assert_frame_equal)
+        self._check_roundtrip(df2, tm.assert_frame_equal)
 
     def test_can_serialize_dates(self):
         rng = [x.date() for x in bdate_range('1/1/2000', '1/30/2000')]
@@ -477,8 +489,7 @@ class TestHDFStore(unittest.TestCase):
         self._check_roundtrip(wp.to_frame(), _check)
 
         # empty
-        self.assertRaises(ValueError, self._check_roundtrip, wp.to_frame()[:0],
-                          _check)
+        # self._check_roundtrip(wp.to_frame()[:0], _check)
 
     def test_longpanel(self):
         pass
@@ -665,6 +676,14 @@ class TestHDFStore(unittest.TestCase):
         ts = tm.makeTimeSeries()
         df['d'] = ts.index[:3]
         self._check_roundtrip(df, tm.assert_frame_equal)
+
+    def test_cant_write_multiindex_table(self):
+        # for now, #1848
+        df = DataFrame(np.random.randn(10, 4),
+                       index=[np.arange(5).repeat(2),
+                              np.tile(np.arange(2), 5)])
+
+        self.assertRaises(Exception, self.store.put, 'foo', df, table=True)
 
 def curpath():
     pth, _ = os.path.split(os.path.abspath(__file__))

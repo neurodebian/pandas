@@ -69,10 +69,10 @@ class TestSeriesPlots(unittest.TestCase):
         rects = ax.patches
 
         conv = colors.colorConverter
-        for i, rect in enumerate(rects[:5]):
+        for i, rect in enumerate(rects[::5]):
             xp = conv.to_rgba(default_colors[i])
             rs = rect.get_facecolor()
-            self.assert_(xp, rs)
+            self.assert_(xp == rs)
 
         plt.close('all')
 
@@ -81,11 +81,37 @@ class TestSeriesPlots(unittest.TestCase):
         rects = ax.patches
 
         conv = colors.colorConverter
-        for i, rect in enumerate(rects[:5]):
+        for i, rect in enumerate(rects[::5]):
             xp = conv.to_rgba(custom_colors[i])
             rs = rect.get_facecolor()
-            self.assert_(xp, rs)
+            self.assert_(xp == rs)
 
+    @slow
+    def test_bar_linewidth(self):
+        df = DataFrame(np.random.randn(5, 5))
+
+        # regular
+        ax = df.plot(kind='bar', linewidth=2)
+        for r in ax.patches:
+            self.assert_(r.get_linewidth() == 2)
+
+        # stacked
+        ax = df.plot(kind='bar', stacked=True, linewidth=2)
+        for r in ax.patches:
+            self.assert_(r.get_linewidth() == 2)
+
+        # subplots
+        axes = df.plot(kind='bar', linewidth=2, subplots=True)
+        for ax in axes:
+            for r in ax.patches:
+                self.assert_(r.get_linewidth() == 2)
+
+    @slow
+    def test_1rotation(self):
+        df = DataFrame(np.random.randn(5, 5))
+        ax = df.plot(rot=30)
+        for l in ax.get_xticklabels():
+            self.assert_(l.get_rotation() == 30)
 
     @slow
     def test_irregular_datetime(self):
@@ -164,22 +190,44 @@ class TestDataFramePlots(unittest.TestCase):
                        index=MultiIndex.from_tuples(tuples))
         _check_plot_works(df.plot, use_index=True)
 
+        # unicode
+        index = MultiIndex.from_tuples([(u'\u03b1', 0),
+                                        (u'\u03b1', 1),
+                                        (u'\u03b2', 2),
+                                        (u'\u03b2', 3),
+                                        (u'\u03b3', 4),
+                                        (u'\u03b3', 5),
+                                        (u'\u03b4', 6),
+                                        (u'\u03b4', 7)], names=['i0', 'i1'])
+        columns = MultiIndex.from_tuples([('bar', u'\u0394'),
+            ('bar', u'\u0395')], names=['c0', 'c1'])
+        df = DataFrame(np.random.randint(0, 10, (8, 2)),
+                       columns=columns,
+                       index=index)
+        _check_plot_works(df.plot, title=u'\u03A3')
+
     @slow
     def test_plot_xy(self):
+        # columns.inferred_type == 'string'
         df = tm.makeTimeDataFrame()
         self._check_data(df.plot(x=0, y=1),
-                         df.set_index('A').sort_index()['B'].plot())
-
-        self._check_data(df.plot(x=0), df.set_index('A').sort_index().plot())
-
+                         df.set_index('A')['B'].plot())
+        self._check_data(df.plot(x=0), df.set_index('A').plot())
         self._check_data(df.plot(y=0), df.B.plot())
-
         self._check_data(df.plot(x='A', y='B'),
-                         df.set_index('A').sort_index().B.plot())
-
-        self._check_data(df.plot(x='A'), df.set_index('A').sort_index().plot())
-
+                         df.set_index('A').B.plot())
+        self._check_data(df.plot(x='A'), df.set_index('A').plot())
         self._check_data(df.plot(y='B'), df.B.plot())
+
+        # columns.inferred_type == 'integer'
+        df.columns = range(1, len(df.columns) + 1)
+        self._check_data(df.plot(x=1, y=2),
+                         df.set_index(1)[2].plot())
+        self._check_data(df.plot(x=1), df.set_index(1).plot())
+        self._check_data(df.plot(y=1), df[1].plot())
+
+        # columns.inferred_type == 'mixed'
+        # TODO add MultiIndex test
 
     def _check_data(self, xp, rs):
         xp_lines = xp.get_lines()
@@ -387,22 +435,17 @@ class TestDataFramePlots(unittest.TestCase):
     def test_style_by_column(self):
         import matplotlib.pyplot as plt
         fig = plt.gcf()
-        fig.clf()
-        fig.add_subplot(111)
 
         df = DataFrame(np.random.randn(100, 3))
-        markers = {0: '^', 1: '+', 2: 'o'}
-        ax = df.plot(style=markers)
-        for i, l in enumerate(ax.get_lines()):
-            self.assertEqual(l.get_marker(), markers[i])
-
-        fig.clf()
-        fig.add_subplot(111)
-        df = DataFrame(np.random.randn(100, 3))
-        markers = ['^', '+', 'o']
-        ax = df.plot(style=markers)
-        for i, l in enumerate(ax.get_lines()):
-            self.assertEqual(l.get_marker(), markers[i])
+        for markers in [{0: '^', 1: '+', 2: 'o'},
+                        {0: '^', 1: '+'},
+                        ['^', '+', 'o'],
+                        ['^', '+']]:
+            fig.clf()
+            fig.add_subplot(111)
+            ax = df.plot(style=markers)
+            for i, l in enumerate(ax.get_lines()[:len(markers)]):
+                self.assertEqual(l.get_marker(), markers[i])
 
 class TestDataFrameGroupByPlots(unittest.TestCase):
 
@@ -435,6 +478,16 @@ class TestDataFrameGroupByPlots(unittest.TestCase):
         grouped = df.unstack(level=1).groupby(level=0, axis=1)
         _check_plot_works(grouped.boxplot)
         _check_plot_works(grouped.boxplot, subplots=False)
+
+    @slow
+    def test_series_plot_color_kwargs(self):
+        # #1890
+        import matplotlib.pyplot as plt
+
+        plt.close('all')
+        ax = Series(np.arange(12) + 1).plot(color='green')
+        line = ax.get_lines()[0]
+        self.assert_(line.get_color() == 'green')
 
 PNG_PATH = 'tmp.png'
 
