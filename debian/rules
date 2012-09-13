@@ -11,7 +11,7 @@ UVER := $(shell LC_ALL=C dpkg-parsechangelog | awk '/^Version:/{print $$2;}' | s
 CYTHONVER := $(shell dpkg -l cython | awk '/^ii/{print $$3;}' || echo 0)
 MPLVER := $(shell dpkg -l python-matplotlib | awk '/^ii/{print $$3;}' || echo 0)
 
-MIN_CYTHONVER = 0.15.1
+MIN_CYTHONVER = 0.17~beta4+git15-g6457431-1
 EXCLUDE_MORETESTS := 
 # $(shell dpkg --compare-versions $(MPLVER) lt 1.0 && echo '|test_hist|test_plot|test_boxplot|test_corr_rank' || echo '')
 
