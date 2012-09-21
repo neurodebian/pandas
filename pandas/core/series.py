@@ -21,7 +21,7 @@ from pandas.core.index import (Index, MultiIndex, InvalidIndexError,
                                _ensure_index, _handle_legacy_indexes)
 from pandas.core.indexing import _SeriesIndexer
 from pandas.tseries.index import DatetimeIndex
-from pandas.tseries.period import PeriodIndex
+from pandas.tseries.period import PeriodIndex, Period
 from pandas.util import py3compat
 from pandas.util.terminal import get_terminal_size
 import pandas.core.common as com
@@ -327,6 +327,8 @@ class Series(np.ndarray, generic.PandasObject):
                 data = [data.get(i, nan) for i in index]
         elif isinstance(data, types.GeneratorType):
             data = list(data)
+        elif isinstance(data, set):
+            raise TypeError('Set value is unordered')
 
         if dtype is not None:
             dtype = np.dtype(dtype)
@@ -351,6 +353,26 @@ class Series(np.ndarray, generic.PandasObject):
         subarr.name = name
 
         return subarr
+
+    @classmethod
+    def from_array(cls, arr, index=None, name=None, copy=False):
+        """
+        Simplified alternate constructor
+        """
+        if copy:
+            arr = arr.copy()
+
+        klass = Series
+        if index.is_all_dates:
+            if not isinstance(index, (DatetimeIndex, PeriodIndex)):
+                index = DatetimeIndex(index)
+            klass = TimeSeries
+
+        result = arr.view(klass)
+        result.index = index
+        result.name = name
+
+        return result
 
     def __init__(self, data=None, index=None, dtype=None, name=None,
                  copy=False):
@@ -2537,7 +2559,12 @@ copy : boolean, default False
         values = self.values
 
         if not hasattr(where, '__iter__'):
-            if where < self.index[0]:
+            start = self.index[0]
+            if isinstance(self.index, PeriodIndex):
+                where = Period(where, freq=self.index.freq).ordinal
+                start = start.ordinal
+
+            if where < start:
                 return np.nan
             loc = self.index.searchsorted(where, side='right')
             if loc > 0:

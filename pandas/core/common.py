@@ -681,8 +681,12 @@ def intersection(*seqs):
     return type(seqs[0])(list(result))
 
 def _asarray_tuplesafe(values, dtype=None):
+    from pandas.core.index import Index
+
     if not isinstance(values, (list, tuple, np.ndarray)):
         values = list(values)
+    elif isinstance(values, Index):
+        return values.values
 
     if isinstance(values, list) and dtype in [np.object_, object]:
         return lib.list_to_object_array(values)
@@ -771,6 +775,8 @@ def is_float_dtype(arr_or_dtype):
         tipo = arr_or_dtype.dtype.type
     return issubclass(tipo, np.floating)
 
+def is_list_like(arg):
+    return hasattr(arg, '__iter__') and not isinstance(arg, basestring)
 
 _ensure_float64 = _algos.ensure_float64
 _ensure_int64 = _algos.ensure_int64

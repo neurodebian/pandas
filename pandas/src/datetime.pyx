@@ -107,12 +107,14 @@ class Timestamp(_Timestamp):
         try:
             result += self.strftime('%z')
             if self.tzinfo:
-                result += self.strftime(' %%Z, tz=%s' % self.tzinfo.zone)
+                zone = _get_zone(self.tzinfo)
+                result += self.strftime(' %%Z, tz=%s' % zone)
         except ValueError:
             year2000 = self.replace(year=2000)
             result += year2000.strftime('%z')
             if self.tzinfo:
-                result += year2000.strftime(' %%Z, tz=%s' % self.tzinfo.zone)
+                zone = _get_zone(self.tzinfo)
+                result += year2000.strftime(' %%Z, tz=%s' % zone)
 
         return '<Timestamp: %s>' % result
 
@@ -525,6 +527,12 @@ cdef class _TSObject:
         def __get__(self):
             return self.value
 
+cpdef _get_utcoffset(tzinfo):
+    try:
+        return tzinfo._utcoffset
+    except AttributeError:
+        return tzinfo.utcoffset(None)
+
 # helper to extract datetime and int64 from several different possibilities
 cpdef convert_to_tsobject(object ts, object tz=None):
     """
@@ -565,7 +573,7 @@ cpdef convert_to_tsobject(object ts, object tz=None):
             elif tz is not pytz.utc:
                 ts = tz.localize(ts)
                 obj.value = _pydatetime_to_dts(ts, &obj.dts)
-                obj.value -= _delta_to_nanoseconds(ts.tzinfo._utcoffset)
+                obj.value -= _delta_to_nanoseconds(_get_utcoffset(ts.tzinfo))
                 obj.tzinfo = ts.tzinfo
             else:
                 # UTC
@@ -575,7 +583,7 @@ cpdef convert_to_tsobject(object ts, object tz=None):
             obj.value = _pydatetime_to_dts(ts, &obj.dts)
             obj.tzinfo = ts.tzinfo
             if obj.tzinfo is not None and not _is_utc(obj.tzinfo):
-                obj.value -= _delta_to_nanoseconds(obj.tzinfo._utcoffset)
+                obj.value -= _delta_to_nanoseconds(_get_utcoffset(obj.tzinfo))
         _check_dts_bounds(obj.value, &obj.dts)
         return obj
     elif PyDate_Check(ts):
@@ -609,6 +617,9 @@ cpdef convert_to_tsobject(object ts, object tz=None):
 
     return obj
 
+def get_timezone(tz):
+    return _get_zone(tz)
+
 cdef inline bint _is_utc(object tz):
     return tz is UTC or isinstance(tz, _du_utc)
 
@@ -616,7 +627,10 @@ cdef inline object _get_zone(object tz):
     if _is_utc(tz):
         return 'UTC'
     else:
-        return tz.zone
+        try:
+            return tz.zone
+        except AttributeError:
+            return tz
 
 cdef int64_t _NS_LOWER_BOUND = -9223285636854775809LL
 cdef int64_t _NS_UPPER_BOUND = -9223372036854775807LL
@@ -902,7 +916,7 @@ def tz_convert(ndarray[int64_t] vals, object tz1, object tz2):
 
     # Convert to UTC
 
-    if tz1.zone != 'UTC':
+    if _get_zone(tz1) != 'UTC':
         utc_dates = np.empty(n, dtype=np.int64)
         deltas = _get_deltas(tz1)
         trans = _get_transitions(tz1)
@@ -920,7 +934,7 @@ def tz_convert(ndarray[int64_t] vals, object tz1, object tz2):
     else:
         utc_dates = vals
 
-    if tz2.zone == 'UTC':
+    if _get_zone(tz2) == 'UTC':
         return utc_dates
 
     # Convert UTC to other timezone
@@ -959,7 +973,7 @@ def tz_convert_single(int64_t val, object tz1, object tz2):
 
     # Convert to UTC
 
-    if tz1.zone != 'UTC':
+    if _get_zone(tz1) != 'UTC':
         deltas = _get_deltas(tz1)
         trans = _get_transitions(tz1)
         pos = trans.searchsorted(val) - 1
@@ -970,7 +984,7 @@ def tz_convert_single(int64_t val, object tz1, object tz2):
     else:
         utc_date = val
 
-    if tz2.zone == 'UTC':
+    if _get_zone(tz2) == 'UTC':
         return utc_date
 
     # Convert UTC to other timezone
@@ -991,6 +1005,12 @@ def _get_transitions(tz):
     """
     Get UTC times of DST transitions
     """
+    try:
+        # tzoffset not hashable in Python 3
+        hash(tz)
+    except TypeError:
+        return np.array([NPY_NAT + 1], dtype=np.int64)
+
     if tz not in trans_cache:
         if hasattr(tz, '_utc_transition_times'):
             arr = np.array(tz._utc_transition_times, dtype='M8[ns]')
@@ -1004,18 +1024,28 @@ def _get_deltas(tz):
     """
     Get UTC offsets in microseconds corresponding to DST transitions
     """
+    try:
+        # tzoffset not hashable in Python 3
+        hash(tz)
+    except TypeError:
+        num = int(total_seconds(_get_utcoffset(tz))) * 1000000000
+        return np.array([num], dtype=np.int64)
+
     if tz not in utc_offset_cache:
         if hasattr(tz, '_utc_transition_times'):
             utc_offset_cache[tz] = _unbox_utcoffsets(tz._transition_info)
         else:
             # static tzinfo
-            num = int(total_seconds(tz._utcoffset)) * 1000000000
+            num = int(total_seconds(_get_utcoffset(tz))) * 1000000000
             utc_offset_cache[tz] = np.array([num], dtype=np.int64)
     return utc_offset_cache[tz]
 
 cdef double total_seconds(object td): # Python 2.6 compat
     return ((td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) //
             10**6)
+
+def tot_seconds(td):
+    return total_seconds(td)
 
 cpdef ndarray _unbox_utcoffsets(object transinfo):
     cdef:
@@ -1419,7 +1449,7 @@ def monthrange(int64_t year, int64_t month):
     if month < 1 or month > 12:
         raise ValueError("bad month number 0; must be 1-12")
 
-    days = _days_per_month_table[is_leapyear(year)][month-1]
+    days = days_per_month_table[is_leapyear(year)][month-1]
 
     return (dayofweek(year, month, 1), days)
 

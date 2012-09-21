@@ -1,4 +1,6 @@
 # pylint: disable=E1101,E1103,W0232
+import operator
+
 from datetime import datetime, date
 import numpy as np
 
@@ -32,6 +34,7 @@ def _field_accessor(name, alias):
         return plib.get_period_field_arr(alias, self.values, base)
     f.__name__ = name
     return property(f)
+
 
 class Period(object):
 
@@ -423,8 +426,6 @@ def dt64arr_to_periodarr(data, freq):
     return plib.dt64arr_to_periodarr(data.view('i8'), base)
 
 # --- Period index sketch
-
-
 def _period_index_cmp(opname):
     """
     Wrap comparison operations to convert datetime-like to datetime64
@@ -444,7 +445,6 @@ def _period_index_cmp(opname):
 
         return result
     return wrapper
-
 
 _INT64_DTYPE = np.dtype(np.int64)
 _NS_DTYPE = np.dtype('M8[ns]')
@@ -631,6 +631,26 @@ class PeriodIndex(Int64Index):
     def _box_values(self, values):
         f = lambda x: Period(ordinal=x, freq=self.freq)
         return lib.map_infer(values, f)
+
+    def asof_locs(self, where, mask):
+        """
+        where : array of timestamps
+        mask : array of booleans where data is not NA
+
+        """
+        where_idx = where
+        if isinstance(where_idx, DatetimeIndex):
+            where_idx = PeriodIndex(where_idx.values, freq=self.freq)
+
+        locs = self.values[mask].searchsorted(where_idx.values, side='right')
+
+        locs = np.where(locs > 0, locs - 1, 0)
+        result = np.arange(len(self))[mask].take(locs)
+
+        first = mask.argmax()
+        result[(locs == 0) & (where_idx.values < self.values[first])] = -1
+
+        return result
 
     @property
     def asobject(self):

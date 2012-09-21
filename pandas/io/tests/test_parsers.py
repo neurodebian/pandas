@@ -437,7 +437,7 @@ footer
 
         try:
             df = read_table(StringIO(data), sep=',', header=1, comment='#',
-                            skip_footer=1)
+                            skip_footer=-1)
             self.assert_(False)
         except ValueError, inst:
             self.assert_('Expecting 3 columns, got 5 in row 3' in str(inst))
@@ -532,6 +532,9 @@ ignore,this,row
                          skiprows=[1])
         assert_almost_equal(df2.values, expected)
 
+        df3 = read_table(StringIO(data), sep=',', na_values='baz',
+                         skiprows=[1])
+        assert_almost_equal(df3.values, expected)
 
     def test_skiprows_bug(self):
         # GH #505
@@ -787,6 +790,7 @@ baz,7,8,9
 
     def test_parse_cols_int(self):
         _skip_if_no_openpyxl()
+        _skip_if_no_xlrd()
 
         suffix = ['', 'x']
 
@@ -804,11 +808,11 @@ baz,7,8,9
 
     def test_parse_cols_list(self):
         _skip_if_no_openpyxl()
+        _skip_if_no_xlrd()
 
         suffix = ['', 'x']
 
         for s in suffix:
-
             pth = os.path.join(self.dirpath, 'test.xls%s' % s)
             xlsx = ExcelFile(pth)
             df = xlsx.parse('Sheet1', index_col=0, parse_dates=True,
@@ -1112,10 +1116,13 @@ want to skip this
 also also skip this
 and this
 """
-        result = read_csv(StringIO(data), skip_footer=3)
+        result = read_csv(StringIO(data), skip_footer=-3)
         no_footer = '\n'.join(data.split('\n')[:-4])
         expected = read_csv(StringIO(no_footer))
 
+        assert_frame_equal(result, expected)
+
+        result = read_csv(StringIO(data), skip_footer=3)
         assert_frame_equal(result, expected)
 
     def test_no_unnamed_index(self):

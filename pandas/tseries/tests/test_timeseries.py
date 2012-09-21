@@ -100,6 +100,45 @@ class TestTimeSeriesDuplicates(unittest.TestCase):
         expected = self.dups.groupby(self.dups.index).mean()
         assert_series_equal(result, expected)
 
+    def test_indexing_over_size_cutoff(self):
+        import datetime
+        # #1821
+
+        old_cutoff = lib._SIZE_CUTOFF
+        try:
+            lib._SIZE_CUTOFF = 1000
+
+            # create large list of non periodic datetime
+            dates = []
+            sec = datetime.timedelta(seconds=1)
+            half_sec = datetime.timedelta(microseconds=500000)
+            d = datetime.datetime(2011, 12, 5, 20, 30)
+            n = 1100
+            for i in range(n):
+                dates.append(d)
+                dates.append(d + sec)
+                dates.append(d + sec + half_sec)
+                dates.append(d + sec + sec + half_sec)
+                d += 3 * sec
+
+            # duplicate some values in the list
+            duplicate_positions = np.random.randint(0, len(dates) - 1, 20)
+            for p in duplicate_positions:
+                dates[p + 1] = dates[p]
+
+            df = DataFrame(np.random.randn(len(dates), 4),
+                           index=dates,
+                           columns=list('ABCD'))
+
+            pos = n * 3
+            timestamp = df.index[pos]
+            self.assert_(timestamp in df.index)
+
+            # it works!
+            df.ix[timestamp]
+            self.assert_(len(df.ix[[timestamp]]) > 0)
+        finally:
+            lib._SIZE_CUTOFF = old_cutoff
 
 def assert_range_equal(left, right):
     assert(left.equals(right))
@@ -1041,7 +1080,7 @@ class TestTimeSeries(unittest.TestCase):
                         (3,np.datetime64('2012-07-04'))],
                        columns = ['a', 'date'])
         result = df.groupby('a').first()
-        self.assertEqual(result['date'][3].year, 2012)
+        self.assertEqual(result['date'][3], np.datetime64('2012-07-03'))
 
     def test_series_interpolate_intraday(self):
         # #1698
@@ -1110,6 +1149,14 @@ class TestTimeSeries(unittest.TestCase):
         self.assert_(stamp >= datetime(1600, 1, 1))
         self.assert_(stamp < datetime(2700, 1, 1))
         self.assert_(stamp <= datetime(2700, 1, 1))
+
+    def test_to_html_timestamp(self):
+        rng = date_range('2000-01-01', periods=10)
+        df = DataFrame(np.random.randn(10, 4), index=rng)
+
+        result = df.to_html()
+        self.assert_('2000-01-01' in result)
+
 
 def _simple_ts(start, end, freq='D'):
     rng = date_range(start, end, freq=freq)
@@ -2151,4 +2198,3 @@ class TestTimestamp(unittest.TestCase):
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__,'-vvs','-x','--pdb', '--pdb-failure'],
                    exit=False)
-

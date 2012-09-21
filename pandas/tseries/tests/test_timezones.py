@@ -1,6 +1,6 @@
 # pylint: disable-msg=E1101,W0612
 from __future__ import with_statement # for Python 2.5
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, tzinfo
 import sys
 import os
 import unittest
@@ -44,6 +44,23 @@ try:
 except ImportError:
     pass
 
+class FixedOffset(tzinfo):
+    """Fixed offset in minutes east from UTC."""
+
+    def __init__(self, offset, name):
+        self.__offset = timedelta(minutes = offset)
+        self.__name = name
+
+    def utcoffset(self, dt):
+        return self.__offset
+
+    def tzname(self, dt):
+        return self.__name
+
+    def dst(self, dt):
+        return timedelta(0)
+
+fixed_off = FixedOffset(-420, '-07:00')
 
 class TestTimeZoneSupport(unittest.TestCase):
 
@@ -134,6 +151,19 @@ class TestTimeZoneSupport(unittest.TestCase):
 
         stamp = Timestamp('3/11/2012 05:00').tz_localize('utc')
         self.assertEquals(utc_stamp.hour, 5)
+
+    def test_create_with_fixed_tz(self):
+        off = FixedOffset(420, '+07:00')
+        start = datetime(2012, 3, 11, 5, 0, 0, tzinfo=off)
+        end = datetime(2012, 6, 11, 5, 0, 0, tzinfo=off)
+        rng = date_range(start=start, end=end)
+        self.assertEqual(off, rng.tz)
+
+        rng2 = date_range(start, periods=len(rng), tz=off)
+        self.assert_(rng.equals(rng2))
+
+        rng3 = date_range('3/11/2012 05:00:00+07:00', '6/11/2012 05:00:00+07:00')
+        self.assert_((rng.values == rng3.values).all())
 
     def test_date_range_localize(self):
         rng = date_range('3/11/2012 03:00', periods=15, freq='H', tz='US/Eastern')
@@ -353,6 +383,13 @@ class TestTimeZoneSupport(unittest.TestCase):
         result = ts['1/3/2000']
         self.assertAlmostEqual(result, ts[2])
 
+    def test_fixed_offset(self):
+        dates = [datetime(2000, 1, 1, tzinfo=fixed_off),
+                 datetime(2000, 1, 2, tzinfo=fixed_off),
+                 datetime(2000, 1, 3, tzinfo=fixed_off)]
+        result = to_datetime(dates)
+        self.assert_(result.tz == fixed_off)
+
     def test_convert_tz_aware_datetime_datetime(self):
         # #1581
 
@@ -451,6 +488,16 @@ class TestTimeZoneSupport(unittest.TestCase):
 
         # it works
         DataFrame.from_records([rec], index='begin_time')
+
+    def test_dateutil_tzoffset_support(self):
+        from dateutil.tz import tzoffset
+        values = [188.5, 328.25]
+        tzinfo = tzoffset(None, 7200)
+        index = [datetime(2012, 5, 11, 11, tzinfo=tzinfo),
+                 datetime(2012, 5, 11, 12, tzinfo=tzinfo)]
+        series = Series(data=values, index=index)
+
+        self.assertEquals(series.index.tz, tzinfo)
 
 class TestTimeZones(unittest.TestCase):
 
@@ -608,6 +655,12 @@ class TestTimeZones(unittest.TestCase):
         self.assert_((utc_range == eastern_range).all())
         self.assert_((utc_range == berlin_range).all())
         self.assert_((berlin_range == eastern_range).all())
+
+    def test_datetimeindex_tz(self):
+        rng = date_range('03/12/2012 00:00', periods=10, freq='W-FRI',
+                         tz='US/Eastern')
+        rng2 = DatetimeIndex(data=rng, tz='US/Eastern')
+        self.assert_(rng.equals(rng2))
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__,'-vvs','-x','--pdb', '--pdb-failure'],

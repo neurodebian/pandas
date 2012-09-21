@@ -710,20 +710,29 @@ class DataFrame(NDFrame):
 
     def dot(self, other):
         """
-        Matrix multiplication with DataFrame objects. Does no data alignment
+        Matrix multiplication with DataFrame or Series objects
 
         Parameters
         ----------
-        other : DataFrame
+        other : DataFrame or Series
 
         Returns
         -------
-        dot_product : DataFrame
+        dot_product : DataFrame or Series
         """
-        lvals = self.values
-        rvals = other.values
-        result = np.dot(lvals, rvals)
-        return DataFrame(result, index=self.index, columns=other.columns)
+        common = self.columns.union(other.index)
+        if len(common) > len(self.columns) or len(common) > len(other.index):
+            raise ValueError('matrices are not aligned')
+        left = self.reindex(columns=common, copy=False)
+        right = other.reindex(index=common, copy=False)
+        lvals = left.values
+        rvals = right.values
+        if isinstance(other, DataFrame):
+            return DataFrame(np.dot(lvals, rvals), index=self.index, columns=other.columns)
+        elif isinstance(other, Series):
+            return Series(np.dot(lvals, rvals), index=left.index)
+        else:
+            raise TypeError('unsupported type: %s' % type(other))
 
     #----------------------------------------------------------------------
     # IO methods (to / from other formats)
@@ -847,6 +856,7 @@ class DataFrame(NDFrame):
             if (isinstance(index, basestring) or
                 not hasattr(index, "__iter__")):
                 result_index = sdict.pop(index)
+                result_index = Index(result_index, name=index)
                 columns.remove(index)
             else:
                 try:
@@ -856,7 +866,7 @@ class DataFrame(NDFrame):
                     for field in index:
                         del sdict[field]
                         columns.remove(field)
-                    result_index = MultiIndex.from_arrays(arrays)
+                    result_index = MultiIndex.from_arrays(arrays, names=index)
                 except Exception:
                     result_index = index
         elif isinstance(data, dict) and len(data) > 0:
@@ -1032,8 +1042,8 @@ class DataFrame(NDFrame):
     to_wide = deprecate('to_wide', to_panel)
 
     def _helper_csvexcel(self, writer, na_rep=None, cols=None,
-                         header=True, index=True, index_label=None,
-                         float_format=None):
+                         header=True, index=True,
+                         index_label=None, float_format=None):
         if cols is None:
             cols = self.columns
 
@@ -1045,24 +1055,28 @@ class DataFrame(NDFrame):
         if has_aliases or header:
             if index:
                 # should write something for index label
-                if index_label is None:
-                    if isinstance(self.index, MultiIndex):
-                        index_label = []
-                        for i, name in enumerate(self.index.names):
-                            if name is None:
-                                name = ''
-                            index_label.append(name)
-                    else:
-                        index_label = self.index.name
-                        if index_label is None:
-                            index_label = ['']
+                if index_label is not False:
+                    if index_label is None:
+                        if isinstance(self.index, MultiIndex):
+                            index_label = []
+                            for i, name in enumerate(self.index.names):
+                                if name is None:
+                                    name = ''
+                                index_label.append(name)
                         else:
-                            index_label = [index_label]
-                elif not isinstance(index_label, (list, tuple, np.ndarray)):
-                    # given a string for a DF with Index
-                    index_label = [index_label]
+                            index_label = self.index.name
+                            if index_label is None:
+                                index_label = ['']
+                            else:
+                                index_label = [index_label]
+                    elif not isinstance(index_label, (list, tuple, np.ndarray)):
+                        # given a string for a DF with Index
+                        index_label = [index_label]
 
-                encoded_labels = list(index_label)
+                    encoded_labels = list(index_label)
+                else:
+                    encoded_labels = []
+
                 if has_aliases:
                     if len(header) != len(cols):
                         raise ValueError(('Writing %d cols but got %d aliases'
@@ -1118,10 +1132,12 @@ class DataFrame(NDFrame):
             assumed to be aliases for the column names
         index : boolean, default True
             Write row names (index)
-        index_label : string or sequence, default None
+        index_label : string or sequence, or False, default None
             Column label for index column(s) if desired. If None is given, and
             `header` and `index` are True, then the index names are used. A
-            sequence should be given if the DataFrame uses MultiIndex.
+            sequence should be given if the DataFrame uses MultiIndex.  If
+            False do not print fields for index names. Use index_label=False
+            for easier importing in R
         mode : Python write mode, default 'w'
         sep : character, default ","
             Field delimiter for the output file.
@@ -1691,14 +1707,18 @@ class DataFrame(NDFrame):
             inds, = key.nonzero()
             return self.take(inds)
         else:
-            indexer = self.columns.get_indexer(key)
-            mask = indexer == -1
-            if mask.any():
-                raise KeyError("No column(s) named: %s" % str(key[mask]))
-            result = self.reindex(columns=key)
-            if result.columns.name is None:
-                result.columns.name = self.columns.name
-            return result
+            if self.columns.is_unique:
+                indexer = self.columns.get_indexer(key)
+                mask = indexer == -1
+                if mask.any():
+                    raise KeyError("No column(s) named: %s" % str(key[mask]))
+                result = self.reindex(columns=key)
+                if result.columns.name is None:
+                    result.columns.name = self.columns.name
+                return result
+            else:
+                mask = self.columns.isin(key)
+                return self.take(mask.nonzero()[0], axis=1)
 
     def _slice(self, slobj, axis=0):
         if axis == 0:
@@ -2387,7 +2407,7 @@ class DataFrame(NDFrame):
         -------
         dataframe : DataFrame
         """
-        if not isinstance(keys, (list, tuple)):
+        if not isinstance(keys, list):
             keys = [keys]
 
         if inplace:
@@ -2580,7 +2600,8 @@ class DataFrame(NDFrame):
 
         Parameters
         ----------
-        axis : {0, 1}
+        axis : {0, 1}, or tuple/list thereof
+            Pass tuple or list to drop on multiple axes
         how : {'any', 'all'}
             any : if any NA values are present, drop that label
             all : if all values are NA, drop that label
@@ -2594,6 +2615,13 @@ class DataFrame(NDFrame):
         -------
         dropped : DataFrame
         """
+        if isinstance(axis, (tuple, list)):
+            result = self
+            for ax in axis:
+                result = result.dropna(how=how, thresh=thresh,
+                                       subset=subset, axis=ax)
+            return result
+
         axis_name = self._get_axis_name(axis)
 
         if axis == 0:
@@ -2682,7 +2710,7 @@ class DataFrame(NDFrame):
         if cols is None:
             values = list(_m8_to_i8(self.values.T))
         else:
-            if np.iterable(cols):
+            if np.iterable(cols) and not isinstance(cols, basestring):
                 values = [_m8_to_i8(self[x].values) for x in cols]
             else:
                 values = [self[cols]]
@@ -3722,21 +3750,25 @@ class DataFrame(NDFrame):
             pass
 
         if axis == 0:
-            series_gen = ((c, self[c]) for c in self.columns)
+            series_gen = (self.icol(i) for i in range(len(self.columns)))
             res_index = self.columns
             res_columns = self.index
         elif axis == 1:
             res_index = self.index
             res_columns = self.columns
-            series_gen = ((i, Series(v, self.columns, name=i))
-                          for i, v in izip(self.index, self.values))
+            values = self.values
+            series_gen = (Series.from_array(arr, index=res_columns, name=name)
+                          for i, (arr, name) in
+                          enumerate(izip(values, res_index)))
 
+        keys = []
         results = {}
         if ignore_failures:
             successes = []
-            for i, (k, v) in enumerate(series_gen):
+            for i, v in enumerate(series_gen):
                 try:
-                    results[k] = func(v)
+                    results[i] = func(v)
+                    keys.append(v.name)
                     successes.append(i)
                 except Exception:
                     pass
@@ -3745,32 +3777,38 @@ class DataFrame(NDFrame):
                 res_index = res_index.take(successes)
         else:
             try:
-                for k, v in series_gen:
-                    results[k] = func(v)
+                for i, v in enumerate(series_gen):
+                    results[i] = func(v)
+                    keys.append(v.name)
             except Exception, e:
                 try:
                     if hasattr(e, 'args'):
+                        k = res_index[i]
                         e.args = e.args + ('occurred at index %s' % str(k),)
                 except NameError: # pragma: no cover
                     # no k defined yet
                     pass
                 raise
 
-        if len(results) > 0 and _is_sequence(results.values()[0]):
-            if not isinstance(results.values()[0], Series):
+        if len(results) > 0 and _is_sequence(results[0]):
+            if not isinstance(results[0], Series):
                 index = res_columns
             else:
                 index = None
 
-            result = self._constructor(data=results, index=index,
-                                       columns=res_index)
+            result = self._constructor(data=results, index=index)
+            result.rename(columns=dict(zip(range(len(res_index)), res_index)),
+                                       inplace=True)
 
             if axis == 1:
                 result = result.T
+            result = result.convert_objects()
 
-            return result.convert_objects()
+            return result
         else:
-            return Series(results, index=res_index)
+            s = Series(results)
+            s.index = res_index
+            return s
 
     def _apply_broadcast(self, func, axis):
         if axis == 0:
@@ -4808,7 +4846,10 @@ def extract_index(data):
                                  'ambiguous ordering.')
 
             if have_series:
-                assert(lengths[0] == len(index))
+                if lengths[0] != len(index):
+                    msg = ('array length %d does not match index length %d'
+                          % (lengths[0], len(index)))
+                    raise ValueError(msg)
             else:
                 index = Index(np.arange(lengths[0]))
 
@@ -4971,7 +5012,12 @@ def _homogenize(data, index, columns, dtype=None):
             if dtype is not None and issubclass(dtype.type, np.integer):
                 continue
 
-            v = np.empty(len(index), dtype=dtype)
+            if dtype is None:
+                # #1783
+                v = np.empty(len(index), dtype=object)
+            else:
+                v = np.empty(len(index), dtype=dtype)
+
             v.fill(nan)
         else:
             v = data[k]

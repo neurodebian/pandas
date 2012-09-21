@@ -579,7 +579,10 @@ class HDFStore(object):
                 node._v_attrs.freq = index.freq
 
             if hasattr(index, 'tz') and index.tz is not None:
-                node._v_attrs.tz = index.tz.zone
+                zone = lib.get_timezone(index.tz)
+                if zone is None:
+                    zone = lib.tot_seconds(index.tz.utcoffset())
+                node._v_attrs.tz = zone
 
     def _read_index(self, group, key):
         variety = getattr(group._v_attrs, '%s_variety' % key)
@@ -768,6 +771,13 @@ class HDFStore(object):
         else:
             # the table must already exist
             table = getattr(group, 'table', None)
+
+        # check for backwards incompatibility
+        if append:
+            existing_kind = table._v_attrs.index_kind
+            if existing_kind != index_kind:
+                raise TypeError("incompatible kind in index [%s - %s]" %
+                                (existing_kind, index_kind))
 
         # add kinds
         table._v_attrs.index_kind = index_kind
@@ -1152,4 +1162,3 @@ def _get_index_factory(klass):
                                              tz=tz)
         return f
     return klass
-

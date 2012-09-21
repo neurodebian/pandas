@@ -35,7 +35,7 @@ pandas 0.9.0
   - Add Options class to pandas.io.data for fetching options data from Yahoo!
     Finance (#1748, #1739)
   - Recognize and convert more boolean values in file parsing (Yes, No, TRUE,
-    FALSE, variants thereof) (#1691)
+    FALSE, variants thereof) (#1691, #1295)
 
 **Improvements to existing features**
 
@@ -46,6 +46,16 @@ pandas 0.9.0
   - Add args/kwds options to Series.apply (#1829)
   - Add inplace option to Series/DataFrame.reset_index (#1797)
   - Add quoting option for DataFrame.to_csv (#1902)
+  - Indicate long column value truncation in DataFrame output with ... (#1854)
+  - DataFrame.dot will not do data alignment, and also work with Series (#1915)
+  - Add ``na`` option for missing data handling in some vectorized string
+    methods (#1689)
+  - If index_label=False in DataFrame.to_csv, do not print fields/commas in the
+    text output. Results in easier importing into R (#1583)
+  - Can pass tuple/list of axes to DataFrame.dropna to simplify repeated calls
+    (dropping both columns and rows) (#924)
+  - Improve DataFrame.to_html output for hierarchically-indexed rows (do not
+    repeat levels) (#1929)
 
 **API Changes**
 
@@ -56,6 +66,12 @@ pandas 0.9.0
     transposed. Legacy files will still be readable by HDFStore (#1834, #1824)
   - Legacy cruft removed: pandas.stats.misc.quantileTS
   - Use ISO8601 format for Period repr: monthly, daily, and on down (#1776)
+  - Empty DataFrame columns are now created as object dtype. This will prevent
+    a class of TypeErrors that was occurring in code where the dtype of a
+    column would depend on the presence of data or not (e.g. a SQL query having
+    results) (#1783)
+  - Setting parts of DataFrame/Panel using ix now aligns input Series/DataFrame
+    (#1630)
 
 **Bug fixes**
 
@@ -161,6 +177,32 @@ pandas 0.9.0
   - Fix unicode sheet name failure in to_excel (#1828)
   - Override DatetimeIndex.min/max to return Timestamp objects (#1895)
   - Fix column name formatting issue in length-truncated column (#1906)
+  - Fix broken handling of copying Index metadata to new instances created by
+    view(...) calls inside the NumPy infrastructure
+  - Support datetime.date again in DateOffset.rollback/rollforward
+  - Raise Exception if set passed to Series constructor (#1913)
+  - Add TypeError when appending HDFStore table w/ wrong index type (#1881)
+  - Don't raise exception on empty inputs in EW functions (e.g. ewma) (#1900)
+  - Make asof work correctly with PeriodIndex (#1883)
+  - Fix extlinks in doc build
+  - Fill boolean DataFrame with NaN when calling shift (#1814)
+  - Fix setuptools bug causing pip not to Cythonize .pyx files sometimes
+  - Fix negative integer indexing regression in .ix from 0.7.x (#1888)
+  - Fix error while retrieving timezone and utc offset from subclasses of
+    datetime.tzinfo without .zone and ._utcoffset attributes (#1922)
+  - Fix DataFrame formatting of small, non-zero FP numbers (#1911)
+  - Various fixes by upcasting of date -> datetime (#1395)
+  - Raise better exception when passing multiple functions with the same name,
+    such as lambdas, to GroupBy.aggregate
+  - Fix DataFrame.apply with axis=1 on a non-unique index (#1878)
+  - Proper handling of Index subclasses in pandas.unique (#1759)
+  - Set index names in DataFrame.from_records (#1744)
+  - Fix time series indexing error with duplicates, under and over hash table
+    size cutoff (#1821)
+  - Handle list keys in addition to tuples in DataFrame.xs when
+    partial-indexing a hierarchically-indexed DataFrame (#1796)
+  - Support multiple column selection in DataFrame.__getitem__ with duplicate
+    columns (#1943)
 
 pandas 0.8.1
 ============
