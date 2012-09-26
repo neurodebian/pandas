@@ -437,7 +437,7 @@ footer
 
         try:
             df = read_table(StringIO(data), sep=',', header=1, comment='#',
-                            skip_footer=-1)
+                            skip_footer=1)
             self.assert_(False)
         except ValueError, inst:
             self.assert_('Expecting 3 columns, got 5 in row 3' in str(inst))
@@ -762,6 +762,13 @@ baz,7,8,9
         assert_frame_equal(df, df2)
         assert_frame_equal(df3, df2)
 
+        df4 = xls.parse('Sheet1', index_col=0, parse_dates=True,
+                        skipfooter=1)
+        df5 = xls.parse('Sheet1', index_col=0, parse_dates=True,
+                        skip_footer=1)
+        assert_frame_equal(df4, df.ix[:-1])
+        assert_frame_equal(df4, df5)
+
     def test_excel_read_buffer(self):
         _skip_if_no_xlrd()
         _skip_if_no_openpyxl()
@@ -787,6 +794,13 @@ baz,7,8,9
         df3 = xlsx.parse('Sheet2', skiprows=[1], index_col=0, parse_dates=True)
         assert_frame_equal(df, df2)
         assert_frame_equal(df3, df2)
+
+        df4 = xlsx.parse('Sheet1', index_col=0, parse_dates=True,
+                         skipfooter=1)
+        df5 = xlsx.parse('Sheet1', index_col=0, parse_dates=True,
+                         skip_footer=1)
+        assert_frame_equal(df4, df.ix[:-1])
+        assert_frame_equal(df4, df5)
 
     def test_parse_cols_int(self):
         _skip_if_no_openpyxl()
@@ -1114,16 +1128,24 @@ bar,two,12,13,14,15
 7,8,9
 want to skip this
 also also skip this
-and this
 """
-        result = read_csv(StringIO(data), skip_footer=-3)
-        no_footer = '\n'.join(data.split('\n')[:-4])
+        result = read_csv(StringIO(data), skip_footer=2)
+        no_footer = '\n'.join(data.split('\n')[:-3])
         expected = read_csv(StringIO(no_footer))
 
         assert_frame_equal(result, expected)
 
-        result = read_csv(StringIO(data), skip_footer=3)
+        # equivalent to nrows
+        result = read_csv(StringIO(data), nrows=3)
         assert_frame_equal(result, expected)
+
+        # skipfooter alias
+        result = read_csv(StringIO(data), skipfooter=2)
+        no_footer = '\n'.join(data.split('\n')[:-3])
+        expected = read_csv(StringIO(no_footer))
+
+        assert_frame_equal(result, expected)
+
 
     def test_no_unnamed_index(self):
         data = """ id c0 c1 c2
