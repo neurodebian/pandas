@@ -119,7 +119,9 @@ how : {'left', 'right', 'outer', 'inner'}, default 'inner'
     * outer: use union of keys from both frames (SQL: full outer join)
     * inner: use intersection of keys from both frames (SQL: inner join)
 on : label or list
-    Field names to join on. Must be found in both DataFrames.
+    Field names to join on. Must be found in both DataFrames. If on is
+    None and not merging on indexes, then it merges on the intersection of
+    the columns by default.
 left_on : label or list, or array-like
     Field names to join on in left DataFrame. Can be a vector or list of
     vectors of the length of the DataFrame to use a particular vector as
@@ -2470,7 +2472,8 @@ class DataFrame(NDFrame):
             Only remove the given levels from the index. Removes all levels by
             default
         drop : boolean, default False
-            Do not try to insert index into dataframe columns
+            Do not try to insert index into dataframe columns. This resets
+            the index to the default integer index.
         inplace : boolean, default False
             Modify the DataFrame in place (do not create a new object)
 
@@ -3760,6 +3763,8 @@ class DataFrame(NDFrame):
             series_gen = (Series.from_array(arr, index=res_columns, name=name)
                           for i, (arr, name) in
                           enumerate(izip(values, res_index)))
+        else:
+            raise ValueError('Axis must be 0 or 1, got %s' % str(axis))
 
         keys = []
         results = {}
@@ -3815,6 +3820,8 @@ class DataFrame(NDFrame):
             target = self
         elif axis == 1:
             target = self.T
+        else:
+            raise ValueError('Axis must be 0 or 1, got %s' % str(axis))
 
         result_values = np.empty_like(target.values)
         columns = target.columns
@@ -4046,6 +4053,9 @@ class DataFrame(NDFrame):
         Returns
         -------
         y : DataFrame
+
+        y contains the covariance matrix of the DataFrame's time series.
+        The covariance is normalized by N-1 (unbiased estimator).
         """
         numeric_df = self._get_numeric_data()
         cols = numeric_df.columns
@@ -4362,7 +4372,10 @@ class DataFrame(NDFrame):
 
     @Substitution(name='variance', shortname='var',
                   na_action=_doc_exclude_na, extras='')
-    @Appender(_stat_doc)
+    @Appender(_stat_doc +
+        """
+        Normalized by N-1 (unbiased estimator).
+        """)
     def var(self, axis=0, skipna=True, level=None, ddof=1):
         if level is not None:
             return self._agg_by_level('var', axis=axis, level=level,
@@ -4372,7 +4385,10 @@ class DataFrame(NDFrame):
 
     @Substitution(name='standard deviation', shortname='std',
                   na_action=_doc_exclude_na, extras='')
-    @Appender(_stat_doc)
+    @Appender(_stat_doc + 
+        """
+        Normalized by N-1 (unbiased estimator).
+        """)
     def std(self, axis=0, skipna=True, level=None, ddof=1):
         if level is not None:
             return self._agg_by_level('std', axis=axis, level=level,

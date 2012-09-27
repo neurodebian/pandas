@@ -1264,6 +1264,18 @@ class CheckIndexing(object):
         assert_almost_equal(result.values, df.values[0])
         assert_series_equal(result, result2)
 
+        #multiindex
+        df = DataFrame(np.random.randn(3, 3), columns=[['i', 'i', 'j'],
+                                                       ['A', 'A', 'B']],
+                       index = [['i', 'i', 'j'], ['X', 'X', 'Y']])
+        rs = df.irow(0)
+        xp = df.ix[0]
+        assert_series_equal(rs, xp)
+
+        rs = df.icol(0)
+        xp = df.T.ix[0]
+        assert_series_equal(rs, xp)
+
     def test_iget_value(self):
         for i, row in enumerate(self.frame.index):
             for j, col in enumerate(self.frame.columns):
@@ -1578,6 +1590,19 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         xp.index = df.ix[:, 0].values
         xp.index.names = [df.columns[0]]
         assert_frame_equal(rs, xp)
+
+    def test_set_index_empty_column(self):
+        # #1971
+        df = DataFrame([
+                dict(a=1, p=0),
+                dict(a=2, m=10),
+                dict(a=3, m=11, p=20),
+                dict(a=4, m=12, p=21)
+                ], columns=('a', 'm', 'p', 'x'))
+
+        # it works!
+        result = df.set_index(['a', 'x'])
+        repr(result)
 
     def test_set_columns(self):
         cols = Index(np.arange(len(self.mixed_frame.columns)))
@@ -5238,6 +5263,10 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         result = no_cols.apply(lambda x: x.mean(), axis=1)
         expected = Series(np.nan, index=self.frame.index)
         assert_series_equal(result, expected)
+
+        #invalid axis
+        df = DataFrame([[1,2,3], [4,5,6], [7,8,9]], index=['a','a','c'])
+        self.assertRaises(ValueError, df.apply, lambda x: x, 2)
 
     def test_apply_standard_nonunique(self):
         df = DataFrame([[1,2,3], [4,5,6], [7,8,9]], index=['a','a','c'])

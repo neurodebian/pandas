@@ -45,6 +45,7 @@ pandas 0.9.0
   - Add `na_action='ignore'` to Series.map to quietly propagate NAs (#1661)
   - Add args/kwds options to Series.apply (#1829)
   - Add inplace option to Series/DataFrame.reset_index (#1797)
+  - Add ``level`` parameter to ``Series.reset_index``
   - Add quoting option for DataFrame.to_csv (#1902)
   - Indicate long column value truncation in DataFrame output with ... (#1854)
   - DataFrame.dot will not do data alignment, and also work with Series (#1915)
@@ -58,7 +59,6 @@ pandas 0.9.0
     repeat levels) (#1929)
   - TimeSeries.between_time can now select times across midnight (#1871)
   - Enable `skip_footer` parameter in `ExcelFile.parse` (#1843)
-  - Enable `skipfooter` parameter in text parsers as an alias for `skip_footer`
 
 **API Changes**
 
@@ -80,6 +80,7 @@ pandas 0.9.0
   - Resolved inconsistencies in specifying custom NA values in text parser.
     `na_values` of type dict no longer override default NAs unless
     `keep_default_na` is set to false explicitly (#1657)
+  - Enable `skipfooter` parameter in text parsers as an alias for `skip_footer`
 
 **Bug fixes**
 
@@ -233,6 +234,12 @@ pandas 0.9.0
   - Fix bug in DataFrame.duplicated to enable iterables other than list-types
     as input argument (#1773)
   - Fix resample bug when passed list of lambdas as `how` argument (#1808)
+  - Repr fix for MultiIndex level with all NAs (#1971)
+  - Fix PeriodIndex slicing bug when slice start/end are out-of-bounds (#1977)
+  - Fix read_table bug when parsing unicode (#1975)
+  - Fix BlockManager.iget bug when dealing with non-unique MultiIndex as columns
+    (#1970)
+  - Fix reset_index bug if both drop and level are specified (#1957)
 
 
 pandas 0.8.1

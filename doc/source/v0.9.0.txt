@@ -20,13 +20,24 @@ New features
     Finance (GH1748_, GH1739_)
   - More flexible parsing of boolean values (Yes, No, TRUE, FALSE, etc)
     (GH1691_, GH1295_)
+  - Add ``level`` parameter to ``Series.reset_index``
+  - ``TimeSeries.between_time`` can now select times across midnight (GH1871_)
+  - Series constructor can now handle generator as input (GH1679_)
+  - ``DataFrame.dropna`` can now take multiple axes (tuple/list) as input
+    (GH924_)
+  - Enable ``skip_footer`` parameter in ``ExcelFile.parse`` (GH1843_)
 
 API changes
 ~~~~~~~~~~~
 
+  - Creating a Series from another Series, passing an index, will cause
+    reindexing to happen inside rather than treating the Series like an
+    ndarray. Technically improper usages like Series(df[col1], index=df[col2])
+    that worked before "by accident" (this was never intended) will lead to all
+    NA Series in some cases.
   - Deprecated ``day_of_year`` API removed from PeriodIndex, use ``dayofyear``
     (GH1723_)
-  - Don't modify NumPy suppress printoption at import time
+  - Don't modify NumPy suppress printoption to True at import time
   - The internal HDF5 data arrangement for DataFrames has been transposed.
     Legacy files will still be readable by HDFStore (GH1834_, GH1824_)
   - Legacy cruft removed: pandas.stats.misc.quantileTS
@@ -42,6 +53,8 @@ API changes
   - Resolved inconsistencies in specifying custom NA values in text parser.
     `na_values` of type dict no longer override default NAs unless
     `keep_default_na` is set to false explicitly (GH1657_)
+  - DataFrame.dot will not do data alignment, and also work with Series
+    (GH1915_)
 
 
 See the `full release notes
@@ -63,3 +76,8 @@ on GitHub for a complete list.
 .. _GH1630: https://github.com/pydata/pandas/issues/1630
 .. _GH1809: https://github.com/pydata/pandas/issues/1809
 .. _GH1657: https://github.com/pydata/pandas/issues/1657
+.. _GH1871: https://github.com/pydata/pandas/issues/1871
+.. _GH1679: https://github.com/pydata/pandas/issues/1679
+.. _GH1915: https://github.com/pydata/pandas/issues/1915
+.. _GH924: https://github.com/pydata/pandas/issues/924
+.. _GH1843: https://github.com/pydata/pandas/issues/1843
