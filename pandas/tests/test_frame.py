@@ -4169,6 +4169,28 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         expected = df2.drop_duplicates(['AAA', 'B'], take_last=True)
         assert_frame_equal(result, expected)
 
+    def test_drop_duplicates_tuple(self):
+        df = DataFrame({('AA', 'AB') : ['foo', 'bar', 'foo', 'bar',
+                               'foo', 'bar', 'bar', 'foo'],
+                        'B' : ['one', 'one', 'two', 'two',
+                               'two', 'two', 'one', 'two'],
+                        'C' : [1, 1, 2, 2, 2, 2, 1, 2],
+                        'D' : range(8)})
+
+        # single column
+        result = df.drop_duplicates(('AA', 'AB'))
+        expected = df[:2]
+        assert_frame_equal(result, expected)
+
+        result = df.drop_duplicates(('AA', 'AB'), take_last=True)
+        expected = df.ix[[6, 7]]
+        assert_frame_equal(result, expected)
+
+        # multi column
+        expected = df.ix[[0, 1, 2, 3]]
+        result = df.drop_duplicates((('AA', 'AB'), 'B'))
+        assert_frame_equal(result, expected)
+
     def test_drop_duplicates_NA(self):
         # none
         df = DataFrame({'A' : [None, None, 'foo', 'bar',
@@ -5808,6 +5830,27 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         np.testing.assert_raises(Exception, df.update, *(other,),
                 **{'raise_conflict' : True})
 
+    def test_update_from_non_df(self):
+        d = {'a': Series([1, 2, 3, 4]), 'b': Series([5, 6, 7, 8])}
+        df = DataFrame(d)
+
+        d['a'] = Series([5, 6, 7, 8])
+        df.update(d)
+
+        expected = DataFrame(d)
+
+        assert_frame_equal(df, expected)
+
+        d = {'a': [1, 2, 3, 4], 'b': [5, 6, 7, 8]}
+        df = DataFrame(d)
+
+        d['a'] = [5, 6, 7, 8]
+        df.update(d)
+
+        expected = DataFrame(d)
+
+        assert_frame_equal(df, expected)
+
     def test_combineAdd(self):
         # trivial
         comb = self.frame.combineAdd(self.frame)
@@ -6653,6 +6696,50 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
 
         resetted = df.reset_index()
         self.assert_(resetted['time'].dtype == np.float64)
+
+    def test_reset_index_multiindex_col(self):
+        vals = np.random.randn(3, 3).astype(object)
+        idx = ['x', 'y', 'z']
+        full = np.hstack(([[x] for x in idx], vals))
+        df = DataFrame(vals, Index(idx, name='a'),
+                       columns=[['b', 'b', 'c'], ['mean', 'median', 'mean']])
+        rs = df.reset_index()
+        xp = DataFrame(full, columns=[['a', 'b', 'b', 'c'],
+                                      ['', 'mean', 'median', 'mean']])
+        assert_frame_equal(rs, xp)
+
+        rs = df.reset_index(col_fill=None)
+        xp = DataFrame(full, columns=[['a', 'b', 'b', 'c'],
+                                      ['a', 'mean', 'median', 'mean']])
+        assert_frame_equal(rs, xp)
+
+        rs = df.reset_index(col_level=1, col_fill='blah')
+        xp = DataFrame(full, columns=[['blah', 'b', 'b', 'c'],
+                                      ['a', 'mean', 'median', 'mean']])
+        assert_frame_equal(rs, xp)
+
+        df = DataFrame(vals,
+                       MultiIndex.from_arrays([[0, 1, 2], ['x', 'y', 'z']],
+                                              names=['d', 'a']),
+                       columns=[['b', 'b', 'c'], ['mean', 'median', 'mean']])
+        rs = df.reset_index('a', )
+        xp = DataFrame(full, Index([0, 1, 2], name='d'),
+                       columns=[['a', 'b', 'b', 'c'],
+                                ['', 'mean', 'median', 'mean']])
+        assert_frame_equal(rs, xp)
+
+        rs = df.reset_index('a', col_fill=None)
+        xp = DataFrame(full, Index(range(3), name='d'),
+                       columns=[['a', 'b', 'b', 'c'],
+                                ['a', 'mean', 'median', 'mean']])
+        assert_frame_equal(rs, xp)
+
+        rs = df.reset_index('a', col_fill='blah', col_level=1)
+        xp = DataFrame(full, Index(range(3), name='d'),
+                       columns=[['blah', 'b', 'b', 'c'],
+                                ['a', 'mean', 'median', 'mean']])
+        assert_frame_equal(rs, xp)
+
 
     #----------------------------------------------------------------------
     # Tests to cope with refactored internals

@@ -1106,8 +1106,11 @@ class DataFrame(NDFrame):
                 val = series[col][j]
                 if lib.checknull(val):
                     val = na_rep
+
                 if float_format is not None and com.is_float(val):
                     val = float_format % val
+                elif isinstance(val, np.datetime64):
+                    val = lib.Timestamp(val)._repr_base
 
                 row_fields.append(val)
 
@@ -1366,7 +1369,7 @@ class DataFrame(NDFrame):
             counts = self.count()
             assert(len(cols) == len(counts))
             for col, count in counts.iteritems():
-                if not isinstance(col, (unicode, str)):
+                if not isinstance(col, basestring):
                     col = str(col)
                 lines.append(_put_str(col, space) +
                              '%d  non-null values' % count)
@@ -2458,7 +2461,8 @@ class DataFrame(NDFrame):
         frame.index = index
         return frame
 
-    def reset_index(self, level=None, drop=False, inplace=False):
+    def reset_index(self, level=None, drop=False, inplace=False, col_level=0,
+                    col_fill=''):
         """
         For DataFrame with multi-level index, return new DataFrame with
         labeling information in the columns under the index names, defaulting
@@ -2476,6 +2480,13 @@ class DataFrame(NDFrame):
             the index to the default integer index.
         inplace : boolean, default False
             Modify the DataFrame in place (do not create a new object)
+        col_level : int or str, default 0
+            If the columns have multiple levels, determines which level the
+            labels are inserted into. By default it is inserted into the first
+            level.
+        col_fill : object, default ''
+            If the columns have multiple levels, determines how the other levels
+            are named. If None then the index name is repeated.
 
         Returns
         -------
@@ -2504,10 +2515,21 @@ class DataFrame(NDFrame):
                 names = self.index.names
                 zipped = zip(self.index.levels, self.index.labels)
 
+                multi_col = isinstance(self.columns, MultiIndex)
                 for i, (lev, lab) in reversed(list(enumerate(zipped))):
                     col_name = names[i]
                     if col_name is None:
                         col_name = 'level_%d' % i
+
+                    if multi_col:
+                        if col_fill is None:
+                            col_name = tuple([col_name] *
+                                             self.columns.nlevels)
+                        else:
+                            name_lst = [col_fill] * self.columns.nlevels
+                            lev_num = self.columns._get_level_number(col_level)
+                            name_lst[lev_num] = col_name
+                            col_name = tuple(name_lst)
 
                     # to ndarray and maybe infer different dtype
                     level_values = _maybe_cast(lev.values)
@@ -2518,6 +2540,14 @@ class DataFrame(NDFrame):
             name = self.index.name
             if name is None or name == 'index':
                 name = 'index' if 'index' not in self else 'level_0'
+            if isinstance(self.columns, MultiIndex):
+                if col_fill is None:
+                    name = tuple([name] * self.columns.nlevels)
+                else:
+                    name_lst = [col_fill] * self.columns.nlevels
+                    lev_num = self.columns._get_level_number(col_level)
+                    name_lst[lev_num] = name
+                    name = tuple(name_lst)
             new_obj.insert(0, name, _maybe_cast(self.index.values))
 
         new_obj.index = new_index
@@ -2714,7 +2744,13 @@ class DataFrame(NDFrame):
             values = list(_m8_to_i8(self.values.T))
         else:
             if np.iterable(cols) and not isinstance(cols, basestring):
-                values = [_m8_to_i8(self[x].values) for x in cols]
+                if isinstance(cols, tuple):
+                    if cols in self.columns:
+                        values = [self[cols]]
+                    else:
+                        values = [_m8_to_i8(self[x].values) for x in cols]
+                else:
+                    values = [_m8_to_i8(self[x].values) for x in cols]
             else:
                 values = [self[cols]]
 
@@ -3359,7 +3395,7 @@ class DataFrame(NDFrame):
 
         Parameters
         ----------
-        other : DataFrame
+        other : DataFrame, or object coercible into a DataFrame
         join : {'left', 'right', 'outer', 'inner'}, default 'left'
         overwrite : boolean, default True
             If True then overwrite values for common keys in the calling frame
@@ -3373,7 +3409,11 @@ class DataFrame(NDFrame):
         if join != 'left':
             raise NotImplementedError
 
+        if not isinstance(other, DataFrame):
+            other = DataFrame(other)
+
         other = other.reindex_like(self)
+
         for col in self.columns:
             this = self[col].values
             that = other[col].values
@@ -4385,7 +4425,7 @@ class DataFrame(NDFrame):
 
     @Substitution(name='standard deviation', shortname='std',
                   na_action=_doc_exclude_na, extras='')
-    @Appender(_stat_doc + 
+    @Appender(_stat_doc +
         """
         Normalized by N-1 (unbiased estimator).
         """)

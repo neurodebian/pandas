@@ -25,7 +25,7 @@ Where to get it
 pandas 0.9.0
 ============
 
-**Release date:** NOT YET RELEASED
+**Release date:** 10/7/2012
 
 **New features**
 
@@ -36,9 +36,11 @@ pandas 0.9.0
     Finance (#1748, #1739)
   - Recognize and convert more boolean values in file parsing (Yes, No, TRUE,
     FALSE, variants thereof) (#1691, #1295)
+  - Add Panel.update method, analogous to DataFrame.update (#1999, #1988)
 
 **Improvements to existing features**
 
+  - Proper handling of NA values in merge operations (#1990)
   - Add ``flags`` option for ``re.compile`` in some Series.str methods (#1659)
   - Parsing of UTC date strings in read_* functions (#1693)
   - Handle generator input to Series (#1679)
@@ -62,6 +64,8 @@ pandas 0.9.0
 
 **API Changes**
 
+  - Change default header names in read_* functions to more Pythonic X0, X1,
+    etc. instead of X.1, X.2. (#2000)
   - Deprecated ``day_of_year`` API removed from PeriodIndex, use ``dayofyear``
     (#1723)
   - Don't modify NumPy suppress printoption at import time
@@ -240,6 +244,9 @@ pandas 0.9.0
   - Fix BlockManager.iget bug when dealing with non-unique MultiIndex as columns
     (#1970)
   - Fix reset_index bug if both drop and level are specified (#1957)
+  - Work around unsafe NumPy object->int casting with Cython function (#1987)
+  - Fix datetime64 formatting bug in DataFrame.to_csv (#1993)
+  - Default start date in pandas.io.data to 1/1/2000 as the docs say (#2011)
 
 
 pandas 0.8.1
