@@ -196,6 +196,15 @@ c,3
         self.assert_(isinstance(result, Series))
         assert_series_equal(result, expected)
 
+
+    def test_inf_parsing(self):
+        data = """\
+,A
+a,inf
+b,-inf"""
+        df = read_csv(StringIO(data), index_col=0)
+        self.assertTrue(np.isinf(np.abs(df['A'])).all())
+
     def test_multiple_date_col(self):
         # Can use multiple date parsers
         data = """\
@@ -850,14 +859,56 @@ baz,7,8,9
 
         for s in suffix:
             pth = os.path.join(self.dirpath, 'test.xls%s' % s)
-            xlsx = ExcelFile(pth)
-            df = xlsx.parse('Sheet1', index_col=0, parse_dates=True,
+            xls = ExcelFile(pth)
+            df = xls.parse('Sheet1', index_col=0, parse_dates=True,
                             parse_cols=[0, 2, 3])
             df2 = read_csv(self.csv1, index_col=0, parse_dates=True)
             df2 = df2.reindex(columns=['B', 'C'])
-            df3 = xlsx.parse('Sheet2', skiprows=[1], index_col=0,
+            df3 = xls.parse('Sheet2', skiprows=[1], index_col=0,
                              parse_dates=True,
                              parse_cols=[0, 2, 3])
+            assert_frame_equal(df, df2)
+            assert_frame_equal(df3, df2)
+
+    def test_parse_cols_str(self):
+        _skip_if_no_openpyxl()
+        _skip_if_no_xlrd()
+
+        suffix = ['', 'x']
+
+        for s in suffix:
+
+            pth = os.path.join(self.dirpath, 'test.xls%s' % s)
+            xls = ExcelFile(pth)
+
+            df = xls.parse('Sheet1', index_col=0, parse_dates=True,
+                            parse_cols='A:D')
+            df2 = read_csv(self.csv1, index_col=0, parse_dates=True)
+            df2 = df2.reindex(columns=['A', 'B', 'C'])
+            df3 = xls.parse('Sheet2', skiprows=[1], index_col=0,
+                            parse_dates=True, parse_cols='A:D')
+            assert_frame_equal(df, df2)
+            assert_frame_equal(df3, df2)
+            del df, df2, df3
+
+            df = xls.parse('Sheet1', index_col=0, parse_dates=True,
+                            parse_cols='A,C,D')
+            df2 = read_csv(self.csv1, index_col=0, parse_dates=True)
+            df2 = df2.reindex(columns=['B', 'C'])
+            df3 = xls.parse('Sheet2', skiprows=[1], index_col=0,
+                             parse_dates=True,
+                             parse_cols='A,C,D')
+            assert_frame_equal(df, df2)
+            assert_frame_equal(df3, df2)
+            del df, df2, df3
+
+            df = xls.parse('Sheet1', index_col=0, parse_dates=True,
+                            parse_cols='A,C:D')
+            df2 = read_csv(self.csv1, index_col=0, parse_dates=True)
+            df2 = df2.reindex(columns=['B', 'C'])
+            df3 = xls.parse('Sheet2', skiprows=[1], index_col=0,
+                             parse_dates=True,
+                             parse_cols='A,C:D')
             assert_frame_equal(df, df2)
             assert_frame_equal(df3, df2)
 
@@ -1208,6 +1259,14 @@ c,4,5,01/03/2009
         expected['D'] = expected['D'].map(converter)
         assert_frame_equal(result, expected)
 
+    def test_converters_no_implicit_conv(self):
+        #GH2184
+        data = """000102,1.2,A\n001245,2,B"""
+        f = lambda x: x.strip()
+        converter = {0: f}
+        df = read_csv(StringIO(data), header=None, converters=converter)
+        self.assert_(df.X0.dtype == object)
+
     def test_converters_euro_decimal_format(self):
         data = """Id;Number1;Number2;Text1;Text2;Number3
 1;1521,1541;187101,9543;ABC;poi;4,738797819
@@ -1226,7 +1285,7 @@ c,4,5,01/03/2009
 1;1521,1541;187101,9543;ABC;poi;4,738797819
 2;121,12;14897,76;DEF;uyt;0,377320872
 3;878,158;108013,434;GHI;rez;2,735694704"""
-        f = lambda x : x.replace(",", ".")
+        f = lambda x : float(x.replace(",", "."))
         converter = {'Number1':f,'Number2':f, 'Number3':f}
         df2 = read_csv(StringIO(data), sep=';',converters=converter)
         self.assert_(df2['Number1'].dtype == float)
