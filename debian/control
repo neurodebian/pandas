@@ -15,7 +15,7 @@ Build-Depends: debhelper (>= 7.0.50),
                python-matplotlib,
                python-tk,
                python-openpyxl, python-xlwt, python-xlrd,
-Standards-Version: 3.9.2
+Standards-Version: 3.9.3
 Homepage: http://pandas.sourceforge.net
 Vcs-Browser: http://github.com/neurodebian/pandas
 Vcs-Git: git://github.com/neurodebian/pandas.git
