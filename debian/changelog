@@ -1,4 +1,4 @@
-pandas (0.9.0~rc1+git27-ge374f0f-1) UNRELEASED; urgency=low
+pandas (0.9.1~rc1+git27-ge374f0f-1) UNRELEASED; urgency=low
 
   * New upstream release candidate
   * Boosted policy to 3.9.3 (no due changes)
@@ -6,6 +6,12 @@ pandas (0.9.0~rc1+git27-ge374f0f-1) UNRELEASED; urgency=low
     - Fixed up cleaning up of cythonized files
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 14 Nov 2012 09:44:14 -0500
+
+pandas (0.9.0-1) experimental; urgency=low
+
+  * New upstream release
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Sun, 07 Oct 2012 21:26:23 -0400
 
 pandas (0.9.0~rc2-1) experimental; urgency=low
 
