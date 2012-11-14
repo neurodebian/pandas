@@ -4,6 +4,7 @@ from itertools import izip
 import datetime
 import warnings
 import re
+from contextlib import contextmanager
 
 import numpy as np
 
@@ -25,6 +26,70 @@ except ImportError:
 def _get_standard_kind(kind):
     return {'density': 'kde'}.get(kind, kind)
 
+
+class _Options(dict):
+    """
+    Stores pandas plotting options.
+    Allows for parameter aliasing so you can just use parameter names that are
+    the same as the plot function parameters, but is stored in a canonical
+    format that makes it easy to breakdown into groups later
+    """
+
+    #alias so the names are same as plotting method parameter names
+    _ALIASES = {'x_compat' : 'xaxis.compat'}
+    _DEFAULT_KEYS = ['xaxis.compat']
+
+    def __init__(self):
+        self['xaxis.compat'] = False
+
+    def __getitem__(self, key):
+        key = self._get_canonical_key(key)
+        if key not in self:
+            raise ValueError('%s is not a valid pandas plotting option' % key)
+        return super(_Options, self).__getitem__(key)
+
+    def __setitem__(self, key, value):
+        key = self._get_canonical_key(key)
+        return super(_Options, self).__setitem__(key, value)
+
+    def __delitem__(self, key):
+        key = self._get_canonical_key(key)
+        if key in self._DEFAULT_KEYS:
+            raise ValueError('Cannot remove default parameter %s' % key)
+        return super(_Options, self).__delitem__(key)
+
+    def __contains__(self, key):
+        key = self._get_canonical_key(key)
+        return super(_Options, self).__contains__(key)
+
+    def reset(self):
+        """
+        Reset the option store to its initial state
+
+        Returns
+        -------
+        None
+        """
+        self.__init__()
+
+    def _get_canonical_key(self, key):
+        return self._ALIASES.get(key, key)
+
+    @contextmanager
+    def use(self, key, value):
+        """
+        Temporarily set a parameter value using the with statement.
+        Aliasing allowed.
+        """
+        old_value = self[key]
+        try:
+            self[key] = value
+            yield self
+        finally:
+            self[key] = old_value
+
+
+plot_params = _Options()
 
 def scatter_matrix(frame, alpha=0.5, figsize=None, ax=None, grid=False,
                    diagonal='hist', marker='.', **kwds):
@@ -553,6 +618,23 @@ class MPLPlot(object):
 
         self.kwds = kwds
 
+        self._validate_color_args()
+
+    def _validate_color_args(self):
+        from pandas import DataFrame
+        if 'color' not in self.kwds and 'colors' in self.kwds:
+            warnings.warn(("'colors' is being deprecated. Please use 'color'"
+                           "instead of 'colors'"))
+            colors = self.kwds.pop('colors')
+            self.kwds['color'] = colors
+
+        if ('color' in self.kwds and
+            (isinstance(self.data, Series) or
+             isinstance(self.data, DataFrame) and len(self.data.columns) ==1 )):
+            #support series.plot(color='green')
+            self.kwds['color'] = [self.kwds['color']]
+
+
     def _iter_data(self):
         from pandas.core.frame import DataFrame
         if isinstance(self.data, (Series, np.ndarray)):
@@ -858,14 +940,9 @@ class LinePlot(MPLPlot):
     def __init__(self, data, **kwargs):
         self.mark_right = kwargs.pop('mark_right', True)
         MPLPlot.__init__(self, data, **kwargs)
-        if 'color' not in self.kwds and 'colors' in self.kwds:
-            warnings.warn(("'colors' is being deprecated. Please use 'color'"
-                           "instead of 'colors'"))
-            colors = self.kwds.pop('colors')
-            self.kwds['color'] = colors
-        if 'color' in self.kwds and isinstance(self.data, Series):
-            #support series.plot(color='green')
-            self.kwds['color'] = [self.kwds['color']]
+        self.x_compat = plot_params['x_compat']
+        if 'x_compat' in self.kwds:
+           self.x_compat = bool(self.kwds.pop('x_compat'))
 
     def _index_freq(self):
         from pandas.core.frame import DataFrame
@@ -902,7 +979,9 @@ class LinePlot(MPLPlot):
 
     def _get_colors(self):
         import matplotlib.pyplot as plt
-        cycle = ''.join(plt.rcParams.get('axes.color_cycle', list('bgrcmyk')))
+        cycle = plt.rcParams.get('axes.color_cycle', list('bgrcmyk'))
+        if isinstance(cycle, basestring):
+            cycle = list(cycle)
         has_colors = 'color' in self.kwds
         colors = self.kwds.get('color', cycle)
         return colors
@@ -914,7 +993,7 @@ class LinePlot(MPLPlot):
     def _make_plot(self):
         import pandas.tseries.plotting as tsplot
         # this is slightly deceptive
-        if self.use_index and self._use_dynamic_x():
+        if not self.x_compat and self.use_index and self._use_dynamic_x():
             data = self._maybe_convert_index(self.data)
             self._make_ts_plot(data, **self.kwds)
         else:
@@ -1301,7 +1380,9 @@ def plot_series(series, label=None, kind='line', use_index=True, rot=None,
     Parameters
     ----------
     label : label argument to provide to plot
-    kind : {'line', 'bar'}
+    kind : {'line', 'bar', 'barh'}
+        bar : vertical bar plot
+        barh : horizontal bar plot
     rot : int, default 30
         Rotation for tick labels
     use_index : boolean, default True
@@ -1312,9 +1393,6 @@ def plot_series(series, label=None, kind='line', use_index=True, rot=None,
         matplotlib line style to use
     ax : matplotlib axis object
         If not passed, uses gca()
-    kind : {'line', 'bar', 'barh'}
-        bar : vertical bar plot
-        barh : horizontal bar plot
     logy : boolean, default False
         For line plots, use log scaling on y axis
     xticks : sequence

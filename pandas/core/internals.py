@@ -49,9 +49,10 @@ class Block(object):
         self.ref_items = ref_items
 
     def __repr__(self):
-        shape = ' x '.join([str(s) for s in self.shape])
+        shape = ' x '.join([com.pprint_thing(s) for s in self.shape])
         name = type(self).__name__
-        return '%s: %s, %s, dtype %s' % (name, self.items, shape, self.dtype)
+        result = '%s: %s, %s, dtype %s' % (name, self.items, shape, self.dtype)
+        return com.console_encode(result) # repr must return byte-string
 
     def __contains__(self, item):
         return item in self.items
@@ -505,10 +506,12 @@ class BlockManager(object):
 
     def set_axis(self, axis, value):
         cur_axis = self.axes[axis]
+        value = _ensure_index(value)
+
         if len(value) != len(cur_axis):
             raise Exception('Length mismatch (%d vs %d)'
                             % (len(value), len(cur_axis)))
-        self.axes[axis] = _ensure_index(value)
+        self.axes[axis] = value
 
         if axis == 0:
             for block in self.blocks:
@@ -729,12 +732,22 @@ class BlockManager(object):
 
         # By construction, all of the item should be covered by one of the
         # blocks
-        for block in self.blocks:
-            indexer = items.get_indexer(block.items)
-            assert((indexer != -1).all())
-            result[indexer] = block.get_values(dtype)
-            itemmask[indexer] = 1
+        if items.is_unique:
+            for block in self.blocks:
+                indexer = items.get_indexer(block.items)
+                assert((indexer != -1).all())
+                result[indexer] = block.get_values(dtype)
+                itemmask[indexer] = 1
+        else:
+            for block in self.blocks:
+                mask = items.isin(block.items)
+                indexer = mask.nonzero()[0]
+                assert(len(indexer) == len(block.items))
+                result[indexer] = block.get_values(dtype)
+                itemmask[indexer] = 1
+
         assert(itemmask.all())
+
         return result
 
     def xs(self, key, axis=1, copy=True):
@@ -935,7 +948,7 @@ class BlockManager(object):
 
     def _check_have(self, item):
         if item not in self.items:
-            raise KeyError('no item named %s' % str(item))
+            raise KeyError('no item named %s' % com.pprint_thing(item))
 
     def reindex_axis(self, new_axis, method=None, axis=0, copy=True):
         new_axis = _ensure_index(new_axis)

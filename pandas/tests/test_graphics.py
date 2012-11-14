@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import nose
 import os
 import string
@@ -86,6 +88,9 @@ class TestSeriesPlots(unittest.TestCase):
             xp = conv.to_rgba(custom_colors[i])
             rs = rect.get_facecolor()
             self.assert_(xp == rs)
+
+        plt.close('all')
+        df.ix[:, [0]].plot(kind='bar', color='DodgerBlue')
 
     @slow
     def test_bar_linewidth(self):
@@ -229,6 +234,40 @@ class TestDataFramePlots(unittest.TestCase):
 
         # columns.inferred_type == 'mixed'
         # TODO add MultiIndex test
+
+    @slow
+    def test_xcompat(self):
+        import pandas as pd
+        import matplotlib.pyplot as plt
+
+        df = tm.makeTimeDataFrame()
+        ax = df.plot(x_compat=True)
+        lines = ax.get_lines()
+        self.assert_(not isinstance(lines[0].get_xdata(), PeriodIndex))
+
+        plt.close('all')
+        pd.plot_params['xaxis.compat'] = True
+        ax = df.plot()
+        lines = ax.get_lines()
+        self.assert_(not isinstance(lines[0].get_xdata(), PeriodIndex))
+
+        plt.close('all')
+        pd.plot_params['x_compat'] = False
+        ax = df.plot()
+        lines = ax.get_lines()
+        self.assert_(isinstance(lines[0].get_xdata(), PeriodIndex))
+
+        plt.close('all')
+        #useful if you're plotting a bunch together
+        with pd.plot_params.use('x_compat', True):
+            ax = df.plot()
+            lines = ax.get_lines()
+            self.assert_(not isinstance(lines[0].get_xdata(), PeriodIndex))
+
+        plt.close('all')
+        ax = df.plot()
+        lines = ax.get_lines()
+        self.assert_(isinstance(lines[0].get_xdata(), PeriodIndex))
 
     def _check_data(self, xp, rs):
         xp_lines = xp.get_lines()
@@ -492,6 +531,27 @@ class TestDataFramePlots(unittest.TestCase):
                 self.assert_(l1.get_color(), l2.get_color())
         finally:
             sys.stderr = tmp
+
+        # make color a list if plotting one column frame
+        # handles cases like df.plot(color='DodgerBlue')
+        plt.close('all')
+        df.ix[:, [0]].plot(color='DodgerBlue')
+
+    @slow
+    def test_default_color_cycle(self):
+        import matplotlib.pyplot as plt
+        plt.rcParams['axes.color_cycle'] = list('rgbk')
+
+        plt.close('all')
+        df = DataFrame(np.random.randn(5, 3))
+        ax = df.plot()
+
+        lines = ax.get_lines()
+        for i, l in enumerate(lines):
+            xp = plt.rcParams['axes.color_cycle'][i]
+            rs = l.get_color()
+            self.assert_(xp == rs)
+
 
 class TestDataFrameGroupByPlots(unittest.TestCase):
 

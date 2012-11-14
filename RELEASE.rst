@@ -33,6 +33,7 @@ pandas 0.9.1
   - New `top` and `bottom` options for handling NAs in rank (#1508, #2159)
   - Add `where` and `mask` functions to DataFrame (#2109, #2151)
   - Add `at_time` and `between_time` functions to DataFrame (#2149)
+  - Add flexible `pow` and `rpow` methods to DataFrame (#2190)
 
 **API Changes**
 
@@ -55,6 +56,8 @@ pandas 0.9.1
   - Make .drop(...) work with non-unique indexes (#2101)
   - Improve performance of Series/DataFrame.diff (re: #2087)
   - Support unary ~ (__invert__) in DataFrame (#2110)
+  - Turn off pandas-style tick locators and formatters (#2205)
+  - DataFrame[DataFrame] uses DataFrame.where to compute masked frame (#2230)
 
 **Bug fixes**
 
@@ -92,7 +95,14 @@ pandas 0.9.1
   - Fix Series and DataFrame.diff for integer dtypes (#2087, #2174)
   - Fix bug when taking intersection of DatetimeIndex with empty index (#2129)
   - Pass through timezone information when calling DataFrame.align (#2127)
-
+  - Properly sort when joining on datetime64 values (#2196)
+  - Fix indexing bug in which False/True were being coerced to 0/1 (#2199)
+  - Many unicode formatting fixes (#2201)
+  - Fix improper MultiIndex conversion issue when assigning
+    e.g. DataFrame.index (#2200)
+  - Fix conversion of mixed-type DataFrame to ndarray with dup columns (#2236)
+  - Fix duplicate columns issue (#2218, #2219)
+  - Fix SparseSeries.__pow__ issue with NA input (#2220)
 
 pandas 0.9.0
 ============
