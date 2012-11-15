@@ -1,6 +1,6 @@
-pandas (0.9.1~rc1+git27-ge374f0f-1) UNRELEASED; urgency=low
+pandas (0.9.1-1) experimental; urgency=low
 
-  * New upstream release candidate
+  * New upstream release
   * Boosted policy to 3.9.3 (no due changes)
   * debian/rules
     - Fixed up cleaning up of cythonized files
