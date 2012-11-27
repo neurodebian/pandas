@@ -1,0 +1,25 @@
+Tests: unittests
+Depends: python-all,
+         python-dateutil,
+         python-matplotlib,
+         python-nose,
+         python-numpy,
+         python-openpyxl,
+         python-pandas,
+         python-scipy,
+         python-tables,
+         python-tk,
+         python-tz,
+         python-xlrd,
+         python-xlwt
+
+Tests: unittests3
+Depends: python3-all,
+         python3-dateutil,
+         python3-matplotlib,
+         python3-nose,
+         python3-numpy,
+         python3-pandas,
+         python3-scipy,
+         python3-tk,
+         python3-tz

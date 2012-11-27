@@ -1,6 +1,7 @@
 pandas (0.9.1-2) experimental; urgency=low
 
   * provide python3 packages
+  * add autopkgtests
 
  -- Julian Taylor <jtaylor.debian@googlemail.com>  Thu, 22 Nov 2012 22:01:00 +0100
 

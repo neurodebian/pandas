@@ -29,6 +29,7 @@ Standards-Version: 3.9.3
 Homepage: http://pandas.sourceforge.net
 Vcs-Browser: http://github.com/neurodebian/pandas
 Vcs-Git: git://github.com/neurodebian/pandas.git
+XS-Testsuite: autopkgtest
 
 Package: python-pandas
 Architecture: all
