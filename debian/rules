@@ -1,6 +1,12 @@
 #!/usr/bin/make -f
 # -*- mode: makefile; coding: utf-8 -*-
 
+export DEB_BUILD_HARDENING=1
+
+# Pass hardening flags into distutils
+CFLAGS = $(shell dpkg-buildflags --get CFLAGS)
+export CFLAGS
+
 PACKAGE2_NAME = python-pandas
 PACKAGE3_NAME = python3-pandas
 PACKAGE2_ROOT_DIR = debian/${PACKAGE2_NAME}
@@ -16,7 +22,11 @@ CYTHONVER := $(shell dpkg -l cython | awk '/^ii/{print $$3;}' || echo 0)
 MPLVER := $(shell dpkg -l python-matplotlib | awk '/^ii/{print $$3;}' || echo 0)
 
 MIN_CYTHONVER = 0.17.1
-EXCLUDE_MORETESTS := 
+
+# Some unittests might need to be excluded for different Python versions
+EXCLUDE_TESTS2 := 
+EXCLUDE_TESTS3.2 := --exclude "test_bootstrap_plot"
+EXCLUDE_TESTS3.3 := --exclude "test_(bootstrap_plot|quoting|cant_compare_tz_naive_w_aware|more_flexible_frame_multi_function|yahoo)"
 # $(shell dpkg --compare-versions $(MPLVER) lt 1.0 && echo '|test_hist|test_plot|test_boxplot|test_corr_rank' || echo '')
 
 # Mega rule
@@ -52,7 +62,7 @@ override_dh_auto_build:
 	:
 
 override_dh_auto_install: ${PYVERS:%=python-install%} ${PY3VERS:%=python-install%} ${PYVERS:%=python-test%} ${PY3VERS:%=python-test%}
-# Per Python version logic -- install, test, move .so into -lib
+# Per Python version logic -- install, test, remomove .so (installed into -lib)
 python-install%:
 	python$* setup.py install --install-layout=deb --root=$(CURDIR)/debian/tmp
 
@@ -63,23 +73,11 @@ ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 	echo "$*" | grep -q '^3' && PY=3 || PY=$*; \
 	export PYTHONPATH=`/bin/ls -d $$PWD/debian/tmp/usr/lib/python$$PY/*/`; \
 	export MPLCONFIGDIR=$(CURDIR)/build HOME=$(CURDIR)/build; \
-	cd build/; python$* /usr/bin/nosetests -s -v -a '!network' pandas;
+	cd build/; python$* /usr/bin/nosetests -s -v -a '!network' $(EXCLUDE_TESTS$*) pandas;
 else
 	: # Skip unittests due to nocheck
 endif
 
-## python3-test%: python-install%
-## ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
-## 	echo "backend : Agg" >| $(CURDIR)/build/matplotlibrc
-## 	: # Run unittests here against installed pandas
-## 	: # ignore result for now, some still fail (see gh-2331)
-## 	-export PYTHONPATH=`/bin/ls -d $$PWD/debian/tmp/usr/lib/python3/*/`; \
-## 	export MPLCONFIGDIR=$(CURDIR)/build HOME=$(CURDIR)/build; \
-## 	cd build/; python$* /usr/bin/nosetests3 -s -v -a '!network' pandas;
-## else
-## 	: # Skip unittests due to nocheck
-## endif
-## 
 override_dh_installdocs:
 	: # Build Documentation using installed pandas
 ifeq (,$(filter nodoc,$(DEB_BUILD_OPTIONS)))
@@ -99,12 +97,13 @@ endif
 #override_dh_installchangelogs:
 #	dh_installchangelogs doc/whats_new.rst
 
-## move binary libraries into -lib
+## remove .so libraries from main package, and call dh_numpy*
+## while removing 2 if not present
 _dh_python%:
 	if [ -d debian/$(PACKAGE$*_NAME)/usr/lib ]; then \
 	   find debian/$(PACKAGE$*_NAME)/usr/lib -name "*.so" -delete; \
 	fi
-	if [ -x /usr/bin/dh_numpy ]; then dh_numpy -p$(PACKAGE$*_NAME)-lib; fi
+	dh_numpy$(*:2=) -p$(PACKAGE$*_NAME)-lib
 	dh_python$*
 
 ## "Instantiate" both rules so dh sees them
