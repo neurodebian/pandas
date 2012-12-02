@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: NeuroDebian Team <team@neuro.debian.net>
 Uploaders: Yaroslav Halchenko <debian@onerussian.com>, Michael Hanke <michael.hanke@gmail.com>
 Build-Depends: debhelper (>= 7.0.50),
-               python-all-dev (>= 2.5), python-support (>= 0.6),
+               python-all-dev (>= 2.5),
                python-setuptools, cython (>= 0.12~),
                python-numpy (>= 1:1.6~), python-dateutil,
                python-scipy,
