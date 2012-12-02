@@ -2,6 +2,11 @@ pandas (0.9.1-2) experimental; urgency=low
 
   * provide python3 packages
   * add autopkgtests
+  * debian/patches:
+    - relax-float-tests.patch:
+      replace float equality tests with almost equal
+    - fix-endian-tests.patch:
+      patch from upstream to fix the test failure on big endian machines
 
  -- Julian Taylor <jtaylor.debian@googlemail.com>  Thu, 22 Nov 2012 22:01:00 +0100
 
