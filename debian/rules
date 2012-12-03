@@ -18,9 +18,6 @@ PY3VERS = $(shell py3versions -vr)
 PY3VER = $(shell py3versions -vd)
 
 UVER := $(shell LC_ALL=C dpkg-parsechangelog | awk '/^Version:/{print $$2;}' | sed -e 's,-[^-]*$$,,g')
-CYTHON2VER := $(shell dpkg -l cython | awk '/^ii/{print $$3;}' || echo 0)
-CYTHON3VER := $(shell dpkg -l cython3 2>/dev/null | awk '/^ii/{print $$3;}' || echo 0)
-MPLVER := $(shell dpkg -l python-matplotlib | awk '/^ii/{print $$3;}' || echo 0)
 
 MIN_CYTHONVER = 0.17.1
 
@@ -28,6 +25,8 @@ MIN_CYTHONVER = 0.17.1
 EXCLUDE_TESTS2 := 
 EXCLUDE_TESTS3.2 := --exclude "test_bootstrap_plot"
 EXCLUDE_TESTS3.3 := --exclude "test_(bootstrap_plot|quoting|cant_compare_tz_naive_w_aware|more_flexible_frame_multi_function|yahoo)"
+
+# MPLVER := $(shell dpkg -l python-matplotlib | awk '/^ii/{print $$3;}' || echo 0)
 # $(shell dpkg --compare-versions $(MPLVER) lt 1.0 && echo '|test_hist|test_plot|test_boxplot|test_corr_rank' || echo '')
 
 # Mega rule
@@ -63,8 +62,6 @@ override_dh_auto_build:
 
 override_dh_auto_install: ${PYVERS:%=python-install%} ${PY3VERS:%=python-install%} ${PYVERS:%=python-test%} ${PY3VERS:%=python-test%}
 # Per Python version logic -- install, test, remomove .so (installed into -lib)
-# Unfortunately mighty make doesn't have a sensible function to return the first
-# character of a string
 python-install%:
 	echo "$*" | grep -q '^3' && PY=3 || PY= ; \
 	CYTHONVER=$$(dpkg -l cython$$PY 2>/dev/null | awk '/^ii/{print $$3;}' || echo 0); \
