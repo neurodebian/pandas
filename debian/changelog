@@ -1,7 +1,9 @@
 pandas (0.10.0~beta1+git51-gbbe2fc1-1) UNRELEASED; urgency=low
 
   * New upstream snapshot from origin/master at v0.10.0b1-51-gbbe2fc1
-    - debian/patches: all included upstream, dropped locally
+  * debian/patches: 
+    - all previous are in upstream now, dropped locally
+    - added -dsc-patch'es for systems without cython3
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 13 Dec 2012 22:28:20 -0500
 
