@@ -2329,6 +2329,13 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         expected = self.mixed_frame.sort_index()
         assert_frame_equal(recons, expected)
 
+        # dict of sequence
+        a = {'hi': [32, 3, 3],
+             'there': [3, 5, 3]}
+        rs = DataFrame.from_dict(a, orient='index')
+        xp = DataFrame.from_dict(a).T.reindex(a.keys())
+        assert_frame_equal(rs, xp)
+
     def test_constructor_Series_named(self):
         a = Series([1, 2, 3], index=['a', 'b', 'c'], name='x')
         df = DataFrame(a)
@@ -3968,6 +3975,27 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         frame.info(verbose=False)
         sys.stdout = sys.__stdout__
 
+    def test_info_wide(self):
+        from pandas import set_option, reset_option
+        io = StringIO()
+        df = DataFrame(np.random.randn(5, 101))
+        df.info(buf=io)
+        rs = io.getvalue()
+        self.assert_(len(rs.splitlines()) == 4)
+
+        io = StringIO()
+        df.info(buf=io, max_cols=101)
+        rs = io.getvalue()
+        self.assert_(len(rs.splitlines()) > 100)
+        xp = rs
+
+        set_option('display.max_info_columns', 101)
+        io = StringIO()
+        df.info(buf=io)
+        self.assert_(rs == xp)
+        reset_option('display.max_info_columns')
+
+
     def test_info_duplicate_columns(self):
         io = StringIO()
 
@@ -5502,6 +5530,11 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
     def test_diff_neg_n(self):
         rs = self.tsframe.diff(-1)
         xp = self.tsframe - self.tsframe.shift(-1)
+        assert_frame_equal(rs, xp)
+
+    def test_diff_float_n(self):
+        rs = self.tsframe.diff(1.)
+        xp = self.tsframe.diff(1)
         assert_frame_equal(rs, xp)
 
     def test_pct_change(self):

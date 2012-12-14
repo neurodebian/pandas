@@ -594,10 +594,10 @@ class DataFrame(NDFrame):
             terminal_width, terminal_height = 100, 100
         else:
             terminal_width, terminal_height = get_terminal_size()
-        max_rows = (terminal_height if get_option("print.max_rows") == 0
-                    else get_option("print.max_rows"))
-        max_columns = get_option("print.max_columns")
-        expand_repr = get_option("print.expand_frame_repr")
+        max_rows = (terminal_height if get_option("display.max_rows") == 0
+                    else get_option("display.max_rows"))
+        max_columns = get_option("display.max_columns")
+        expand_repr = get_option("display.expand_frame_repr")
 
         if max_columns > 0:
             if (len(self.index) <= max_rows and
@@ -642,7 +642,7 @@ class DataFrame(NDFrame):
         Invoked by bytes(df) in py3 only.
         Yields a bytestring in both py2/py3.
         """
-        encoding = com.get_option("print.encoding")
+        encoding = com.get_option("display.encoding")
         return self.__unicode__().encode(encoding , 'replace')
 
     def __unicode__(self):
@@ -659,7 +659,7 @@ class DataFrame(NDFrame):
             is_wide = self._need_wide_repr()
             line_width = None
             if is_wide:
-                line_width = get_option('print.line_width')
+                line_width = get_option('display.line_width')
             self.to_string(buf=buf, line_width=line_width)
 
         value = buf.getvalue()
@@ -668,7 +668,7 @@ class DataFrame(NDFrame):
         return value
 
     def _need_wide_repr(self):
-        return (get_option("print.expand_frame_repr")
+        return (get_option("display.expand_frame_repr")
                 and com.in_interactive_session())
 
     def __repr__(self):
@@ -687,7 +687,7 @@ class DataFrame(NDFrame):
         if com.in_qtconsole():
             raise ValueError('Disable HTML output in QtConsole')
 
-        if get_option("print.notebook_repr_html"):
+        if get_option("display.notebook_repr_html"):
             if self._need_info_repr_():
                 return None
             else:
@@ -883,19 +883,19 @@ class DataFrame(NDFrame):
         -------
         DataFrame
         """
+        index, columns = None, None
         orient = orient.lower()
         if orient == 'index':
-            # TODO: this should be seriously cythonized
-            new_data = OrderedDict()
-            for index, s in data.iteritems():
-                for col, v in s.iteritems():
-                    new_data[col]= new_data.get(col,OrderedDict())
-                    new_data[col][index] = v
-            data = new_data
+            if len(data) > 0:
+                #TODO speed up Series case
+                if isinstance(data.values()[0], (Series, dict)):
+                    data = _from_nested_dict(data)
+                else:
+                    data, index = data.values(), data.keys()
         elif orient != 'columns':  # pragma: no cover
             raise ValueError('only recognize index or columns for orient')
 
-        return DataFrame(data, dtype=dtype)
+        return DataFrame(data, index=index, columns=columns, dtype=dtype)
 
     def to_dict(self, outtype='dict'):
         """
@@ -1566,7 +1566,7 @@ class DataFrame(NDFrame):
         if buf is None:
             return formatter.buf.getvalue()
 
-    def info(self, verbose=True, buf=None):
+    def info(self, verbose=True, buf=None, max_cols=None):
         """
         Concise summary of a DataFrame, used in __repr__ when very large.
 
@@ -1575,6 +1575,8 @@ class DataFrame(NDFrame):
         verbose : boolean, default True
             If False, don't print column count summary
         buf : writable buffer, defaults to sys.stdout
+        max_cols : int, default None
+            Determines whether full summary or short summary is printed
         """
         from pandas.core.format import _put_lines
 
@@ -1594,7 +1596,10 @@ class DataFrame(NDFrame):
         cols = self.columns
 
         # hack
-        if verbose and len(self.columns) < 100:
+        if max_cols is None:
+            max_cols = get_option('display.max_info_columns')
+
+        if verbose and len(self.columns) <= max_cols:
             lines.append('Data columns:')
             space = max([len(com.pprint_thing(k)) for k in self.columns]) + 4
             counts = self.count()
@@ -5522,6 +5527,14 @@ def _homogenize(data, index, dtype=None):
 
     return homogenized
 
+def _from_nested_dict(data):
+    # TODO: this should be seriously cythonized
+    new_data = OrderedDict()
+    for index, s in data.iteritems():
+        for col, v in s.iteritems():
+            new_data[col]= new_data.get(col,OrderedDict())
+            new_data[col][index] = v
+    return new_data
 
 def _put_str(s, space):
     return ('%s' % s)[:space].ljust(space)
