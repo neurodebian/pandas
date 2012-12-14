@@ -35,11 +35,26 @@ class TimeGrouper(CustomGrouper):
     Use begin, end, nperiods to generate intervals that cannot be derived
     directly from the associated object
     """
-    def __init__(self, freq='Min', closed='right', label='right', how='mean',
+    def __init__(self, freq='Min', closed=None, label=None, how='mean',
                  nperiods=None, axis=0,
                  fill_method=None, limit=None, loffset=None, kind=None,
                  convention=None, base=0):
         self.freq = to_offset(freq)
+
+        end_types = set(['M', 'A', 'Q', 'BM', 'BA', 'BQ', 'W'])
+        rule = self.freq.rule_code
+        if (rule in end_types or
+            ('-' in rule and rule[:rule.find('-')] in end_types)):
+            if closed is None:
+                closed = 'right'
+            if label is None:
+                label = 'right'
+        else:
+            if closed is None:
+                closed = 'left'
+            if label is None:
+                label = 'left'
+
         self.closed = closed
         self.label = label
         self.nperiods = nperiods
@@ -340,7 +355,7 @@ def _adjust_dates_anchored(first, last, offset, closed='right', base=0):
             Timestamp(lresult, tz=last.tz))
 
 
-def asfreq(obj, freq, method=None, how=None):
+def asfreq(obj, freq, method=None, how=None, normalize=False):
     """
     Utility frequency conversion method for Series/DataFrame
     """
@@ -359,4 +374,7 @@ def asfreq(obj, freq, method=None, how=None):
         if len(obj.index) == 0:
             return obj.copy()
         dti = date_range(obj.index[0], obj.index[-1], freq=freq)
-        return obj.reindex(dti, method=method)
+        rs = obj.reindex(dti, method=method)
+        if normalize:
+            rs.index = rs.index.normalize()
+        return rs

@@ -13,7 +13,7 @@ from pandas.core.common import notnull, _ensure_platform_int
 from pandas.core.groupby import (get_group_index, _compress_group_index,
                                  decons_group_index)
 import pandas.core.common as com
-import pandas.lib as lib
+import pandas.algos as algos
 
 
 from pandas.core.index import MultiIndex
@@ -72,10 +72,6 @@ class _Unstacker(object):
         self.removed_name = self.new_index_names.pop(self.level)
         self.removed_level = self.new_index_levels.pop(self.level)
 
-        v = self.level
-        lshape = self.index.levshape
-        self.full_shape = np.prod(lshape[:v] + lshape[v + 1:]), lshape[v]
-
         self._make_sorted_values_labels()
         self._make_selectors()
 
@@ -88,17 +84,13 @@ class _Unstacker(object):
         sizes = [len(x) for x in levs[:v] + levs[v + 1:] + [levs[v]]]
 
         group_index = get_group_index(to_sort, sizes)
-        max_groups = np.prod(sizes)
-        if max_groups > 1000000:
-            comp_index, obs_ids = _compress_group_index(group_index)
-            ngroups = len(obs_ids)
-        else:
-            comp_index, ngroups = group_index, max_groups
+        comp_index, obs_ids = _compress_group_index(group_index)
+        ngroups = len(obs_ids)
 
-        indexer = lib.groupsort_indexer(comp_index, ngroups)[0]
+        indexer = algos.groupsort_indexer(comp_index, ngroups)[0]
         indexer = _ensure_platform_int(indexer)
 
-        self.sorted_values = self.values.take(indexer, axis=0)
+        self.sorted_values = com.take_2d(self.values, indexer, axis=0)
         self.sorted_labels = [l.take(indexer) for l in to_sort]
 
     def _make_selectors(self):
@@ -108,29 +100,25 @@ class _Unstacker(object):
         group_index = get_group_index(self.sorted_labels[:-1],
                                       [len(x) for x in new_levels])
 
-        group_index = _ensure_platform_int(group_index)
+        comp_index, obs_ids = _compress_group_index(group_index)
+        ngroups = len(obs_ids)
 
-        group_mask = np.zeros(self.full_shape[0], dtype=bool)
-        group_mask.put(group_index, True)
-
+        comp_index = _ensure_platform_int(comp_index)
         stride = self.index.levshape[self.level]
-        selector = self.sorted_labels[-1] + stride * group_index
+        self.full_shape = ngroups, stride
+
+        selector = self.sorted_labels[-1] + stride * comp_index
         mask = np.zeros(np.prod(self.full_shape), dtype=bool)
         mask.put(selector, True)
-
-        # compress labels
-        unique_groups = np.arange(self.full_shape[0])[group_mask]
-        compressor = group_index.searchsorted(unique_groups)
 
         if mask.sum() < len(self.index):
             raise ReshapeError('Index contains duplicate entries, '
                                'cannot reshape')
 
-        self.group_mask = group_mask
-        self.group_index = group_index
+        self.group_index = comp_index
         self.mask = mask
-        self.unique_groups = unique_groups
-        self.compressor = compressor
+        self.unique_groups = obs_ids
+        self.compressor = comp_index.searchsorted(np.arange(ngroups))
 
     def get_result(self):
         # TODO: find a better way than this masking business
@@ -141,9 +129,12 @@ class _Unstacker(object):
 
         # filter out missing levels
         if values.shape[1] > 0:
-            mask = value_mask.sum(0) > 0
-            values = values[:, mask]
-            columns = columns[mask]
+            col_inds, obs_ids = _compress_group_index(self.sorted_labels[-1])
+            # rare case, level values not observed
+            if len(obs_ids) < self.full_shape[1]:
+                inds = (value_mask.sum(0) > 0).nonzero()[0]
+                values = com.take_2d(values, inds, axis=1)
+                columns = columns[inds]
 
         return DataFrame(values, index=index, columns=columns)
 
@@ -167,9 +158,6 @@ class _Unstacker(object):
 
             chunk.flat[self.mask] = self.sorted_values[:, i]
             mask_chunk.flat[self.mask] = True
-
-        new_values = new_values.take(self.unique_groups, axis=0)
-        new_mask = new_mask.take(self.unique_groups, axis=0)
 
         return new_values, new_mask
 
@@ -317,7 +305,9 @@ def pivot_simple(index, columns, values):
     -------
     DataFrame
     """
-    assert(len(index) == len(columns) == len(values))
+    if (len(index) != len(columns)) or (len(columns) != len(values)):
+        raise AssertionError('Length of index, columns, and values must be the'
+                             ' same')
 
     if len(index) == 0:
         return DataFrame(index=[])
@@ -537,33 +527,39 @@ def melt(frame, id_vars=None, value_vars=None):
     b 3 4
     c 5 6
 
-    >>> melt(df, id_vars=['A'])
+    >>> melt(df, id_vars=['A'], value_vars=['B'])
     A variable value
     a B        1
     b B        3
     c B        5
-    a C        2
-    b C        4
-    c C        6
     """
     # TODO: what about the existing index?
-
-    N, K = frame.shape
-
-    mdata = {}
-
     if id_vars is not None:
-        id_vars = list(id_vars)
-        frame = frame.copy()
-        K -= len(id_vars)
-        for col in id_vars:
-            mdata[col] = np.tile(frame.pop(col).values, K)
+        if not isinstance(id_vars, (tuple, list, np.ndarray)):
+            id_vars = [id_vars]
+        else:
+            id_vars = list(id_vars)
     else:
         id_vars = []
+
+    if value_vars is not None:
+        if not isinstance(value_vars, (tuple, list, np.ndarray)):
+            value_vars = [value_vars]
+        frame = frame.ix[:, id_vars + value_vars]
+    else:
+        frame = frame.copy()
+
+    N, K = frame.shape
+    K -= len(id_vars)
+
+    mdata = {}
+    for col in id_vars:
+        mdata[col] = np.tile(frame.pop(col).values, K)
 
     mcolumns = id_vars + ['variable', 'value']
 
     mdata['value'] = frame.values.ravel('F')
+
     mdata['variable'] = np.asarray(frame.columns).repeat(N)
     return DataFrame(mdata, columns=mcolumns)
 
@@ -763,3 +759,37 @@ def block2d_to_block3d(values, items, shape, major_labels, minor_labels,
         ref_items = items
 
     return make_block(pvalues, items, ref_items)
+
+def block2d_to_blocknd(values, items, shape, labels, ref_items=None):
+    """ pivot to the labels shape """
+    from pandas.core.internals import make_block
+    panel_shape = (len(items),) + shape
+
+    # TODO: lexsort depth needs to be 2!!
+
+    # Create observation selection vector using major and minor
+    # labels, for converting to panel format.
+    selector = factor_indexer(shape[1:],labels)
+    mask = np.zeros(np.prod(shape), dtype=bool)
+    mask.put(selector, True)
+
+    pvalues = np.empty(panel_shape, dtype=values.dtype)
+    if not issubclass(pvalues.dtype.type, (np.integer, np.bool_)):
+        pvalues.fill(np.nan)
+    elif not mask.all():
+        pvalues = com._maybe_upcast(pvalues)
+        pvalues.fill(np.nan)
+
+    values = values
+    for i in xrange(len(items)):
+        pvalues[i].flat[mask] = values[:, i]
+
+    if ref_items is None:
+        ref_items = items
+
+    return make_block(pvalues, items, ref_items)
+
+def factor_indexer(shape, labels):
+    """ given a tuple of shape and a list of Factor lables, return the expanded label indexer """
+    mult   = np.array(shape)[::-1].cumprod()[::-1]
+    return np.sum(np.array(labels).T * np.append(mult,[1]), axis=1).T

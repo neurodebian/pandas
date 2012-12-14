@@ -4,6 +4,7 @@ cimport cpython
 
 cdef extern from "numpy_helper.h":
     inline void set_array_owndata(ndarray ao)
+    inline void set_array_not_contiguous(ndarray ao)
 
     inline int is_integer_object(object)
     inline int is_float_object(object)
@@ -17,6 +18,9 @@ cdef extern from "numpy_helper.h":
     inline int floatify(object, double*) except -1
     inline char *get_c_string(object)
     inline object char_to_string(char*)
+    inline void transfer_object_column(char *dst, char *src, size_t stride,
+                                       size_t length)
+    object sarr_from_data(cnp.dtype, int length, void* data)
 
 cdef inline object get_value_at(ndarray arr, object loc):
     cdef:
@@ -63,6 +67,16 @@ cdef inline is_array(object o):
 cdef inline bint _checknull(object val):
     try:
         return val is None or (cpython.PyFloat_Check(val) and val != val)
+    except ValueError:
+        return False
+
+cdef inline bint _checknull_old(object val):
+    import numpy as np
+    cdef double INF = <double> np.inf
+    cdef double NEGINF = -INF
+    try:
+        return bool(val is None or val != val and val != INF
+                    and val != NEGINF)
     except ValueError:
         return False
 

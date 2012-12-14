@@ -372,11 +372,15 @@ def bootstrap_plot(series, fig=None, size=50, samples=500, **kwds):
     import random
     import matplotlib
     import matplotlib.pyplot as plt
-    data = series.values
+
+    # random.sample(ndarray, int) fails on python 3.3, sigh
+    data = list(series.values)
     samplings = [random.sample(data, size) for _ in range(samples)]
+
     means = np.array([np.mean(sampling) for sampling in samplings])
     medians = np.array([np.median(sampling) for sampling in samplings])
-    midranges = np.array([(min(sampling) + max(sampling)) * 0.5 for sampling in samplings])
+    midranges = np.array([(min(sampling) + max(sampling)) * 0.5
+                          for sampling in samplings])
     if fig == None:
         fig = plt.figure()
     x = range(samples)
@@ -411,20 +415,41 @@ def bootstrap_plot(series, fig=None, size=50, samples=500, **kwds):
     return fig
 
 
-def parallel_coordinates(data, class_column, cols=None, ax=None, **kwds):
+def parallel_coordinates(data, class_column, cols=None, ax=None, colors=None,
+                         use_columns=False, xticks=None, **kwds):
     """Parallel coordinates plotting.
 
-    Parameters:
-    -----------
-    data: A DataFrame containing data to be plotted
-    class_column: Column name containing class names
-    cols: A list of column names to use, optional
-    ax: matplotlib axis object, optional
-    kwds: A list of keywords for matplotlib plot method
+    Parameters
+    ----------
+    data: DataFrame
+        A DataFrame containing data to be plotted
+    class_column: str
+        Column name containing class names
+    cols: list, optional
+        A list of column names to use
+    ax: matplotlib.axis, optional
+        matplotlib axis object
+    colors: list or tuple, optional
+        Colors to use for the different classes
+    use_columns: bool, optional
+        If true, columns will be used as xticks
+    xticks: list or tuple, optional
+        A list of values to use for xticks
+    kwds: list, optional
+        A list of keywords for matplotlib plot method
 
-    Returns:
-    --------
+    Returns
+    -------
     ax: matplotlib axis object
+
+    Examples
+    --------
+    >>> from pandas import read_csv
+    >>> from pandas.tools.plotting import parallel_coordinates
+    >>> from matplotlib import pyplot as plt
+    >>> df = read_csv('https://raw.github.com/pydata/pandas/master/pandas/tests/data/iris.csv')
+    >>> parallel_coordinates(df, 'Name', colors=('#556270', '#4ECDC4', '#C7F464'))
+    >>> plt.show()
     """
     import matplotlib.pyplot as plt
     import random
@@ -444,10 +469,31 @@ def parallel_coordinates(data, class_column, cols=None, ax=None, **kwds):
     used_legends = set([])
 
     ncols = len(df.columns)
-    x = range(ncols)
+
+    # determine values to use for xticks
+    if use_columns is True:
+        if not np.all(np.isreal(list(df.columns))):
+            raise ValueError('Columns must be numeric to be used as xticks')
+        x = df.columns
+    elif xticks is not None:
+        if not np.all(np.isreal(xticks)):
+            raise ValueError('xticks specified must be numeric')
+        elif len(xticks) != ncols:
+            raise ValueError('Length of xticks must match number of columns')
+        x = xticks
+    else:
+        x = range(ncols)
 
     if ax == None:
         ax = plt.gca()
+
+    # if user has not specified colors to use, choose at random
+    if colors is None:
+        colors = dict((kls, random_color(kls)) for kls in classes)
+    else:
+        if len(colors) != len(classes):
+            raise ValueError('Number of colors must match number of classes')
+        colors = dict((kls, colors[i]) for i, kls in enumerate(classes))
 
     for i in range(n):
         row = df.irow(i).values
@@ -456,16 +502,17 @@ def parallel_coordinates(data, class_column, cols=None, ax=None, **kwds):
         if com.pprint_thing(kls) not in used_legends:
             label = com.pprint_thing(kls)
             used_legends.add(label)
-            ax.plot(x, y, color=random_color(kls),
+            ax.plot(x, y, color=colors[kls],
                     label=label, **kwds)
         else:
-            ax.plot(x, y, color=random_color(kls), **kwds)
+            ax.plot(x, y, color=colors[kls], **kwds)
 
-    for i in range(ncols):
+    for i in x:
         ax.axvline(i, linewidth=1, color='black')
 
     ax.set_xticks(x)
     ax.set_xticklabels(df.columns)
+    ax.set_xlim(x[0], x[-1])
     ax.legend(loc='upper right')
     ax.grid()
     return ax
@@ -536,24 +583,36 @@ def autocorrelation_plot(series, ax=None):
 
 def grouped_hist(data, column=None, by=None, ax=None, bins=50, log=False,
                  figsize=None, layout=None, sharex=False, sharey=False,
-                 rot=90):
+                 rot=90, **kwargs):
     """
+    Grouped histogram
+
+    Parameters
+    ----------
+    data: Series/DataFrame
+    column: object, optional
+    by: object, optional
+    ax: axes, optional
+    bins: int, default 50
+    log: boolean, default False
+    figsize: tuple, optional
+    layout: optional
+    sharex: boolean, default False
+    sharey: boolean, default False
+    rot: int, default 90
 
     Returns
     -------
-    fig : matplotlib.Figure
+    axes: collection of Matplotlib Axes
     """
-    # if isinstance(data, DataFrame):
-    #     data = data[column]
-
     def plot_group(group, ax):
-        ax.hist(group.dropna(), bins=bins)
+        ax.hist(group.dropna().values, bins=bins)
 
     fig, axes = _grouped_plot(plot_group, data, column=column,
                               by=by, sharex=sharex, sharey=sharey,
                               figsize=figsize, layout=layout, rot=rot)
     fig.subplots_adjust(bottom=0.15, top=0.9, left=0.1, right=0.9,
-                        hspace=0.3, wspace=0.2)
+                        hspace=0.5, wspace=0.3)
     return axes
 
 class MPLPlot(object):
@@ -724,6 +783,8 @@ class MPLPlot(object):
                 ax = self._maybe_right_yaxis(ax)
             else:
                 fig = self.ax.get_figure()
+                if self.figsize is not None:
+                    fig.set_size_inches(self.figsize)
                 ax = self._maybe_right_yaxis(self.ax)
 
             axes = [ax]
@@ -1178,6 +1239,7 @@ class BarPlot(MPLPlot):
             self.tickoffset = 0.25
         else:
             self.tickoffset = 0.375
+        self.bar_width = 0.5
         MPLPlot.__init__(self, data, **kwargs)
 
     def _args_adjust(self):
@@ -1217,12 +1279,12 @@ class BarPlot(MPLPlot):
 
             if self.subplots:
                 ax = self._get_ax(i)  # self.axes[i]
-                rect = bar_f(ax, self.ax_pos, y, 0.5, start=pos_prior, **kwds)
+                rect = bar_f(ax, self.ax_pos, y, self.bar_width, start=pos_prior, **kwds)
                 ax.set_title(label)
             elif self.stacked:
                 mask = y > 0
                 start = np.where(mask, pos_prior, neg_prior)
-                rect = bar_f(ax, self.ax_pos, y, 0.5, start=start,
+                rect = bar_f(ax, self.ax_pos, y, self.bar_width, start=start,
                              label=label, **kwds)
                 pos_prior = pos_prior + np.where(mask, y, 0)
                 neg_prior = neg_prior + np.where(mask, 0, y)
@@ -1351,10 +1413,11 @@ def plot_frame(frame=None, x=None, y=None, subplots=False, sharex=True,
     if y is not None:
         if com.is_integer(y) and not frame.columns.holds_integer():
             y = frame.columns[y]
-        return plot_series(frame[y], label=y, kind=kind, use_index=True,
+        return plot_series(frame[y], label=y, kind=kind, use_index=use_index,
                            rot=rot, xticks=xticks, yticks=yticks,
                            xlim=xlim, ylim=ylim, ax=ax, style=style,
                            grid=grid, logy=logy, secondary_y=secondary_y,
+                           title=title, figsize=figsize, fontsize=fontsize,
                            **kwds)
 
     plot_obj = klass(frame, kind=kind, subplots=subplots, rot=rot,
@@ -1370,7 +1433,6 @@ def plot_frame(frame=None, x=None, y=None, subplots=False, sharex=True,
         return plot_obj.axes
     else:
         return plot_obj.axes[0]
-
 
 def plot_series(series, label=None, kind='line', use_index=True, rot=None,
                 xticks=None, yticks=None, xlim=None, ylim=None,
@@ -1573,7 +1635,7 @@ def scatter_plot(data, x, y, by=None, ax=None, figsize=None, grid=False):
     return fig
 
 
-def hist_frame(data, grid=True, xlabelsize=None, xrot=None,
+def hist_frame(data, column=None, by=None, grid=True, xlabelsize=None, xrot=None,
                ylabelsize=None, yrot=None, ax=None,
                sharex=False, sharey=False, **kwds):
     """
@@ -1597,6 +1659,27 @@ def hist_frame(data, grid=True, xlabelsize=None, xrot=None,
     kwds : other plotting keyword arguments
         To be passed to hist function
     """
+    if column is not None:
+        if not isinstance(column, (list, np.ndarray)):
+            column = [column]
+        data = data.ix[:, column]
+
+    if by is not None:
+
+        axes = grouped_hist(data, by=by, ax=ax, grid=grid, **kwds)
+
+        for ax in axes.ravel():
+            if xlabelsize is not None:
+                plt.setp(ax.get_xticklabels(), fontsize=xlabelsize)
+            if xrot is not None:
+                plt.setp(ax.get_xticklabels(), rotation=xrot)
+            if ylabelsize is not None:
+                plt.setp(ax.get_yticklabels(), fontsize=ylabelsize)
+            if yrot is not None:
+                plt.setp(ax.get_yticklabels(), rotation=yrot)
+
+        return axes
+
     import matplotlib.pyplot as plt
     n = len(data.columns)
     rows, cols = 1, 1
@@ -1633,14 +1716,15 @@ def hist_frame(data, grid=True, xlabelsize=None, xrot=None,
 
     return axes
 
-
-def hist_series(self, ax=None, grid=True, xlabelsize=None, xrot=None,
-                ylabelsize=None, yrot=None, **kwds):
+def hist_series(self, by=None, ax=None, grid=True, xlabelsize=None,
+                xrot=None, ylabelsize=None, yrot=None, **kwds):
     """
     Draw histogram of the input series using matplotlib
 
     Parameters
     ----------
+    by : object, optional
+        If passed, then used to form histograms for separate groups
     ax : matplotlib axis object
         If not passed, uses gca()
     grid : boolean, default True
@@ -1663,24 +1747,30 @@ def hist_series(self, ax=None, grid=True, xlabelsize=None, xrot=None,
     """
     import matplotlib.pyplot as plt
 
-    if ax is None:
-        ax = plt.gca()
+    if by is None:
+        if ax is None:
+            ax = plt.gca()
+        values = self.dropna().values
 
-    values = self.dropna().values
+        ax.hist(values, **kwds)
+        ax.grid(grid)
+        axes = np.array([ax])
+    else:
+        axes = grouped_hist(self, by=by, ax=ax, grid=grid, **kwds)
 
-    ax.hist(values, **kwds)
-    ax.grid(grid)
+    for ax in axes.ravel():
+        if xlabelsize is not None:
+            plt.setp(ax.get_xticklabels(), fontsize=xlabelsize)
+        if xrot is not None:
+            plt.setp(ax.get_xticklabels(), rotation=xrot)
+        if ylabelsize is not None:
+            plt.setp(ax.get_yticklabels(), fontsize=ylabelsize)
+        if yrot is not None:
+            plt.setp(ax.get_yticklabels(), rotation=yrot)
 
-    if xlabelsize is not None:
-        plt.setp(ax.get_xticklabels(), fontsize=xlabelsize)
-    if xrot is not None:
-        plt.setp(ax.get_xticklabels(), rotation=xrot)
-    if ylabelsize is not None:
-        plt.setp(ax.get_yticklabels(), fontsize=ylabelsize)
-    if yrot is not None:
-        plt.setp(ax.get_yticklabels(), rotation=yrot)
-
-    return ax
+    if axes.ndim == 1 and len(axes) == 1:
+        return axes[0]
+    return axes
 
 
 def boxplot_frame_groupby(grouped, subplots=True, column=None, fontsize=None,
@@ -1751,7 +1841,7 @@ def boxplot_frame_groupby(grouped, subplots=True, column=None, fontsize=None,
 
 def _grouped_plot(plotf, data, column=None, by=None, numeric_only=True,
                   figsize=None, sharex=True, sharey=True, layout=None,
-                  rot=0, ax=None):
+                  rot=0, ax=None, **kwargs):
     from pandas.core.frame import DataFrame
     import matplotlib.pyplot as plt
 
@@ -1788,7 +1878,7 @@ def _grouped_plot(plotf, data, column=None, by=None, numeric_only=True,
         ax = ravel_axes[i]
         if numeric_only and isinstance(group, DataFrame):
             group = group._get_numeric_data()
-        plotf(group, ax)
+        plotf(group, ax, **kwargs)
         ax.set_title(com.pprint_thing(key))
 
     return fig, axes
@@ -1796,7 +1886,7 @@ def _grouped_plot(plotf, data, column=None, by=None, numeric_only=True,
 
 def _grouped_plot_by_column(plotf, data, columns=None, by=None,
                             numeric_only=True, grid=False,
-                            figsize=None, ax=None):
+                            figsize=None, ax=None, **kwargs):
     import matplotlib.pyplot as plt
 
     grouped = data.groupby(by)
@@ -1822,7 +1912,7 @@ def _grouped_plot_by_column(plotf, data, columns=None, by=None,
     for i, col in enumerate(columns):
         ax = ravel_axes[i]
         gp_col = grouped[col]
-        plotf(gp_col, ax)
+        plotf(gp_col, ax, **kwargs)
         ax.set_title(col)
         ax.set_xlabel(com.pprint_thing(by))
         ax.grid(grid)

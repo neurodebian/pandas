@@ -1,6 +1,5 @@
 import numpy as np
 
-from functools import wraps
 from itertools import izip
 from pandas.core.common import isnull
 from pandas.core.series import Series
@@ -393,7 +392,7 @@ def str_center(arr, width):
     return str_pad(arr, width, side='both')
 
 
-def str_split(arr, pat=None, n=-1):
+def str_split(arr, pat=None, n=None):
     """
     Split each string (a la re.split) in array by given pattern, propagating NA
     values
@@ -402,18 +401,28 @@ def str_split(arr, pat=None, n=-1):
     ----------
     pat : string, default None
         String or regular expression to split on. If None, splits on whitespace
-    n : int, default -1 (all)
+    n : int, default None (all)
+
+    Notes
+    -----
+    Both 0 and -1 will be interpreted as return all splits
 
     Returns
     -------
     split : array
     """
     if pat is None:
+        if n is None or n == 0:
+            n = -1
         f = lambda x: x.split()
     else:
         if len(pat) == 1:
+            if n is None or n == 0:
+                n = -1
             f = lambda x: x.split(pat, n)
         else:
+            if n is None or n == -1:
+                n = 0
             regex = re.compile(pat)
             f = lambda x: regex.split(x, maxsplit=n)
 
@@ -451,39 +460,51 @@ def str_slice_replace(arr, start=None, stop=None, repl=None):
     raise NotImplementedError
 
 
-def str_strip(arr):
+def str_strip(arr, to_strip=None):
     """
     Strip whitespace (including newlines) from each string in the array
+
+    Parameters
+    ----------
+    to_strip : str or unicode
 
     Returns
     -------
     stripped : array
     """
-    return _na_map(lambda x: x.strip(), arr)
+    return _na_map(lambda x: x.strip(to_strip), arr)
 
 
-def str_lstrip(arr):
+def str_lstrip(arr, to_strip=None):
     """
     Strip whitespace (including newlines) from left side of each string in the
     array
 
+    Parameters
+    ----------
+    to_strip : str or unicode
+
     Returns
     -------
     stripped : array
     """
-    return _na_map(lambda x: x.lstrip(), arr)
+    return _na_map(lambda x: x.lstrip(to_strip), arr)
 
 
-def str_rstrip(arr):
+def str_rstrip(arr, to_strip=None):
     """
     Strip whitespace (including newlines) from right side of each string in the
     array
 
+    Parameters
+    ----------
+    to_strip : str or unicode
+
     Returns
     -------
     stripped : array
     """
-    return _na_map(lambda x: x.rstrip(), arr)
+    return _na_map(lambda x: x.rstrip(to_strip), arr)
 
 
 def str_wrap(arr, width=80):
@@ -519,35 +540,37 @@ def str_get(arr, i):
     return _na_map(f, arr)
 
 
-def str_decode(arr, encoding):
+def str_decode(arr, encoding, errors="strict"):
     """
     Decode character string to unicode using indicated encoding
 
     Parameters
     ----------
     encoding : string
+    errors : string
 
     Returns
     -------
     decoded : array
     """
-    f = lambda x: x.decode(encoding)
+    f = lambda x: x.decode(encoding, errors)
     return _na_map(f, arr)
 
 
-def str_encode(arr, encoding):
+def str_encode(arr, encoding, errors="strict"):
     """
-    Encode character string to unicode using indicated encoding
+    Encode character string to some other encoding using indicated encoding
 
     Parameters
     ----------
     encoding : string
+    errors : string
 
     Returns
     -------
     encoded : array
     """
-    f = lambda x: x.encode(encoding)
+    f = lambda x: x.encode(encoding, errors)
     return _na_map(f, arr)
 
 
@@ -675,13 +698,28 @@ class StringMethods(object):
         raise NotImplementedError
 
     @copy(str_decode)
-    def decode(self, encoding):
-        result = str_decode(self.series, encoding)
+    def decode(self, encoding, errors="strict"):
+        result = str_decode(self.series, encoding, errors)
         return self._wrap_result(result)
 
     @copy(str_encode)
-    def encode(self, encoding):
-        result = str_encode(self.series, encoding)
+    def encode(self, encoding, errors="strict"):
+        result = str_encode(self.series, encoding, errors)
+        return self._wrap_result(result)
+
+    @copy(str_strip)
+    def strip(self, to_strip=None):
+        result = str_strip(self.series, to_strip)
+        return self._wrap_result(result)
+
+    @copy(str_lstrip)
+    def lstrip(self, to_strip=None):
+        result = str_lstrip(self.series, to_strip)
+        return self._wrap_result(result)
+
+    @copy(str_rstrip)
+    def rstrip(self, to_strip=None):
+        result = str_rstrip(self.series, to_strip)
         return self._wrap_result(result)
 
     count = _pat_wrapper(str_count, flags=True)
@@ -691,8 +729,5 @@ class StringMethods(object):
     match = _pat_wrapper(str_match, flags=True)
 
     len = _noarg_wrapper(str_len)
-    strip = _noarg_wrapper(str_strip)
-    rstrip = _noarg_wrapper(str_rstrip)
-    lstrip = _noarg_wrapper(str_lstrip)
     lower = _noarg_wrapper(str_lower)
     upper = _noarg_wrapper(str_upper)

@@ -5,11 +5,13 @@ import sys
 import numpy as np
 
 import pandas.lib as lib
+import pandas.tslib as tslib
 import pandas.core.common as com
+from pandas.util.py3compat import StringIO
 
 try:
     import dateutil
-    from dateutil.parser import parse
+    from dateutil.parser import parse, DEFAULTPARSER
     from dateutil.relativedelta import relativedelta
 
     # raise exception if dateutil 2.0 install on 2.x platform
@@ -26,7 +28,7 @@ def _infer_tzinfo(start, end):
     def _infer(a, b):
         tz = a.tzinfo
         if b and b.tzinfo:
-            assert(lib.get_timezone(tz) == lib.get_timezone(b.tzinfo))
+            assert(tslib.get_timezone(tz) == tslib.get_timezone(b.tzinfo))
         return tz
     tz = None
     if start is not None:
@@ -70,14 +72,14 @@ def to_datetime(arg, errors='ignore', dayfirst=False, utc=None, box=True):
         arg = com._ensure_object(arg)
 
         try:
-            result = lib.array_to_datetime(arg, raise_=errors == 'raise',
-                                           utc=utc, dayfirst=dayfirst)
+            result = tslib.array_to_datetime(arg, raise_=errors == 'raise',
+                                             utc=utc, dayfirst=dayfirst)
             if com.is_datetime64_dtype(result) and box:
                 result = DatetimeIndex(result, tz='utc' if utc else None)
             return result
         except ValueError, e:
             try:
-                values, tz = lib.datetime_to_datetime64(arg)
+                values, tz = tslib.datetime_to_datetime64(arg)
                 return DatetimeIndex._simple_new(values, None, tz=tz)
             except (ValueError, TypeError):
                 raise e
@@ -99,7 +101,7 @@ def to_datetime(arg, errors='ignore', dayfirst=False, utc=None, box=True):
                     return DatetimeIndex(arg, tz='utc' if utc else None)
                 except ValueError, e:
                     try:
-                        values, tz = lib.datetime_to_datetime64(arg)
+                        values, tz = tslib.datetime_to_datetime64(arg)
                         return DatetimeIndex._simple_new(values, None, tz=tz)
                     except (ValueError, TypeError):
                         raise e
@@ -114,7 +116,8 @@ def to_datetime(arg, errors='ignore', dayfirst=False, utc=None, box=True):
     try:
         if not arg:
             return arg
-        return parse(arg, dayfirst=dayfirst)
+        default = datetime(1,1,1)
+        return parse(arg, dayfirst=dayfirst, default=default)
     except Exception:
         if errors == 'raise':
             raise
@@ -131,6 +134,7 @@ qpat2full = re.compile(r'(\d\d\d\d)Q(\d)')
 qpat1 = re.compile(r'(\d)Q(\d\d)')
 qpat2 = re.compile(r'(\d\d)Q(\d)')
 ypat = re.compile(r'(\d\d\d\d)$')
+has_time = re.compile('(.+)([\s]|T)+(.+)')
 
 
 def parse_time_string(arg, freq=None, dayfirst=None, yearfirst=None):
@@ -152,7 +156,7 @@ def parse_time_string(arg, freq=None, dayfirst=None, yearfirst=None):
     -------
     datetime, datetime/dateutil.parser._result, str
     """
-    from pandas.core.format import print_config
+    from pandas.core.config import get_option
     from pandas.tseries.offsets import DateOffset
     from pandas.tseries.frequencies import (_get_rule_month, _month_numbers,
                                             _get_freq_str)
@@ -221,35 +225,66 @@ def parse_time_string(arg, freq=None, dayfirst=None, yearfirst=None):
         return mresult
 
     if dayfirst is None:
-        dayfirst = print_config.date_dayfirst
+        dayfirst = get_option("print.date_dayfirst")
     if yearfirst is None:
-        yearfirst = print_config.date_yearfirst
+        yearfirst = get_option("print.date_yearfirst")
 
     try:
-        parsed = parse(arg, dayfirst=dayfirst, yearfirst=yearfirst)
+        parsed, reso = dateutil_parse(arg, default, dayfirst=dayfirst,
+                                      yearfirst=yearfirst)
     except Exception, e:
         raise DateParseError(e)
 
     if parsed is None:
         raise DateParseError("Could not parse %s" % arg)
 
+    return parsed, parsed, reso  # datetime, resolution
+
+def dateutil_parse(timestr, default,
+                   ignoretz=False, tzinfos=None,
+                   **kwargs):
+    """ lifted from dateutil to get resolution"""
+    res = DEFAULTPARSER._parse(StringIO(timestr), **kwargs)
+
+    if res is None:
+        raise ValueError, "unknown string format"
+
     repl = {}
-    reso = 'year'
-    stopped = False
     for attr in ["year", "month", "day", "hour",
                  "minute", "second", "microsecond"]:
-        can_be_zero = ['hour', 'minute', 'second', 'microsecond']
-        value = getattr(parsed, attr)
-        if value is not None and value != 0:  # or attr in can_be_zero):
+        value = getattr(res, attr)
+        if value is not None:
             repl[attr] = value
-            if not stopped:
-                reso = attr
-        else:
-            stopped = True
-            break
-    ret = default.replace(**repl)
-    return ret, parsed, reso  # datetime, resolution
+            reso = attr
+    if reso == 'microsecond' and repl['microsecond'] == 0:
+        reso = 'second'
 
+    ret = default.replace(**repl)
+    if res.weekday is not None and not res.day:
+        ret = ret+relativedelta.relativedelta(weekday=res.weekday)
+    if not ignoretz:
+        if callable(tzinfos) or tzinfos and res.tzname in tzinfos:
+            if callable(tzinfos):
+                tzdata = tzinfos(res.tzname, res.tzoffset)
+            else:
+                tzdata = tzinfos.get(res.tzname)
+            if isinstance(tzdata, datetime.tzinfo):
+                tzinfo = tzdata
+            elif isinstance(tzdata, basestring):
+                tzinfo = tz.tzstr(tzdata)
+            elif isinstance(tzdata, int):
+                tzinfo = tz.tzoffset(res.tzname, tzdata)
+            else:
+                raise ValueError, "offset must be tzinfo subclass, " \
+                                  "tz string, or int offset"
+            ret = ret.replace(tzinfo=tzinfo)
+        elif res.tzname and res.tzname in time.tzname:
+            ret = ret.replace(tzinfo=tz.tzlocal())
+        elif res.tzoffset == 0:
+            ret = ret.replace(tzinfo=tz.tzutc())
+        elif res.tzoffset:
+            ret = ret.replace(tzinfo=tz.tzoffset(res.tzname, res.tzoffset))
+    return ret, reso
 
 def _attempt_monthly(val):
     pats = ['%Y-%m', '%m-%Y', '%b %Y', '%b-%Y']
@@ -280,7 +315,7 @@ def _try_parse_monthly(arg):
     return ret
 
 
-normalize_date = lib.normalize_date
+normalize_date = tslib.normalize_date
 
 
 def format(dt):

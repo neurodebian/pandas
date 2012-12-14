@@ -20,12 +20,14 @@ from pandas.sparse.frame import SparseDataFrame
 import pandas.core.common as com
 
 import pandas.lib as lib
+import pandas.algos as algos
+import pandas.hashtable as _hash
 
 
 @Substitution('\nleft : DataFrame')
 @Appender(_merge_doc, indents=0)
 def merge(left, right, how='inner', on=None, left_on=None, right_on=None,
-          left_index=False, right_index=False, sort=True,
+          left_index=False, right_index=False, sort=False,
           suffixes=('_x', '_y'), copy=True):
     op = _MergeOperation(left, right, how=how, on=on, left_on=left_on,
                          right_on=right_on, left_index=left_index,
@@ -464,8 +466,8 @@ class _OrderedMerge(_MergeOperation):
         ldata, rdata = self._get_merge_data()
 
         if self.fill_method == 'ffill':
-            left_join_indexer = lib.ffill_indexer(left_indexer)
-            right_join_indexer = lib.ffill_indexer(right_indexer)
+            left_join_indexer = algos.ffill_indexer(left_indexer)
+            right_join_indexer = algos.ffill_indexer(right_indexer)
         else:
             left_join_indexer = left_indexer
             right_join_indexer = right_indexer
@@ -498,9 +500,9 @@ def _get_multiindex_indexer(join_keys, index, sort=False):
                         sort=False)
 
     left_indexer, right_indexer = \
-        lib.left_outer_join(com._ensure_int64(left_group_key),
-                            com._ensure_int64(right_group_key),
-                            max_groups, sort=False)
+        algos.left_outer_join(com._ensure_int64(left_group_key),
+                              com._ensure_int64(right_group_key),
+                              max_groups, sort=False)
 
     return left_indexer, right_indexer
 
@@ -509,9 +511,9 @@ def _get_single_indexer(join_key, index, sort=False):
     left_key, right_key, count = _factorize_keys(join_key, index, sort=sort)
 
     left_indexer, right_indexer = \
-        lib.left_outer_join(com._ensure_int64(left_key),
-                            com._ensure_int64(right_key),
-                            count, sort=sort)
+        algos.left_outer_join(com._ensure_int64(left_key),
+                              com._ensure_int64(right_key),
+                              count, sort=sort)
 
     return left_indexer, right_indexer
 
@@ -543,36 +545,37 @@ def _left_join_on_index(left_ax, right_ax, join_keys, sort=False):
 
 
 def _right_outer_join(x, y, max_groups):
-    right_indexer, left_indexer = lib.left_outer_join(y, x, max_groups)
+    right_indexer, left_indexer = algos.left_outer_join(y, x, max_groups)
     return left_indexer, right_indexer
 
 _join_functions = {
-    'inner': lib.inner_join,
-    'left': lib.left_outer_join,
+    'inner': algos.inner_join,
+    'left': algos.left_outer_join,
     'right': _right_outer_join,
-    'outer': lib.full_outer_join,
+    'outer': algos.full_outer_join,
 }
 
 
 def _factorize_keys(lk, rk, sort=True):
     if com._is_int_or_datetime_dtype(lk) and com._is_int_or_datetime_dtype(rk):
-        klass = lib.Int64Factorizer
+        klass = _hash.Int64Factorizer
         lk = com._ensure_int64(lk)
         rk = com._ensure_int64(rk)
     else:
-        klass = lib.Factorizer
+        klass = _hash.Factorizer
         lk = com._ensure_object(lk)
         rk = com._ensure_object(rk)
 
     rizer = klass(max(len(lk), len(rk)))
 
-    llab, _ = rizer.factorize(lk)
-    rlab, _ = rizer.factorize(rk)
+    llab = rizer.factorize(lk)
+    rlab = rizer.factorize(rk)
 
     count = rizer.get_count()
 
     if sort:
-        llab, rlab = _sort_labels(rizer.uniques, llab, rlab)
+        uniques = rizer.uniques.to_array()
+        llab, rlab = _sort_labels(uniques, llab, rlab)
 
     # NA group
     lmask = llab == -1; lany = lmask.any()
@@ -859,10 +862,11 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
     names : list, default None
         Names for the levels in the resulting hierarchical index
     ignore_index : boolean, default False
-        If True, do not use the index values on the concatenation axis. The
+        If True, do not use the index values along the concatenation axis. The
         resulting axis will be labeled 0, ..., n - 1. This is useful if you are
         concatenating objects where the concatenation axis does not have
-        meaningful indexing information.
+        meaningful indexing information. Note the the index values on the other
+        axes are still respected in the join.
 
     Notes
     -----
@@ -971,12 +975,12 @@ class _Concatenator(object):
             data = data.consolidate()
             type_map = dict((type(blk), blk) for blk in data.blocks)
             blockmaps.append(type_map)
-        return blockmaps
+        return blockmaps, reindexed_data
 
     def _get_concatenated_data(self):
         try:
             # need to conform to same other (joined) axes for block join
-            blockmaps = self._prepare_blocks()
+            blockmaps, rdata = self._prepare_blocks()
             kinds = _get_all_block_kinds(blockmaps)
 
             new_blocks = []
@@ -1000,7 +1004,7 @@ class _Concatenator(object):
 
             new_data = {}
             for item in self.new_axes[0]:
-                new_data[item] = self._concat_single_item(item)
+                new_data[item] = self._concat_single_item(rdata, item)
 
         return new_data
 
@@ -1024,7 +1028,7 @@ class _Concatenator(object):
 
     def _concat_blocks(self, blocks):
         values_list = [b.values for b in blocks if b is not None]
-        concat_values = com._concat_compat(values_list)
+        concat_values = com._concat_compat(values_list, axis=self.axis)
 
         if self.axis > 0:
             # Not safe to remove this check, need to profile
@@ -1049,15 +1053,20 @@ class _Concatenator(object):
 
             return make_block(concat_values, concat_items, self.new_axes[0])
 
-    def _concat_single_item(self, item):
+    def _concat_single_item(self, objs, item):
         all_values = []
         dtypes = set()
-        for obj in self.objs:
-            try:
-                values = obj._data.get(item)
+
+        # le sigh
+        if isinstance(self.objs[0], SparseDataFrame):
+            objs = [x._data for x in self.objs]
+
+        for data, orig in zip(objs, self.objs):
+            if item in orig:
+                values = data.get(item)
                 dtypes.add(values.dtype)
                 all_values.append(values)
-            except KeyError:
+            else:
                 all_values.append(None)
 
         # this stinks
@@ -1071,9 +1080,9 @@ class _Concatenator(object):
             empty_dtype = np.float64
 
         to_concat = []
-        for obj, item_values in zip(self.objs, all_values):
+        for obj, item_values in zip(objs, all_values):
             if item_values is None:
-                shape = obj._data.shape[1:]
+                shape = obj.shape[1:]
                 missing_arr = np.empty(shape, dtype=empty_dtype)
                 missing_arr.fill(np.nan)
                 to_concat.append(missing_arr)

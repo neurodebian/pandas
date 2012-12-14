@@ -240,11 +240,16 @@ class _NDFrameIndexer(object):
     def _multi_take(self, tup):
         from pandas.core.frame import DataFrame
         from pandas.core.panel import Panel
+        from pandas.core.panel4d import Panel4D
 
         if isinstance(self.obj, DataFrame):
             index = self._convert_for_reindex(tup[0], axis=0)
             columns = self._convert_for_reindex(tup[1], axis=1)
             return self.obj.reindex(index=index, columns=columns)
+        elif isinstance(self.obj, Panel4D):
+            conv = [self._convert_for_reindex(x, axis=i)
+                    for i, x in enumerate(tup)]
+            return self.obj.reindex(labels=tup[0],items=tup[1], major=tup[2], minor=tup[3])
         elif isinstance(self.obj, Panel):
             conv = [self._convert_for_reindex(x, axis=i)
                     for i, x in enumerate(tup)]
@@ -281,7 +286,7 @@ class _NDFrameIndexer(object):
                 # slices are unhashable
                 pass
             except Exception, e1:
-                if isinstance(tup[0], slice):
+                if isinstance(tup[0], (slice, Index)):
                     raise IndexingError
                 try:
                     loc = ax0.get_loc(tup[0])
@@ -358,7 +363,8 @@ class _NDFrameIndexer(object):
                 return self.obj.reindex_axis(keys, axis=axis, level=level)
             except AttributeError:
                 # Series
-                assert(axis == 0)
+                if axis != 0:
+                    raise AssertionError('axis must be 0')
                 return self.obj.reindex(keys, level=level)
 
         if com._is_bool_indexer(key):

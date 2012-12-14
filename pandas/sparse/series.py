@@ -14,7 +14,7 @@ from pandas.core.common import isnull
 from pandas.core.index import Index, _ensure_index
 from pandas.core.series import Series, TimeSeries, _maybe_match_name
 from pandas.core.frame import DataFrame
-import pandas.core.common as common
+import pandas.core.common as com
 import pandas.core.datetools as datetools
 
 from pandas.util import py3compat
@@ -104,19 +104,7 @@ class SparseSeries(SparseArray, Series):
             data = Series(data)
             values, sparse_index = make_sparse(data, kind=kind,
                                                fill_value=fill_value)
-        elif np.isscalar(data):  # pragma: no cover
-            if index is None:
-                raise Exception('must pass index!')
-
-            values = np.empty(len(index))
-            values.fill(data)
-
-            # TODO: more efficient
-
-            values, sparse_index = make_sparse(values, kind=kind,
-                                               fill_value=fill_value)
-
-        else:
+        elif isinstance(data, (tuple, list, np.ndarray)):
             # array-like
             if sparse_index is None:
                 values, sparse_index = make_sparse(data, kind=kind,
@@ -124,9 +112,30 @@ class SparseSeries(SparseArray, Series):
             else:
                 values = data
                 assert(len(values) == sparse_index.npoints)
+        else:
+            if index is None:
+                raise Exception('must pass index!')
+
+            length = len(index)
+
+            if data == fill_value or (isnull(data)
+                    and isnull(fill_value)):
+                if kind == 'block':
+                    sparse_index = BlockIndex(length, [], [])
+                else:
+                    sparse_index = IntIndex(length, [])
+                values = np.array([])
+            else:
+                if kind == 'block':
+                    locs, lens = ([0], [length]) if length else ([], [])
+                    sparse_index = BlockIndex(length, locs, lens)
+                else:
+                    sparse_index = IntIndex(length, index)
+                values = np.empty(length)
+                values.fill(data)
 
         if index is None:
-            index = Index(np.arange(sparse_index.length))
+            index = com._default_index(sparse_index.length)
         index = _ensure_index(index)
 
         # Create array, do *not* copy data by default
@@ -145,6 +154,10 @@ class SparseSeries(SparseArray, Series):
         output.index = index
         output.name = name
         return output
+
+    def _make_time_series(self):
+        # oh boy #2139
+        self.__class__ = SparseTimeSeries
 
     @classmethod
     def from_array(cls, arr, index=None, name=None, copy=False,fill_value=None):
@@ -363,6 +376,10 @@ to sparse
         else:
             return Series(self.values, index=self.index, name=self.name)
 
+    @property
+    def density(self):
+        return float(len(self.sp_index)) / len(self.index)
+
     def astype(self, dtype=None):
         """
 
@@ -412,7 +429,7 @@ to sparse
 
         new_index, fill_vec = self.index.reindex(index, method=method,
                                                  limit=limit)
-        new_values = common.take_1d(self.values, fill_vec)
+        new_values = com.take_1d(self.values, fill_vec)
         return SparseSeries(new_values, index=new_index,
                             fill_value=self.fill_value, name=self.name)
 
@@ -438,7 +455,7 @@ to sparse
                             fill_value=self.fill_value)
 
     @Appender(Series.fillna.__doc__)
-    def fillna(self, value=None, method='pad', inplace=False, limit=None):
+    def fillna(self, value=None, method=None, inplace=False, limit=None):
         dense = self.to_dense()
         filled = dense.fillna(value=value, method=method, limit=limit)
         result = filled.to_sparse(kind=self.kind,

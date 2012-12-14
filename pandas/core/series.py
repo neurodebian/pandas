@@ -29,10 +29,14 @@ import pandas.core.datetools as datetools
 import pandas.core.format as fmt
 import pandas.core.generic as generic
 import pandas.core.nanops as nanops
-import pandas.lib as lib
 from pandas.util.decorators import Appender, Substitution, cache_readonly
 
+import pandas.lib as lib
+import pandas.tslib as tslib
+import pandas.index as _index
+
 from pandas.compat.scipy import scoreatpercentile as _quantile
+from pandas.core.config import get_option
 
 __all__ = ['Series', 'TimeSeries']
 
@@ -126,16 +130,20 @@ def _comp_method(op, name):
 
         if isinstance(other, Series):
             name = _maybe_match_name(self, other)
+            if len(self) != len(other):
+                raise ValueError('Series lengths must match to compare')
             return Series(na_op(self.values, other.values),
                           index=self.index, name=name)
         elif isinstance(other, DataFrame):  # pragma: no cover
             return NotImplemented
         elif isinstance(other, np.ndarray):
+            if len(self) != len(other):
+                raise ValueError('Lengths must match to compare')
             return Series(na_op(self.values, np.asarray(other)),
                           index=self.index, name=self.name)
         else:
             values = self.values
-            other = lib.convert_scalar(values, other)
+            other = _index.convert_scalar(values, other)
 
             if issubclass(values.dtype.type, np.datetime64):
                 values = values.view('i8')
@@ -360,6 +368,10 @@ class Series(np.ndarray, generic.PandasObject):
 
         return subarr
 
+    def _make_time_series(self):
+        # oh boy #2139
+        self.__class__ = TimeSeries
+
     @classmethod
     def from_array(cls, arr, index=None, name=None, copy=False):
         """
@@ -562,6 +574,56 @@ copy : boolean, default False
         except Exception:
             return self.values[indexer]
 
+    def where(self, cond, other=nan, inplace=False):
+        """
+        Return a Series where cond is True; otherwise values are from other
+
+        Parameters
+        ----------
+        cond: boolean Series or array
+        other: scalar or Series
+
+        Returns
+        -------
+        wh: Series
+        """
+        if isinstance(cond, Series):
+            cond = cond.reindex(self.index, fill_value=True)
+        if not hasattr(cond, 'shape'):
+            raise ValueError('where requires an ndarray like object for its '
+                             'condition')
+        if len(cond) != len(self):
+            raise ValueError('condition must have same length as series')
+
+        ser = self if inplace else self.copy()
+        if not isinstance(other, (list, tuple, np.ndarray)):
+            ser._set_with(~cond, other)
+            return None if inplace else ser
+
+        if isinstance(other, Series):
+            other = other.reindex(ser.index)
+        if len(other) != len(ser):
+            raise ValueError('Length of replacements must equal series length')
+
+        np.putmask(ser, ~cond, other)
+
+        return None if inplace else ser
+
+    def mask(self, cond):
+        """
+        Returns copy of self whose values are replaced with nan if the
+        inverted condition is True
+
+        Parameters
+        ----------
+        cond: boolean Series or array
+
+        Returns
+        -------
+        wh: Series
+        """
+        return self.where(~cond, nan)
+
     def __setitem__(self, key, value):
         try:
             try:
@@ -642,7 +704,7 @@ copy : boolean, default False
 
     def _set_values(self, key, value):
         values = self.values
-        values[key] = lib.convert_scalar(values, value)
+        values[key] = _index.convert_scalar(values, value)
 
     # help out SparseSeries
     _get_val_at = ndarray.__getitem__
@@ -686,6 +748,19 @@ copy : boolean, default False
         """
         casted = com._astype_nansafe(self.values, dtype)
         return self._constructor(casted, index=self.index, name=self.name)
+
+    def convert_objects(self, convert_dates=True):
+        """
+        Attempt to infer better dtype
+
+        Returns
+        -------
+        converted : Series
+        """
+        if self.dtype == np.object_:
+            return Series(lib.maybe_convert_objects(
+                    self, convert_datetime=convert_dates), self.index)
+        return self
 
     def repeat(self, reps):
         """
@@ -738,7 +813,7 @@ copy : boolean, default False
         value : scalar (int) or Series (slice, sequence)
         """
         try:
-            return lib.get_value_at(self, i)
+            return _index.get_value_at(self, i)
         except IndexError:
             raise
         except:
@@ -749,7 +824,7 @@ copy : boolean, default False
                 if isinstance(label, Index):
                     return self.reindex(label)
                 else:
-                    return lib.get_value_at(self, i)
+                    return _index.get_value_at(self, i)
 
     iget = iget_value
     irow = iget_value
@@ -832,10 +907,13 @@ copy : boolean, default False
                 self.index = new_index
                 # set name if it was passed, otherwise, keep the previous name
                 self.name = name or self.name
-                return self
+                return
             else:
                 return Series(self.values.copy(), index=new_index,
                               name=self.name)
+        elif inplace:
+            raise TypeError('Cannot reset_index inplace on a Series '
+                            'to create a DataFrame')
         else:
             from pandas.core.frame import DataFrame
             if name is None:
@@ -845,11 +923,38 @@ copy : boolean, default False
 
             return df.reset_index(level=level, drop=drop)
 
-    def __repr__(self):
-        """Clean string representation of a Series"""
+
+    def __str__(self):
+        """
+        Return a string representation for a particular DataFrame
+
+        Invoked by str(df) in both py2/py3.
+        Yields Bytestring in Py2, Unicode String in py3.
+        """
+
+        if py3compat.PY3:
+            return self.__unicode__()
+        return self.__bytes__()
+
+    def __bytes__(self):
+        """
+        Return a string representation for a particular DataFrame
+
+        Invoked by bytes(df) in py3 only.
+        Yields a bytestring in both py2/py3.
+        """
+        encoding = com.get_option("print.encoding")
+        return self.__unicode__().encode(encoding , 'replace')
+
+    def __unicode__(self):
+        """
+        Return a string representation for a particular DataFrame
+
+        Invoked by unicode(df) in py2 only. Yields a Unicode String in both py2/py3.
+        """
         width, height = get_terminal_size()
-        max_rows = (height if fmt.print_config.max_rows == 0
-                    else fmt.print_config.max_rows)
+        max_rows = (height if get_option("print.max_rows") == 0
+                    else get_option("print.max_rows"))
         if len(self.index) > (max_rows or 1000):
             result = self._tidy_repr(min(30, max_rows - 4))
         elif len(self.index) > 0:
@@ -857,13 +962,24 @@ copy : boolean, default False
                                     length=len(self) > 50,
                                     name=True)
         else:
-            result = '%s' % ndarray.__repr__(self)
+            result = com.pprint_thing(self)
 
-        if py3compat.PY3:
-            return unicode(result)
-        return com.console_encode(result)
+        assert type(result) == unicode
+        return result
+
+    def __repr__(self):
+        """
+        Return a string representation for a particular Series
+
+        Yields Bytestring in Py2, Unicode String in py3.
+        """
+        return str(self)
 
     def _tidy_repr(self, max_vals=20):
+        """
+
+        Internal function, should always return unicode string
+        """
         num = max_vals // 2
         head = self[:num]._get_repr(print_header=True, length=False,
                                     name=False)
@@ -871,11 +987,13 @@ copy : boolean, default False
                                                   length=False,
                                                   name=False)
         result = head + '\n...\n' + tail
-        return '%s\n%s' % (result, self._repr_footer())
+        result = '%s\n%s' % (result, self._repr_footer())
+
+        return unicode(result)
 
     def _repr_footer(self):
-        namestr = "Name: %s, " % com.pprint_thing(self.name) if self.name is not None else ""
-        return '%sLength: %d' % (namestr, len(self))
+        namestr = u"Name: %s, " % com.pprint_thing(self.name) if self.name is not None else ""
+        return u'%sLength: %d' % (namestr, len(self))
 
     def to_string(self, buf=None, na_rep='NaN', float_format=None,
                   nanRep=None, length=False, name=False):
@@ -908,6 +1026,9 @@ copy : boolean, default False
 
         the_repr = self._get_repr(float_format=float_format, na_rep=na_rep,
                                   length=length, name=name)
+
+        assert type(the_repr) == unicode
+
         if buf is None:
             return the_repr
         else:
@@ -915,13 +1036,17 @@ copy : boolean, default False
 
     def _get_repr(self, name=False, print_header=False, length=True,
                   na_rep='NaN', float_format=None):
+        """
+
+        Internal function, should always return unicode string
+        """
+
         formatter = fmt.SeriesFormatter(self, name=name, header=print_header,
                                         length=length, na_rep=na_rep,
                                         float_format=float_format)
-        return formatter.to_string()
-
-    def __str__(self):
-        return repr(self)
+        result = formatter.to_string()
+        assert type(result) == unicode
+        return result
 
     def __iter__(self):
         if np.issubdtype(self.dtype, np.datetime64):
@@ -1020,6 +1145,15 @@ copy : boolean, default False
         """
         return Series(self.values.copy(order), index=self.index,
                       name=self.name)
+
+    def tolist(self):
+        """
+        Convert Series to a nested list
+        Overrides numpy.ndarray.tolist
+        """
+        if com.is_datetime64_dtype(self):
+            return self.astype(object).values.tolist()
+        return self.values.tolist()
 
     def to_dict(self):
         """
@@ -1130,6 +1264,39 @@ copy : boolean, default False
         nunique : int
         """
         return len(self.value_counts())
+
+    def drop_duplicates(self, take_last=False):
+        """
+        Return Series with duplicate values removed
+
+        Parameters
+        ----------
+        take_last : boolean, default False
+            Take the last observed index in a group. Default first
+
+        Returns
+        -------
+        deduplicated : Series
+        """
+        duplicated = self.duplicated(take_last=take_last)
+        return self[-duplicated]
+
+    def duplicated(self, take_last=False):
+        """
+        Return boolean Series denoting duplicate values
+
+        Parameters
+        ----------
+        take_last : boolean, default False
+            Take the last observed index in a group. Default first
+
+        Returns
+        -------
+        duplicated : Series
+        """
+        keys = com._ensure_object(self.values)
+        duplicated = lib.duplicated(keys, take_last=take_last)
+        return Series(duplicated, index=self.index, name=self.name)
 
     sum = _make_stat_func(nanops.nansum, 'sum', 'sum')
     mean = _make_stat_func(nanops.nanmean, 'mean', 'mean')
@@ -1463,7 +1630,8 @@ copy : boolean, default False
 
         return Series(data, index=names)
 
-    def corr(self, other, method='pearson'):
+    def corr(self, other, method='pearson',
+             min_periods=None):
         """
         Compute correlation two Series, excluding missing values
 
@@ -1474,21 +1642,29 @@ copy : boolean, default False
             pearson : standard correlation coefficient
             kendall : Kendall Tau correlation coefficient
             spearman : Spearman rank correlation
+        min_periods : int, optional
+            Minimum number of observations needed to have a valid result
+
 
         Returns
         -------
         correlation : float
         """
         this, other = self.align(other, join='inner', copy=False)
-        return nanops.nancorr(this.values, other.values, method=method)
+        if len(this) == 0:
+            return np.nan
+        return nanops.nancorr(this.values, other.values, method=method,
+                              min_periods=min_periods)
 
-    def cov(self, other):
+    def cov(self, other, min_periods=None):
         """
         Compute covariance with Series, excluding missing values
 
         Parameters
         ----------
         other : Series
+        min_periods : int, optional
+            Minimum number of observations needed to have a valid result
 
         Returns
         -------
@@ -1499,7 +1675,8 @@ copy : boolean, default False
         this, other = self.align(other, join='inner')
         if len(this) == 0:
             return np.nan
-        return nanops.nancov(this.values, other.values)
+        return nanops.nancov(this.values, other.values,
+                             min_periods=min_periods)
 
     def diff(self, periods=1):
         """
@@ -1514,8 +1691,8 @@ copy : boolean, default False
         -------
         diffed : Series
         """
-        result = com.diff(self.values[:, np.newaxis], periods)
-        return Series(result.squeeze(), self.index, name=self.name)
+        result = com.diff(self.values, periods)
+        return Series(result, self.index, name=self.name)
 
     def autocorr(self):
         """
@@ -1623,7 +1800,8 @@ copy : boolean, default False
         -------
         combined : Series
         """
-        assert(isinstance(other, Series))
+        if not isinstance(other, Series):
+            raise AssertionError('Other operand must be Series')
 
         new_index = self.index
         this = self
@@ -2038,8 +2216,9 @@ copy : boolean, default False
 
     def apply(self, func, convert_dtype=True, args=(), **kwds):
         """
-        Invoke function on values of Series. Can be ufunc or Python function
-        expecting only single values
+        Invoke function on values of Series. Can be ufunc (a NumPy function
+        that applies to the entire Series) or a Python function that only works
+        on single values
 
         Parameters
         ----------
@@ -2054,26 +2233,25 @@ copy : boolean, default False
 
         Returns
         -------
-        y : Series
+        y : Series or DataFrame if func returns a Series
         """
         if kwds or args and not isinstance(func, np.ufunc):
             f = lambda x: func(x, *args, **kwds)
         else:
             f = func
 
-        try:
-            result = f(self)
-            if isinstance(result, np.ndarray):
-                result = Series(result, index=self.index, name=self.name)
-            else:
-                raise ValueError('Must yield array')
-            return result
-        except Exception:
-            mapped = lib.map_infer(self.values, f, convert=convert_dtype)
+        if isinstance(f, np.ufunc):
+            return f(self)
+
+        mapped = lib.map_infer(self.values, f, convert=convert_dtype)
+        if isinstance(mapped[0], Series):
+            from pandas.core.frame import DataFrame
+            return DataFrame(mapped.tolist(), index=self.index)
+        else:
             return Series(mapped, index=self.index, name=self.name)
 
     def align(self, other, join='outer', level=None, copy=True,
-              fill_value=None, method=None, inplace=False, limit=None):
+              fill_value=None, method=None, limit=None):
         """
         Align two Series object with the specified join method
 
@@ -2217,7 +2395,7 @@ copy : boolean, default False
 
     truncate = generic.truncate
 
-    def fillna(self, value=None, method='pad', inplace=False,
+    def fillna(self, value=None, method=None, inplace=False,
                limit=None):
         """
         Fill NA/NaN values using the specified method
@@ -2246,15 +2424,17 @@ copy : boolean, default False
         filled : Series
         """
         if not self._can_hold_na:
-            return self.copy() if not inplace else self
+            return self.copy() if not inplace else None
 
         if value is not None:
+            if method is not None:
+                raise ValueError('Cannot specify both a fill value and method')
             result = self.copy() if not inplace else self
             mask = isnull(self.values)
             np.putmask(result, mask, value)
         else:
             if method is None:  # pragma: no cover
-                raise ValueError('must specify a fill method')
+                raise ValueError('must specify a fill method or value')
 
             fill_f = _get_fill_func(method)
 
@@ -2270,7 +2450,13 @@ copy : boolean, default False
             else:
                 result = Series(values, index=self.index, name=self.name)
 
-        return result
+        return result if not inplace else None
+
+    def ffill(self, inplace=False, limit=None):
+        return self.fillna(method='ffill', inplace=inplace, limit=limit)
+
+    def bfill(self, inplace=False, limit=None):
+        return self.fillna(method='bfill', inplace=inplace, limit=limit)
 
     def replace(self, to_replace, value=None, method='pad', inplace=False,
                 limit=None):
@@ -2311,7 +2497,6 @@ copy : boolean, default False
         def _rep_one(s, to_rep, v):  # replace single value
             mask = com.mask_missing(s.values, to_rep)
             np.putmask(s.values, mask, v)
-            return s
 
         def _rep_dict(rs, to_rep):  # replace {[src] -> dest}
 
@@ -2332,26 +2517,24 @@ copy : boolean, default False
             else:  # if no risk of clobbering then simple
                 for d, sset in dd.iteritems():
                     _rep_one(rs, sset, d)
-            return rs
 
         if np.isscalar(to_replace):
             to_replace = [to_replace]
 
         if isinstance(to_replace, dict):
-            return _rep_dict(result, to_replace)
-
-        if isinstance(to_replace, (list, np.ndarray)):
+            _rep_dict(result, to_replace)
+        elif isinstance(to_replace, (list, np.ndarray)):
 
             if isinstance(value, (list, np.ndarray)):  # check same length
                 vl, rl = len(value), len(to_replace)
                 if vl == rl:
-                    return _rep_dict(result, dict(zip(to_replace, value)))
-                raise ValueError('Got %d to replace but %d values' % (rl, vl))
+                    _rep_dict(result, dict(zip(to_replace, value)))
+                else:
+                    raise ValueError('Got %d to replace but %d values'
+                                     % (rl, vl))
 
             elif value is not None:  # otherwise all replaced with same value
-
-                return _rep_one(result, to_replace, value)
-
+                _rep_one(result, to_replace, value)
             else:  # method
                 if method is None:  # pragma: no cover
                     raise ValueError('must specify a fill method')
@@ -2363,10 +2546,11 @@ copy : boolean, default False
                 if not inplace:
                     result = Series(result.values, index=self.index,
                                     name=self.name)
-                return result
+        else:
+            raise ValueError('Unrecognized to_replace type %s' %
+                             type(to_replace))
 
-        raise ValueError('Unrecognized to_replace type %s' %
-                         type(to_replace))
+        return result if not inplace else None
 
     def isin(self, values):
         """
@@ -2440,7 +2624,7 @@ copy : boolean, default False
         df = DataFrame.from_csv(path, header=header, index_col=index_col,
                                 sep=sep, parse_dates=parse_dates,
                                 encoding=encoding)
-        result = df.ix[:, 0]
+        result = df.icol(0)
         result.index.name = result.name = None
         return result
 
@@ -2714,7 +2898,7 @@ copy : boolean, default False
         result = self if inplace else self.copy()
         result.index = [mapper_f(x) for x in self.index]
 
-        return result
+        return result if not inplace else None
 
     @property
     def weekday(self):
@@ -2823,7 +3007,7 @@ def _sanitize_array(data, index, dtype=None, copy=False,
                     not com.is_datetime64_dtype(dtype)):
                     if dtype == object:
                         ints = np.asarray(data).view('i8')
-                        subarr = lib.ints_to_pydatetime(ints)
+                        subarr = tslib.ints_to_pydatetime(ints)
                     elif raise_cast_failure:
                         raise TypeError('Cannot cast datetime64 to %s' % dtype)
                 else:

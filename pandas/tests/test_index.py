@@ -25,7 +25,7 @@ import pandas as pd
 from pandas.lib import Timestamp
 
 class TestIndex(unittest.TestCase):
-
+    _multiprocess_can_split_ = True
     def setUp(self):
         self.unicodeIndex = tm.makeUnicodeIndex(100)
         self.strIndex = tm.makeStringIndex(100)
@@ -509,7 +509,7 @@ class TestIndex(unittest.TestCase):
         self.assert_(not isinstance(res, Index))
 
 class TestInt64Index(unittest.TestCase):
-
+    _multiprocess_can_split_ = True
     def setUp(self):
         self.index = Int64Index(np.arange(0, 20, 2))
 
@@ -849,10 +849,30 @@ class TestInt64Index(unittest.TestCase):
 
     def test_print_unicode_columns(self):
         df=pd.DataFrame({u"\u05d0":[1,2,3],"\u05d1":[4,5,6],"c":[7,8,9]})
-        print(df.columns) # should not raise UnicodeDecodeError
+        repr(df.columns) # should not raise UnicodeDecodeError
+
+    def test_repr_summary(self):
+        r = repr(pd.Index(np.arange(10000)))
+        self.assertTrue(len(r) < 100)
+        self.assertTrue( "..." in r)
+
+    def test_unicode_string_with_unicode(self):
+        idx = Index(range(1000))
+
+        if py3compat.PY3:
+            str(idx)
+        else:
+            unicode(idx)
+
+    def test_bytestring_with_unicode(self):
+        idx = Index(range(1000))
+        if py3compat.PY3:
+            bytes(idx)
+        else:
+            str(idx)
 
 class TestMultiIndex(unittest.TestCase):
-
+    _multiprocess_can_split_ = True
     def setUp(self):
         major_axis = Index(['foo', 'bar', 'baz', 'qux'])
         minor_axis = Index(['one', 'two'])
@@ -1299,6 +1319,11 @@ class TestMultiIndex(unittest.TestCase):
         self.assertEqual(result[3], '1  0  0  0')
 
     def test_format_sparse_config(self):
+        import warnings
+        warn_filters = warnings.filters
+        warnings.filterwarnings('ignore',
+                                category=FutureWarning,
+                                module=".*format")
         # #1538
         pd.set_printoptions(multi_sparse=False)
 
@@ -1306,6 +1331,8 @@ class TestMultiIndex(unittest.TestCase):
         self.assertEqual(result[1], 'foo  two')
 
         pd.reset_printoptions()
+
+        warnings.filters = warn_filters
 
     def test_bounds(self):
         self.index._bounds
@@ -1451,7 +1478,8 @@ class TestMultiIndex(unittest.TestCase):
         self.assert_(len(result) == 0)
 
         # raise Exception called with non-MultiIndex
-        self.assertRaises(Exception, first.diff, first._tuple_index)
+        result = first.diff(first._tuple_index)
+        self.assertTrue(result.equals(first[:0]))
 
     def test_from_tuples(self):
         self.assertRaises(Exception, MultiIndex.from_tuples, [])
@@ -1679,6 +1707,24 @@ class TestMultiIndex(unittest.TestCase):
         d={"a":[u"\u05d0",2,3],"b":[4,5,6],"c":[7,8,9]}
         index=pd.DataFrame(d).set_index(["a","b"]).index
         self.assertFalse("\\u" in repr(index)) # we don't want unicode-escaped
+
+    def test_unicode_string_with_unicode(self):
+        d={"a":[u"\u05d0",2,3],"b":[4,5,6],"c":[7,8,9]}
+        idx=pd.DataFrame(d).set_index(["a","b"]).index
+
+        if py3compat.PY3:
+            str(idx)
+        else:
+            unicode(idx)
+
+    def test_bytestring_with_unicode(self):
+        d={"a":[u"\u05d0",2,3],"b":[4,5,6],"c":[7,8,9]}
+        idx=pd.DataFrame(d).set_index(["a","b"]).index
+
+        if py3compat.PY3:
+            bytes(idx)
+        else:
+            str(idx)
 
 def test_get_combined_index():
     from pandas.core.index import _get_combined_index

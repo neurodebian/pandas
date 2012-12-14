@@ -2,12 +2,8 @@
 
 __docformat__ = 'restructuredtext'
 
-from datetime import datetime
-
-import numpy as np
-
 try:
-    import pandas.lib as lib
+    from . import hashtable, tslib, lib
 except Exception:  # pragma: no cover
     import sys
     e = sys.exc_info()[1] # Py25 and Py3 current exception syntax conflict
@@ -19,8 +15,14 @@ except Exception:  # pragma: no cover
     else:
         raise
 
+from datetime import datetime
+import numpy as np
+
 from pandas.version import version as __version__
 from pandas.info import __doc__
+
+# let init-time option registration happen
+import pandas.core.config_init
 
 from pandas.core.api import *
 from pandas.sparse.api import *
@@ -38,3 +40,4 @@ from pandas.tools.merge import merge, concat, ordered_merge
 from pandas.tools.pivot import pivot_table, crosstab
 from pandas.tools.plotting import scatter_matrix, plot_params
 from pandas.tools.tile import cut, qcut
+from pandas.core.reshape import melt

@@ -294,20 +294,9 @@ def is_period_array(ndarray[object] values):
             return False
     return True
 
-def extract_ordinals(ndarray[object] values, freq):
-    cdef:
-        Py_ssize_t i, n = len(values)
-        ndarray[int64_t] ordinals = np.empty(n, dtype=np.int64)
-        object p
 
-    for i in range(n):
-        p = values[i]
-        ordinals[i] = p.ordinal
-        if p.freq != freq:
-            raise ValueError("%s is wrong freq" % p)
-
-    return ordinals
-
+cdef extern from "parse_helper.h":
+    inline int floatify(object, double *result) except -1
 
 
 def maybe_convert_numeric(ndarray[object] values, set na_values,
@@ -355,10 +344,12 @@ def maybe_convert_numeric(ndarray[object] values, set na_values,
             complexes[i] = val
             seen_complex = 1
         else:
-            status = util.floatify(val, &fval)
+            status = floatify(val, &fval)
             floats[i] = fval
             if not seen_float:
                 if '.' in val or fval == INF or fval == NEGINF:
+                    seen_float = 1
+                elif 'inf' in val:  # special case to handle +/-inf
                     seen_float = 1
                 else:
                     ints[i] = <int64_t> fval
@@ -418,7 +409,7 @@ def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
             seen_float = 1
         elif util.is_datetime64_object(val):
             if convert_datetime:
-                idatetimes[i] = convert_to_tsobject(val).value
+                idatetimes[i] = convert_to_tsobject(val, None).value
                 seen_datetime = 1
             else:
                 seen_object = 1
@@ -435,7 +426,7 @@ def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
         elif PyDateTime_Check(val) or util.is_datetime64_object(val):
             if convert_datetime:
                 seen_datetime = 1
-                idatetimes[i] = convert_to_tsobject(val).value
+                idatetimes[i] = convert_to_tsobject(val, None).value
             else:
                 seen_object = 1
         elif try_float and not util.is_string_object(val):
@@ -541,7 +532,10 @@ def try_parse_dates(ndarray[object] values, parser=None,
         # EAFP here
         try:
             for i from 0 <= i < n:
-                result[i] = parse_date(values[i])
+                if values[i] == '':
+                    result[i] = np.nan
+                else:
+                    result[i] = parse_date(values[i])
         except Exception:
             # failed
             return values
@@ -550,7 +544,10 @@ def try_parse_dates(ndarray[object] values, parser=None,
 
         try:
             for i from 0 <= i < n:
-                result[i] = parse_date(values[i])
+                if values[i] == '':
+                    result[i] = np.nan
+                else:
+                    result[i] = parse_date(values[i])
         except Exception:
             # raise if passed parser and it failed
             raise
@@ -625,13 +622,18 @@ def try_parse_year_month_day(ndarray[object] years, ndarray[object] months,
 
     return result
 
-def try_parse_datetime_components(ndarray[object] years, ndarray[object] months,
-    ndarray[object] days, ndarray[object] hours, ndarray[object] minutes,
-    ndarray[object] seconds):
+def try_parse_datetime_components(ndarray[object] years,
+                                  ndarray[object] months,
+                                  ndarray[object] days,
+                                  ndarray[object] hours,
+                                  ndarray[object] minutes,
+                                  ndarray[object] seconds):
 
     cdef:
         Py_ssize_t i, n
         ndarray[object] result
+        int secs
+        double micros
 
     from datetime import datetime
 
@@ -642,8 +644,15 @@ def try_parse_datetime_components(ndarray[object] years, ndarray[object] months,
     result = np.empty(n, dtype='O')
 
     for i from 0 <= i < n:
+        secs = int(seconds[i])
+
+        micros = seconds[i] - secs
+        if micros > 0:
+            micros = micros * 1000000
+
         result[i] = datetime(int(years[i]), int(months[i]), int(days[i]),
-                             int(hours[i]), int(minutes[i]), int(seconds[i]))
+                             int(hours[i]), int(minutes[i]), secs,
+                             int(micros))
 
     return result
 
@@ -670,18 +679,27 @@ def sanitize_objects(ndarray[object] values, set na_values,
 
     return na_count
 
-def maybe_convert_bool(ndarray[object] arr):
+def maybe_convert_bool(ndarray[object] arr,
+                       true_values=None, false_values=None):
     cdef:
         Py_ssize_t i, n
         ndarray[uint8_t] result
         object val
         set true_vals, false_vals
+        int na_count = 0
 
     n = len(arr)
     result = np.empty(n, dtype=np.uint8)
 
-    true_vals = set(('True', 'TRUE', 'true', 'Yes', 'YES', 'yes'))
-    false_vals = set(('False', 'FALSE', 'false', 'No', 'NO', 'no'))
+    # the defaults
+    true_vals = set(('True', 'TRUE', 'true'))
+    false_vals = set(('False', 'FALSE', 'false'))
+
+    if true_values is not None:
+        true_vals = true_vals | set(true_values)
+
+    if false_values is not None:
+        false_vals = false_vals | set(false_values)
 
     for i from 0 <= i < n:
         val = arr[i]
@@ -695,10 +713,19 @@ def maybe_convert_bool(ndarray[object] arr):
             result[i] = 1
         elif val in false_vals:
             result[i] = 0
+        elif PyFloat_Check(val):
+            result[i] = UINT8_MAX
+            na_count += 1
         else:
             return arr
 
-    return result.view(np.bool_)
+    if na_count > 0:
+        mask = result == UINT8_MAX
+        arr = result.view(np.bool_).astype(object)
+        np.putmask(arr, mask, np.nan)
+        return arr
+    else:
+        return result.view(np.bool_)
 
 
 def map_infer_mask(ndarray arr, object f, ndarray[uint8_t] mask,
@@ -740,6 +767,7 @@ def map_infer_mask(ndarray arr, object f, ndarray[uint8_t] mask,
                                      convert_datetime=0)
 
     return result
+
 def map_infer(ndarray arr, object f, bint convert=1):
     '''
     Substitute for np.vectorize with pandas-friendly dtype inference

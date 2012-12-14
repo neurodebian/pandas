@@ -9,6 +9,7 @@ from pandas.util.decorators import cache_readonly
 import pandas.tseries.offsets as offsets
 import pandas.core.common as com
 import pandas.lib as lib
+import pandas.tslib as tslib
 
 
 class FreqGroup(object):
@@ -22,6 +23,24 @@ class FreqGroup(object):
     FR_MIN = 8000
     FR_SEC = 9000
 
+class Resolution(object):
+
+    RESO_US = 0
+    RESO_SEC = 1
+    RESO_MIN = 2
+    RESO_HR = 3
+    RESO_DAY = 4
+
+    @classmethod
+    def get_str(cls, reso):
+        return {RESO_US : 'microsecond',
+                RESO_SEC : 'second',
+                RESO_MIN : 'minute',
+                RESO_HR : 'hour',
+                RESO_DAY : 'day'}.get(reso, 'day')
+
+def get_reso_string(reso):
+    return Resolution.get_str(reso)
 
 def get_to_timestamp_base(base):
     if base <= FreqGroup.FR_WK:
@@ -339,7 +358,10 @@ for _i, _weekday in enumerate(['MON', 'TUE', 'WED', 'THU', 'FRI']):
         _offset_map[_name] = offsets.WeekOfMonth(week=_iweek, weekday=_i)
         _rule_aliases[_name.replace('-', '@')] = _name
 
-_legacy_reverse_map = dict((v, k) for k, v in _rule_aliases.iteritems())
+# Note that _rule_aliases is not 1:1 (d[BA]==d[A@DEC]), and so traversal
+# order matters when constructing an inverse. we pick one. #2331
+_legacy_reverse_map = dict((v, k) for k, v in
+                           reversed(sorted(_rule_aliases.iteritems())))
 
 # for helping out with pretty-printing and name-lookups
 
@@ -760,7 +782,7 @@ class _FrequencyInferer(object):
 
     @cache_readonly
     def deltas(self):
-        return lib.unique_deltas(self.values)
+        return tslib.unique_deltas(self.values)
 
     @cache_readonly
     def is_unique(self):
@@ -802,7 +824,7 @@ class _FrequencyInferer(object):
 
     @cache_readonly
     def fields(self):
-        return lib.build_field_sarray(self.values)
+        return tslib.build_field_sarray(self.values)
 
     @cache_readonly
     def rep_stamp(self):
@@ -853,11 +875,11 @@ class _FrequencyInferer(object):
     @cache_readonly
     def mdiffs(self):
         nmonths = self.fields['Y'] * 12 + self.fields['M']
-        return lib.unique_deltas(nmonths.astype('i8'))
+        return tslib.unique_deltas(nmonths.astype('i8'))
 
     @cache_readonly
     def ydiffs(self):
-        return lib.unique_deltas(self.fields['Y'].astype('i8'))
+        return tslib.unique_deltas(self.fields['Y'].astype('i8'))
 
     def _infer_daily_rule(self):
         annual_rule = self._get_annual_rule()

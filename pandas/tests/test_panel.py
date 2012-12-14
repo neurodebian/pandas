@@ -22,6 +22,13 @@ from pandas.util.testing import (assert_panel_equal,
 import pandas.core.panel as panelm
 import pandas.util.testing as tm
 
+def _skip_if_no_scipy():
+    try:
+        import scipy.stats
+    except ImportError:
+        raise nose.SkipTest
+
+
 class PanelTests(object):
     panel = None
 
@@ -36,7 +43,7 @@ class PanelTests(object):
         assert_frame_equal(cumsum['ItemA'], self.panel['ItemA'].cumsum())
 
 class SafeForLongAndSparse(object):
-
+    _multiprocess_can_split_ = True
     def test_repr(self):
         foo = repr(self.panel)
 
@@ -143,7 +150,7 @@ class SafeForLongAndSparse(object):
         self.assertRaises(Exception, f, axis=obj.ndim)
 
 class SafeForSparse(object):
-
+    _multiprocess_can_split_ = True
     @classmethod
     def assert_panel_equal(cls, x, y):
         assert_panel_equal(x, y)
@@ -346,7 +353,7 @@ class SafeForSparse(object):
 
 class CheckIndexing(object):
 
-
+    _multiprocess_can_split_ = True
     def test_getitem(self):
         self.assertRaises(Exception, self.panel.__getitem__, 'ItemQ')
 
@@ -635,6 +642,56 @@ class CheckIndexing(object):
         self.assert_((obj.values == 0).all())
         comp(cp.ix[indexer].reindex_like(obj), obj)
 
+    def test_logical_with_nas(self):
+        d = Panel({ 'ItemA' : {'a': [np.nan, False] }, 'ItemB' : { 'a': [True, True] } })
+
+        result = d['ItemA'] | d['ItemB']
+        expected = DataFrame({ 'a' : [np.nan, True] })
+        assert_frame_equal(result, expected)
+
+        result = d['ItemA'].fillna(False) | d['ItemB']
+        expected = DataFrame({ 'a' : [True, True] }, dtype=object)
+        assert_frame_equal(result, expected)
+
+    def test_neg(self):
+        # what to do?
+        assert_panel_equal(-self.panel, -1 * self.panel)
+
+    def test_invert(self):
+        assert_panel_equal(-(self.panel < 0), ~(self.panel <0))
+
+    def test_comparisons(self):
+        p1 = tm.makePanel()
+        p2 = tm.makePanel()
+
+        tp = p1.reindex(items = p1.items + ['foo'])
+        df = p1[p1.items[0]]
+
+        def test_comp(func):
+
+            # versus same index
+            result = func(p1, p2)
+            self.assert_(np.array_equal(result.values,
+                                        func(p1.values, p2.values)))
+
+            # versus non-indexed same objs
+            self.assertRaises(Exception, func, p1, tp)
+
+            # versus different objs
+            self.assertRaises(Exception, func, p1, df)
+
+            # versus scalar
+            result3 = func(self.panel, 0)
+            self.assert_(np.array_equal(result3.values,
+                                        func(self.panel.values, 0)))
+
+        test_comp(operator.eq)
+        test_comp(operator.ne)
+        test_comp(operator.lt)
+        test_comp(operator.gt)
+        test_comp(operator.ge)
+        test_comp(operator.le)
+
     def test_get_value(self):
         for item in self.panel.items:
             for mjr in self.panel.major_axis[::2]:
@@ -659,17 +716,22 @@ class CheckIndexing(object):
         res3 = self.panel.set_value('ItemE', 'foobar', 'baz', 5)
         self.assert_(com.is_float_dtype(res3['ItemE'].values))
 
+_panel = tm.makePanel()
+tm.add_nans(_panel)
+
 class TestPanel(unittest.TestCase, PanelTests, CheckIndexing,
                 SafeForLongAndSparse,
                 SafeForSparse):
-
+    _multiprocess_can_split_ = True
     @classmethod
     def assert_panel_equal(cls,x, y):
         assert_panel_equal(x, y)
 
     def setUp(self):
-        self.panel = tm.makePanel()
-        tm.add_nans(self.panel)
+        self.panel = _panel.copy()
+        self.panel.major_axis.name = None
+        self.panel.minor_axis.name = None
+        self.panel.items.name = None
 
     def test_constructor(self):
         # with BlockManager
@@ -950,6 +1012,15 @@ class TestPanel(unittest.TestCase, PanelTests, CheckIndexing,
         filled = empty.fillna(0)
         assert_panel_equal(filled, empty)
 
+        self.assertRaises(ValueError, self.panel.fillna)
+        self.assertRaises(ValueError, self.panel.fillna, 5, method='ffill')
+
+    def test_ffill_bfill(self):
+        assert_panel_equal(self.panel.ffill(),
+                           self.panel.fillna(method='ffill'))
+        assert_panel_equal(self.panel.bfill(),
+                           self.panel.fillna(method='bfill'))
+
     def test_truncate_fillna_bug(self):
         # #1823
         result = self.panel.truncate(before=None, after=None, axis='items')
@@ -1056,6 +1127,12 @@ class TestPanel(unittest.TestCase, PanelTests, CheckIndexing,
 
         panel = df.to_panel()
         self.assert_(isnull(panel[0].ix[1, [0, 1]]).all())
+
+    def test_to_panel_duplicates(self):
+        # #2441
+        df = DataFrame({'a': [0, 0, 1], 'b': [1, 1, 1], 'c': [1, 2, 3]})
+        idf = df.set_index(['a', 'b'])
+        self.assertRaises(Exception, idf.to_panel)
 
     def test_filter(self):
         pass
@@ -1344,7 +1421,7 @@ class TestLongPanel(unittest.TestCase):
     """
     LongPanel no longer exists, but...
     """
-
+    _multiprocess_can_split_ = True
     def setUp(self):
         panel = tm.makePanel()
         tm.add_nans(panel)

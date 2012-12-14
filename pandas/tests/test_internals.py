@@ -55,6 +55,8 @@ def get_dt_ex(cols=['h']):
 
 class TestBlock(unittest.TestCase):
 
+    _multiprocess_can_split_ = True
+
     def setUp(self):
         self.fblock = get_float_ex()
         self.cblock = get_complex_ex()
@@ -155,22 +157,29 @@ class TestBlock(unittest.TestCase):
         self.assertRaises(Exception, self.fblock.delete, 'b')
 
     def test_split_block_at(self):
-        left, right = self.fblock.split_block_at('a')
-        self.assert_(left is None)
-        self.assert_(np.array_equal(right.items, ['c', 'e']))
+        bs = list(self.fblock.split_block_at('a'))
+        self.assertEqual(len(bs),1)
+        self.assertTrue(np.array_equal(bs[0].items, ['c', 'e']))
 
-        left, right = self.fblock.split_block_at('c')
-        self.assert_(np.array_equal(left.items, ['a']))
-        self.assert_(np.array_equal(right.items, ['e']))
+        bs = list(self.fblock.split_block_at('c'))
+        self.assertEqual(len(bs),2)
+        self.assertTrue(np.array_equal(bs[0].items, ['a']))
+        self.assertTrue(np.array_equal(bs[1].items, ['e']))
 
-        left, right = self.fblock.split_block_at('e')
-        self.assert_(np.array_equal(left.items, ['a', 'c']))
-        self.assert_(right is None)
+        bs = list(self.fblock.split_block_at('e'))
+        self.assertEqual(len(bs),1)
+        self.assertTrue(np.array_equal(bs[0].items, ['a', 'c']))
 
         bblock = get_bool_ex(['f'])
-        left, right = bblock.split_block_at('f')
-        self.assert_(left is None)
-        self.assert_(right is None)
+        bs = list(bblock.split_block_at('f'))
+        self.assertEqual(len(bs),0)
+
+    def test_unicode_repr(self):
+        mat = np.empty((N, 2), dtype=object)
+        mat[:, 0] = 'foo'
+        mat[:, 1] = 'bar'
+        cols = ['b', u"\u05d0"]
+        str_repr = repr(make_block(mat.T, cols, TEST_COLS))
 
     def test_get(self):
         pass
@@ -186,6 +195,8 @@ class TestBlock(unittest.TestCase):
 
 
 class TestBlockManager(unittest.TestCase):
+
+    _multiprocess_can_split_ = True
 
     def setUp(self):
         self.blocks = [get_float_ex(),
@@ -260,6 +271,14 @@ class TestBlockManager(unittest.TestCase):
 
         # share ref_items
         self.assert_(mgr2.blocks[0].ref_items is mgr2.blocks[1].ref_items)
+
+        # GH2431
+        self.assertTrue(hasattr(mgr2,"_is_consolidated"))
+        self.assertTrue(hasattr(mgr2,"_known_consolidated"))
+
+        # reset to False on load
+        self.assertFalse(mgr2._is_consolidated)
+        self.assertFalse(mgr2._known_consolidated)
 
     def test_get(self):
         pass
@@ -422,4 +441,3 @@ if __name__ == '__main__':
     #                exit=False)
     nose.runmodule(argv=[__file__,'-vvs','-x','--pdb', '--pdb-failure'],
                    exit=False)
-

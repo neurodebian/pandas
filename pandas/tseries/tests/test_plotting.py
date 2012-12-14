@@ -18,6 +18,14 @@ from pandas.tseries.resample import DatetimeIndex
 from pandas.util.testing import assert_series_equal
 import pandas.util.testing as tm
 
+
+def _skip_if_no_scipy():
+    try:
+        import scipy
+    except ImportError:
+        raise nose.SkipTest
+
+
 class TestTSPlot(unittest.TestCase):
 
     @classmethod
@@ -530,6 +538,8 @@ class TestTSPlot(unittest.TestCase):
 
     @slow
     def test_secondary_kde(self):
+        _skip_if_no_scipy()
+
         import matplotlib.pyplot as plt
         plt.close('all')
         ser = Series(np.random.randn(10))
@@ -605,6 +615,21 @@ class TestTSPlot(unittest.TestCase):
         ax = low.plot()
         for l in ax.get_lines():
             self.assert_(PeriodIndex(data=l.get_xdata()).freq == 'D')
+
+    @slow
+    def test_mixed_freq_alignment(self):
+        import matplotlib.pyplot as plt
+        ts_ind = date_range('2012-01-01 13:00', '2012-01-02', freq='H')
+        ts_data = np.random.randn(12)
+
+        ts = Series(ts_data, index=ts_ind)
+        ts2 = ts.asfreq('T').interpolate()
+
+        plt.close('all')
+        ax = ts.plot()
+        ts2.plot(style='r')
+
+        self.assert_(ax.lines[0].get_xdata()[0] == ax.lines[1].get_xdata()[0])
 
     @slow
     def test_mixed_freq_lf_first(self):

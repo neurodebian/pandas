@@ -17,7 +17,11 @@ import pandas.util.testing as tm
 from pandas.util.compat import product as cart_product
 import pandas as pd
 
+import pandas.index as _index
+
 class TestMultiLevel(unittest.TestCase):
+
+    _multiprocess_can_split_ = True
 
     def setUp(self):
         index = MultiIndex(levels=[['foo', 'bar', 'baz', 'qux'],
@@ -274,6 +278,34 @@ class TestMultiLevel(unittest.TestCase):
         df.ix[:,:] = 10
         assert_frame_equal(df, result)
 
+    def test_frame_setitem_multi_column(self):
+        df = DataFrame(randn(10, 4), columns=[['a', 'a', 'b', 'b'],
+                                              [0, 1, 0, 1]])
+
+        cp = df.copy()
+        cp['a'] = cp['b']
+        assert_frame_equal(cp['a'], cp['b'])
+
+        # set with ndarray
+        cp = df.copy()
+        cp['a'] = cp['b'].values
+        assert_frame_equal(cp['a'], cp['b'])
+
+        #----------------------------------------
+        # #1803
+        columns = MultiIndex.from_tuples([('A', '1'), ('A', '2'), ('B', '1')])
+        df = DataFrame(index=[1, 3, 5], columns=columns)
+
+        # Works, but adds a column instead of updating the two existing ones
+        df['A'] = 0.0 # Doesn't work
+        self.assertTrue((df['A'].values == 0).all())
+
+        # it broadcasts
+        df['B', '1'] = [1, 2, 3]
+        df['A'] = df['B', '1']
+        assert_almost_equal(df['A', '1'], df['B', '1'])
+        assert_almost_equal(df['A', '2'], df['B', '1'])
+
     def test_getitem_tuple_plus_slice(self):
         # GH #671
         df = DataFrame({'a' : range(10),
@@ -298,6 +330,16 @@ class TestMultiLevel(unittest.TestCase):
         result = df.ix[(2000, 1, 6), ['A', 'B', 'C']]
         expected = df.ix[2000, 1, 6][['A', 'B', 'C']]
         assert_series_equal(result, expected)
+
+    def test_getitem_multilevel_index_tuple_unsorted(self):
+        index_columns = list("abc")
+        df = DataFrame([[0, 1, 0, "x"], [0, 0, 1, "y"]] ,
+                       columns=index_columns + ["data"])
+        df = df.set_index(index_columns)
+        query_index = df.index[:1]
+        rs = df.ix[query_index, "data"]
+        xp = Series(['x'], index=MultiIndex.from_tuples([(0, 1, 0)]))
+        assert_series_equal(rs, xp)
 
     def test_xs(self):
         xs = self.frame.xs(('bar', 'two'))
@@ -549,6 +591,12 @@ x   q   30      3    -0.6662 -0.5243 -0.3580  0.89145  2.5838"""
 
         # preserve names
         self.assertEquals(a_sorted.index.names, self.frame.index.names)
+
+        #inplace
+        rs = self.frame.copy()
+        rs.sortlevel(0, inplace=True)
+        assert_frame_equal(rs, self.frame.sortlevel(0))
+
 
     def test_delevel_infer_dtype(self):
         tuples = [tuple for tuple in cart_product(['foo', 'bar'],
@@ -828,6 +876,38 @@ Thur,Lunch,Yes,51.51,17"""
         applied = grouped.apply(lambda x: x * 2)
         expected = grouped.transform(lambda x: x * 2)
         assert_series_equal(applied.reindex(expected.index), expected)
+
+    def test_unstack_sparse_keyspace(self):
+        # memory problems with naive impl #2278
+        # Generate Long File & Test Pivot
+        NUM_ROWS = 1000
+
+        df = DataFrame({'A' : np.random.randint(100, size=NUM_ROWS),
+                        'B' : np.random.randint(300, size=NUM_ROWS),
+                        'C' : np.random.randint(-7, 7, size=NUM_ROWS),
+                        'D' : np.random.randint(-19,19, size=NUM_ROWS),
+                        'E' : np.random.randint(3000, size=NUM_ROWS),
+                        'F' : np.random.randn(NUM_ROWS)})
+
+        idf = df.set_index(['A', 'B', 'C', 'D', 'E'])
+
+        # it works! is sufficient
+        idf.unstack('E')
+
+    def test_unstack_unobserved_keys(self):
+        # related to #2278 refactoring
+        levels = [[0, 1], [0, 1, 2, 3]]
+        labels = [[0, 0, 1, 1], [0, 2, 0, 2]]
+
+        index = MultiIndex(levels, labels)
+
+        df = DataFrame(np.random.randn(4, 2), index=index)
+
+        result = df.unstack()
+        self.assertEquals(len(result.columns), 4)
+
+        recons = result.stack()
+        assert_frame_equal(recons, df)
 
     def test_groupby_corner(self):
         midx = MultiIndex(levels=[['foo'],['bar'],['baz']],
@@ -1540,9 +1620,8 @@ Thur,Lunch,Yes,51.51,17"""
     def test_indexing_over_hashtable_size_cutoff(self):
         n = 10000
 
-        import pandas.lib as lib
-        old_cutoff = lib._SIZE_CUTOFF
-        lib._SIZE_CUTOFF = 20000
+        old_cutoff = _index._SIZE_CUTOFF
+        _index._SIZE_CUTOFF = 20000
 
         s = Series(np.arange(n),
                    MultiIndex.from_arrays((["a"] * n, np.arange(n))))
@@ -1552,7 +1631,7 @@ Thur,Lunch,Yes,51.51,17"""
         self.assertEquals(s[("a", 6)], 6)
         self.assertEquals(s[("a", 7)], 7)
 
-        lib._SIZE_CUTOFF = old_cutoff
+        _index._SIZE_CUTOFF = old_cutoff
 
     def test_xs_mixed_no_copy(self):
         index = MultiIndex.from_arrays([['a','a', 'b', 'b'], [1,2,1,2]],
@@ -1602,4 +1681,3 @@ if __name__ == '__main__':
     #                exit=False)
     nose.runmodule(argv=[__file__,'-vvs','-x','--pdb', '--pdb-failure'],
                    exit=False)
-

@@ -51,11 +51,15 @@ except ImportError:
 setuptools_kwargs = {}
 if sys.version_info[0] >= 3:
 
+    min_numpy_ver = 1.6
+    if sys.version_info[1] >= 3: # 3.3 needs numpy 1.7+
+        min_numpy_ver = "1.7.0b2"
+
     setuptools_kwargs = {'use_2to3': True,
                          'zip_safe': False,
                          'install_requires': ['python-dateutil >= 2',
                                               'pytz',
-                                              'numpy >= 1.4'],
+                                              'numpy >= %s' % min_numpy_ver],
                          'use_2to3_exclude_fixers': ['lib2to3.fixes.fix_next',
                                                     ],
                         }
@@ -64,21 +68,13 @@ if sys.version_info[0] >= 3:
             "\n$ pip install distribute")
 
 else:
-    if sys.version_info[1] == 5:
-        # dateutil >= 2.1 doesn't work on Python 2.5
-        setuptools_kwargs = {
-            'install_requires': ['python-dateutil < 2',
-                                 'pytz',
-                                 'numpy >= 1.6'],
-            'zip_safe' : False,
-        }
-    else:
-        setuptools_kwargs = {
-            'install_requires': ['python-dateutil',
-                                 'pytz',
-                                 'numpy >= 1.6'],
-            'zip_safe' : False,
-        }
+    setuptools_kwargs = {
+        'install_requires': ['python-dateutil',
+                             'pytz',
+                             'numpy >= 1.6.1'],
+        'zip_safe' : False,
+    }
+
     if not _have_setuptools:
         try:
             import numpy
@@ -97,7 +93,7 @@ except ImportError:
     sys.exit(nonumpy_msg)
 
 if np.__version__ < '1.6.1':
-    msg = "pandas requires NumPy >= 1.6 due to datetime64 dependency"
+    msg = "pandas requires NumPy >= 1.6.1 due to datetime64 dependency"
     sys.exit(msg)
 
 from distutils.extension import Extension
@@ -203,11 +199,11 @@ CLASSIFIERS = [
 ]
 
 MAJOR = 0
-MINOR = 9
-MICRO = 1
+MINOR = 10
+MICRO = 0
 ISRELEASED = True
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
-QUALIFIER = ''
+QUALIFIER = 'b1'
 
 FULLVERSION = VERSION
 if not ISRELEASED:
@@ -257,7 +253,9 @@ class CleanCommand(Command):
         self._clean_trees = []
         self._clean_exclude = ['np_datetime.c',
                                'np_datetime_strings.c',
-                               'period.c']
+                               'period.c',
+                               'tokenizer.c',
+                               'io.c']
 
         for root, dirs, files in list(os.walk('pandas')):
             for f in files:
@@ -292,7 +290,12 @@ class CleanCommand(Command):
 class CheckSDist(sdist):
     """Custom sdist that ensures Cython has compiled all pyx files to c."""
 
-    _pyxfiles = ['pandas/src/tseries.pyx'
+    _pyxfiles = ['pandas/lib.pyx',
+                 'pandas/hashtable.pyx',
+                 'pandas/tslib.pyx',
+                 'pandas/index.pyx',
+                 'pandas/algos.pyx',
+                 'pandas/src/parser.pyx',
                  'pandas/src/sparse.pyx']
 
     def initialize_options(self):
@@ -532,88 +535,118 @@ class DummyBuildSrc(Command):
         pass
 
 cmdclass = {'clean': CleanCommand,
-            'build': build}
+            'build': build,
+            'sdist': CheckSDist}
+
 if cython:
     suffix = '.pyx'
     cmdclass['build_ext'] = build_ext
     if BUILD_CACHE_DIR: # use the cache
         cmdclass['build_ext'] = CachingBuildExt
     cmdclass['cython'] = CythonCommand
-    cmdclass['sdist'] =  CheckSDist
 else:
     suffix = '.c'
     cmdclass['build_src'] = DummyBuildSrc
     cmdclass['build_ext'] =  build_ext
 
-tseries_depends = ['reindex', 'groupby', 'skiplist', 'moments',
-                   'reduce', 'stats', 'datetime',
-                   'hashtable', 'inference', 'properties', 'join', 'engines']
-
-plib_depends = ['plib']
+lib_depends = ['reduce', 'inference', 'properties']
 
 def srcpath(name=None, suffix='.pyx', subdir='src'):
     return pjoin('pandas', subdir, name+suffix)
 
 if suffix == '.pyx':
-    tseries_depends = [srcpath(f, suffix='.pyx')
-                       for f in tseries_depends]
-    tseries_depends.append('pandas/src/util.pxd')
-    plib_depends = [srcpath(f, suffix='.pyx')
-                    for f in plib_depends]
-    plib_depends.append('pandas/src/util.pxd')
+    lib_depends = [srcpath(f, suffix='.pyx') for f in lib_depends]
+    lib_depends.append('pandas/src/util.pxd')
 else:
-    tseries_depends = []
+    lib_depends = []
     plib_depends = []
 
-algos_ext = Extension('pandas._algos',
-                      sources=[srcpath('generated', suffix=suffix)],
-                      include_dirs=[np.get_include()])
+common_include = [np.get_include(), 'pandas/src/klib', 'pandas/src']
 
-lib_depends = tseries_depends + ['pandas/src/numpy_helper.h',
-                                 'pandas/src/datetime/np_datetime.h',
-                                 'pandas/src/datetime/np_datetime_strings.h']
+def pxd(name):
+    return os.path.abspath(pjoin('pandas', name+'.pxd'))
+
+
+lib_depends = lib_depends + ['pandas/src/numpy_helper.h',
+                             'pandas/src/parse_helper.h']
+
+
+tseries_depends = ['pandas/src/datetime/np_datetime.h',
+                   'pandas/src/datetime/np_datetime_strings.h',
+                   'pandas/src/period.h']
+
 
 # some linux distros require it
 libraries = ['m'] if 'win32' not in sys.platform else []
 
-lib_ext = Extension('pandas.lib',
-                    depends=lib_depends,
-                    sources=[srcpath('tseries', suffix=suffix),
-                             'pandas/src/datetime/np_datetime.c',
-                             'pandas/src/datetime/np_datetime_strings.c'],
-                    include_dirs=[np.get_include()],
-                    libraries=libraries,
-                    # pyrex_gdb=True,
-                    # extra_compile_args=['-Wconversion']
-                    )
+ext_data = dict(
+    lib={'pyxfile': 'lib',
+         'pxdfiles': [],
+         'depends': lib_depends},
+    hashtable={'pyxfile': 'hashtable',
+               'pxdfiles': ['hashtable']},
+    tslib={'pyxfile': 'tslib',
+           'depends': tseries_depends,
+           'sources': ['pandas/src/datetime/np_datetime.c',
+                       'pandas/src/datetime/np_datetime_strings.c',
+                       'pandas/src/period.c']},
+    index={'pyxfile': 'index',
+           'sources': ['pandas/src/datetime/np_datetime.c',
+                       'pandas/src/datetime/np_datetime_strings.c']},
+    algos={'pyxfile': 'algos',
+           'depends': [srcpath('generated', suffix='.pyx')]},
+)
+
+extensions = []
+
+for name, data in ext_data.items():
+    sources = [srcpath(data['pyxfile'], suffix=suffix, subdir='')]
+    pxds = [pxd(x) for x in data.get('pxdfiles', [])]
+    if suffix == '.pyx' and pxds:
+        sources.extend(pxds)
+
+    sources.extend(data.get('sources', []))
+
+    include = data.get('include', common_include)
+
+    obj = Extension('pandas.%s' % name,
+                    sources=sources,
+                    depends=data.get('depends', []),
+                    include_dirs=include)
+
+    extensions.append(obj)
+
 
 sparse_ext = Extension('pandas._sparse',
                        sources=[srcpath('sparse', suffix=suffix)],
                        include_dirs=[np.get_include()],
                        libraries=libraries)
 
-period_ext = Extension('pandas._period',
-                       depends=plib_depends + ['pandas/src/numpy_helper.h',
-                                               'pandas/src/period.h'],
-                       sources=[srcpath('plib', suffix=suffix),
-                                'pandas/src/datetime/np_datetime.c',
-                                'pandas/src/period.c'],
-                       include_dirs=[np.get_include()])
 
+parser_ext = Extension('pandas._parser',
+                       depends=['pandas/src/parser/tokenizer.h',
+                                'pandas/src/parser/io.h',
+                                'pandas/src/numpy_helper.h'],
+                       sources=[srcpath('parser', suffix=suffix),
+                                'pandas/src/parser/tokenizer.c',
+                                'pandas/src/parser/io.c',
+                                ],
+                       include_dirs=common_include)
 
 sandbox_ext = Extension('pandas._sandbox',
                         sources=[srcpath('sandbox', suffix=suffix)],
-                        include_dirs=[np.get_include()])
+                        include_dirs=common_include)
+
 
 cppsandbox_ext = Extension('pandas._cppsandbox',
                            language='c++',
                            sources=[srcpath('cppsandbox', suffix=suffix)],
                            include_dirs=[np.get_include()])
 
-extensions = [algos_ext, lib_ext, period_ext, sparse_ext]
+extensions.extend([sparse_ext, parser_ext])
 
-if not ISRELEASED:
-    extensions.extend([sandbox_ext])
+# if not ISRELEASED:
+#     extensions.extend([sandbox_ext])
 
 if suffix == '.pyx' and 'setuptools' in sys.modules:
     # undo dumb setuptools bug clobbering .pyx sources back to .c
@@ -650,6 +683,7 @@ setup(name=DISTNAME,
                 ],
       package_data={'pandas.io' : ['tests/*.h5',
                                    'tests/*.csv',
+                                   'tests/*.txt',
                                    'tests/*.xls',
                                    'tests/*.xlsx',
                                    'tests/*.table'],

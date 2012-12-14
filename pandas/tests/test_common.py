@@ -1,4 +1,3 @@
-from __future__ import with_statement
 from datetime import datetime
 import sys
 
@@ -9,10 +8,14 @@ from pandas import Series, DataFrame, date_range, DatetimeIndex
 from pandas.core.common import notnull, isnull
 import pandas.core.common as com
 import pandas.util.testing as tm
+import pandas.core.config as cf
 
 import numpy as np
 
+from pandas.tslib import iNaT
 from pandas.util import py3compat
+
+_multiprocess_can_split_ = True
 
 def test_is_sequence():
     is_seq=com._is_sequence
@@ -26,20 +29,27 @@ def test_notnull():
     assert notnull(1.)
     assert not notnull(None)
     assert not notnull(np.NaN)
-    assert not notnull(np.inf)
-    assert not notnull(-np.inf)
 
-    float_series = Series(np.random.randn(5))
-    obj_series = Series(np.random.randn(5), dtype=object)
-    assert(isinstance(notnull(float_series), Series))
-    assert(isinstance(notnull(obj_series), Series))
+    with cf.option_context("mode.use_inf_as_null",False):
+        assert notnull(np.inf)
+        assert notnull(-np.inf)
+
+    with cf.option_context("mode.use_inf_as_null",True):
+        assert not notnull(np.inf)
+        assert not notnull(-np.inf)
+
+    with cf.option_context("mode.use_inf_as_null",False):
+        float_series = Series(np.random.randn(5))
+        obj_series = Series(np.random.randn(5), dtype=object)
+        assert(isinstance(notnull(float_series), Series))
+        assert(isinstance(notnull(obj_series), Series))
 
 def test_isnull():
     assert not isnull(1.)
     assert isnull(None)
     assert isnull(np.NaN)
-    assert isnull(np.inf)
-    assert isnull(-np.inf)
+    assert not isnull(np.inf)
+    assert not isnull(-np.inf)
 
     float_series = Series(np.random.randn(5))
     obj_series = Series(np.random.randn(5), dtype=object)
@@ -77,9 +87,8 @@ def test_isnull_datetime():
     idx = date_range('1/1/1990', periods=20)
     assert(notnull(idx).all())
 
-    import pandas.lib as lib
     idx = np.asarray(idx)
-    idx[0] = lib.iNaT
+    idx[0] = iNaT
     idx = DatetimeIndex(idx)
     mask = isnull(idx)
     assert(mask[0])
@@ -117,6 +126,35 @@ def test_iterpairs():
     result = list(com.iterpairs(data))
 
     assert(result == expected)
+
+def test_split_ranges():
+    def _bin(x, width):
+        "return int(x) as a base2 string of given width"
+        return ''.join(str((x>>i)&1) for i in xrange(width-1,-1,-1))
+
+    def test_locs(mask):
+        nfalse = sum(np.array(mask) == 0)
+
+        remaining=0
+        for s, e in com.split_ranges(mask):
+            remaining += e-s
+
+            assert 0 not in mask[s:e]
+
+        # make sure the total items covered by the ranges are a complete cover
+        assert remaining + nfalse == len(mask)
+
+    # exhaustively test all possible mask sequences of length 8
+    ncols=8
+    for i in range(2**ncols):
+        cols=map(int,list(_bin(i,ncols))) # count up in base2
+        mask=[cols[i] == 1 for i in range(len(cols))]
+        test_locs(mask)
+
+    # base cases
+    test_locs([])
+    test_locs([0])
+    test_locs([1])
 
 def test_indent():
     s = 'a b c\nd e f'
@@ -211,7 +249,15 @@ def test_pprint_thing():
     assert(pp_t(('foo',u'\u05d0',(u'\u05d0',u'\u05d0')))==
            u'(foo, \u05d0, (\u05d0, \u05d0))')
 
+
+    # escape embedded tabs in string
+    # GH #2038
+    assert not "\t" in pp_t("a\tb",escape_chars=("\t",))
+
+
 class TestTake(unittest.TestCase):
+
+    _multiprocess_can_split_ = True
 
     def test_1d_with_out(self):
         def _test_dtype(dtype):

@@ -1,5 +1,3 @@
-from __future__ import with_statement
-
 import nose
 import os
 import string
@@ -15,6 +13,14 @@ import numpy as np
 from numpy.testing import assert_array_equal
 from numpy.testing.decorators import slow
 import pandas.tools.plotting as plotting
+
+
+def _skip_if_no_scipy():
+    try:
+        import scipy
+    except ImportError:
+        raise nose.SkipTest
+
 
 class TestSeriesPlots(unittest.TestCase):
 
@@ -134,8 +140,11 @@ class TestSeriesPlots(unittest.TestCase):
         _check_plot_works(self.ts.hist)
         _check_plot_works(self.ts.hist, grid=False)
 
+        _check_plot_works(self.ts.hist, by=self.ts.index.month)
+
     @slow
     def test_kde(self):
+        _skip_if_no_scipy()
         _check_plot_works(self.ts.plot, kind='kde')
         _check_plot_works(self.ts.plot, kind='density')
         ax = self.ts.plot(kind='kde', logy=True)
@@ -214,6 +223,7 @@ class TestDataFramePlots(unittest.TestCase):
 
     @slow
     def test_plot_xy(self):
+        import matplotlib.pyplot as plt
         # columns.inferred_type == 'string'
         df = tm.makeTimeDataFrame()
         self._check_data(df.plot(x=0, y=1),
@@ -232,8 +242,17 @@ class TestDataFramePlots(unittest.TestCase):
         self._check_data(df.plot(x=1), df.set_index(1).plot())
         self._check_data(df.plot(y=1), df[1].plot())
 
+        # figsize and title
+        plt.close('all')
+        ax = df.plot(x=1, y=2, title='Test', figsize=(16, 8))
+
+        self.assert_(ax.title.get_text() == 'Test')
+        self.assert_((np.round(ax.figure.get_size_inches())
+                      == np.array((16., 8.))).all())
+
         # columns.inferred_type == 'mixed'
         # TODO add MultiIndex test
+
 
     @slow
     def test_xcompat(self):
@@ -370,6 +389,7 @@ class TestDataFramePlots(unittest.TestCase):
 
     @slow
     def test_kde(self):
+        _skip_if_no_scipy()
         df = DataFrame(np.random.randn(100, 4))
         _check_plot_works(df.plot, kind='kde')
         _check_plot_works(df.plot, kind='kde', subplots=True)
@@ -425,6 +445,8 @@ class TestDataFramePlots(unittest.TestCase):
 
     @slow
     def test_scatter(self):
+        _skip_if_no_scipy()
+
         df = DataFrame(np.random.randn(100, 4))
         import pandas.tools.plotting as plt
         def scat(**kwds):
@@ -458,6 +480,19 @@ class TestDataFramePlots(unittest.TestCase):
         path = os.path.join(curpath(), 'data/iris.csv')
         df = read_csv(path)
         _check_plot_works(parallel_coordinates, df, 'Name')
+        _check_plot_works(parallel_coordinates, df, 'Name',
+                          colors=('#556270', '#4ECDC4', '#C7F464'))
+        _check_plot_works(parallel_coordinates, df, 'Name',
+                          colors=['dodgerblue', 'aquamarine', 'seagreen'])
+        _check_plot_works(parallel_coordinates, df, 'Name',
+                          colors=('#556270', '#4ECDC4', '#C7F464'))
+        _check_plot_works(parallel_coordinates, df, 'Name',
+                          colors=['dodgerblue', 'aquamarine', 'seagreen'])
+
+        df = read_csv(path, header=None, skiprows=1, names=[1,2,4,8, 'Name'])
+        _check_plot_works(parallel_coordinates, df, 'Name', use_columns=True)
+        _check_plot_works(parallel_coordinates, df, 'Name',
+                          xticks=[1, 5, 25, 125])
 
     @slow
     def test_radviz(self):
@@ -609,10 +644,19 @@ class TestDataFrameGroupByPlots(unittest.TestCase):
 
     @slow
     def test_grouped_hist(self):
-        df = DataFrame(np.random.randn(50, 2), columns=['A', 'B'])
-        df['C'] = np.random.randint(0, 3, 50)
+        import matplotlib.pyplot as plt
+        df = DataFrame(np.random.randn(500, 2), columns=['A', 'B'])
+        df['C'] = np.random.randint(0, 4, 500)
         axes = plotting.grouped_hist(df.A, by=df.C)
         self.assert_(len(axes.ravel()) == 4)
+
+        plt.close('all')
+        axes = df.hist(by=df.C)
+        self.assert_(axes.ndim == 2)
+        self.assert_(len(axes.ravel()) == 4)
+
+        for ax in axes.ravel():
+            self.assert_(len(ax.patches) > 0)
 
 PNG_PATH = 'tmp.png'
 

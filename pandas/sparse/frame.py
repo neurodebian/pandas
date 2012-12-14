@@ -87,12 +87,16 @@ class SparseDataFrame(DataFrame):
 
             if index is None:
                 index = Index([])
+            else:
+                index = _ensure_index(index)
 
             if columns is None:
                 columns = Index([])
             else:
                 for c in columns:
-                    sdict[c] = Series(np.nan, index=index)
+                    sdict[c] = SparseSeries(np.nan, index=index,
+                                            kind=self.default_kind,
+                                            fill_value=self.default_fill_value)
 
         self._series = sdict
         self.columns = columns
@@ -110,7 +114,7 @@ class SparseDataFrame(DataFrame):
         # do nothing when DataFrame calls this method
         pass
 
-    def convert_objects(self):
+    def convert_objects(self, convert_dates=True):
         # XXX
         return self
 
@@ -373,6 +377,10 @@ class SparseDataFrame(DataFrame):
                     return self.ix[:, i]
 
             return self[label]
+            # values = self._data.iget(i)
+            # return self._col_klass.from_array(
+            #     values, index=self.index, name=label,
+            #     fill_value= self.default_fill_value)
 
     @Appender(DataFrame.get_value.__doc__, indents=0)
     def get_value(self, index, col):
@@ -808,7 +816,7 @@ class SparseDataFrame(DataFrame):
         return self.apply(lambda x: map(func, x))
 
     @Appender(DataFrame.fillna.__doc__)
-    def fillna(self, value=None, method='pad', inplace=False, limit=None):
+    def fillna(self, value=None, method=None, inplace=False, limit=None):
         new_series = {}
         for k, v in self.iterkv():
             new_series[k] = v.fillna(value=value, method=method, limit=limit)

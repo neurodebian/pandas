@@ -5,6 +5,8 @@ import numpy as np
 from pandas.core.common import isnull, notnull
 import pandas.core.common as com
 import pandas.lib as lib
+import pandas.algos as algos
+import pandas.hashtable as _hash
 
 try:
     import bottleneck as bn
@@ -121,7 +123,7 @@ def _nanmedian(values, axis=None, skipna=True):
         mask = notnull(x)
         if not skipna and not mask.all():
             return np.nan
-        return lib.median(x[mask])
+        return algos.median(x[mask])
 
     if values.dtype != np.float64:
         values = values.astype('f8')
@@ -384,18 +386,22 @@ def _zero_out_fperr(arg):
         return 0 if np.abs(arg) < 1e-14 else arg
 
 
-def nancorr(a, b, method='pearson'):
+def nancorr(a, b, method='pearson', min_periods=None):
     """
     a, b: ndarrays
     """
-    assert(len(a) == len(b))
+    if len(a) != len(b):
+        raise AssertionError('Operands to nancorr must have same size')
+
+    if min_periods is None:
+        min_periods = 1
 
     valid = notnull(a) & notnull(b)
     if not valid.all():
         a = a[valid]
         b = b[valid]
 
-    if len(a) == 0:
+    if len(a) < min_periods:
         return np.nan
 
     f = get_corr_func(method)
@@ -426,15 +432,19 @@ def get_corr_func(method):
     return _cor_methods[method]
 
 
-def nancov(a, b):
-    assert(len(a) == len(b))
+def nancov(a, b, min_periods=None):
+    if len(a) != len(b):
+        raise AssertionError('Operands to nancov must have same size')
+
+    if min_periods is None:
+        min_periods = 1
 
     valid = notnull(a) & notnull(b)
     if not valid.all():
         a = a[valid]
         b = b[valid]
 
-    if len(a) == 0:
+    if len(a) < min_periods:
         return np.nan
 
     return np.cov(a, b)[0, 1]
@@ -486,17 +496,17 @@ def unique1d(values):
     Hash table-based unique
     """
     if np.issubdtype(values.dtype, np.floating):
-        table = lib.Float64HashTable(len(values))
+        table = _hash.Float64HashTable(len(values))
         uniques = np.array(table.unique(com._ensure_float64(values)),
                            dtype=np.float64)
     elif np.issubdtype(values.dtype, np.datetime64):
-        table = lib.Int64HashTable(len(values))
+        table = _hash.Int64HashTable(len(values))
         uniques = table.unique(com._ensure_int64(values))
         uniques = uniques.view('M8[ns]')
     elif np.issubdtype(values.dtype, np.integer):
-        table = lib.Int64HashTable(len(values))
+        table = _hash.Int64HashTable(len(values))
         uniques = table.unique(com._ensure_int64(values))
     else:
-        table = lib.PyObjectHashTable(len(values))
+        table = _hash.PyObjectHashTable(len(values))
         uniques = table.unique(com._ensure_object(values))
     return uniques
