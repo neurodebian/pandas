@@ -1,6 +1,6 @@
-pandas (0.10.0~beta1+git51-gbbe2fc1-1) UNRELEASED; urgency=low
+pandas (0.10.0~beta1+git65-g6cadd6c-1) UNRELEASED; urgency=low
 
-  * New upstream snapshot from origin/master at v0.10.0b1-51-gbbe2fc1
+  * New upstream snapshot from origin/master 
   * debian/patches: 
     - all previous are in upstream now, dropped locally
     - added -dsc-patch'es for systems without cython3
