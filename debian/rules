@@ -23,8 +23,10 @@ MIN_CYTHONVER = 0.17.2
 
 # Some unittests might need to be excluded for different Python versions
 EXCLUDE_TESTS2 := 
-EXCLUDE_TESTS3.2 := --exclude "test_bootstrap_plot"
-EXCLUDE_TESTS3.3 := --exclude "test_(bootstrap_plot|quoting|cant_compare_tz_naive_w_aware|more_flexible_frame_multi_function|yahoo)"
+EXCLUDE_TESTS3.2 := 
+#--exclude "test_bootstrap_plot"
+EXCLUDE_TESTS3.3 := 
+#--exclude "test_(bootstrap_plot|quoting|cant_compare_tz_naive_w_aware|more_flexible_frame_multi_function|yahoo)"
 
 # MPLVER := $(shell dpkg -l python-matplotlib | awk '/^ii/{print $$3;}' || echo 0)
 # $(shell dpkg --compare-versions $(MPLVER) lt 1.0 && echo '|test_hist|test_plot|test_boxplot|test_corr_rank' || echo '')
