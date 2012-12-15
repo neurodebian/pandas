@@ -1,9 +1,11 @@
 pandas (0.10.0~beta1+git65-g6cadd6c-1) UNRELEASED; urgency=low
 
-  * New upstream snapshot from origin/master 
-  * debian/patches: 
+  * New upstream snapshot from origin/master
+  * debian/patches:
     - all previous are in upstream now, dropped locally
     - added -dsc-patch'es for systems without cython3
+  * debian/control:
+    - added python-statsmodels for the extended tests coverage
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 13 Dec 2012 22:28:20 -0500
 
