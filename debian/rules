@@ -110,7 +110,7 @@ _dh_python%:
 	if [ -d debian/$(PACKAGE$*_NAME)/usr/lib ]; then \
 	   find debian/$(PACKAGE$*_NAME)/usr/lib -name "*.so" -delete; \
 	fi
-	dh_numpy$(*:2=) -p$(PACKAGE$*_NAME)-lib
+	[ -e /usr/bin/dh_numpy$(*:2=) ] && dh_numpy$(*:2=) -p$(PACKAGE$*_NAME)-lib || :
 	dh_python$*
 
 ## "Instantiate" both rules so dh sees them
