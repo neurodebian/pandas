@@ -1,13 +1,15 @@
-pandas (0.10.0~beta1+git65-g6cadd6c-1) UNRELEASED; urgency=low
+pandas (0.10.0-1) experimental; urgency=low
 
-  * New upstream snapshot from origin/master
+  * New upstream release
+    - drops python 2.5 support (we are dropping pyversions in favor of
+      X-Python-Version)
   * debian/patches:
     - all previous are in upstream now, dropped locally
     - added -dsc-patch'es for systems without cython3
   * debian/control:
     - added python-statsmodels for the extended tests coverage
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 13 Dec 2012 22:28:20 -0500
+ -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 17 Dec 2012 12:27:25 -0500
 
 pandas (0.9.1-2) unstable; urgency=low
 
