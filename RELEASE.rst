@@ -25,7 +25,7 @@ Where to get it
 pandas 0.10.0
 =============
 
-**Release date:** Not yet released
+**Release date:** 2012-12-17
 
 **New features**
 
@@ -102,10 +102,8 @@ pandas 0.10.0
     using the new option ``mode.use_inf_as_null`` (GH2050_, GH1919_)
   - ``pandas.merge`` will now default to ``sort=False``. For many use cases
     sorting the join keys is not necessary, and doing it by default is wasteful
-  - ``names`` handling in file parsing: if explicit column `names` passed,
-    `header` argument will be respected. If there is an existing header column,
-    this can rename the columns. To fix legacy code, put ``header=None`` when
-    passing ``names``
+  - Specify ``header=0`` explicitly to replace existing column names in file in
+    read_* functions.
   - Default column names for header-less parsed files (yielded by read_csv,
     etc.) are now the integers 0, 1, .... A new argument `prefix` has been
     added; to get the v0.9.x behavior specify ``prefix='X'`` (GH2034_). This API
@@ -237,6 +235,8 @@ pandas 0.10.0
     columns, even if one DataFrame is length-zero (GH2525_)
   - Fix several DataFrame.icol/irow with duplicate indices issues (GH2228_, GH2259_)
   - Use Series names for column names when using concat with axis=1 (GH2489_)
+  - Raise Exception if start, end, periods all passed to date_range (GH2538_)
+  - Fix Panel resampling issue (GH2537_)
 
 .. _GH407: https://github.com/pydata/pandas/issues/407
 .. _GH821: https://github.com/pydata/pandas/issues/821
@@ -356,6 +356,8 @@ pandas 0.10.0
 .. _GH2228: https://github.com/pydata/pandas/issues/2228
 .. _GH2259: https://github.com/pydata/pandas/issues/2259
 .. _GH2489: https://github.com/pydata/pandas/issues/2489
+.. _GH2538: https://github.com/pydata/pandas/issues/2538
+.. _GH2537: https://github.com/pydata/pandas/issues/2537
 
 
 pandas 0.9.1
