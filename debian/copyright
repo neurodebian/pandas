@@ -6,6 +6,7 @@ Source-Location: http://github.com/wesm/pandas
 Files: *
 Copyright: 2008-2011 AQR Capital Management, LLC
            2011 Wes McKinney and pandas developers
+           2011-2013, Lambda Foundry, Inc. and PyData Development Team
 License: BSD-3
 
 Files: doc/source/themes/agogo/*
@@ -29,7 +30,7 @@ License: matplotlib
 Origin: matplotlib
 
 Files: debian/*
-Copyright: 2011, Yaroslav Halchenko <debian@onerussian.com>
+Copyright: 2011-2013, Yaroslav Halchenko <debian@onerussian.com>
 License: BSD-3
 
 License: BSD-2
