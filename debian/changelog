@@ -1,3 +1,9 @@
+pandas (0.11.0~rc1-1) UNRELEASED; urgency=low
+
+  * Testing rc1
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 12 Apr 2013 23:00:52 -0400
+
 pandas (0.10.1-1) experimental; urgency=low
 
   * New upstream release
