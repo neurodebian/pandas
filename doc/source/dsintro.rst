@@ -77,14 +77,11 @@ index is passed, one will be created having values ``[0, ..., len(data) - 1]``.
 
 .. note::
 
-    Starting in v0.8.0, pandas supports non-unique index values. In previous
-    version, if the index values are not unique an exception will
-    **not** be raised immediately, but attempting any operation involving the
-    index will later result in an exception. In other words, the Index object
-    containing the labels "lazily" checks whether the values are unique. The
-    reason for being lazy is nearly all performance-based (there are many
-    instances in computations, like parts of GroupBy, where the index is not
-    used).
+    Starting in v0.8.0, pandas supports non-unique index values. If an operation
+    that does not support duplicate index values is attempted, an exception
+    will be raised at that time. The reason for being lazy is nearly all performance-based
+    (there are many instances in computations, like parts of GroupBy, where the index
+    is not used).
 
 **From dict**
 
@@ -437,8 +434,8 @@ The basics of indexing are as follows:
     :widths: 30, 20, 10
 
     Select column, ``df[col]``, Series
-    Select row by label, ``df.xs(label)`` or ``df.ix[label]``, Series
-    Select row by location (int), ``df.ix[loc]``, Series
+    Select row by label, ``df.loc[label]``, Series
+    Select row by integer location, ``df.iloc[loc]``, Series
     Slice rows, ``df[5:10]``, DataFrame
     Select rows by boolean vector, ``df[bool_vec]``, DataFrame
 
@@ -447,12 +444,8 @@ DataFrame:
 
 .. ipython:: python
 
-   df.xs('b')
-   df.ix[2]
-
-Note if a DataFrame contains columns of multiple dtypes, the dtype of the row
-will be chosen to accommodate all of the data types (dtype=object is the most
-general).
+   df.loc['b']
+   df.iloc[2]
 
 For a more exhaustive treatment of more sophisticated label-based indexing and
 slicing, see the :ref:`section on indexing <indexing>`. We will address the
@@ -479,7 +472,7 @@ row-wise. For example:
 
 .. ipython:: python
 
-   df - df.ix[0]
+   df - df.iloc[0]
 
 In the special case of working with time series data, if the Series is a
 TimeSeries (which it will be automatically if the index contains datetime
@@ -596,7 +589,7 @@ DataFrame in tabular form, though it won't always fit the console width:
 
 .. ipython:: python
 
-   print baseball.ix[-20:, :12].to_string()
+   print baseball.iloc[-20:, :12].to_string()
 
 New since 0.10.0, wide DataFrames will now be printed across multiple rows by
 default:
@@ -632,26 +625,6 @@ You can also disable this feature via the ``expand_frame_repr`` option:
 
    reset_option('expand_frame_repr')
 
-
-DataFrame column types
-~~~~~~~~~~~~~~~~~~~~~~
-
-.. _dsintro.column_types:
-
-The four main types stored in pandas objects are float, int, boolean, and
-object. A convenient ``dtypes`` attribute return a Series with the data type of
-each column:
-
-.. ipython:: python
-
-   baseball.dtypes
-
-The related method ``get_dtype_counts`` will return the number of columns of
-each type:
-
-.. ipython:: python
-
-   baseball.get_dtype_counts()
 
 DataFrame column attribute access and IPython completion
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -819,6 +792,17 @@ For example, using the earlier example data, we could do:
     wp.minor_axis
     wp.minor_xs('C')
 
+Squeezing
+~~~~~~~~~
+
+Another way to change the dimensionality of an object is to ``squeeze`` a 1-len object, similar to ``wp['Item1']``
+
+.. ipython:: python
+
+   wp.reindex(items=['Item1']).squeeze()
+   wp.reindex(items=['Item1'],minor=['B']).squeeze()
+
+
 Conversion to DataFrame
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -833,6 +817,9 @@ method:
                  major_axis=date_range('1/1/2000', periods=5),
                  minor_axis=['a', 'b', 'c', 'd'])
    panel.to_frame()
+
+
+.. _dsintro.panel4d:
 
 Panel4D (Experimental)
 ----------------------

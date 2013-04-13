@@ -11,6 +11,7 @@
    np.set_printoptions(precision=4, suppress=True)
    import matplotlib.pyplot as plt
    plt.close('all')
+   options.display.mpl_style='default'
 
 *****************************
 Group By: split-apply-combine
@@ -58,6 +59,8 @@ a SQL-based tool (or ``itertools``), in which you can write code like:
 We aim to make operations like this natural and easy to express using
 pandas. We'll address each area of GroupBy functionality then provide some
 non-trivial examples / use cases.
+
+See the :ref:`cookbook<cookbook.grouping>` for some advanced strategies
 
 .. _groupby.split:
 

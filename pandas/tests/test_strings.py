@@ -128,6 +128,11 @@ class TestStringMethods(unittest.TestCase):
         self.assert_(result.dtype == np.bool_)
         tm.assert_almost_equal(result, expected)
 
+        # na
+        values = Series(['om', 'foo',np.nan])
+        res = values.str.contains('foo', na="foo")
+        self.assertEqual (res.ix[2], "foo"        )
+
     def test_startswith(self):
         values = Series(['om', NA, 'foo_nom', 'nom', 'bar_foo', NA, 'foo'])
 
@@ -183,6 +188,28 @@ class TestStringMethods(unittest.TestCase):
 
         result = values.str.endswith('foo', na=False)
         tm.assert_series_equal(result, exp.fillna(False).astype(bool))
+
+    def test_title(self):
+        values = Series(["FOO", "BAR", NA, "Blah", "blurg"])
+
+        result = values.str.title()
+        exp = Series(["Foo", "Bar", NA, "Blah", "Blurg"])
+        tm.assert_series_equal(result, exp)
+
+        # mixed
+        mixed = Series(["FOO", NA, "bar", True, datetime.today(),
+                        "blah", None, 1, 2.])
+        mixed = mixed.str.title()
+        exp = Series(["Foo", NA, "Bar", NA, NA, "Blah", NA, NA, NA])
+        tm.assert_almost_equal(mixed, exp)
+
+        # unicode
+        values = Series([u"FOO", NA, u"bar", u"Blurg"])
+
+        results = values.str.title()
+        exp = Series([u"Foo", NA, u"Bar", u"Blurg"])
+
+        tm.assert_series_equal(results, exp)
 
     def test_lower_upper(self):
         values = Series(['om', NA, 'nom', 'nom'])
@@ -725,6 +752,19 @@ class TestStringMethods(unittest.TestCase):
 
         result = s.str[:3]
         expected = s.str.slice(stop=3)
+        assert_series_equal(result, expected)
+
+    def test_string_slice_out_of_bounds(self):
+        s = Series([(1, 2), (1,), (3,4,5)])
+
+        result = s.str[1]
+        expected = Series([2, np.nan, 4])
+
+        assert_series_equal(result, expected)
+
+        s = Series(['foo', 'b', 'ba'])
+        result = s.str[1]
+        expected = Series(['o', np.nan, 'a'])
         assert_series_equal(result, expected)
 
     def test_match_findall_flags(self):

@@ -272,6 +272,9 @@ cdef class IndexEngine:
 
 cdef class Int64Engine(IndexEngine):
 
+    cdef _get_index_values(self):
+        return algos.ensure_int64(self.vgetter())
+
     cdef _make_hash_table(self, n):
         return _hash.Int64HashTable(n)
 
@@ -482,7 +485,9 @@ cdef class DatetimeEngine(Int64Engine):
 
 cpdef convert_scalar(ndarray arr, object value):
     if arr.descr.type_num == NPY_DATETIME:
-        if isinstance(value, Timestamp):
+        if isinstance(value,np.ndarray):
+            pass
+        elif isinstance(value, Timestamp):
             return value.value
         elif value is None or value != value:
             return iNaT

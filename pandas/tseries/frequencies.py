@@ -34,11 +34,11 @@ class Resolution(object):
 
     @classmethod
     def get_str(cls, reso):
-        return {RESO_US: 'microsecond',
-                RESO_SEC: 'second',
-                RESO_MIN: 'minute',
-                RESO_HR: 'hour',
-                RESO_DAY: 'day'}.get(reso, 'day')
+        return {cls.RESO_US: 'microsecond',
+                cls.RESO_SEC: 'second',
+                cls.RESO_MIN: 'minute',
+                cls.RESO_HR: 'hour',
+                cls.RESO_DAY: 'day'}.get(reso, 'day')
 
 
 def get_reso_string(reso):
@@ -46,7 +46,7 @@ def get_reso_string(reso):
 
 
 def get_to_timestamp_base(base):
-    if base <= FreqGroup.FR_WK:
+    if base < FreqGroup.FR_BUS:
         return FreqGroup.FR_DAY
     if FreqGroup.FR_HR <= base <= FreqGroup.FR_SEC:
         return FreqGroup.FR_SEC

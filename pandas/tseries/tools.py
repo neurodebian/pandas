@@ -48,7 +48,8 @@ def _maybe_get_tz(tz):
     return tz
 
 
-def to_datetime(arg, errors='ignore', dayfirst=False, utc=None, box=True):
+def to_datetime(arg, errors='ignore', dayfirst=False, utc=None, box=True,
+                format=None):
     """
     Convert argument to datetime
 
@@ -57,9 +58,15 @@ def to_datetime(arg, errors='ignore', dayfirst=False, utc=None, box=True):
     arg : string, datetime, array of strings (with possible NAs)
     errors : {'ignore', 'raise'}, default 'ignore'
         Errors are ignored by default (values left untouched)
+    dayfirst : boolean, default False
+        If True parses dates with the day first, eg 20/01/2005
     utc : boolean, default None
         Return UTC DatetimeIndex if True (converting any tz-aware
         datetime.datetime objects as well)
+    box : boolean, default True
+        If True returns a DatetimeIndex, if False returns ndarray of values
+    format : string, default None
+        strftime to parse time, eg "%d/%m/%Y"
 
     Returns
     -------
@@ -72,8 +79,11 @@ def to_datetime(arg, errors='ignore', dayfirst=False, utc=None, box=True):
         arg = com._ensure_object(arg)
 
         try:
-            result = tslib.array_to_datetime(arg, raise_=errors == 'raise',
-                                             utc=utc, dayfirst=dayfirst)
+            if format is not None:
+                result = tslib.array_strptime(arg, format)
+            else:
+                result = tslib.array_to_datetime(arg, raise_=errors == 'raise',
+                                                 utc=utc, dayfirst=dayfirst)
             if com.is_datetime64_dtype(result) and box:
                 result = DatetimeIndex(result, tz='utc' if utc else None)
             return result

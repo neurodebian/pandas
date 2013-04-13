@@ -15,7 +15,7 @@ from pandas.tseries.offsets import DateOffset
 from pandas.tseries.period import period_range, Period, PeriodIndex
 from pandas.tseries.resample import DatetimeIndex
 
-from pandas.util.testing import assert_series_equal
+from pandas.util.testing import assert_series_equal, ensure_clean
 import pandas.util.testing as tm
 
 
@@ -52,6 +52,13 @@ class TestTSPlot(unittest.TestCase):
                             for x in idx]
 
     @slow
+    def test_ts_plot_with_tz(self):
+        # GH2877
+        index = date_range('1/1/2011', periods=2, freq='H', tz='Europe/Brussels')
+        ts = Series([188.5, 328.25], index=index)
+        ts.plot()
+
+    @slow
     def test_frame_inferred(self):
         # inferred freq
         import matplotlib.pyplot as plt
@@ -72,6 +79,26 @@ class TestTSPlot(unittest.TestCase):
         idx = DatetimeIndex(idx.values, freq=None)
         df = DataFrame(np.random.randn(len(idx), 3), index=idx)
         df.plot()
+
+    @slow
+    def test_nonnumeric_exclude(self):
+        import matplotlib.pyplot as plt
+        plt.close('all')
+
+        idx = date_range('1/1/1987', freq='A', periods=3)
+        df = DataFrame({'A': ["x", "y", "z"], 'B': [1,2,3]}, idx)
+        self.assertRaises(Exception, df.plot)
+
+        plt.close('all')
+        ax = df.plot(raise_on_error=False) # it works
+        self.assert_(len(ax.get_lines()) == 1) #B was plotted
+
+        plt.close('all')
+        self.assertRaises(Exception, df.A.plot)
+
+        plt.close('all')
+        ax = df['A'].plot(raise_on_error=False) # it works
+        self.assert_(len(ax.get_lines()) == 0)
 
     @slow
     def test_tsplot(self):
@@ -926,9 +953,6 @@ class TestTSPlot(unittest.TestCase):
         assert_array_equal(np.array([x.toordinal() for x in dates]),
                            line2.get_xydata()[:, 0])
 
-PNG_PATH = 'tmp.png'
-
-
 def _check_plot_works(f, freq=None, series=None, *args, **kwargs):
     import matplotlib.pyplot as plt
 
@@ -959,8 +983,9 @@ def _check_plot_works(f, freq=None, series=None, *args, **kwargs):
         assert(ret is not None)  # do something more intelligent
     except Exception:
         pass
-    plt.savefig(PNG_PATH)
-    os.remove(PNG_PATH)
+
+    with ensure_clean() as path:
+        plt.savefig(path)
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],

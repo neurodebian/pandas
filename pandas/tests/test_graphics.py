@@ -7,6 +7,8 @@ from datetime import datetime, date
 
 from pandas import Series, DataFrame, MultiIndex, PeriodIndex, date_range
 import pandas.util.testing as tm
+from pandas.util.testing import ensure_clean
+from pandas.core.config import set_option,get_option,config_prefix
 
 import numpy as np
 
@@ -63,12 +65,21 @@ class TestSeriesPlots(unittest.TestCase):
 
         Series(np.random.randn(10)).plot(kind='bar', color='black')
 
+        # figsize and title
+        import matplotlib.pyplot as plt
+        plt.close('all')
+        ax = self.series.plot(title='Test', figsize=(16, 8))
+
+        self.assert_(ax.title.get_text() == 'Test')
+        self.assert_((np.round(ax.figure.get_size_inches())
+                      == np.array((16., 8.))).all())
+
     @slow
     def test_bar_colors(self):
         import matplotlib.pyplot as plt
         import matplotlib.colors as colors
 
-        default_colors = 'brgyk'
+        default_colors = plt.rcParams.get('axes.color_cycle')
         custom_colors = 'rgcby'
 
         plt.close('all')
@@ -79,7 +90,7 @@ class TestSeriesPlots(unittest.TestCase):
 
         conv = colors.colorConverter
         for i, rect in enumerate(rects[::5]):
-            xp = conv.to_rgba(default_colors[i])
+            xp = conv.to_rgba(default_colors[i % len(default_colors)])
             rs = rect.get_facecolor()
             self.assert_(xp == rs)
 
@@ -151,6 +162,15 @@ class TestSeriesPlots(unittest.TestCase):
         self.assert_(ax.get_yscale() == 'log')
 
     @slow
+    def test_kde_color(self):
+        _skip_if_no_scipy()
+        _check_plot_works(self.ts.plot, kind='kde')
+        _check_plot_works(self.ts.plot, kind='density')
+        ax = self.ts.plot(kind='kde', logy=True, color='r')
+        self.assert_(ax.get_lines()[0].get_color() == 'r')
+        self.assert_(ax.get_lines()[1].get_color() == 'r')
+
+    @slow
     def test_autocorrelation_plot(self):
         from pandas.tools.plotting import autocorrelation_plot
         _check_plot_works(autocorrelation_plot, self.ts)
@@ -160,6 +180,7 @@ class TestSeriesPlots(unittest.TestCase):
     def test_lag_plot(self):
         from pandas.tools.plotting import lag_plot
         _check_plot_works(lag_plot, self.ts)
+        _check_plot_works(lag_plot, self.ts, lag=5)
 
     @slow
     def test_bootstrap_plot(self):
@@ -221,6 +242,17 @@ class TestDataFramePlots(unittest.TestCase):
                        columns=columns,
                        index=index)
         _check_plot_works(df.plot, title=u'\u03A3')
+
+    @slow
+    def test_nonnumeric_exclude(self):
+        import matplotlib.pyplot as plt
+        plt.close('all')
+
+        df = DataFrame({'A': ["x", "y", "z"], 'B': [1,2,3]})
+        ax = df.plot(raise_on_error=False) # it works
+        self.assert_(len(ax.get_lines()) == 1) #B was plotted
+
+        self.assertRaises(Exception, df.plot)
 
     @slow
     def test_label(self):
@@ -300,6 +332,16 @@ class TestDataFramePlots(unittest.TestCase):
         lines = ax.get_lines()
         self.assert_(isinstance(lines[0].get_xdata(), PeriodIndex))
 
+    @slow
+    def test_unsorted_index(self):
+        df = DataFrame({'y': range(100)},
+                       index=range(99, -1, -1))
+        ax = df.plot()
+        l = ax.get_lines()[0]
+        rs = l.get_xydata()
+        rs = Series(rs[:, 1], rs[:, 0], dtype=np.int64)
+        tm.assert_series_equal(rs, df.y)
+
     def _check_data(self, xp, rs):
         xp_lines = xp.get_lines()
         rs_lines = rs.get_lines()
@@ -373,6 +415,21 @@ class TestDataFramePlots(unittest.TestCase):
         ax = df.plot(kind='bar', grid=True)
         self.assertEqual(ax.xaxis.get_ticklocs()[0],
                          ax.patches[0].get_x() + ax.patches[0].get_width())
+    @slow
+    def test_bar_log(self):
+        # GH3254, GH3298 matplotlib/matplotlib#1882, #1892
+        # regressions in 1.2.1
+
+        df = DataFrame({'A': [3] * 5, 'B': range(1,6)}, index=range(5))
+        ax = df.plot(kind='bar', grid=True,log=True)
+        self.assertEqual(ax.yaxis.get_ticklocs()[0],1.0)
+
+        p1 = Series([200,500]).plot(log=True,kind='bar')
+        p2 = DataFrame([Series([200,300]),Series([300,500])]).plot(log=True,kind='bar',subplots=True)
+
+        (p1.yaxis.get_ticklocs() == np.array([ 0.625,  1.625]))
+        (p2[0].yaxis.get_ticklocs() == np.array([ 1., 10., 100., 1000.])).all()
+        (p2[1].yaxis.get_ticklocs() == np.array([ 1., 10., 100., 1000.])).all()
 
     @slow
     def test_boxplot(self):
@@ -411,6 +468,7 @@ class TestDataFramePlots(unittest.TestCase):
 
     @slow
     def test_hist(self):
+        import matplotlib.pyplot as plt
         df = DataFrame(np.random.randn(100, 4))
         _check_plot_works(df.hist)
         _check_plot_works(df.hist, grid=False)
@@ -431,7 +489,7 @@ class TestDataFramePlots(unittest.TestCase):
         # make sure sharex, sharey is handled
         _check_plot_works(df.hist, sharex=True, sharey=True)
 
-        # make sure kwargs are handled
+        # make sure xlabelsize and xrot are handled
         ser = df[0]
         xf, yf = 20, 20
         xrot, yrot = 30, 30
@@ -454,6 +512,21 @@ class TestDataFramePlots(unittest.TestCase):
                 self.assertAlmostEqual(ytick.get_rotation(), yrot)
                 self.assertAlmostEqual(xtick.get_fontsize(), xf)
                 self.assertAlmostEqual(xtick.get_rotation(), xrot)
+
+        plt.close('all')
+        # make sure kwargs to hist are handled
+        ax = ser.hist(normed=True, cumulative=True, bins=4)
+        # height of last bin (index 5) must be 1.0
+        self.assertAlmostEqual(ax.get_children()[5].get_height(), 1.0)
+
+        plt.close('all')
+        ax = ser.hist(log=True)
+        # scale of y must be 'log'
+        self.assert_(ax.get_yscale() == 'log')
+
+        plt.close('all')
+        # propagate attr exception from matplotlib.Axes.hist
+        self.assertRaises(AttributeError, ser.hist, foo='bar')
 
     @slow
     def test_scatter(self):
@@ -666,6 +739,18 @@ class TestDataFrameGroupByPlots(unittest.TestCase):
         self.assert_(line.get_color() == 'green')
 
     @slow
+    def test_time_series_plot_color_with_empty_kwargs(self):
+        import matplotlib.pyplot as plt
+
+        plt.close('all')
+        for i in range(3):
+            ax = Series(np.arange(12) + 1, index=date_range(
+            '1/1/2000', periods=12)).plot()
+
+        line_colors = [ l.get_color() for l in ax.get_lines() ]
+        self.assert_(line_colors == ['b', 'g', 'r'])
+
+    @slow
     def test_grouped_hist(self):
         import matplotlib.pyplot as plt
         df = DataFrame(np.random.randn(500, 2), columns=['A', 'B'])
@@ -681,8 +766,42 @@ class TestDataFrameGroupByPlots(unittest.TestCase):
         for ax in axes.ravel():
             self.assert_(len(ax.patches) > 0)
 
-PNG_PATH = 'tmp.png'
+        plt.close('all')
+        # make sure kwargs to hist are handled
+        axes = plotting.grouped_hist(df.A, by=df.C, normed=True,
+                                     cumulative=True, bins=4)
 
+        # height of last bin (index 5) must be 1.0
+        for ax in axes.ravel():
+            height = ax.get_children()[5].get_height()
+            self.assertAlmostEqual(height, 1.0)
+
+        plt.close('all')
+        axes = plotting.grouped_hist(df.A, by=df.C, log=True)
+        # scale of y must be 'log'
+        for ax in axes.ravel():
+            self.assert_(ax.get_yscale() == 'log')
+
+        plt.close('all')
+        # propagate attr exception from matplotlib.Axes.hist
+        self.assertRaises(AttributeError, plotting.grouped_hist, df.A,
+                          by=df.C, foo='bar')
+
+
+    def test_option_mpl_style(self):
+        # just a sanity check
+        try:
+            import matplotlib
+        except:
+            raise nose.SkipTest
+
+        set_option('display.mpl_style', 'default')
+        set_option('display.mpl_style', None)
+        set_option('display.mpl_style', False)
+        try:
+            set_option('display.mpl_style', 'default2')
+        except ValueError:
+            pass
 
 def _check_plot_works(f, *args, **kwargs):
     import matplotlib.pyplot as plt
@@ -700,9 +819,9 @@ def _check_plot_works(f, *args, **kwargs):
         assert(ret is not None)  # do something more intelligent
     except Exception:
         pass
-    plt.savefig(PNG_PATH)
-    os.remove(PNG_PATH)
 
+    with ensure_clean() as path:
+        plt.savefig(path)
 
 def curpath():
     pth, _ = os.path.split(os.path.abspath(__file__))
