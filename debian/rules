@@ -106,7 +106,7 @@ endif
 endif
 	: # Use jquery from Debian package, so prune shipped one
 	#TODO -rm doc/_build/html/_static/jquery.js
-	dh_installdocs -A RELEASE.rst TODO.rst README*.rst
+	dh_installdocs -A *.rst
 
 #override_dh_installchangelogs:
 #	dh_installchangelogs doc/whats_new.rst
