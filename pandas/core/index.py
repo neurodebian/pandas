@@ -1,7 +1,5 @@
 # pylint: disable=E1101,E1103,W0232
 
-from datetime import time
-
 from itertools import izip
 
 import numpy as np
@@ -1282,6 +1280,25 @@ class Index(np.ndarray):
 
 
 class Int64Index(Index):
+    """
+    Immutable ndarray implementing an ordered, sliceable set. The basic object
+    storing axis labels for all pandas objects. Int64Index is a special case of `Index`
+    with purely integer labels. This is the default index type used by the DataFrame
+    and Series ctors when no explicit index is provided by the user.
+
+    Parameters
+    ----------
+    data : array-like (1-dimensional)
+    dtype : NumPy dtype (default: object)
+    copy : bool
+        Make a copy of input ndarray
+    name : object
+        Name to be stored in the index
+
+    Note
+    ----
+    An Index instance can **only** contain hashable objects
+    """
 
     _groupby = _algos.groupby_int64
     _arrmap = _algos.arrmap_int64
@@ -1485,7 +1502,7 @@ class MultiIndex(Index):
         np.set_printoptions(threshold=50)
 
         if len(self) > 100:
-            values = self[:50].format() + self[-50:].format()
+            values = self[:50].format() + ["..."] + self[-50:].format()
         else:
             values = self.format()
 

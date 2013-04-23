@@ -119,6 +119,11 @@ def _is_fixed_offset(tz):
 # Python front end to C extension type _Timestamp
 # This serves as the box for datetime64
 class Timestamp(_Timestamp):
+    """TimeStamp is the pandas equivalent of python's Datetime
+    and is interchangable with it in most cases. It's the type used
+    for the entries that make up a DatetimeIndex, and other timeseries
+    oriented data structures in pandas.
+    """
 
     @classmethod
     def fromordinal(cls, ordinal, offset=None, tz=None):
@@ -309,7 +314,7 @@ class Timestamp(_Timestamp):
 
 
 class NaTType(_NaT):
-
+    """(N)ot-(A)-(T)ime, the time equivalent of NaN"""
     def __new__(cls):
         cdef _NaT base
 
@@ -2278,6 +2283,7 @@ cdef list extra_fmts = [(b"%q", b"^`AB`^"),
 cdef list str_extra_fmts = ["^`AB`^", "^`CD`^", "^`EF`^"]
 
 cdef _period_strftime(int64_t value, int freq, object fmt):
+    import sys
     cdef:
         Py_ssize_t i
         date_info dinfo
@@ -2319,6 +2325,10 @@ cdef _period_strftime(int64_t value, int freq, object fmt):
     # Py3?
     if not PyString_Check(result):
         result = str(result)
+
+    # GH3363
+    if sys.version_info[0] == 2:
+       result = result.decode('utf-8','strict')
 
     return result
 

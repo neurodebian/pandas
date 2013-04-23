@@ -18,7 +18,7 @@ your contribution or address the issue you're having.
 
 - When submitting a Pull Request
   - **Make sure the test suite passes**., and that means on python3 as well.
-    You can use "test_fast.sh", or tox locally and/or enable Travis-CI on your fork.
+    You can use "test_fast.sh", or tox locally and/or [enable Travis-CI](http://about.travis-ci.org/docs/user/getting-started/) on your fork.
   - We suggest you enable Travis-CI on your fork, to make it easier for the team
      to see that the PR does indeed pass all the tests.
   - Back-compatiblitiy **really** matters. Pandas already has a large user-base and
@@ -47,6 +47,16 @@ your contribution or address the issue you're having.
     and finally a commit message body if there's a need for one.
   - Please reference the GH issue number in your commit message using GH1234
     or #1234, either style is fine.
+  - Use "raise AssertionError" rather then plain `assert` in library code (using assert is fine
+    for test code). python -o strips assertions. better safe then sorry.
+  - When writing tests, don't use "new" assertion methods added to the unittest module
+    in 2.7 since pandas currently supports 2.6. The most common pitfall is:
+
+    with self.assertRaises(ValueError):
+         foo
+
+    which fails on python 2.6, use `self.assertRaises(TheException,func,args)` instead.
+
   - RELEASE.rst and doc/source/vx.y.z.txt contain an on-going changelog for each
     release as it is worked on. Add entries to these files as needed in
     a separate commit in your PR, documenting the fix, enhancement or (unavoidable)
@@ -63,6 +73,7 @@ your contribution or address the issue you're having.
     - If your code changes are intermixed with style fixes, they are harder to review
       before merging. Keep style fixes in separate commits.
     - it's fine to clean-up a little around an area you just worked on.
+    - Generally its a BAD idea to PEP8 on documentation.
 
     Having said that, if you still feel a PEP8 storm is in order, go for it.
 

@@ -137,14 +137,13 @@ class TestDataFrameFormatting(unittest.TestCase):
             self.assertTrue(len(com.pprint_thing(range(1000)))< 100)
 
     def test_repr_should_return_str(self):
-        """
-        http://docs.python.org/py3k/reference/datamodel.html#object.__repr__
-        http://docs.python.org/reference/datamodel.html#object.__repr__
-        "...The return value must be a string object."
+        # http://docs.python.org/py3k/reference/datamodel.html#object.__repr__
+        # http://docs.python.org/reference/datamodel.html#object.__repr__
+        # "...The return value must be a string object."
 
-        (str on py2.x, str (unicode) on py3)
+        # (str on py2.x, str (unicode) on py3)
 
-        """
+
         data = [8, 5, 3, 5]
         index1 = [u"\u03c3", u"\u03c4", u"\u03c5", u"\u03c6"]
         cols = [u"\u03c8"]
@@ -162,7 +161,7 @@ class TestDataFrameFormatting(unittest.TestCase):
         df_tall = DataFrame('hello', range(30), range(5))
 
         with option_context('mode.sim_interactive', True):
-            with option_context('display.width', 50, 
+            with option_context('display.width', 50,
                                 'display.height', 20):
                 with option_context('display.expand_frame_repr', True):
                     self.assertFalse(has_info_repr(df_small))
@@ -179,6 +178,18 @@ class TestDataFrameFormatting(unittest.TestCase):
                     self.assertFalse(has_expanded_repr(df_wide))
                     self.assertTrue(has_info_repr(df_tall))
                     self.assertFalse(has_expanded_repr(df_tall))
+
+    def test_repr_non_interactive(self):
+        # in non interactive mode, there can be no dependency on the
+        # result of terminal auto size detection
+        df = DataFrame('hello', range(1000), range(5))
+
+        with option_context('mode.sim_interactive', False,
+                            'display.width', 0,
+                            'display.height', 0,
+                            'display.max_rows',5000):
+            self.assertFalse(has_info_repr(df))
+            self.assertFalse(has_expanded_repr(df))
 
     def test_repr_max_columns_max_rows(self):
         term_width, term_height = get_terminal_size()
@@ -636,7 +647,7 @@ class TestDataFrameFormatting(unittest.TestCase):
             wide_repr = repr(df)
             self.assert_(rep_str != wide_repr)
 
-            with option_context('display.line_width', 120):
+            with option_context('display.width', 120):
                 wider_repr = repr(df)
                 self.assert_(len(wider_repr) < len(wide_repr))
 
@@ -661,7 +672,7 @@ class TestDataFrameFormatting(unittest.TestCase):
             wide_repr = repr(df)
             self.assert_(rep_str != wide_repr)
 
-            with option_context('display.line_width', 120):
+            with option_context('display.width', 150):
                 wider_repr = repr(df)
                 self.assert_(len(wider_repr) < len(wide_repr))
 
@@ -684,7 +695,7 @@ class TestDataFrameFormatting(unittest.TestCase):
             wide_repr = repr(df)
             self.assert_(rep_str != wide_repr)
 
-            with option_context('display.line_width', 120):
+            with option_context('display.width', 150):
                 wider_repr = repr(df)
                 self.assert_(len(wider_repr) < len(wide_repr))
 
@@ -709,10 +720,9 @@ class TestDataFrameFormatting(unittest.TestCase):
             wide_repr = repr(df)
             self.assert_(rep_str != wide_repr)
 
-        with option_context('display.line_width', 120):
+        with option_context('display.width', 150):
             wider_repr = repr(df)
             self.assert_(len(wider_repr) < len(wide_repr))
-            self.assert_(len(wide_repr.splitlines()) == 14 * 10 - 1)
 
         reset_option('display.expand_frame_repr')
 
@@ -726,7 +736,7 @@ class TestDataFrameFormatting(unittest.TestCase):
             wide_repr = repr(df)
             self.assert_(rep_str != wide_repr)
 
-            with option_context('display.line_width', 120):
+            with option_context('display.width', 150):
                 wider_repr = repr(df)
                 self.assert_(len(wider_repr) < len(wide_repr))
 

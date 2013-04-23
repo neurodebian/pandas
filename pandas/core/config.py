@@ -140,6 +140,9 @@ def _reset_option(pat):
     for k in keys:
         _set_option(k, _registered_options[k].defval)
 
+def get_default_val(pat):
+    key =  _get_single_key(pat, silent=True)
+    return _get_registered_option(key).defval
 
 class DictWrapper(object):
     """ provide attribute-style access to a nested dict
@@ -698,7 +701,12 @@ def is_instance_factory(_type):
     """
 
     def inner(x):
-        if not isinstance(x, _type):
+        if isinstance(_type,(tuple,list)) :
+            if not any([isinstance(x,t) for t in _type]):
+                from pandas.core.common import pprint_thing as pp
+                pp_values = map(pp, _type)
+                raise ValueError("Value must be an instance of %s" % pp("|".join(pp_values)))
+        elif not isinstance(x, _type):
             raise ValueError("Value must be an instance of '%s'" % str(_type))
 
     return inner

@@ -26,7 +26,7 @@ Where to get it
 pandas 0.11.0
 =============
 
-**Release date:** 2013-??-??
+**Release date:** 2013-04-22
 
 **New features**
 
@@ -173,13 +173,23 @@ pandas 0.11.0
     when invalid shapes are passed
   - Don't suppress TypeError in GroupBy.agg (GH3238_)
   - Methods return None when inplace=True (GH1893_)
-
+  - HTML repr output for dataframs is once again controlled by the option
+    `display.notebook_repr_html`, and on by default.
   - ``HDFStore``
 
      - added the method ``select_column`` to select a single column from a table as a Series.
      - deprecated the ``unique`` method, can be replicated by ``select_column(key,column).unique()``
+     - ``min_itemsize`` parameter will now automatically create data_columns for passed keys
 
   - Downcast on pivot if possible (GH3283_), adds argument ``downcast`` to ``fillna``
+  - Introduced options `display.height/width` for explicitly specifying terminal
+    height/width in characters. Deprecated display.line_width, now replaced by display.width.
+    These defaults are in effect for scripts as well, so unless disabled, previously
+    very wide output will now be output as "expand_repr" style wrapped output.
+  - Various defaults for options (including display.max_rows) have been revised,
+    after a brief survey concluded they were wrong for everyone. Now at w=80,h=60.
+  - HTML repr output for dataframes is once again controlled by the option
+    `display.notebook_repr_html`, and on by default.
 
 **Bug Fixes**
 
@@ -296,12 +306,21 @@ pandas 0.11.0
   - Ensure index casts work even in Int64Index
   - Fix set_index segfault when passing MultiIndex (GH3308_)
   - Ensure pickles created in py2 can be read in py3
+  - Insert ellipsis in MultiIndex summary repr (GH3348_)
+  - Groupby will handle mutation among an input groups columns (and fallback
+    to non-fast apply) (GH3380_)
+  - Eliminated unicode errors on FreeBSD when using MPL GTK backend (GH3360_)
+  - Period.strftime should return unicode strings always (GH3363_)
+  - Respect passed read_* chunksize in get_chunk function (GH3406_)
 
 .. _GH3294: https://github.com/pydata/pandas/issues/3294
 .. _GH622: https://github.com/pydata/pandas/issues/622
+.. _GH3348: https://github.com/pydata/pandas/issues/3348
 .. _GH797: https://github.com/pydata/pandas/issues/797
 .. _GH1893: https://github.com/pydata/pandas/issues/1893
 .. _GH1978: https://github.com/pydata/pandas/issues/1978
+.. _GH3360: https://github.com/pydata/pandas/issues/3360
+.. _GH3363: https://github.com/pydata/pandas/issues/3363
 .. _GH2758: https://github.com/pydata/pandas/issues/2758
 .. _GH3275: https://github.com/pydata/pandas/issues/3275
 .. _GH2121: https://github.com/pydata/pandas/issues/2121
@@ -406,6 +425,8 @@ pandas 0.11.0
 .. _GH2919: https://github.com/pydata/pandas/issues/2919
 .. _GH3308: https://github.com/pydata/pandas/issues/3308
 .. _GH3311: https://github.com/pydata/pandas/issues/3311
+.. _GH3380: https://github.com/pydata/pandas/issues/3380
+.. _GH3406: https://github.com/pydata/pandas/issues/3406
 
 pandas 0.10.1
 =============

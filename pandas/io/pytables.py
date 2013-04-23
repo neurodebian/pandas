@@ -1207,13 +1207,20 @@ class DataCol(IndexCol):
 
         self.values = list(block.items)
         dtype = block.dtype.name
-        inferred_type = lib.infer_dtype(block.values.ravel())
+        rvalues = block.values.ravel()
+        inferred_type = lib.infer_dtype(rvalues)
 
         if inferred_type == 'datetime64':
             self.set_atom_datetime64(block)
         elif inferred_type == 'date':
             raise TypeError(
                 "[date] is not implemented as a table column")
+        elif inferred_type == 'datetime':
+            if getattr(rvalues[0],'tzinfo',None) is not None:
+                raise TypeError(
+                    "timezone support on datetimes is not yet implemented as a table column")
+            raise TypeError(
+                "[datetime] is not implemented as a table column")
         elif inferred_type == 'unicode':
             raise TypeError(
                 "[unicode] is not implemented as a table column")
@@ -2080,8 +2087,18 @@ class Table(Storer):
                             (other.table_type, self.table_type))
 
         for c in ['index_axes','non_index_axes','values_axes']:
-            if getattr(self,c,None) != getattr(other,c,None):
-                raise ValueError("invalid combinate of [%s] on appending data [%s] vs current table [%s]" % (c,getattr(self,c,None),getattr(other,c,None)))
+            sv = getattr(self,c,None)
+            ov = getattr(other,c,None)
+            if sv != ov:
+
+                # show the error for the specific axes
+                for i, sax in enumerate(sv):
+                    oax = ov[i]
+                    if sax != oax:
+                        raise ValueError("invalid combinate of [%s] on appending data [%s] vs current table [%s]" % (c,sax,oax))
+
+                # should never get here
+                raise Exception("invalid combinate of [%s] on appending data [%s] vs current table [%s]" % (c,sv,ov))
 
     @property
     def nrows_expected(self):
@@ -2181,7 +2198,7 @@ class Table(Storer):
             if k == 'values':
                 continue
             if k not in q:
-                raise ValueError("min_itemsize has [%s] which is not an axis or data_column" % k)
+                raise ValueError("min_itemsize has the key [%s] which is not an axis or data_column" % k)
 
     @property
     def indexables(self):
@@ -2293,6 +2310,30 @@ class Table(Storer):
         """ return the data for this obj """
         return obj
 
+    def validate_data_columns(self, data_columns, min_itemsize):
+        """ take the input data_columns and min_itemize and create a data_columns spec """
+
+        if not len(self.non_index_axes):
+            return []
+
+        axis_labels = self.non_index_axes[0][1]
+
+        # evaluate the passed data_columns, True == use all columns
+        # take only valide axis labels
+        if data_columns is True:
+            data_columns = axis_labels
+        elif data_columns is None:
+            data_columns = []
+
+        # if min_itemsize is a dict, add the keys (exclude 'values')
+        if isinstance(min_itemsize,dict):
+
+            existing_data_columns = set(data_columns)
+            data_columns.extend([ k for k in min_itemsize.keys() if k != 'values' and k not in existing_data_columns ])
+
+        # return valid columns in the order of our axis
+        return [c for c in data_columns if c in axis_labels]
+
     def create_axes(self, axes, obj, validate=True, nan_rep=None, data_columns=None, min_itemsize=None, **kwargs):
         """ create and return the axes
               leagcy tables create an indexable column, indexable index, non-indexable fields
@@ -2380,26 +2421,18 @@ class Table(Storer):
         for a in self.non_index_axes:
             obj = obj.reindex_axis(a[1], axis=a[0], copy=False)
 
-        # get out blocks
+        # figure out data_columns and get out blocks
         block_obj = self.get_object(obj)
-        blocks = None
-
-        if data_columns is not None and len(self.non_index_axes):
-            axis = self.non_index_axes[0][0]
-            axis_labels = self.non_index_axes[0][1]
-            if data_columns is True:
-                data_columns = axis_labels
-
-            data_columns = [c for c in data_columns if c in axis_labels]
+        blocks = block_obj._data.blocks
+        if len(self.non_index_axes):
+            axis, axis_labels = self.non_index_axes[0]
+            data_columns = self.validate_data_columns(data_columns, min_itemsize)
             if len(data_columns):
                 blocks = block_obj.reindex_axis(Index(axis_labels) - Index(
-                    data_columns), axis=axis, copy=False)._data.blocks
+                        data_columns), axis=axis, copy=False)._data.blocks
                 for c in data_columns:
                     blocks.extend(block_obj.reindex_axis(
-                        [c], axis=axis, copy=False)._data.blocks)
-
-        if blocks is None:
-            blocks = block_obj._data.blocks
+                            [c], axis=axis, copy=False)._data.blocks)
 
         # add my values
         self.values_axes = []

@@ -1,6 +1,6 @@
 .. _whatsnew_0110:
 
-v0.11.0 (March ??, 2013)
+v0.11.0 (April 22, 2013)
 ------------------------
 
 This is a major release from 0.10.1 and includes many new features and
@@ -24,63 +24,46 @@ Starting in 0.11.0, object selection has had a number of user-requested addition
 order to support more explicit location based indexing. Pandas now supports
 three types of multi-axis indexing.
 
-  - ``.loc`` is strictly label based, will raise ``KeyError`` when the items are not found,
-    allowed inputs are:
+- ``.loc`` is strictly label based, will raise ``KeyError`` when the items are not found, allowed inputs are:
 
-    - A single label, e.g. ``5`` or ``'a'``
+  - A single label, e.g. ``5`` or ``'a'``, (note that ``5`` is interpreted as a *label* of the index. This use is **not** an integer position along the index)
+  - A list or array of labels ``['a', 'b', 'c']``
+  - A slice object with labels ``'a':'f'``, (note that contrary to usual python slices, **both** the start and the stop are included!)
+  - A boolean array
 
-      (note that ``5`` is interpreted as a *label* of the index. This use is **not** an integer position along the index)
-    - A list or array of labels ``['a', 'b', 'c']``
-    - A slice object with labels ``'a':'f'``
+  See more at :ref:`Selection by Label <indexing.label>`
 
-      (note that contrary to usual python slices, **both** the start and the stop are included!)
-    - A boolean array
+- ``.iloc`` is strictly integer position based (from ``0`` to ``length-1`` of the axis), will raise ``IndexError`` when the requested indicies are out of bounds. Allowed inputs are:
 
-    See more at :ref:`Selection by Label <indexing.label>`
+  - An integer e.g. ``5``
+  - A list or array of integers ``[4, 3, 0]``
+  - A slice object with ints ``1:7``
+  - A boolean array
 
-  - ``.iloc`` is strictly integer position based (from 0 to length-1 of the axis), will
-    raise ``IndexError`` when the requested indicies are out of bounds. Allowed inputs are:
+  See more at :ref:`Selection by Position <indexing.integer>`
 
-    - An integer e.g. ``5``
-    - A list or array of integers ``[4, 3, 0]``
-    - A slice object with ints ``1:7``
-    - A boolean array
+- ``.ix`` supports mixed integer and label based access. It is primarily label based, but will fallback to integer positional access. ``.ix`` is the most general and will support
+  any of the inputs to ``.loc`` and ``.iloc``, as well as support for floating point label schemes. ``.ix`` is especially useful when dealing with mixed positional and label
+  based hierarchial indexes.
 
-    See more at :ref:`Selection by Position <indexing.integer>`
+  As using integer slices with ``.ix`` have different behavior depending on whether the slice
+  is interpreted as position based or label based, it's usually better to be
+  explicit and use ``.iloc`` or ``.loc``.
 
-  - ``.ix`` supports mixed integer and label based access. It is primarily label based, but
-    will fallback to integer positional access. ``.ix`` is the most general and will support
-    any of the inputs to ``.loc`` and ``.iloc``, as well as support for floating point label schemes.
-
-    As using integer slices with ``.ix`` have different behavior depending on whether the slice
-    is interpreted as integer location based or label position based, it's usually better to be
-    explicit and use ``.iloc`` (integer location) or ``.loc`` (label location).
-
-    ``.ix`` is especially usefull when dealing with mixed positional/label based hierarchial indexes.
-
-    See more at :ref:`Advanced Indexing <indexing.advanced>` and :ref:`Advanced Hierarchical <indexing.advanced_hierarchical>`
+  See more at :ref:`Advanced Indexing <indexing.advanced>`, :ref:`Advanced Hierarchical <indexing.advanced_hierarchical>` and
+  :ref:`Fallback Indexing <indexing.fallback>`
 
 
 Selection Deprecations
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Starting in version 0.11.0, these methods may be deprecated in future versions.
+Starting in version 0.11.0, these methods *may* be deprecated in future versions.
 
-  - ``irow``
-  - ``icol``
-  - ``iget_value``
+- ``irow``
+- ``icol``
+- ``iget_value``
 
 See the section :ref:`Selection by Position <indexing.integer>` for substitutes.
-
-Cross-sectional slices on non-hierarchical indices are now easily performed using
-``.loc`` and/or ``.loc``. The methods:
-
-  - ``xs`` (for DataFrame),
-  - ``minor_xs`` and ``major_xs`` (for Panel)
-
-now exist primarily for backward compatibility.
-
-See the section :ref:`Selection by Label <indexing.label>` for substitutes.
 
 Dtypes
 ~~~~~~
@@ -229,9 +212,11 @@ API changes
   - Added to_series() method to indicies, to facilitate the creation of indexers
     (GH3275_)
 
-  - In ``HDFStore``, added the method ``select_column`` to select a single column from a table as a Series.
+  - ``HDFStore``
 
-  - In ``HDFStore``, deprecated the ``unique`` method, can be replicated by ``select_column(key,column).unique()``
+    - added the method ``select_column`` to select a single column from a table as a Series.
+    - deprecated the ``unique`` method, can be replicated by ``select_column(key,column).unique()``
+    - ``min_itemsize`` parameter to ``append`` will now automatically create data_columns for passed keys
 
 Enhancements
 ~~~~~~~~~~~~
@@ -244,25 +229,26 @@ Enhancements
   - Bottleneck is now a :ref:`Recommended Dependencies <install.recommended_dependencies>`, to accelerate certain
     types of ``nan`` operations
 
-  - For ``HDFStore``, support ``read_hdf/to_hdf`` API similar to ``read_csv/to_csv``
+  - ``HDFStore``
 
-    .. ipython:: python
+    - support ``read_hdf/to_hdf`` API similar to ``read_csv/to_csv``
 
-       df = DataFrame(dict(A=range(5), B=range(5)))
-       df.to_hdf('store.h5','table',append=True)
-       read_hdf('store.h5', 'table', where = ['index>2'])
+      .. ipython:: python
 
-    .. ipython:: python
-       :suppress:
-       :okexcept:
+          df = DataFrame(dict(A=range(5), B=range(5)))
+          df.to_hdf('store.h5','table',append=True)
+          read_hdf('store.h5', 'table', where = ['index>2'])
 
-       os.remove('store.h5')
+      .. ipython:: python
+          :suppress:
+          :okexcept:
 
-  - In ``HDFStore``, provide dotted attribute access to ``get`` from stores
-    (e.g. ``store.df == store['df']``)
+          os.remove('store.h5')
 
-  - In ``HDFStore``, new keywords ``iterator=boolean``, and ``chunksize=number_in_a_chunk`` are
-    provided to support iteration on ``select`` and ``select_as_multiple`` (GH3076_)
+    - provide dotted attribute access to ``get`` from stores, e.g. ``store.df == store['df']``
+
+    - new keywords ``iterator=boolean``, and ``chunksize=number_in_a_chunk`` are
+      provided to support iteration on ``select`` and ``select_as_multiple`` (GH3076_)
 
   - You can now select timestamps from an *unordered* timeseries similarly to an *ordered* timeseries (GH2437_)
 
@@ -306,7 +292,8 @@ Enhancements
       only return forward looking data for options near the current stock
       price. This just obtains the data from Options.get_near_stock_price
       instead of Options.get_xxx_data() (GH2758_).
-    + Cursor coordinate information is now displayed in time-series plots.
+
+  - Cursor coordinate information is now displayed in time-series plots.
 
   - added option `display.max_seq_items` to control the number of
     elements printed per sequence pprinting it.  (GH2979_)

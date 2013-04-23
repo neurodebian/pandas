@@ -694,24 +694,40 @@ class TestHDFStore(unittest.TestCase):
 
         with ensure_clean(self.path) as store:
 
-            # infer the .typ on subsequent appends
+            def check_col(key,name,size):
+                self.assert_(getattr(store.get_storer(key).table.description,name).itemsize == size)
+
             df = DataFrame(dict(A = 'foo', B = 'bar'),index=range(10))
+
+            # a min_itemsize that creates a data_column
+            store.remove('df')
+            store.append('df', df, min_itemsize={'A' : 200 })
+            check_col('df', 'A', 200)
+            self.assert_(store.get_storer('df').data_columns == ['A'])
+
+            # a min_itemsize that creates a data_column2
+            store.remove('df')
+            store.append('df', df, data_columns = ['B'], min_itemsize={'A' : 200 })
+            check_col('df', 'A', 200)
+            self.assert_(store.get_storer('df').data_columns == ['B','A'])
+
+            # a min_itemsize that creates a data_column2
+            store.remove('df')
+            store.append('df', df, data_columns = ['B'], min_itemsize={'values' : 200 })
+            check_col('df', 'B', 200)
+            check_col('df', 'values_block_0', 200)
+            self.assert_(store.get_storer('df').data_columns == ['B'])
+
+            # infer the .typ on subsequent appends
             store.remove('df')
             store.append('df', df[:5], min_itemsize=200)
             store.append('df', df[5:], min_itemsize=200)
             tm.assert_frame_equal(store['df'], df)
 
             # invalid min_itemsize keys
-
             df = DataFrame(['foo','foo','foo','barh','barh','barh'],columns=['A'])
-
             store.remove('df')
             self.assertRaises(ValueError, store.append, 'df', df, min_itemsize={'foo' : 20, 'foobar' : 20})
-
-            # invalid sizes
-            store.remove('df')
-            store.append('df', df[:3], min_itemsize=3)
-            self.assertRaises(ValueError, store.append, 'df', df[3:])
 
     def test_append_with_data_columns(self):
 
@@ -1134,14 +1150,18 @@ class TestHDFStore(unittest.TestCase):
             df1['float322'] = 1.
             df1['float322'] = df1['float322'].astype('float32')
             df1['bool']     = df1['float32'] > 0
+            df1['time1']    = Timestamp('20130101')
+            df1['time2']    = Timestamp('20130102')
 
             store.append('df_mixed_dtypes1', df1)
             result = store.select('df_mixed_dtypes1').get_dtype_counts()
             expected = Series({ 'float32' : 2, 'float64' : 1,'int32' : 1, 'bool' : 1,
-                                'int16' : 1, 'int8' : 1, 'int64' : 1, 'object' : 1 })
+                                'int16' : 1, 'int8' : 1, 'int64' : 1, 'object' : 1,
+                                'datetime64[ns]' : 2})
             result.sort()
             expected.sort()
             tm.assert_series_equal(result,expected)
+
 
     def test_table_mixed_dtypes(self):
 
@@ -1214,6 +1234,17 @@ class TestHDFStore(unittest.TestCase):
         with ensure_clean(self.path) as store:
             # this fails because we have a date in the object block......
             self.assertRaises(TypeError, store.append, 'df_unimplemented', df)
+
+    def test_table_append_with_timezones(self):
+        # not implemented yet
+
+        with ensure_clean(self.path) as store:
+            
+            # check with mixed dtypes
+            df = DataFrame(dict(A = Timestamp('20130102',tz='US/Eastern')),index=range(5))
+
+            # timezones not yet supported
+            self.assertRaises(TypeError, store.append, 'df_tz', df)
 
     def test_remove(self):
 

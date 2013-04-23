@@ -4,7 +4,16 @@ import sys
 print("\nINSTALLED VERSIONS")
 print("------------------")
 print("Python: %d.%d.%d.%s.%s" % sys.version_info[:])
+try:
+    import os
+    (sysname, nodename, release, version, machine) = os.uname()
+    print("OS: %s %s %s %s" % (sysname, release, version,machine))
+    print("LC_ALL: %s" % os.environ.get('LC_ALL',"None"))
+    print("LANG: %s" % os.environ.get('LANG',"None"))
+except:
+    pass
 
+print("")
 try:
     import Cython
     print("Cython: %s" % Cython.__version__)
