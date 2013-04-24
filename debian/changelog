@@ -1,8 +1,8 @@
-pandas (0.11.0~rc1+git7-gd7617d3-1) UNRELEASED; urgency=low
+pandas (0.11.0-1) experimental; urgency=low
 
-  * Testing rc1
+  * New upstream release
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 12 Apr 2013 23:00:52 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 23 Apr 2013 22:40:15 -0400
 
 pandas (0.10.1-1) experimental; urgency=low
 
