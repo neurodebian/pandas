@@ -44,6 +44,7 @@ Depends: ${misc:Depends}, ${python:Depends},
 Recommends: python-scipy,
             python-matplotlib,
             python-tables,
+            python-numexpr,
             python-tz,
             python-xlrd,
             python-statsmodels,
@@ -78,8 +79,9 @@ Depends: ${misc:Depends}, ${python3:Depends},
          python3-pandas-lib(>= ${source:Version})
 Recommends: python3-scipy,
             python3-matplotlib,
+            python3-numexpr,
             python3-tables,
-            python3-tz
+            python3-tz,
 Suggests: python-pandas-doc
 Description: data structures for "relational" or "labeled" data - Python 3
  pandas is a Python package providing fast, flexible, and expressive

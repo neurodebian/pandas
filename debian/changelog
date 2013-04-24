@@ -1,3 +1,9 @@
+pandas (0.11.0-2) UNRELEASED; urgency=low
+
+  * Recommends numexpr
+
+ --
+
 pandas (0.11.0-1) experimental; urgency=low
 
   * New upstream release
