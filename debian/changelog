@@ -1,3 +1,9 @@
+pandas (0.10.1-2) UNRELEASED; urgency=low
+
+  * debian/tests/unittests3: use nosetests3 instead of nosetests-3.x.
+
+ -- Dmitry Shachnev <mitya57@gmail.com>  Tue, 21 May 2013 21:11:56 +0400
+
 pandas (0.10.1-1) experimental; urgency=low
 
   * New upstream release
