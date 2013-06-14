@@ -68,8 +68,8 @@ Description: data structures for "relational" or "labeled" data
   - Any other form of observational / statistical data sets. The data
     actually need not be labeled at all to be placed into a pandas
     data structure
-  .
-  This package contains the Python 2 version.
+ .
+ This package contains the Python 2 version.
 
 Package: python3-pandas
 Architecture: all

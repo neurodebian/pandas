@@ -1,3 +1,11 @@
+pandas (0.11.0-3) UNRELEASED; urgency=low
+
+  * debian/control
+    - dedented last "paragraph" to break it away from the 2nd one.
+      Thanks Beatrice Torracca for the detailed report (Closes: #712260)
+
+ --
+
 pandas (0.11.0-2) unstable; urgency=low
 
   [ Yaroslav Halchenko ]
