@@ -87,7 +87,8 @@ ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 	echo "$*" | grep -q '^3' && PY=3 || PY=$*; \
 	export PYTHONPATH=`/bin/ls -d $$PWD/debian/tmp/usr/lib/python$$PY/*/`; \
 	export MPLCONFIGDIR=$(CURDIR)/build HOME=$(CURDIR)/build; \
-	cd build/; python$* /usr/bin/nosetests -s -v -a '!network' $(EXCLUDE_TESTS$*) pandas;
+	python$* ci/print_versions.py; \
+    cd build/; python$* /usr/bin/nosetests -s -v -a '!network' $(EXCLUDE_TESTS$*) pandas;
 else
 	: # Skip unittests due to nocheck
 endif
