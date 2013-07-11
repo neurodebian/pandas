@@ -7,9 +7,10 @@ import operator
 import sys
 import numpy as np
 from pandas.core.common import (PandasError, _mut_exclusive,
-                                _try_sort, _default_index, _infer_dtype_from_scalar,
+                                _try_sort, _default_index,
+                                _infer_dtype_from_scalar,
                                 notnull)
-from pandas.core.categorical import Factor
+from pandas.core.categorical import Categorical
 from pandas.core.index import (Index, MultiIndex, _ensure_index,
                                _get_combined_index)
 from pandas.core.indexing import _maybe_droplevels, _is_list_like
@@ -81,16 +82,12 @@ def panel_index(time, panels, names=['time', 'panel']):
                 (1962, 'C')], dtype=object)
     """
     time, panels = _ensure_like_indices(time, panels)
-    time_factor = Factor.from_array(time)
-    panel_factor = Factor.from_array(panels)
+    time_factor = Categorical.from_array(time)
+    panel_factor = Categorical.from_array(panels)
 
     labels = [time_factor.labels, panel_factor.labels]
     levels = [time_factor.levels, panel_factor.levels]
     return MultiIndex(levels, labels, sortorder=None, names=names)
-
-
-class PanelError(Exception):
-    pass
 
 
 def _arith_method(func, name):
@@ -154,7 +151,7 @@ class Panel(NDFrame):
     ----------
     data : ndarray (items x major x minor), or dict of DataFrames
     items : Index or array-like
-        axis=1
+        axis=0
     major_axis : Index or array-like
         axis=1
     minor_axis : Index or array-like
@@ -189,28 +186,24 @@ class Panel(NDFrame):
     major_axis = lib.AxisProperty(1)
     minor_axis = lib.AxisProperty(2)
 
-    @property
-    def _constructor(self):
-        return type(self)
-
     # return the type of the slice constructor
     _constructor_sliced = DataFrame
 
     def _construct_axes_dict(self, axes=None, **kwargs):
-        """ return an axes dictionary for myself """
+        """ Return an axes dictionary for myself """
         d = dict([(a, getattr(self, a)) for a in (axes or self._AXIS_ORDERS)])
         d.update(kwargs)
         return d
 
     @staticmethod
     def _construct_axes_dict_from(self, axes, **kwargs):
-        """ return an axes dictionary for the passed axes """
+        """ Return an axes dictionary for the passed axes """
         d = dict([(a, ax) for a, ax in zip(self._AXIS_ORDERS, axes)])
         d.update(kwargs)
         return d
 
     def _construct_axes_dict_for_slice(self, axes=None, **kwargs):
-        """ return an axes dictionary for myself """
+        """ Return an axes dictionary for myself """
         d = dict([(self._AXIS_SLICEMAP[a], getattr(self, a))
                  for a in (axes or self._AXIS_ORDERS)])
         d.update(kwargs)
@@ -241,7 +234,10 @@ class Panel(NDFrame):
             copy=copy, dtype=dtype)
 
     def _init_data(self, data, copy, dtype, **kwargs):
-        """ generate ND initialization; axes are passed as required objects to __init__ """
+        """
+        Generate ND initialization; axes are passed
+        as required objects to __init__
+        """
         if data is None:
             data = {}
 
@@ -281,7 +277,8 @@ class Panel(NDFrame):
         # prefilter if haxis passed
         if haxis is not None:
             haxis = _ensure_index(haxis)
-            data = OrderedDict((k, v) for k, v in data.iteritems() if k in haxis)
+            data = OrderedDict((k, v) for k, v
+                               in data.iteritems() if k in haxis)
         else:
             ks = data.keys()
             if not isinstance(data,OrderedDict):
@@ -321,7 +318,7 @@ class Panel(NDFrame):
 
     @property
     def shape(self):
-        return [len(getattr(self, a)) for a in self._AXIS_ORDERS]
+        return tuple([len(getattr(self, a)) for a in self._AXIS_ORDERS])
 
     @classmethod
     def from_dict(cls, data, intersect=False, orient='items', dtype=None):
@@ -356,7 +353,7 @@ class Panel(NDFrame):
                     new_data[item][col] = s
             data = new_data
         elif orient != 'items':  # pragma: no cover
-            raise ValueError('only recognize items or minor for orientation')
+            raise ValueError('Orientation must be one of {items, minor}.')
 
         d = cls._homogenize_dict(cls, data, intersect=intersect, dtype=dtype)
         ks = d['data'].keys()
@@ -421,7 +418,8 @@ class Panel(NDFrame):
     # Comparison methods
 
     def _indexed_same(self, other):
-        return all([getattr(self, a).equals(getattr(other, a)) for a in self._AXIS_ORDERS])
+        return all([getattr(self, a).equals(getattr(other, a))
+                    for a in self._AXIS_ORDERS])
 
     def _compare_constructor(self, other, func):
         if not self._indexed_same(other):
@@ -464,33 +462,12 @@ class Panel(NDFrame):
     #----------------------------------------------------------------------
     # Magic methods
 
-    def __str__(self):
-        """
-        Return a string representation for a particular Panel
-
-        Invoked by str(df) in both py2/py3.
-        Yields Bytestring in Py2, Unicode String in py3.
-        """
-
-        if py3compat.PY3:
-            return self.__unicode__()
-        return self.__bytes__()
-
-    def __bytes__(self):
-        """
-        Return a string representation for a particular Panel
-
-        Invoked by bytes(df) in py3 only.
-        Yields a bytestring in both py2/py3.
-        """
-        encoding = com.get_option("display.encoding")
-        return self.__unicode__().encode(encoding, 'replace')
-
     def __unicode__(self):
         """
         Return a string representation for a particular Panel
 
-        Invoked by unicode(df) in py2 only. Yields a Unicode String in both py2/py3.
+        Invoked by unicode(df) in py2 only.
+        Yields a Unicode String in both py2/py3.
         """
 
         class_name = str(self.__class__)
@@ -502,21 +479,15 @@ class Panel(NDFrame):
         def axis_pretty(a):
             v = getattr(self, a)
             if len(v) > 0:
-                return u'%s axis: %s to %s' % (a.capitalize(), com.pprint_thing(v[0]), com.pprint_thing(v[-1]))
+                return u'%s axis: %s to %s' % (a.capitalize(),
+                                               com.pprint_thing(v[0]),
+                                               com.pprint_thing(v[-1]))
             else:
                 return u'%s axis: None' % a.capitalize()
 
         output = '\n'.join(
             [class_name, dims] + [axis_pretty(a) for a in self._AXIS_ORDERS])
         return output
-
-    def __repr__(self):
-        """
-        Return a string representation for a particular Panel
-
-        Yields Bytestring in Py2, Unicode String in py3.
-        """
-        return str(self)
 
     def __iter__(self):
         return iter(getattr(self, self._info_axis))
@@ -530,7 +501,11 @@ class Panel(NDFrame):
     iterkv = iteritems
 
     def _get_plane_axes(self, axis):
-        """ get my plane axes: these are already (as compared with higher level planes), as we are returning a DataFrame axes """
+        """
+        Get my plane axes: these are already
+        (as compared with higher level planes),
+        as we are returning a DataFrame axes
+        """
         axis = self._get_axis_name(axis)
 
         if axis == 'major_axis':
@@ -583,7 +558,7 @@ class Panel(NDFrame):
         na_rep : string, default ''
             Missing data representation
         """
-        from pandas.io.parsers import ExcelWriter
+        from pandas.io.excel import ExcelWriter
         writer = ExcelWriter(path)
         for item, df in self.iteritems():
             name = str(item)
@@ -618,7 +593,8 @@ class Panel(NDFrame):
         value : scalar value
         """
         # require an arg for each axis
-        assert(len(args) == self._AXIS_LEN)
+        if not ((len(args) == self._AXIS_LEN)):
+            raise AssertionError()
 
         # hm, two layers to the onion
         frame = self._get_item_cache(args[0])
@@ -642,7 +618,8 @@ class Panel(NDFrame):
             otherwise a new object
         """
         # require an arg for each axis and the value
-        assert(len(args) == self._AXIS_LEN + 1)
+        if not ((len(args) == self._AXIS_LEN + 1)):
+            raise AssertionError()
 
         try:
             frame = self._get_item_cache(args[0])
@@ -675,7 +652,9 @@ class Panel(NDFrame):
                              (type(self).__name__, name))
 
     def _slice(self, slobj, axis=0, raise_on_error=False):
-        new_data = self._data.get_slice(slobj, axis=axis, raise_on_error=raise_on_error)
+        new_data = self._data.get_slice(slobj,
+                                        axis=axis,
+                                        raise_on_error=raise_on_error)
         return self._constructor(new_data)
 
     def __setitem__(self, key, value):
@@ -685,7 +664,8 @@ class Panel(NDFrame):
                 **self._construct_axes_dict_for_slice(self._AXIS_ORDERS[1:]))
             mat = value.values
         elif isinstance(value, np.ndarray):
-            assert(value.shape == shape[1:])
+            if not ((value.shape == shape[1:])):
+                raise AssertionError()
             mat = np.asarray(value)
         elif np.isscalar(value):
             dtype, value = _infer_dtype_from_scalar(value)
@@ -989,6 +969,9 @@ class Panel(NDFrame):
         --------
         DataFrame.reindex, DataFrame.asfreq
         """
+        if isinstance(value, (list, tuple)):
+            raise TypeError('"value" parameter must be a scalar or dict, but '
+                            'you passed a "{0}"'.format(type(value).__name__))
         if value is None:
             if method is None:
                 raise ValueError('must specify a fill method or value')
@@ -1148,16 +1131,35 @@ class Panel(NDFrame):
         -------
         y : Panel (new object)
         """
-
         # construct the args
         args = list(args)
+        aliases = tuple(kwargs.iterkeys())
+
         for a in self._AXIS_ORDERS:
             if not a in kwargs:
-                try:
-                    kwargs[a] = args.pop(0)
-                except (IndexError):
-                    raise ValueError(
-                        "not enough arguments specified to transpose!")
+                where = map(a.startswith, aliases)
+
+                if any(where):
+                    if sum(where) != 1:
+                        raise AssertionError(
+                            'Ambiguous parameter aliases "{0}" passed, valid '
+                            'parameter aliases are '
+                            '{1}'.format([n for n, m in zip(aliases, where)
+                                          if m], self._AXIS_ALIASES))
+
+                    k = aliases[where.index(True)]
+
+                    try:
+                        kwargs[self._AXIS_ALIASES[k]] = kwargs.pop(k)
+                    except KeyError:
+                        raise KeyError('Invalid parameter alias '
+                                       '"{0}"'.format(k))
+                else:
+                    try:
+                        kwargs[a] = args.pop(0)
+                    except IndexError:
+                        raise ValueError(
+                            "not enough arguments specified to transpose!")
 
         axes = [self._get_axis_number(kwargs[a]) for a in self._AXIS_ORDERS]
 
@@ -1265,7 +1267,8 @@ class Panel(NDFrame):
         if result.ndim == 2 and axis_name != self._info_axis:
             result = result.T
 
-        return self._constructor_sliced(result, **self._extract_axes_for_slice(self, axes))
+        return self._constructor_sliced(result,
+                                **self._extract_axes_for_slice(self, axes))
 
     def _wrap_result(self, result, axis):
         axis = self._get_axis_name(axis)
@@ -1277,7 +1280,9 @@ class Panel(NDFrame):
         if self.ndim == result.ndim:
             return self._constructor(result, **self._construct_axes_dict())
         elif self.ndim == result.ndim + 1:
-            return self._constructor_sliced(result, **self._extract_axes_for_slice(self, axes))
+            return self._constructor_sliced(result,
+                                **self._extract_axes_for_slice(self, axes))
+
         raise PandasError("invalid _wrap_result [self->%s] [result->%s]" %
                           (self.ndim, result.ndim))
 
@@ -1464,12 +1469,14 @@ class Panel(NDFrame):
     @staticmethod
     def _extract_axes(self, data, axes, **kwargs):
         """ return a list of the axis indicies """
-        return [self._extract_axis(self, data, axis=i, **kwargs) for i, a in enumerate(axes)]
+        return [self._extract_axis(self, data, axis=i, **kwargs) for i, a
+                in enumerate(axes)]
 
     @staticmethod
     def _extract_axes_for_slice(self, axes):
         """ return the slice dictionary for these axes """
-        return dict([(self._AXIS_SLICEMAP[i], a) for i, a in zip(self._AXIS_ORDERS[self._AXIS_LEN - len(axes):], axes)])
+        return dict([(self._AXIS_SLICEMAP[i], a) for i, a
+                     in zip(self._AXIS_ORDERS[self._AXIS_LEN - len(axes):], axes)])
 
     @staticmethod
     def _prep_ndarray(self, values, copy=True):
@@ -1481,14 +1488,15 @@ class Panel(NDFrame):
         else:
             if copy:
                 values = values.copy()
-        assert(values.ndim == self._AXIS_LEN)
+        if not ((values.ndim == self._AXIS_LEN)):
+            raise AssertionError()
         return values
 
     @staticmethod
     def _homogenize_dict(self, frames, intersect=True, dtype=None):
         """
-        Conform set of _constructor_sliced-like objects to either an intersection
-        of indices / columns or a union.
+        Conform set of _constructor_sliced-like objects to either
+        an intersection of indices / columns or a union.
 
         Parameters
         ----------
@@ -1610,7 +1618,8 @@ Return %(desc)s over requested axis
 
 Parameters
 ----------
-axis : {""" + ', '.join(cls._AXIS_ORDERS) + "} or {" + ', '.join([str(i) for i in range(cls._AXIS_LEN)]) + """}
+axis : {""" + ', '.join(cls._AXIS_ORDERS) + "} or {" \
++ ', '.join([str(i) for i in range(cls._AXIS_LEN)]) + """}
 skipna : boolean, default True
     Exclude NA/null values. If an entire row/column is NA, the result
     will be NA
@@ -1702,7 +1711,8 @@ def install_ipython_completers():  # pragma: no cover
     @complete_object.when_type(Panel)
     def complete_dataframe(obj, prev_completions):
         return prev_completions + [c for c in obj.keys()
-                                   if isinstance(c, basestring) and py3compat.isidentifier(c)]
+                                   if isinstance(c, basestring)
+                                        and py3compat.isidentifier(c)]
 
 # Importing IPython brings in about 200 modules, so we want to avoid it unless
 # we're in IPython (when those modules are loaded anyway).

@@ -27,6 +27,7 @@
 ********************
 
 This is a short introduction to pandas, geared mainly for new users.
+You can see more complex recipes in the :ref:`Cookbook<cookbook>`
 
 Customarily, we import as follows
 
@@ -699,8 +700,7 @@ Reading from an excel file
 
 .. ipython:: python
 
-   xls = ExcelFile('foo.xlsx')
-   xls.parse('sheet1', index_col=None, na_values=['NA'])
+   read_excel('foo.xlsx', 'sheet1', index_col=None, na_values=['NA'])
 
 .. ipython:: python
    :suppress:

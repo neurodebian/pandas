@@ -17,7 +17,7 @@ objects. To get started, import numpy and load pandas into your namespace:
    from pandas import *
    randn = np.random.randn
    np.set_printoptions(precision=4, suppress=True)
-   set_printoptions(precision=4, max_columns=8)
+   set_option('display.precision', 4, 'display.max_columns', 8)
 
 .. ipython:: python
 
@@ -482,19 +482,23 @@ column-wise:
 .. ipython:: python
 
    index = date_range('1/1/2000', periods=8)
-   df = DataFrame(randn(8, 3), index=index,
-                  columns=['A', 'B', 'C'])
+   df = DataFrame(randn(8, 3), index=index, columns=list('ABC'))
    df
    type(df['A'])
    df - df['A']
 
-Technical purity aside, this case is so common in practice that supporting the
-special case is preferable to the alternative of forcing the user to transpose
-and do column-based alignment like so:
+.. warning::
 
-.. ipython:: python
+   .. code-block:: python
 
-   (df.T - df['A']).T
+      df - df['A']
+
+   is now deprecated and will be removed in a future release. The preferred way
+   to replicate this behavior is
+
+   .. code-block:: python
+
+      df.sub(df['A'], axis=0)
 
 For explicit control over the matching and broadcasting behavior, see the
 section on :ref:`flexible binary operations <basics.binop>`.
@@ -571,7 +575,7 @@ R package):
    :suppress:
 
    # force a summary to be printed
-   set_printoptions(max_rows=5)
+   pd.set_option('display.max_rows', 5)
 
 .. ipython:: python
 
@@ -582,7 +586,7 @@ R package):
    :suppress:
 
    # restore GlobalPrintConfig
-   reset_printoptions()
+   pd.reset_option('^display\.')
 
 However, using ``to_string`` will return a string representation of the
 DataFrame in tabular form, though it won't always fit the console width:

@@ -85,7 +85,7 @@ class TimeGrouper(CustomGrouper):
             offset = to_offset(self.freq)
             if offset.n > 1:
                 if self.kind == 'period':  # pragma: no cover
-                    print 'Warning: multiple of frequency -> timestamps'
+                    print ('Warning: multiple of frequency -> timestamps')
                 # Cannot have multiple of periods, convert to timestamp
                 self.kind = 'timestamp'
 
@@ -119,7 +119,8 @@ class TimeGrouper(CustomGrouper):
         return binner, grouper
 
     def _get_time_bins(self, axis):
-        assert(isinstance(axis, DatetimeIndex))
+        if not (isinstance(axis, DatetimeIndex)):
+            raise AssertionError()
 
         if len(axis) == 0:
             binner = labels = DatetimeIndex(data=[], freq=self.freq)
@@ -178,7 +179,8 @@ class TimeGrouper(CustomGrouper):
         return binner, bin_edges
 
     def _get_time_period_bins(self, axis):
-        assert(isinstance(axis, DatetimeIndex))
+        if not(isinstance(axis, DatetimeIndex)):
+            raise AssertionError()
 
         if len(axis) == 0:
             binner = labels = PeriodIndex(data=[], freq=self.freq)
@@ -208,7 +210,8 @@ class TimeGrouper(CustomGrouper):
                 result = grouped.aggregate(self._agg_method)
             else:
                 # upsampling shortcut
-                assert(self.axis == 0)
+                if not (self.axis == 0):
+                    raise AssertionError()
 
                 if self.closed == 'right':
                     res_index = binner[1:]

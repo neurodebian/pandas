@@ -16,7 +16,8 @@ from numpy.random import randn
 import numpy as np
 
 from pandas import DataFrame, Series, Index
-from pandas.util.py3compat import lzip
+from pandas.util.py3compat import lzip, PY3
+
 import pandas.core.format as fmt
 import pandas.util.testing as tm
 from pandas.util.terminal import get_terminal_size
@@ -80,7 +81,7 @@ class TestDataFrameFormatting(unittest.TestCase):
         fmt.set_eng_float_format(accuracy=0)
         repr(self.frame)
 
-        fmt.reset_printoptions()
+        fmt.reset_option('^display.')
 
     def test_repr_tuples(self):
         buf = StringIO()
@@ -136,6 +137,14 @@ class TestDataFrameFormatting(unittest.TestCase):
         with option_context("display.max_seq_items",5):
             self.assertTrue(len(com.pprint_thing(range(1000)))< 100)
 
+    def test_repr_is_valid_construction_code(self):
+        import pandas as pd
+
+        # for the case of Index, where the repr is traditional rather then stylized
+        idx = pd.Index(['a','b'])
+        res = eval("pd."+repr(idx))
+        tm.assert_series_equal(Series(res),Series(idx))
+
     def test_repr_should_return_str(self):
         # http://docs.python.org/py3k/reference/datamodel.html#object.__repr__
         # http://docs.python.org/reference/datamodel.html#object.__repr__
@@ -161,8 +170,9 @@ class TestDataFrameFormatting(unittest.TestCase):
         df_tall = DataFrame('hello', range(30), range(5))
 
         with option_context('mode.sim_interactive', True):
-            with option_context('display.width', 50,
-                                'display.height', 20):
+            with option_context('display.max_columns', 10,
+                                'display.width',20,
+                                'display.max_rows', 20):
                 with option_context('display.expand_frame_repr', True):
                     self.assertFalse(has_info_repr(df_small))
                     self.assertFalse(has_expanded_repr(df_small))
@@ -212,24 +222,26 @@ class TestDataFrameFormatting(unittest.TestCase):
                     self.assertTrue(has_info_repr(df6))
 
                 with option_context('display.max_rows', 20,
-                                    'display.max_columns', 5):
+                                    'display.max_columns', 10):
                     # Out off max_columns boundary, but no extending
                     # since not exceeding width
                     self.assertFalse(has_expanded_repr(df6))
                     self.assertFalse(has_info_repr(df6))
-                    
+
                 with option_context('display.max_rows', 9,
                                     'display.max_columns', 10):
                     # out vertical bounds can not result in exanded repr
                     self.assertFalse(has_expanded_repr(df10))
                     self.assertTrue(has_info_repr(df10))
 
-            with option_context('display.max_columns', 0,
+            # width=None in terminal, auto detection
+            with option_context('display.max_columns', 100,
                                 'display.max_rows', term_width * 20,
-                                'display.width', 0):
+                                'display.width', None):
                 df = mkframe((term_width // 7) - 2)
                 self.assertFalse(has_expanded_repr(df))
                 df = mkframe((term_width // 7) + 2)
+                print( df._repr_fits_horizontal_())
                 self.assertTrue(has_expanded_repr(df))
 
     def test_to_string_repr_unicode(self):
@@ -355,6 +367,13 @@ class TestDataFrameFormatting(unittest.TestCase):
         check_with_width(df, 30)
         check_with_width(df, 50)
 
+    def test_to_html_with_empty_string_label(self):
+        # GH3547, to_html regards empty string labels as repeated labels
+        data = {'c1': ['a', 'b'], 'c2': ['a', ''], 'data': [1, 2]}
+        df = DataFrame(data).set_index(['c1', 'c2'])
+        res = df.to_html()
+        self.assertTrue("rowspan" not in res)
+
     def test_to_html_unicode(self):
         # it works!
         df = DataFrame({u'\u03c3': np.arange(10.)})
@@ -425,6 +444,114 @@ class TestDataFrameFormatting(unittest.TestCase):
   </tbody>
 </table>"""
         self.assertEqual(xp, rs)
+
+    def test_to_html_multiindex_sparsify_false_multi_sparse(self):
+        with option_context('display.multi_sparse', False):
+            index = pd.MultiIndex.from_arrays([[0, 0, 1, 1], [0, 1, 0, 1]],
+                                              names=['foo', None])
+
+            df = DataFrame([[0, 1], [2, 3], [4, 5], [6, 7]], index=index)
+
+            result = df.to_html()
+            expected = """\
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th></th>
+      <th>0</th>
+      <th>1</th>
+    </tr>
+    <tr>
+      <th>foo</th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <th>0</th>
+      <td> 0</td>
+      <td> 1</td>
+    </tr>
+    <tr>
+      <th>0</th>
+      <th>1</th>
+      <td> 2</td>
+      <td> 3</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <th>0</th>
+      <td> 4</td>
+      <td> 5</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <th>1</th>
+      <td> 6</td>
+      <td> 7</td>
+    </tr>
+  </tbody>
+</table>"""
+            self.assertEquals(result, expected)
+
+            df = DataFrame([[0, 1], [2, 3], [4, 5], [6, 7]],
+                           columns=index[::2], index=index)
+
+            result = df.to_html()
+            expected = """\
+<table border="1" class="dataframe">
+  <thead>
+    <tr>
+      <th></th>
+      <th>foo</th>
+      <th>0</th>
+      <th>1</th>
+    </tr>
+    <tr>
+      <th></th>
+      <th></th>
+      <th>0</th>
+      <th>0</th>
+    </tr>
+    <tr>
+      <th>foo</th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <th>0</th>
+      <td> 0</td>
+      <td> 1</td>
+    </tr>
+    <tr>
+      <th>0</th>
+      <th>1</th>
+      <td> 2</td>
+      <td> 3</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <th>0</th>
+      <td> 4</td>
+      <td> 5</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <th>1</th>
+      <td> 6</td>
+      <td> 7</td>
+    </tr>
+  </tbody>
+</table>"""
+            self.assertEquals(result, expected)
 
     def test_to_html_multiindex_sparsify(self):
         index = pd.MultiIndex.from_arrays([[0, 0, 1, 1], [0, 1, 0, 1]],
@@ -540,7 +667,7 @@ class TestDataFrameFormatting(unittest.TestCase):
     <tr style="text-align: right;">
       <th></th>
       <th>foo</th>
-      <th></th>
+      <th>None</th>
     </tr>
   </thead>
   <tbody>
@@ -592,11 +719,11 @@ class TestDataFrameFormatting(unittest.TestCase):
     def test_frame_info_encoding(self):
         index = ['\'Til There Was You (1997)',
                  'ldum klaka (Cold Fever) (1994)']
-        fmt.set_printoptions(max_rows=1)
+        fmt.set_option('display.max_rows', 1)
         df = DataFrame(columns=['a', 'b', 'c'], index=index)
         repr(df)
         repr(df.T)
-        fmt.set_printoptions(max_rows=200)
+        fmt.set_option('display.max_rows', 200)
 
     def test_large_frame_repr(self):
         def wrap_rows_options(f):
@@ -637,10 +764,34 @@ class TestDataFrameFormatting(unittest.TestCase):
         test_setting(3)
         self.assertRaises(ValueError, test_setting, 'string')
 
+    def test_pprint_thing(self):
+        import nose
+        from pandas.core.common import pprint_thing as pp_t
+
+        if PY3:
+            raise nose.SkipTest()
+
+        self.assertEquals(pp_t('a') , u'a')
+        self.assertEquals(pp_t(u'a') , u'a')
+        self.assertEquals(pp_t(None) , 'None')
+        self.assertEquals(pp_t(u'\u05d0',quote_strings=True) , u"u'\u05d0'")
+        self.assertEquals(pp_t(u'\u05d0',quote_strings=False) , u'\u05d0')
+        self.assertEquals(pp_t((u'\u05d0', u'\u05d1'),quote_strings=True) ,
+                          u"(u'\u05d0', u'\u05d1')")
+        self.assertEquals(pp_t((u'\u05d0', (u'\u05d1', u'\u05d2')),quote_strings=True) ,
+               u"(u'\u05d0', (u'\u05d1', u'\u05d2'))")
+        self.assertEquals(pp_t(('foo', u'\u05d0', (u'\u05d0', u'\u05d0')),quote_strings=True)
+                          , u"(u'foo', u'\u05d0', (u'\u05d0', u'\u05d0'))")
+
+        # escape embedded tabs in string
+        # GH #2038
+        self.assertTrue(not "\t" in pp_t("a\tb", escape_chars=("\t",)))
+
     def test_wide_repr(self):
         with option_context('mode.sim_interactive', True):
             col = lambda l, k: [tm.rands(k) for _ in xrange(l)]
-            df = DataFrame([col(20, 25) for _ in range(10)])
+            max_cols = get_option('display.max_columns')
+            df = DataFrame([col(max_cols-1, 25) for _ in range(10)])
             set_option('display.expand_frame_repr', False)
             rep_str = repr(df)
             set_option('display.expand_frame_repr', True)
@@ -663,7 +814,8 @@ class TestDataFrameFormatting(unittest.TestCase):
     def test_wide_repr_named(self):
         with option_context('mode.sim_interactive', True):
             col = lambda l, k: [tm.rands(k) for _ in xrange(l)]
-            df = DataFrame([col(20, 25) for _ in range(10)])
+            max_cols = get_option('display.max_columns')
+            df = DataFrame([col(max_cols-1, 25) for _ in range(10)])
             df.index.name = 'DataFrame Index'
             set_option('display.expand_frame_repr', False)
 
@@ -686,7 +838,8 @@ class TestDataFrameFormatting(unittest.TestCase):
             col = lambda l, k: [tm.rands(k) for _ in xrange(l)]
             midx = pandas.MultiIndex.from_arrays([np.array(col(10, 5)),
                                                   np.array(col(10, 5))])
-            df = DataFrame([col(20, 25) for _ in range(10)],
+            max_cols = get_option('display.max_columns')
+            df = DataFrame([col(max_cols-1, 25) for _ in range(10)],
                            index=midx)
             df.index.names = ['Level 0', 'Level 1']
             set_option('display.expand_frame_repr', False)
@@ -706,12 +859,13 @@ class TestDataFrameFormatting(unittest.TestCase):
 
     def test_wide_repr_multiindex_cols(self):
         with option_context('mode.sim_interactive', True):
+            max_cols = get_option('display.max_columns')
             col = lambda l, k: [tm.rands(k) for _ in xrange(l)]
             midx = pandas.MultiIndex.from_arrays([np.array(col(10, 5)),
                                                   np.array(col(10, 5))])
-            mcols = pandas.MultiIndex.from_arrays([np.array(col(20, 3)),
-                                                   np.array(col(20, 3))])
-            df = DataFrame([col(20, 25) for _ in range(10)],
+            mcols = pandas.MultiIndex.from_arrays([np.array(col(max_cols-1, 3)),
+                                                   np.array(col(max_cols-1, 3))])
+            df = DataFrame([col(max_cols-1, 25) for _ in range(10)],
                            index=midx, columns=mcols)
             df.index.names = ['Level 0', 'Level 1']
             set_option('display.expand_frame_repr', False)
@@ -729,7 +883,8 @@ class TestDataFrameFormatting(unittest.TestCase):
     def test_wide_repr_unicode(self):
         with option_context('mode.sim_interactive', True):
             col = lambda l, k: [tm.randu(k) for _ in xrange(l)]
-            df = DataFrame([col(20, 25) for _ in range(10)])
+            max_cols = get_option('display.max_columns')
+            df = DataFrame([col(max_cols-1, 25) for _ in range(10)])
             set_option('display.expand_frame_repr', False)
             rep_str = repr(df)
             set_option('display.expand_frame_repr', True)
@@ -871,9 +1026,9 @@ class TestDataFrameFormatting(unittest.TestCase):
         assert(df_s == expected)
 
     def test_to_string_float_formatting(self):
-        fmt.reset_printoptions()
-        fmt.set_printoptions(precision=6, column_space=12,
-                             notebook_repr_html=False)
+        fmt.reset_option('^display.')
+        fmt.set_option('display.precision', 6, 'display.column_space',
+                       12, 'display.notebook_repr_html', False)
 
         df = DataFrame({'x': [0, 0.25, 3456.000, 12e+45, 1.64e+6,
                               1.7e+8, 1.253456, np.pi, -1e6]})
@@ -902,7 +1057,7 @@ class TestDataFrameFormatting(unittest.TestCase):
                     '1     0.253')
         assert(df_s == expected)
 
-        fmt.reset_printoptions()
+        fmt.reset_option('^display.')
         self.assertEqual(get_option("display.precision"), 7)
 
         df = DataFrame({'x': [1e9, 0.2512]})
@@ -994,7 +1149,7 @@ c  10  11  12  13  14\
         self.assertEqual(rs, xp)
 
     def test_to_string_left_justify_cols(self):
-        fmt.reset_printoptions()
+        fmt.reset_option('^display.')
         df = DataFrame({'x': [3234, 0.253]})
         df_s = df.to_string(justify='left')
         expected = ('   x       \n'
@@ -1003,7 +1158,7 @@ c  10  11  12  13  14\
         assert(df_s == expected)
 
     def test_to_string_format_na(self):
-        fmt.reset_printoptions()
+        fmt.reset_option('^display.')
         df = DataFrame({'A': [np.nan, -1, -2.1234, 3, 4],
                         'B': [np.nan, 'foo', 'foooo', 'fooooo', 'bar']})
         result = df.to_string()
@@ -1060,6 +1215,26 @@ c  10  11  12  13  14\
 
         frame = DataFrame(index=np.arange(200))
         frame.to_html()
+
+    def test_to_html_filename(self):
+        biggie = DataFrame({'A': randn(200),
+                            'B': tm.makeStringIndex(200)},
+                           index=range(200))
+
+        biggie['A'][:20] = nan
+        biggie['B'][:20] = nan
+        with tm.ensure_clean('test.html') as path:
+            biggie.to_html(path)
+            with open(path, 'r') as f:
+                s = biggie.to_html()
+                s2 = f.read()
+                self.assertEqual(s, s2)
+
+        frame = DataFrame(index=np.arange(200))
+        with tm.ensure_clean('test.html') as path:
+            frame.to_html(path)
+            with open(path, 'r') as f:
+                self.assertEqual(frame.to_html(), f.read())
 
     def test_to_html_with_no_bold(self):
         x = DataFrame({'x': randn(5)})
@@ -1245,13 +1420,13 @@ c  10  11  12  13  14\
     def test_repr_html(self):
         self.frame._repr_html_()
 
-        fmt.set_printoptions(max_rows=1, max_columns=1)
+        fmt.set_option('display.max_rows', 1, 'display.max_columns', 1)
         self.frame._repr_html_()
 
-        fmt.set_printoptions(notebook_repr_html=False)
+        fmt.set_option('display.notebook_repr_html', False)
         self.frame._repr_html_()
 
-        fmt.reset_printoptions()
+        fmt.reset_option('^display.')
 
     def test_fake_qtconsole_repr_html(self):
         def get_ipython():
@@ -1262,11 +1437,11 @@ c  10  11  12  13  14\
         repstr = self.frame._repr_html_()
         self.assert_(repstr is not None)
 
-        fmt.set_printoptions(max_rows=5, max_columns=2)
+        fmt.set_option('display.max_rows', 5, 'display.max_columns', 2)
         repstr = self.frame._repr_html_()
         self.assert_('class' in repstr)  # info fallback
 
-        fmt.reset_printoptions()
+        fmt.reset_option('^display.')
 
     def test_to_html_with_classes(self):
         df = pandas.DataFrame()
@@ -1319,10 +1494,42 @@ c  10  11  12  13  14\
         self.assertTrue("'a': 1" in val)
         self.assertTrue("'b': 2" in val)
 
+    def test_to_latex_filename(self):
+        with tm.ensure_clean('test.tex') as path:
+            self.frame.to_latex(path)
+
+            with open(path, 'r') as f:
+                self.assertEqual(self.frame.to_latex(), f.read())
+
     def test_to_latex(self):
         # it works!
         self.frame.to_latex()
 
+        df = DataFrame({'a': [1, 2],
+                        'b': ['b1', 'b2']})
+        withindex_result = df.to_latex()
+        withindex_expected = r"""\begin{tabular}{lrl}
+\toprule
+{} &  a &   b \\
+\midrule
+0 &  1 &  b1 \\
+1 &  2 &  b2 \\
+\bottomrule
+\end{tabular}
+"""
+        self.assertEqual(withindex_result, withindex_expected)
+
+        withoutindex_result = df.to_latex(index=False)
+        withoutindex_expected = r"""\begin{tabular}{rl}
+\toprule
+ a &   b \\
+\midrule
+ 1 &  b1 \\
+ 2 &  b2 \\
+\bottomrule
+\end{tabular}
+"""
+        self.assertEqual(withoutindex_result, withoutindex_expected)
 
 class TestSeriesFormatting(unittest.TestCase):
     _multiprocess_can_split_ = True
@@ -1544,7 +1751,7 @@ class TestEngFormatter(unittest.TestCase):
                     '3    1E+06')
         self.assertEqual(result, expected)
 
-        fmt.reset_printoptions()
+        fmt.reset_option('^display.')
 
     def compare(self, formatter, input, output):
         formatted_input = formatter(input)

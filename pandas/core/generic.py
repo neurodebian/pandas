@@ -1,20 +1,21 @@
 # pylint: disable=W0231,E1101
 
 import numpy as np
+import pandas.lib as lib
+from pandas.core.base import PandasObject
 
 from pandas.core.index import MultiIndex
 import pandas.core.indexing as indexing
 from pandas.core.indexing import _maybe_convert_indices
 from pandas.tseries.index import DatetimeIndex
 import pandas.core.common as com
-import pandas.lib as lib
 
 
 class PandasError(Exception):
     pass
 
 
-class PandasObject(object):
+class PandasContainer(PandasObject):
 
     _AXIS_NUMBERS = {
         'index': 0,
@@ -24,12 +25,40 @@ class PandasObject(object):
     _AXIS_ALIASES = {}
     _AXIS_NAMES = dict((v, k) for k, v in _AXIS_NUMBERS.iteritems())
 
-    def save(self, path):
-        com.save(self, path)
+    def to_pickle(self, path):
+        """
+        Pickle (serialize) object to input file path
 
-    @classmethod
-    def load(cls, path):
-        return com.load(path)
+        Parameters
+        ----------
+        path : string
+            File path
+        """
+        from pandas.io.pickle import to_pickle
+        return to_pickle(self, path)
+
+    def save(self, path):  # TODO remove in 0.13
+        import warnings
+        from pandas.io.pickle import to_pickle
+        warnings.warn("save is deprecated, use to_pickle", FutureWarning)
+        return to_pickle(self, path)
+
+    def load(self, path):  # TODO remove in 0.13
+        import warnings
+        from pandas.io.pickle import read_pickle
+        warnings.warn("load is deprecated, use pd.read_pickle", FutureWarning)
+        return read_pickle(path)
+
+    def __hash__(self):
+        raise TypeError('{0!r} objects are mutable, thus they cannot be'
+                              ' hashed'.format(self.__class__.__name__))
+
+    def __unicode__(self):
+        # unicode representation based upon iterating over self
+        # (since, by definition, `PandasContainers` are iterable)
+        prepr = '[%s]' % ','.join(map(com.pprint_thing, self))
+        return '%s(%s)' % (self.__class__.__name__, prepr)
+
 
     #----------------------------------------------------------------------
     # Axis name business
@@ -107,7 +136,7 @@ class PandasObject(object):
             return default
 
     def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
-                group_keys=True):
+                group_keys=True, squeeze=False):
         """
         Group series using mapper (dict or key function, apply given function
         to group, return result as series) or by a series of columns
@@ -131,6 +160,9 @@ class PandasObject(object):
             Sort group keys. Get better performance by turning this off
         group_keys : boolean, default True
             When calling apply, add group keys to index to identify pieces
+        squeeze : boolean, default False
+            reduce the dimensionaility of the return type if possible, otherwise
+            return a consistent type
 
         Examples
         --------
@@ -150,7 +182,8 @@ class PandasObject(object):
         from pandas.core.groupby import groupby
         axis = self._get_axis_number(axis)
         return groupby(self, by, axis=axis, level=level, as_index=as_index,
-                       sort=sort, group_keys=group_keys)
+                       sort=sort, group_keys=group_keys,
+                       squeeze=squeeze)
 
     def asfreq(self, freq, method=None, how=None, normalize=False):
         """
@@ -487,11 +520,75 @@ class PandasObject(object):
         from pandas.io import pytables
         return pytables.to_hdf(path_or_buf, key, self, **kwargs)
 
+    def to_clipboard(self):
+        """
+        Attempt to write text representation of object to the system clipboard
+
+        Notes
+        -----
+        Requirements for your platform
+          - Linux: xclip, or xsel (with gtk or PyQt4 modules)
+          - Windows:
+          - OS X:
+        """
+        from pandas.io import clipboard
+        clipboard.to_clipboard(self)
+
+    def to_json(self, path_or_buf=None, orient=None, date_format='epoch',
+                double_precision=10, force_ascii=True):
+        """
+        Convert the object to a JSON string.
+
+        Note NaN's and None will be converted to null and datetime objects
+        will be converted to UNIX timestamps.
+
+        Parameters
+        ----------
+        path_or_buf : the path or buffer to write the result string
+            if this is None, return a StringIO of the converted string
+        orient : string
+
+            * Series
+
+              - default is 'index'
+              - allowed values are: {'split','records','index'}
+
+            * DataFrame
+
+              - default is 'columns'
+              - allowed values are: {'split','records','index','columns','values'}
+
+            * The format of the JSON string
+
+              - split : dict like {index -> [index], columns -> [columns], data -> [values]}
+              - records : list like [{column -> value}, ... , {column -> value}]
+              - index : dict like {index -> {column -> value}}
+              - columns : dict like {column -> {index -> value}}
+              - values : just the values array
+
+        date_format : type of date conversion (epoch = epoch milliseconds, iso = ISO8601)
+            default is epoch
+        double_precision : The number of decimal places to use when encoding
+            floating point values, default 10.
+        force_ascii : force encoded string to be ASCII, default True.
+
+        Returns
+        -------
+        result : a JSON compatible string written to the path_or_buf;
+                 if the path_or_buf is none, return a StringIO of the result
+
+        """
+
+        from pandas.io import json
+        return json.to_json(path_or_buf=path_or_buf, obj=self, orient=orient, date_format=date_format,
+                            double_precision=double_precision, force_ascii=force_ascii)
+
 # install the indexerse
 for _name, _indexer in indexing.get_indexers_list():
-    PandasObject._create_indexer(_name,_indexer)
+    PandasContainer._create_indexer(_name,_indexer)
 
-class NDFrame(PandasObject):
+
+class NDFrame(PandasContainer):
     """
     N-dimensional analogue of DataFrame. Store multi-dimensional in a
     size-mutable, labeled data structure
@@ -537,19 +634,19 @@ class NDFrame(PandasObject):
         return self._constructor(mgr)
 
     @property
-    def _constructor(self):
-        return NDFrame
-
-    @property
     def axes(self):
         return self._data.axes
-
-    def __repr__(self):
-        return 'NDFrame'
 
     @property
     def values(self):
         return self._data.as_matrix()
+
+    @property
+    def empty(self):
+        return not all(len(ax) > 0 for ax in self.axes)
+
+    def __nonzero__(self):
+        return not self.empty
 
     @property
     def ndim(self):
@@ -651,8 +748,8 @@ class NDFrame(PandasObject):
     # Consolidation of internals
 
     def _consolidate_inplace(self):
-        self._clear_item_cache()
-        self._data = self._data.consolidate()
+        f = lambda: self._data.consolidate()
+        self._data = self._protect_consolidate(f)
 
     def consolidate(self, inplace=False):
         """
@@ -672,18 +769,28 @@ class NDFrame(PandasObject):
         if inplace:
             self._consolidate_inplace()
         else:
-            cons_data = self._data.consolidate()
+            f = lambda: self._data.consolidate()
+            cons_data = self._protect_consolidate(f)
             if cons_data is self._data:
                 cons_data = cons_data.copy()
             return self._constructor(cons_data)
 
     @property
     def _is_mixed_type(self):
-        return self._data.is_mixed_type
+        f = lambda: self._data.is_mixed_type
+        return self._protect_consolidate(f)
 
     @property
     def _is_numeric_mixed_type(self):
-        return self._data.is_numeric_mixed_type
+        f = lambda: self._data.is_numeric_mixed_type
+        return self._protect_consolidate(f)
+
+    def _protect_consolidate(self, f):
+        blocks_before = len(self._data.blocks)
+        result = f()
+        if len(self._data.blocks) != blocks_before:
+            self._clear_item_cache()
+        return result
 
     def _reindex_axis(self, new_index, fill_method, axis, copy):
         new_data = self._data.reindex_axis(new_index, axis=axis,
@@ -1063,9 +1170,13 @@ def truncate(self, before=None, after=None, copy=True):
     -------
     truncated : type of caller
     """
-    from pandas.tseries.tools import to_datetime
-    before = to_datetime(before)
-    after = to_datetime(after)
+
+    # if we have a date index, convert to dates, otherwise
+    # treat like a slice
+    if self.index.is_all_dates:
+        from pandas.tseries.tools import to_datetime
+        before = to_datetime(before)
+        after = to_datetime(after)
 
     if before is not None and after is not None:
         if before > after:

@@ -44,6 +44,10 @@ class _SparseMockBlockManager(object):
         return [self.sp_frame.columns, self.sp_frame.index]
 
     @property
+    def items(self):
+        return self.sp_frame.columns
+
+    @property
     def blocks(self):
         """ return our series in the column order """
         return [ self.iget(i) for i, c in enumerate(self.sp_frame.columns) ]
@@ -125,7 +129,7 @@ class SparseDataFrame(DataFrame):
         # do nothing when DataFrame calls this method
         pass
 
-    def convert_objects(self, convert_dates=True):
+    def convert_objects(self, convert_dates=True, convert_numeric=False, copy=True):
         # XXX
         return self
 
@@ -191,10 +195,10 @@ class SparseDataFrame(DataFrame):
             columns = _default_index(K)
 
         if len(columns) != K:
-            raise Exception('Column length mismatch: %d vs. %d' %
+            raise ValueError('Column length mismatch: %d vs. %d' %
                             (len(columns), K))
         if len(index) != N:
-            raise Exception('Index length mismatch: %d vs. %d' %
+            raise ValueError('Index length mismatch: %d vs. %d' %
                             (len(index), N))
 
         data = dict([(idx, data[:, i]) for i, idx in enumerate(columns)])
@@ -579,9 +583,9 @@ class SparseDataFrame(DataFrame):
                                  columns=self.columns)
 
     def _reindex_index(self, index, method, copy, level, fill_value=np.nan,
-                       limit=None):
+                       limit=None, takeable=False):
         if level is not None:
-            raise Exception('Reindex by level not supported for sparse')
+            raise TypeError('Reindex by level not supported for sparse')
 
         if self.index.equals(index):
             if copy:
@@ -610,9 +614,10 @@ class SparseDataFrame(DataFrame):
         return SparseDataFrame(new_series, index=index, columns=self.columns,
                                default_fill_value=self.default_fill_value)
 
-    def _reindex_columns(self, columns, copy, level, fill_value, limit=None):
+    def _reindex_columns(self, columns, copy, level, fill_value, limit=None,
+                         takeable=False):
         if level is not None:
-            raise Exception('Reindex by level not supported for sparse')
+            raise TypeError('Reindex by level not supported for sparse')
 
         if com.notnull(fill_value):
             raise NotImplementedError
@@ -709,7 +714,9 @@ class SparseDataFrame(DataFrame):
 
     def _join_index(self, other, how, lsuffix, rsuffix):
         if isinstance(other, Series):
-            assert(other.name is not None)
+            if not (other.name is not None):
+                raise AssertionError()
+
             other = SparseDataFrame({other.name: other},
                                     default_fill_value=self.default_fill_value)
 
@@ -883,9 +890,12 @@ def stack_sparse_frame(frame):
 
     inds_to_concat = []
     vals_to_concat = []
+    # TODO: Figure out whether this can be reached.
+    # I think this currently can't be reached because you can't build a SparseDataFrame
+    # with a non-np.NaN fill value (fails earlier).
     for _, series in frame.iteritems():
         if not np.isnan(series.fill_value):
-            raise Exception('This routine assumes NaN fill value')
+            raise TypeError('This routine assumes NaN fill value')
 
         int_index = series.sp_index.to_int_index()
         inds_to_concat.append(int_index.indices)
@@ -925,7 +935,7 @@ def homogenize(series_dict):
 
     for _, series in series_dict.iteritems():
         if not np.isnan(series.fill_value):
-            raise Exception('this method is only valid with NaN fill values')
+            raise TypeError('this method is only valid with NaN fill values')
 
         if index is None:
             index = series.sp_index

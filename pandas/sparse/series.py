@@ -110,7 +110,8 @@ class SparseSeries(SparseArray, Series):
             if isinstance(data, SparseSeries) and index is None:
                 index = data.index
             elif index is not None:
-                assert(len(index) == len(data))
+                if not (len(index) == len(data)):
+                    raise AssertionError()
 
             sparse_index = data.sp_index
             values = np.asarray(data)
@@ -128,10 +129,11 @@ class SparseSeries(SparseArray, Series):
                                                    fill_value=fill_value)
             else:
                 values = data
-                assert(len(values) == sparse_index.npoints)
+                if not (len(values) == sparse_index.npoints):
+                    raise AssertionError()
         else:
             if index is None:
-                raise Exception('must pass index!')
+                raise TypeError('must pass index!')
 
             length = len(index)
 
@@ -239,8 +241,9 @@ class SparseSeries(SparseArray, Series):
     def __len__(self):
         return self.sp_index.length
 
-    def __repr__(self):
-        series_rep = Series.__repr__(self)
+    def __unicode__(self):
+        # currently, unicode is same as repr...fixes infinite loop
+        series_rep = Series.__unicode__(self)
         rep = '%s\n%s' % (series_rep, repr(self.sp_index))
         return rep
 
@@ -386,7 +389,7 @@ class SparseSeries(SparseArray, Series):
 
         """
         if dtype is not None and dtype not in (np.float_, float):
-            raise Exception('Can only support floating point data')
+            raise TypeError('Can only support floating point data')
 
         return self.copy()
 
@@ -446,7 +449,8 @@ class SparseSeries(SparseArray, Series):
         -------
         reindexed : SparseSeries
         """
-        assert(isinstance(new_index, splib.SparseIndex))
+        if not (isinstance(new_index, splib.SparseIndex)):
+            raise AssertionError()
 
         new_values = self.sp_index.to_int_index().reindex(self.sp_values,
                                                           self.fill_value,

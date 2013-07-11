@@ -1,5 +1,6 @@
 from datetime import datetime
 import sys
+import re
 
 import nose
 import unittest
@@ -244,6 +245,18 @@ def test_groupby():
         assert v == expected[k]
 
 
+def test_is_list_like():
+    passes = ([], [1], (1,), (1, 2), {'a': 1}, set([1, 'a']), Series([1]),
+              Series([]), Series(['a']).str)
+    fails = (1, '2', object())
+
+    for p in passes:
+        assert com.is_list_like(p)
+
+    for f in fails:
+        assert not com.is_list_like(f)
+
+
 def test_ensure_int32():
     values = np.arange(10, dtype=np.int32)
     result = com._ensure_int32(values)
@@ -289,28 +302,28 @@ def test_ensure_platform_int():
 #         assert (result == expected)
 
 
-def test_pprint_thing():
-    if py3compat.PY3:
-        raise nose.SkipTest
+def test_is_re():
+    passes = re.compile('ad'),
+    fails = 'x', 2, 3, object()
 
-    pp_t = com.pprint_thing
+    for p in passes:
+        assert com.is_re(p)
 
-    assert(pp_t('a') == u'a')
-    assert(pp_t(u'a') == u'a')
-    assert(pp_t(None) == '')
-    assert(pp_t(u'\u05d0') == u'\u05d0')
-    assert(pp_t((u'\u05d0', u'\u05d1')) == u'(\u05d0, \u05d1)')
-    assert(pp_t((u'\u05d0', (u'\u05d1', u'\u05d2'))) ==
-           u'(\u05d0, (\u05d1, \u05d2))')
-    assert(pp_t(('foo', u'\u05d0', (u'\u05d0', u'\u05d0'))) ==
-           u'(foo, \u05d0, (\u05d0, \u05d0))')
+    for f in fails:
+        assert not com.is_re(f)
 
-    # escape embedded tabs in string
-    # GH #2038
-    assert not "\t" in pp_t("a\tb", escape_chars=("\t",))
 
-    assert(pp_t((1,)) == u'(1,)')
-    assert("set" in pp_t(set([1,2,3]))) # it works
+def test_is_recompilable():
+    passes = (r'a', u'x', r'asdf', re.compile('adsf'), ur'\u2233\s*',
+              re.compile(r''))
+    fails = 1, [], object()
+
+    for p in passes:
+        assert com.is_re_compilable(p)
+
+    for f in fails:
+        assert not com.is_re_compilable(f)
+
 
 class TestTake(unittest.TestCase):
 

@@ -10,12 +10,12 @@ from pandas.core.frame import DataFrame
 
 from pandas.core.categorical import Categorical
 from pandas.core.common import (notnull, _ensure_platform_int, _maybe_promote,
-                                _maybe_upcast)
+                                _maybe_upcast, isnull)
 from pandas.core.groupby import (get_group_index, _compress_group_index,
                                  decons_group_index)
 import pandas.core.common as com
 import pandas.algos as algos
-
+from pandas import lib
 
 from pandas.core.index import MultiIndex, Index
 
@@ -67,7 +67,14 @@ class _Unstacker(object):
         self.index = index
         self.level = self.index._get_level_number(level)
 
-        self.new_index_levels = list(index.levels)
+        levels = index.levels
+        labels = index.labels
+        def _make_index(lev,lab):
+            i = lev.__class__(_make_index_array_level(lev.values,lab))
+            i.name = lev.name
+            return i
+
+        self.new_index_levels = list([ _make_index(lev,lab) for lev,lab in zip(levels,labels) ])
         self.new_index_names = list(index.names)
 
         self.removed_name = self.new_index_names.pop(self.level)
@@ -140,6 +147,19 @@ class _Unstacker(object):
                 values = com.take_nd(values, inds, axis=1)
                 columns = columns[inds]
 
+        # we might have a missing index
+        if len(index) != values.shape[0]:
+            mask = isnull(index)
+            if mask.any():
+                l = np.arange(len(index))
+                values, orig_values = np.empty((len(index),values.shape[1])), values
+                values.fill(np.nan)
+                values_indexer = com._ensure_int64(l[~mask])
+                for i, j in enumerate(values_indexer):
+                    values[j] = orig_values[i]
+            else:
+                index = index.take(self.unique_groups)
+        
         return DataFrame(values, index=index, columns=columns)
 
     def get_new_values(self):
@@ -201,11 +221,13 @@ class _Unstacker(object):
     def get_new_index(self):
         result_labels = []
         for cur in self.sorted_labels[:-1]:
-            result_labels.append(cur.take(self.compressor))
+            labels = cur.take(self.compressor)
+            labels = _make_index_array_level(labels,cur)
+            result_labels.append(labels)
 
         # construct the new index
         if len(self.new_index_levels) == 1:
-            new_index = self.new_index_levels[0].take(self.unique_groups)
+            new_index = self.new_index_levels[0]
             new_index.name = self.new_index_names[0]
         else:
             new_index = MultiIndex(levels=self.new_index_levels,
@@ -214,6 +236,26 @@ class _Unstacker(object):
 
         return new_index
 
+
+def _make_index_array_level(lev,lab):
+    """ create the combined index array, preserving nans, return an array """
+    mask = lab == -1
+    if not mask.any():
+        return lev
+
+    l = np.arange(len(lab))
+    mask_labels  = np.empty(len(mask[mask]),dtype=object)
+    mask_labels.fill(np.nan)
+    mask_indexer = com._ensure_int64(l[mask])
+
+    labels = lev
+    labels_indexer = com._ensure_int64(l[~mask])
+
+    new_labels = np.empty(tuple([len(lab)]),dtype=object)
+    new_labels[labels_indexer] = labels
+    new_labels[mask_indexer]   = mask_labels
+
+    return new_labels
 
 def _unstack_multiple(data, clocs):
     if len(clocs) == 0:
@@ -450,7 +492,7 @@ def stack(frame, level=-1, dropna=True):
     level = frame.columns._get_level_number(level)
 
     if isinstance(frame.columns, MultiIndex):
-        return _stack_multi_columns(frame, level=level, dropna=True)
+        return _stack_multi_columns(frame, level=level, dropna=dropna)
     elif isinstance(frame.index, MultiIndex):
         new_levels = list(frame.index.levels)
         new_levels.append(frame.columns)
@@ -558,7 +600,8 @@ def _stack_multi_columns(frame, level=-1, dropna=True):
     return result
 
 
-def melt(frame, id_vars=None, value_vars=None):
+def melt(frame, id_vars=None, value_vars=None,
+         var_name=None, value_name='value'):
     """
     "Unpivots" a DataFrame from wide format to long format, optionally leaving
     id variables set
@@ -566,8 +609,10 @@ def melt(frame, id_vars=None, value_vars=None):
     Parameters
     ----------
     frame : DataFrame
-    id_vars :
-    value_vars :
+    id_vars : tuple, list, or ndarray
+    value_vars : tuple, list, or ndarray
+    var_name : scalar, if None uses frame.column.name or 'variable'
+    value_name : scalar, default 'value'
 
     Examples
     --------
@@ -579,9 +624,17 @@ def melt(frame, id_vars=None, value_vars=None):
 
     >>> melt(df, id_vars=['A'], value_vars=['B'])
     A variable value
-    a B        1
-    b B        3
-    c B        5
+    a        B     1
+    b        B     3
+    c        B     5
+    
+    >>> melt(df, id_vars=['A'], value_vars=['B'],
+    ... var_name='myVarname', value_name='myValname')
+    A myVarname  myValname
+    a         B          1
+    b         B          3
+    c         B          5
+
     """
     # TODO: what about the existing index?
     if id_vars is not None:
@@ -599,6 +652,9 @@ def melt(frame, id_vars=None, value_vars=None):
     else:
         frame = frame.copy()
 
+    if var_name is None:
+        var_name = frame.columns.name if frame.columns.name is not None else 'variable'
+
     N, K = frame.shape
     K -= len(id_vars)
 
@@ -606,11 +662,11 @@ def melt(frame, id_vars=None, value_vars=None):
     for col in id_vars:
         mdata[col] = np.tile(frame.pop(col).values, K)
 
-    mcolumns = id_vars + ['variable', 'value']
+    mcolumns = id_vars + [var_name, value_name]
 
-    mdata['value'] = frame.values.ravel('F')
-
-    mdata['variable'] = np.asarray(frame.columns).repeat(N)
+    mdata[value_name] = frame.values.ravel('F')
+    mdata[var_name] = np.asarray(frame.columns).repeat(N)
+    
     return DataFrame(mdata, columns=mcolumns)
 
 
@@ -745,11 +801,13 @@ def make_axis_dummies(frame, axis='minor', transform=None):
 
     Parameters
     ----------
+    frame : DataFrame
     axis : {'major', 'minor'}, default 'minor'
     transform : function, default None
         Function to apply to axis labels first. For example, to
-        get "day of week" dummies in a time series regression you might
-        call:
+        get "day of week" dummies in a time series regression
+        you might call::
+
             make_axis_dummies(panel, axis='major',
                               transform=lambda d: d.weekday())
     Returns
@@ -808,6 +866,6 @@ def block2d_to_blocknd(values, items, shape, labels, ref_items=None):
 
 
 def factor_indexer(shape, labels):
-    """ given a tuple of shape and a list of Factor lables, return the expanded label indexer """
+    """ given a tuple of shape and a list of Categorical labels, return the expanded label indexer """
     mult = np.array(shape)[::-1].cumprod()[::-1]
     return com._ensure_platform_int(np.sum(np.array(labels).T * np.append(mult, [1]), axis=1).T)

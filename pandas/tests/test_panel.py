@@ -20,6 +20,7 @@ from pandas.util.testing import (assert_panel_equal,
                                  assert_series_equal,
                                  assert_almost_equal,
                                  ensure_clean,
+                                 assertRaisesRegexp,
                                  makeCustomDataframe as mkdf
     )
 import pandas.core.panel as panelm
@@ -45,6 +46,12 @@ class PanelTests(object):
     def test_cumsum(self):
         cumsum = self.panel.cumsum()
         assert_frame_equal(cumsum['ItemA'], self.panel['ItemA'].cumsum())
+
+    def not_hashable(self):
+        c_empty = Panel()
+        c = Panel(pd.Panel([[[1]]]))
+        self.assertRaises(TypeError, hash, c_empty)
+        self.assertRaises(TypeError, hash, c)
 
 
 class SafeForLongAndSparse(object):
@@ -953,23 +960,17 @@ class TestPanel(unittest.TestCase, PanelTests, CheckIndexing,
 
     def test_constructor_error_msgs(self):
 
-        try:
+        def testit():
             Panel(np.random.randn(3,4,5), range(4), range(5), range(5))
-        except (Exception), detail:
-            self.assert_(type(detail) == ValueError)
-            self.assert_(str(detail).startswith("Shape of passed values is (3, 4, 5), indices imply (4, 5, 5)"))
+        assertRaisesRegexp(ValueError, "Shape of passed values is \(3, 4, 5\), indices imply \(4, 5, 5\)", testit)
 
-        try:
+        def testit():
             Panel(np.random.randn(3,4,5), range(5), range(4), range(5))
-        except (Exception), detail:
-            self.assert_(type(detail) == ValueError)
-            self.assert_(str(detail).startswith("Shape of passed values is (3, 4, 5), indices imply (5, 4, 5)"))
+        assertRaisesRegexp(ValueError, "Shape of passed values is \(3, 4, 5\), indices imply \(5, 4, 5\)", testit)
 
-        try:
+        def testit():
             Panel(np.random.randn(3,4,5), range(5), range(5), range(4))
-        except (Exception), detail:
-            self.assert_(type(detail) == ValueError)
-            self.assert_(str(detail).startswith("Shape of passed values is (3, 4, 5), indices imply (5, 5, 4)"))
+        assertRaisesRegexp(ValueError, "Shape of passed values is \(3, 4, 5\), indices imply \(5, 5, 4\)", testit)
 
     def test_conform(self):
         df = self.panel['ItemA'][:-5].filter(items=['A', 'B'])
@@ -1099,6 +1100,9 @@ class TestPanel(unittest.TestCase, PanelTests, CheckIndexing,
         self.assertRaises(ValueError, self.panel.fillna)
         self.assertRaises(ValueError, self.panel.fillna, 5, method='ffill')
 
+        self.assertRaises(TypeError, self.panel.fillna, [1, 2])
+        self.assertRaises(TypeError, self.panel.fillna, (1, 2))
+
     def test_ffill_bfill(self):
         assert_panel_equal(self.panel.ffill(),
                            self.panel.fillna(method='ffill'))
@@ -1139,6 +1143,30 @@ class TestPanel(unittest.TestCase, PanelTests, CheckIndexing,
         result = self.panel.transpose('minor', 'major', 'items')
         expected = self.panel.swapaxes('items', 'minor')
         assert_panel_equal(result, expected)
+
+        # test kwargs
+        result = self.panel.transpose(items='minor', major='major',
+                                      minor='items')
+        expected = self.panel.swapaxes('items', 'minor')
+        assert_panel_equal(result, expected)
+
+        # text mixture of args
+        result = self.panel.transpose('minor', major='major', minor='items')
+        expected = self.panel.swapaxes('items', 'minor')
+        assert_panel_equal(result, expected)
+
+        result = self.panel.transpose('minor', 'major', minor='items')
+        expected = self.panel.swapaxes('items', 'minor')
+        assert_panel_equal(result, expected)
+
+        ## test bad aliases
+        # test ambiguous aliases
+        self.assertRaises(AssertionError, self.panel.transpose, 'minor',
+                          maj='major', majo='items')
+
+        # test invalid kwargs
+        self.assertRaises(KeyError, self.panel.transpose, 'minor',
+                          maj='major', minor='items')
 
         result = self.panel.transpose(2, 1, 0)
         assert_panel_equal(result, expected)
@@ -1340,7 +1368,7 @@ class TestPanel(unittest.TestCase, PanelTests, CheckIndexing,
             import xlwt
             import xlrd
             import openpyxl
-            from pandas.io.parsers import ExcelFile
+            from pandas.io.excel import ExcelFile
         except ImportError:
             raise nose.SkipTest
 
@@ -1348,7 +1376,11 @@ class TestPanel(unittest.TestCase, PanelTests, CheckIndexing,
             path = '__tmp__.' + ext
             with ensure_clean(path) as path:
                 self.panel.to_excel(path)
-                reader = ExcelFile(path)
+                try:
+                    reader = ExcelFile(path)
+                except ImportError:
+                    raise nose.SkipTest
+
                 for item, df in self.panel.iterkv():
                     recdf = reader.parse(str(item), index_col=0)
                     assert_frame_equal(df, recdf)

@@ -10,13 +10,13 @@ import os
 import numpy as np
 from numpy.testing import assert_array_equal
 
-from pandas.core.categorical import Factor
 from pandas.core.index import Index, Int64Index, MultiIndex
 from pandas.util.testing import assert_almost_equal
 from pandas.util import py3compat
 import pandas.core.common as com
 
 import pandas.util.testing as tm
+import pandas.core.config as cf
 
 from pandas.tseries.index import _to_m8
 import pandas.tseries.offsets as offsets
@@ -203,6 +203,9 @@ class TestIndex(unittest.TestCase):
 
         shifted = self.dateIndex.shift(1, 'B')
         self.assert_(np.array_equal(shifted, self.dateIndex + offsets.BDay()))
+
+        shifted.name = 'shifted'
+        self.assertEqual(shifted.name, shifted.shift(1, 'D').name)
 
     def test_intersection(self):
         first = self.strIndex[:20]
@@ -895,9 +898,10 @@ class TestInt64Index(unittest.TestCase):
         repr(df.columns)  # should not raise UnicodeDecodeError
 
     def test_repr_summary(self):
-        r = repr(pd.Index(np.arange(10000)))
-        self.assertTrue(len(r) < 100)
-        self.assertTrue("..." in r)
+        with cf.option_context('display.max_seq_items',10):
+            r = repr(pd.Index(np.arange(1000)))
+            self.assertTrue(len(r) < 100)
+            self.assertTrue("..." in r)
 
     def test_unicode_string_with_unicode(self):
         idx = Index(range(1000))
@@ -1079,7 +1083,7 @@ class TestMultiIndex(unittest.TestCase):
         pth, _ = os.path.split(os.path.abspath(__file__))
         filepath = os.path.join(pth, 'data', 'mindex_073.pickle')
 
-        obj = com.load(filepath)
+        obj = pd.read_pickle(filepath)
 
         obj2 = MultiIndex.from_tuples(obj.values)
         self.assert_(obj.equals(obj2))
@@ -1370,12 +1374,12 @@ class TestMultiIndex(unittest.TestCase):
                                 category=FutureWarning,
                                 module=".*format")
         # #1538
-        pd.set_printoptions(multi_sparse=False)
+        pd.set_option('display.multi_sparse', False)
 
         result = self.index.format()
         self.assertEqual(result[1], 'foo  two')
 
-        pd.reset_printoptions()
+        pd.reset_option("^display\.")
 
         warnings.filters = warn_filters
 

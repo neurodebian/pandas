@@ -14,9 +14,9 @@
    randint = np.random.randint
    np.set_printoptions(precision=4, suppress=True)
 
-**************
-Selecting Data
-**************
+***************************
+Indexing and Selecting Data
+***************************
 
 The axis labeling information in pandas objects serves many purposes:
 
@@ -68,7 +68,6 @@ three types of multi-axis indexing.
   - An integer e.g. ``5``
   - A list or array of integers ``[4, 3, 0]``
   - A slice object with ints ``1:7``
-  - A boolean array
 
   See more at :ref:`Selection by Position <indexing.integer>` 
 
@@ -99,7 +98,8 @@ the specification are assumed to be ``:``. (e.g. ``p.loc['a']`` is equiv to
 Deprecations
 ~~~~~~~~~~~~
 
-Starting in version 0.11.0, these methods *may* be deprecated in future versions.
+Beginning with version 0.11.0, it's recommended that you transition away from
+the following methods as they *may* be deprecated in future versions.
 
   - ``irow``
   - ``icol``
@@ -290,7 +290,6 @@ The ``.iloc`` attribute is the primary access method. The following are valid in
 - An integer e.g. ``5``
 - A list or array of integers ``[4, 3, 0]``
 - A slice object with ints ``1:7``
-- A boolean array
 
 .. ipython:: python
 
@@ -327,12 +326,6 @@ Select via integer list
 .. ipython:: python
 
    df1.iloc[[1,3,5],[1,3]]
-
-Select via boolean array
-
-.. ipython:: python
-
-   df1.iloc[:,df1.iloc[0]>0]
 
 For slicing rows explicitly (equiv to deprecated ``df.irow(slice(1,3))``).
 
@@ -960,12 +953,12 @@ DataFrame to construct a MultiIndex automatically:
    df
 
 All of the ``MultiIndex`` constructors accept a ``names`` argument which stores
-string names for the levels themselves. If no names are provided, some
-arbitrary ones will be assigned:
+string names for the levels themselves. If no names are provided, ``None`` will
+be assigned:
 
 .. ipython:: python
 
-   index.names
+   df.index.names
 
 This index can back any axis of a pandas object, and the number of **levels**
 of the index is up to you:
@@ -998,9 +991,9 @@ Note that how the index is displayed by be controlled using the
 
 .. ipython:: python
 
-   pd.set_printoptions(multi_sparse=False)
+   pd.set_option('display.multi_sparse', False)
    df
-   pd.set_printoptions(multi_sparse=True)
+   pd.set_option('display.multi_sparse', True)
 
 Reconstructing the level labels
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1367,6 +1360,9 @@ incompatible the new object internals are with the ``Index`` functions):
   - ``slice_locs``: returns the "range" to slice between two labels
   - ``get_indexer``: Computes the indexing vector for reindexing / data
     alignment purposes. See the source / docstrings for more on this
+  - ``get_indexer_non_unique``: Computes the indexing vector for reindexing / data
+    alignment purposes when the index is non-unique. See the source / docstrings 
+    for more on this
   - ``reindex``: Does any pre-conversion of the input index then calls
     ``get_indexer``
   - ``union``, ``intersection``: computes the union or intersection of two

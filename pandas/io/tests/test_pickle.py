@@ -15,6 +15,7 @@ import pandas as pd
 from pandas import Index
 from pandas.sparse.tests import test_sparse
 from pandas.util import py3compat
+from pandas.util.misc import is_little_endian
 
 class TestPickle(unittest.TestCase):
     _multiprocess_can_split_ = True
@@ -57,6 +58,8 @@ class TestPickle(unittest.TestCase):
                     comparator(result,expected)
 
     def test_read_pickles_0_10_1(self):
+        if not is_little_endian():
+            raise nose.SkipTest("known failure of test_read_pickles_0_10_1 on non-little endian")
 
         pth = tm.get_data_path('legacy_pickle/0.10.1')
         for f in os.listdir(pth):
@@ -64,6 +67,8 @@ class TestPickle(unittest.TestCase):
             self.compare(vf)
 
     def test_read_pickles_0_11_0(self):
+        if not is_little_endian():
+            raise nose.SkipTest("known failure of test_read_pickles_0_11_0 on non-little endian")
 
         pth = tm.get_data_path('legacy_pickle/0.11.0')
         for f in os.listdir(pth):

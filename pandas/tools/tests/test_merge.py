@@ -13,7 +13,8 @@ from pandas import *
 from pandas.tseries.index import DatetimeIndex
 from pandas.tools.merge import merge, concat, ordered_merge, MergeError
 from pandas.util.testing import (assert_frame_equal, assert_series_equal,
-                                 assert_almost_equal, rands)
+                                 assert_almost_equal, rands,
+                                 makeCustomDataframe as mkdf)
 import pandas.algos as algos
 import pandas.util.testing as tm
 
@@ -1077,7 +1078,7 @@ class TestConcatenate(unittest.TestCase):
         self.assert_(appended is not self.frame)
 
         # overlap
-        self.assertRaises(Exception, self.frame.append, self.frame,
+        self.assertRaises(ValueError, self.frame.append, self.frame,
                           verify_integrity=True)
 
     def test_append_length0_frame(self):
@@ -1681,6 +1682,20 @@ class TestConcatenate(unittest.TestCase):
         expected.columns=['same name', 'same name']
         assert_frame_equal(result, expected)
 
+    def test_concat_bug_3602(self):
+
+        # GH 3602, duplicate columns
+        df1 = DataFrame({'firmNo' : [0,0,0,0], 'stringvar' : ['rrr', 'rrr', 'rrr', 'rrr'], 'prc' : [6,6,6,6] })
+        df2 = DataFrame({'misc' : [1,2,3,4], 'prc' : [6,6,6,6], 'C' : [9,10,11,12]})
+        expected = DataFrame([[0,6,'rrr',9,1,6],
+                              [0,6,'rrr',10,2,6],
+                              [0,6,'rrr',11,3,6],
+                              [0,6,'rrr',12,4,6]])
+        expected.columns = ['firmNo','prc','stringvar','C','misc','prc']
+
+        result = concat([df1,df2],axis=1)
+        assert_frame_equal(result,expected)
+
     def test_concat_series_axis1_same_names_ignore_index(self):
         dates = date_range('01-Jan-2013', '01-Jan-2014', freq='MS')[0:-1]
         s1 = Series(randn(len(dates)), index=dates, name='value')
@@ -1688,6 +1703,14 @@ class TestConcatenate(unittest.TestCase):
 
         result = concat([s1, s2], axis=1, ignore_index=True)
         self.assertTrue(np.array_equal(result.columns, [0, 1]))
+
+    def test_concat_invalid_first_argument(self):
+        df1 = mkdf(10, 2)
+        df2 = mkdf(10, 2)
+        self.assertRaises(AssertionError, concat, df1, df2)
+
+        # generator ok though
+        concat(DataFrame(np.random.rand(5,5)) for _ in range(3))
 
 class TestOrderedMerge(unittest.TestCase):
 

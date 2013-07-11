@@ -401,6 +401,10 @@ value, ``idxmin`` and ``idxmax`` return the first matching index:
    df3
    df3['A'].idxmin()
 
+.. note::
+
+   ``idxmin`` and ``idxmax`` are called ``argmin`` and ``argmax`` in NumPy.
+
 .. _basics.discretization:
 
 Value counts (histogramming)
@@ -835,7 +839,6 @@ containing the data in each row:
       ...:     print '%s\n%s' % (row_index, row)
       ...:
 
-
 For instance, a contrived way to transpose the dataframe would be:
 
 .. ipython:: python
@@ -846,6 +849,18 @@ For instance, a contrived way to transpose the dataframe would be:
 
    df2_t = DataFrame(dict((idx,values) for idx, values in df2.iterrows()))
    print df2_t
+
+.. note::
+
+   ``iterrows`` does **not** preserve dtypes across the rows (dtypes are
+   preserved across columns for DataFrames). For example,
+
+    .. ipython:: python
+
+      df_iter = DataFrame([[1, 1.0]], columns=['x', 'y'])
+      row = next(df_iter.iterrows())[1]
+      print row['x'].dtype
+      print df_iter['x'].dtype
 
 itertuples
 ~~~~~~~~~~
@@ -1192,39 +1207,6 @@ While float dtypes are unchanged.
    casted
    casted.dtypes
 
-.. _basics.serialize:
-
-Pickling and serialization
---------------------------
-
-All pandas objects are equipped with ``save`` methods which use Python's
-``cPickle`` module to save data structures to disk using the pickle format.
-
-.. ipython:: python
-
-   df
-   df.save('foo.pickle')
-
-The ``load`` function in the ``pandas`` namespace can be used to load any
-pickled pandas object (or any other pickled object) from file:
-
-
-.. ipython:: python
-
-   load('foo.pickle')
-
-There is also a ``save`` function which takes any object as its first argument:
-
-.. ipython:: python
-
-   save(df, 'foo.pickle')
-   load('foo.pickle')
-
-.. ipython:: python
-   :suppress:
-
-   import os
-   os.remove('foo.pickle')
 
 Working with package options
 ----------------------------
@@ -1347,7 +1329,7 @@ For instance:
 .. ipython:: python
    :suppress:
 
-   reset_printoptions()
+   reset_option('^display\.')
 
 
 The ``set_printoptions`` function has a number of options for controlling how

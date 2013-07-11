@@ -51,7 +51,7 @@ def execute(sql, con, retry=True, cur=None, params=None):
         except Exception:  # pragma: no cover
             pass
 
-        print 'Error on sql %s' % sql
+        print ('Error on sql %s' % sql)
         raise
 
 
@@ -94,7 +94,7 @@ def tquery(sql, con=None, cur=None, retry=True):
         except Exception, e:
             excName = e.__class__.__name__
             if excName == 'OperationalError':  # pragma: no cover
-                print 'Failed to commit, may need to restart interpreter'
+                print ('Failed to commit, may need to restart interpreter')
             else:
                 raise
 
@@ -128,7 +128,7 @@ def uquery(sql, con=None, cur=None, retry=True, params=None):
 
         traceback.print_exc()
         if retry:
-            print 'Looks like your connection failed, reconnecting...'
+            print ('Looks like your connection failed, reconnecting...')
             return uquery(sql, con, retry=False)
     return result
 
@@ -148,6 +148,9 @@ def read_frame(sql, con, index_col=None, coerce_float=True, params=None):
     con: DB connection object, optional
     index_col: string, optional
         column name to use for the returned DataFrame object.
+    coerce_float : boolean, default True
+        Attempt to convert values to non-string, non-numeric objects (like
+        decimal.Decimal) to floating point, useful for SQL result sets
     params: list or tuple, optional
         List of parameters to pass to execute method.
     """
@@ -167,7 +170,7 @@ def read_frame(sql, con, index_col=None, coerce_float=True, params=None):
     return result
 
 frame_query = read_frame
-
+read_sql = read_frame
 
 def write_frame(frame, name, con, flavor='sqlite', if_exists='fail', **kwargs):
     """
@@ -177,7 +180,7 @@ def write_frame(frame, name, con, flavor='sqlite', if_exists='fail', **kwargs):
     ----------
     frame: DataFrame
     name: name of SQL table
-    conn: an open SQL database connection object
+    con: an open SQL database connection object
     flavor: {'sqlite', 'mysql', 'oracle'}, default 'sqlite'
     if_exists: {'fail', 'replace', 'append'}, default 'fail'
         fail: If table exists, do nothing.
@@ -228,7 +231,11 @@ def _write_sqlite(frame, table, names, cur):
     wildcards = ','.join(['?'] * len(names))
     insert_query = 'INSERT INTO %s (%s) VALUES (%s)' % (
         table, col_names, wildcards)
-    data = [tuple(x) for x in frame.values]
+    # pandas types are badly handled if there is only 1 column ( Issue #3628 )
+    if   not len(frame.columns  )==1 :
+        data = [tuple(x) for x in frame.values]
+    else :
+        data = [tuple(x) for x in frame.values.tolist()]
     cur.executemany(insert_query, data)
 
 def _write_mysql(frame, table, names, cur):

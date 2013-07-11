@@ -20,10 +20,26 @@ Cookbook
 ********
 
 This is a respository for *short and sweet* examples and links for useful pandas recipes.
-We encourage users to add to this documentation. 
+We encourage users to add to this documentation.
 
 This is a great *First Pull Request* (to add interesting links and/or put short code inline
 for existing links)
+
+Idioms
+------
+
+.. _cookbook.idioms:
+
+These are some neat pandas ``idioms``
+
+`How to do if-then-else?
+<http://stackoverflow.com/questions/17128302/python-pandas-idiom-for-if-then-else>`__
+
+`How to split a frame with a boolean criterion?
+<http://stackoverflow.com/questions/14957116/how-to-split-a-dataframe-according-to-a-boolean-criterion>`__
+
+`How to select from a frame with complex criteria?
+<http://stackoverflow.com/questions/15315452/selecting-with-complex-criteria-from-pandas-dataframe>`__
 
 .. _cookbook.selection:
 
@@ -32,20 +48,28 @@ Selection
 
 The :ref:`indexing <indexing>` docs.
 
-`Boolean Rows Indexing
+Indexing using both row labels and conditionals, see
+`here
 <http://stackoverflow.com/questions/14725068/pandas-using-row-labels-in-boolean-indexing>`__
 
-`Using loc and iloc in selections
+Use loc for label-oriented slicing and iloc positional slicing, see
+`here
 <https://github.com/pydata/pandas/issues/2904>`__
 
-`Extending a panel along the minor axis
+Extend a panel frame by transposing, adding a new dimension, and transposing back to the original dimensions, see
+`here
 <http://stackoverflow.com/questions/15364050/extending-a-pandas-panel-frame-along-the-minor-axis>`__
 
-`Boolean masking in a panel
+Mask a panel by using ``np.where`` and then reconstructing the panel with the new masked values
+`here
 <http://stackoverflow.com/questions/14650341/boolean-mask-in-pandas-panel>`__
 
-`Selecting via the complement
+Using ``~`` to take the complement of a boolean array, see
+`here
 <http://stackoverflow.com/questions/14986510/picking-out-elements-based-on-complement-of-indices-in-python-pandas>`__
+
+`Efficiently creating columns using applymap
+<http://stackoverflow.com/questions/16575868/efficiently-creating-additional-columns-in-a-pandas-dataframe-using-map>`__
 
 .. _cookbook.multi_index:
 
@@ -83,6 +107,19 @@ Levels
 
 `Flatten Hierarchical columns
 <http://stackoverflow.com/questions/14507794/python-pandas-how-to-flatten-a-hierarchical-index-in-columns>`__
+
+.. _cookbook.missing_data:
+
+Missing Data
+------------
+
+The :ref:`missing data <missing_data>` docs.
+
+Replace
+~~~~~~~
+
+`Using replace with backrefs
+<http://stackoverflow.com/questions/16818871/extracting-value-and-creating-new-column-out-of-it>`__
 
 .. _cookbook.grouping:
 
@@ -142,11 +179,20 @@ The :ref:`Pivot <reshaping.pivot>` docs.
 `Frequency table like plyr in R
 <http://stackoverflow.com/questions/15589354/frequency-tables-in-pandas-like-plyr-in-r>`__
 
+Apply
+~~~~~
+
+`Turning embeded lists into a multi-index frame
+<http://stackoverflow.com/questions/17349981/converting-pandas-dataframe-with-categorical-values-into-binary-values>`__
+
 Timeseries
 ----------
 
 `Between times
 <http://stackoverflow.com/questions/14539992/pandas-drop-rows-outside-of-time-range>`__
+
+`Using indexer between time
+<http://stackoverflow.com/questions/17559885/pandas-dataframe-mask-based-on-index>`__
 
 `Vectorized Lookup
 <http://stackoverflow.com/questions/13893227/vectorized-look-up-of-values-in-pandas-dataframe>`__
@@ -167,6 +213,9 @@ The :ref:`Resample <timeseries.resampling>` docs.
 
 `TimeGrouping #2
 <http://stackoverflow.com/questions/14569223/timegrouper-pandas>`__
+
+`Using TimeGrouper and another grouping to create subgroups, then apply a custom function
+<https://github.com/pydata/pandas/issues/3791>`__
 
 `Resampling with custom periods
 <http://stackoverflow.com/questions/15408156/resampling-with-custom-periods>`__
@@ -212,8 +261,23 @@ The :ref:`Plotting <visualization>` docs.
 `Setting x-axis major and minor labels
 <http://stackoverflow.com/questions/12945971/pandas-timeseries-plot-setting-x-axis-major-and-minor-ticks-and-labels>`__
 
+`Plotting multiple charts in an ipython notebook
+<http://stackoverflow.com/questions/16392921/make-more-than-one-chart-in-same-ipython-notebook-cell>`__
+
+`Creating a multi-line plot
+<http://stackoverflow.com/questions/16568964/make-a-multiline-plot-from-csv-file-in-matplotlib>`__
+
+`Plotting a heatmap
+<http://stackoverflow.com/questions/17050202/plot-timeseries-of-histograms-in-python>`__
+
+`Annotate a time-series plot
+<http://stackoverflow.com/questions/11067368/annotate-time-series-plot-in-matplotlib>`__
+
 Data In/Out
 -----------
+
+`Performance comparison of SQL vs HDF5
+<http://stackoverflow.com/questions/16628329/hdf5-and-sqlite-concurrency-compression-i-o-performance>`__
 
 .. _cookbook.csv:
 
@@ -224,6 +288,9 @@ The :ref:`CSV <io.read_csv_table>` docs
 
 `read_csv in action
 <http://wesmckinney.com/blog/?p=635>`__
+
+`appending to a csv
+<http://stackoverflow.com/questions/17134942/pandas-dataframe-output-end-of-csv>`__
 
 `Reading a csv chunk-by-chunk
 <http://stackoverflow.com/questions/11622652/large-persistent-dataframe-in-pandas/12193309#12193309>`__
@@ -236,6 +303,15 @@ The :ref:`CSV <io.read_csv_table>` docs
 
 `Dealing with bad lines
 <https://github.com/pydata/pandas/issues/2886>`__
+
+`Dealing with bad lines II
+<http://nipunbatra.wordpress.com/2013/06/06/reading-unclean-data-csv-using-pandas/>`__
+
+`Reading CSV with Unix timestamps and converting to local timezone
+<http://nipunbatra.wordpress.com/2013/06/07/pandas-reading-csv-with-unix-timestamps-and-converting-to-local-timezone/>`__
+
+`Write a multi-row index CSV without writing duplicates
+<http://stackoverflow.com/questions/17349574/pandas-write-multiindex-rows-with-to-csv>`__
 
 .. _cookbook.sql:
 
@@ -273,13 +349,16 @@ The :ref:`HDFStores <io.hdf5>` docs
 `Merging on-disk tables with millions of rows
 <http://stackoverflow.com/questions/14614512/merging-two-tables-with-millions-of-rows-in-python/14617925#14617925>`__
 
-Deduplicating a large store by chunks, essentially a recusive reduction operation. Shows a function for taking in data from 
+Deduplicating a large store by chunks, essentially a recusive reduction operation. Shows a function for taking in data from
 csv file and creating a store by chunks, with date parsing as well.
 `See here
 <http://stackoverflow.com/questions/16110252/need-to-compare-very-large-files-around-1-5gb-in-python/16110391#16110391>`__
 
 `Large Data work flows
 <http://stackoverflow.com/questions/14262433/large-data-work-flows-using-pandas>`__
+
+`Reading in a sequence of files, then providing a global unique index to a store while appending
+<http://stackoverflow.com/questions/16997048/how-does-one-append-large-amounts-of-data-to-a-pandas-hdfstore-and-get-a-natural>`__
 
 `Groupby on a HDFStore
 <http://stackoverflow.com/questions/15798209/pandas-group-by-query-on-large-data-in-hdfstore>`__
@@ -308,6 +387,12 @@ Storing Attributes to a group node
     store.close()
     os.remove('test.h5')
 
+Computation
+-----------
+
+`Numerical integration (sample-based) of a time series
+<http://nbviewer.ipython.org/5720498>`__
+
 Miscellaneous
 -------------
 
@@ -318,6 +403,9 @@ The :ref:`Timedeltas <timeseries.timedeltas>` docs.
 
 `Create timedeltas with date differences
 <http://stackoverflow.com/questions/15683588/iterating-through-a-pandas-dataframe>`__
+
+`Adding days to dates in a dataframe
+<http://stackoverflow.com/questions/16385785/add-days-to-dates-in-dataframe>`__
 
 Aliasing Axis Names
 -------------------
@@ -339,5 +427,5 @@ To globally provide aliases for axis names, one can define these 2 functions:
 
    set_axis_alias(DataFrame,'columns', 'myaxis2')
    df2 = DataFrame(randn(3,2),columns=['c1','c2'],index=['i1','i2','i3'])
-   df2.sum(axis='myaxis2') 
+   df2.sum(axis='myaxis2')
    clear_axis_alias(DataFrame,'columns', 'myaxis2')

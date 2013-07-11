@@ -17,6 +17,7 @@ from StringIO import StringIO
 import operator
 import sys
 import collections
+import itertools
 
 from numpy import nan as NA
 import numpy as np
@@ -189,10 +190,12 @@ class DataConflictError(Exception):
 # Factory helper methods
 
 
-def _arith_method(op, name, str_rep = None, default_axis='columns'):
+def _arith_method(op, name, str_rep = None, default_axis='columns', fill_zeros=None, **eval_kwargs):
     def na_op(x, y):
         try:
-            result = expressions.evaluate(op, str_rep, x, y, raise_on_error=True)
+            result = expressions.evaluate(op, str_rep, x, y, raise_on_error=True, **eval_kwargs)
+            result = com._fill_zeros(result,y,fill_zeros)
+
         except TypeError:
             xrav = x.ravel()
             result = np.empty(x.size, dtype=x.dtype)
@@ -565,14 +568,14 @@ class DataFrame(NDFrame):
     def _verbose_info(self):
         import warnings
         warnings.warn('The _verbose_info property will be removed in version '
-                      '0.12. please use "max_info_rows"', FutureWarning)
+                      '0.13. please use "max_info_rows"', FutureWarning)
         return get_option('display.max_info_rows') is None
 
     @_verbose_info.setter
     def _verbose_info(self, value):
         import warnings
         warnings.warn('The _verbose_info property will be removed in version '
-                      '0.12. please use "max_info_rows"', FutureWarning)
+                      '0.13. please use "max_info_rows"', FutureWarning)
 
         value = None if value else 1000000
         set_option('display.max_info_rows', value)
@@ -582,98 +585,69 @@ class DataFrame(NDFrame):
         return [self.index, self.columns]
 
     @property
-    def _constructor(self):
-        return self.__class__
-
-    @property
     def shape(self):
         return (len(self.index), len(self.columns))
 
     #----------------------------------------------------------------------
     # Class behavior
-
-    @property
-    def empty(self):
-        return not (len(self.columns) > 0 and len(self.index) > 0)
-
-    def __nonzero__(self):
-        raise ValueError("Cannot call bool() on DataFrame.")
-
     def _repr_fits_vertical_(self):
         """
-        Check if full repr fits in vertical boundaries imposed by the display
-        options height and max_rows.  In case of non-interactive session,
-        no boundaries apply.
+        Check length against max_rows.
         """
-        width, height = fmt.get_console_size()
         max_rows = get_option("display.max_rows")
+        return len(self) <= max_rows
 
-        if height is None and max_rows is None:
-            return True
-
-        else:
-            # min of two, where one may be None
-            height = height or max_rows +1
-            max_rows = max_rows or height +1
-            return len(self) <= min(max_rows, height)
-
-    def _repr_fits_horizontal_(self):
+    def _repr_fits_horizontal_(self,ignore_width=False):
         """
         Check if full repr fits in horizontal boundaries imposed by the display
         options width and max_columns. In case off non-interactive session, no
         boundaries apply.
+
+        ignore_width is here so ipnb+HTML output can behave the way
+        users expect. display.max_columns remains in effect.
+        GH3541, GH3573
         """
+
         width, height = fmt.get_console_size()
         max_columns = get_option("display.max_columns")
         nb_columns = len(self.columns)
 
         # exceed max columns
         if ((max_columns and nb_columns > max_columns) or
-            (width and nb_columns > (width // 2))):
+            ((not ignore_width) and width and nb_columns > (width // 2))):
             return False
 
-        if width is None:
-            # no sense finding width of repr if no width set
+        if (ignore_width  # used by repr_html under IPython notebook
+            or not com.in_interactive_session()): # scripts ignore terminal dims
             return True
 
+        if (get_option('display.width') is not None or
+            com.in_ipython_frontend()):
+            # check at least the column row for excessive width
+            max_rows = 1
+        else:
+            max_rows = get_option("display.max_rows")
+
+        # when auto-detecting, so width=None and not in ipython front end
+        # check whether repr fits horizontal by actualy checking
+        # the width of the rendered repr
         buf = StringIO()
 
         # only care about the stuff we'll actually print out
         # and to_string on entire frame may be expensive
         d = self
-        max_rows = get_option("display.max_rows")
-        if not (height is None and max_rows is None):
+
+        if not (max_rows is None): # unlimited rows
             # min of two, where one may be None
-            height = height or max_rows +1
-            max_rows = max_rows or height +1
-            d=d.iloc[:min(max_rows, height,len(d))]
+            d=d.iloc[:min(max_rows,len(d))]
+        else:
+            return True
 
         d.to_string(buf=buf)
         value = buf.getvalue()
         repr_width = max([len(l) for l in value.split('\n')])
-        return repr_width <= width
 
-    def __str__(self):
-        """
-        Return a string representation for a particular DataFrame
-
-        Invoked by str(df) in both py2/py3.
-        Yields Bytestring in Py2, Unicode String in py3.
-        """
-
-        if py3compat.PY3:
-            return self.__unicode__()
-        return self.__bytes__()
-
-    def __bytes__(self):
-        """
-        Return a string representation for a particular DataFrame
-
-        Invoked by bytes(df) in py3 only.
-        Yields a bytestring in both py2/py3.
-        """
-        encoding = com.get_option("display.encoding")
-        return self.__unicode__().encode(encoding, 'replace')
+        return repr_width < width
 
     def __unicode__(self):
         """
@@ -693,14 +667,14 @@ class DataFrame(NDFrame):
         if fits_vertical and fits_horizontal:
             self.to_string(buf=buf)
         else:
-            width, height = fmt.get_console_size()
-            max_rows = get_option("display.max_rows") or height
-            # expand_repr basically takes the extrac columns that don't
-            # fit the width, and creates a new page, which increases
-            # the effective row count. check number of cols agaibst
-            # max rows to catch wrapping. that would exceed max_rows.
-            if (get_option("display.expand_frame_repr") and fits_vertical and
-                len(self.columns) < max_rows):
+            width, _ = fmt.get_console_size()
+            max_columns = get_option("display.max_columns")
+            expand_repr = get_option("display.expand_frame_repr")
+            # within max_cols and max_rows, but cols exceed width
+            # of terminal, then use expand_repr
+            if (fits_vertical and
+                expand_repr and
+                len(self.columns) <= max_columns):
                 self.to_string(buf=buf, line_width=width)
             else:
                 max_info_rows = get_option('display.max_info_rows')
@@ -709,29 +683,32 @@ class DataFrame(NDFrame):
                 self.info(buf=buf, verbose=verbose)
 
         value = buf.getvalue()
-        assert type(value) == unicode
+        if not  type(value) == unicode:
+            raise AssertionError()
 
         return value
-
-    def __repr__(self):
-        """
-        Return a string representation for a particular DataFrame
-
-        Yields Bytestring in Py2, Unicode String in py3.
-        """
-        return str(self)
 
     def _repr_html_(self):
         """
         Return a html representation for a particular DataFrame.
         Mainly for IPython notebook.
         """
+        # ipnb in html repr mode allows scrolling
+        # users strongly prefer to h-scroll a wide HTML table in the browser
+        # then to get a summary view. GH3541, GH3573
+        ipnbh = com.in_ipnb() and get_option('display.notebook_repr_html')
+
+        # qtconsole doesn't report it's line width, and also
+        # behaves badly when outputting an HTML table
+        # that doesn't fit the window, so disable it.
+        if com.in_qtconsole():
+            raise ValueError('Disable HTML output in QtConsole')
 
         if get_option("display.notebook_repr_html"):
             fits_vertical = self._repr_fits_vertical_()
             fits_horizontal = False
             if fits_vertical:
-                fits_horizontal = self._repr_fits_horizontal_()
+                fits_horizontal = self._repr_fits_horizontal_(ignore_width=ipnbh)
 
             if fits_horizontal and fits_vertical:
                 return ('<div style="max-height:1000px;'
@@ -745,8 +722,8 @@ class DataFrame(NDFrame):
                 self.info(buf=buf, verbose=verbose)
                 info = buf.getvalue()
                 info = info.replace('&', r'&amp;')
-                info = info.replace('<', r'&lt')
-                info = info.replace('>', r'&gt')
+                info = info.replace('<', r'&lt;')
+                info = info.replace('>', r'&gt;')
                 return ('<pre>\n' + info + '\n</pre>')
         else:
             return None
@@ -771,7 +748,25 @@ class DataFrame(NDFrame):
 
     def iterrows(self):
         """
-        Iterate over rows of DataFrame as (index, Series) pairs
+        Iterate over rows of DataFrame as (index, Series) pairs.
+
+        Notes
+        -----
+
+        * ``iterrows`` does **not** preserve dtypes across the rows (dtypes
+          are preserved across columns for DataFrames). For example,
+
+            >>> df = DataFrame([[1, 1.0]], columns=['x', 'y'])
+            >>> row = next(df.iterrows())[1]
+            >>> print row['x'].dtype
+            float64
+            >>> print df['x'].dtype
+            int64
+
+        Returns
+        -------
+        it : generator
+            A generator that iterates over the rows of the frame.
         """
         columns = self.columns
         for k, v in izip(self.index, self.values):
@@ -788,7 +783,9 @@ class DataFrame(NDFrame):
         arrays = []
         if index:
             arrays.append(self.index)
-        arrays.extend(self[k] for k in self.columns)
+
+        # use integer indexing because of possible duplicate column names
+        arrays.extend(self.iloc[:, k] for k in xrange(len(self.columns)))
         return izip(*arrays)
 
     iterkv = iteritems
@@ -811,31 +808,42 @@ class DataFrame(NDFrame):
     sub = _arith_method(operator.sub, 'subtract', '-')
     div = divide = _arith_method(lambda x, y: x / y, 'divide', '/')
     pow = _arith_method(operator.pow, 'pow', '**')
+    mod = _arith_method(lambda x, y: x % y, 'mod')
 
     radd = _arith_method(_radd_compat, 'radd')
     rmul = _arith_method(operator.mul, 'rmultiply')
     rsub = _arith_method(lambda x, y: y - x, 'rsubtract')
     rdiv = _arith_method(lambda x, y: y / x, 'rdivide')
     rpow = _arith_method(lambda x, y: y ** x, 'rpow')
+    rmod = _arith_method(lambda x, y: y % x, 'rmod')
 
     __add__ = _arith_method(operator.add, '__add__', '+', default_axis=None)
     __sub__ = _arith_method(operator.sub, '__sub__', '-', default_axis=None)
     __mul__ = _arith_method(operator.mul, '__mul__', '*', default_axis=None)
     __truediv__ = _arith_method(operator.truediv, '__truediv__', '/',
-                                default_axis=None)
+                                default_axis=None, fill_zeros=np.inf, truediv=True)
+    # numexpr produces a different value (python/numpy: 0.000, numexpr: inf)
+    # when dividing by zero, so can't use floordiv speed up (yet)
+    # __floordiv__ = _arith_method(operator.floordiv, '__floordiv__', '//',
     __floordiv__ = _arith_method(operator.floordiv, '__floordiv__',
-                                 default_axis=None)
+                                 default_axis=None, fill_zeros=np.inf)
     __pow__ = _arith_method(operator.pow, '__pow__', '**', default_axis=None)
+
+    # currently causes a floating point exception to occur - so sticking with unaccelerated for now
+    # __mod__ = _arith_method(operator.mod, '__mod__', '%', default_axis=None, fill_zeros=np.nan)
+    __mod__ = _arith_method(operator.mod, '__mod__', default_axis=None, fill_zeros=np.nan)
 
     __radd__ = _arith_method(_radd_compat, '__radd__', default_axis=None)
     __rmul__ = _arith_method(operator.mul, '__rmul__', default_axis=None)
     __rsub__ = _arith_method(lambda x, y: y - x, '__rsub__', default_axis=None)
     __rtruediv__ = _arith_method(lambda x, y: y / x, '__rtruediv__',
-                                 default_axis=None)
+                                 default_axis=None, fill_zeros=np.inf)
     __rfloordiv__ = _arith_method(lambda x, y: y // x, '__rfloordiv__',
-                                  default_axis=None)
+                                  default_axis=None, fill_zeros=np.inf)
     __rpow__ = _arith_method(lambda x, y: y ** x, '__rpow__',
                              default_axis=None)
+    __rmod__ = _arith_method(lambda x, y: y % x, '__rmod__', default_axis=None,
+                             fill_zeros=np.nan)
 
     # boolean operators
     __and__ = _arith_method(operator.and_, '__and__', '&')
@@ -844,9 +852,10 @@ class DataFrame(NDFrame):
 
     # Python 2 division methods
     if not py3compat.PY3:
-        __div__ = _arith_method(operator.div, '__div__', '/', default_axis=None)
+        __div__ = _arith_method(operator.div, '__div__', '/',
+                                default_axis=None, fill_zeros=np.inf, truediv=False)
         __rdiv__ = _arith_method(lambda x, y: y / x, '__rdiv__',
-                                 default_axis=None)
+                                 default_axis=None, fill_zeros=np.inf)
 
     def __neg__(self):
         arr = operator.neg(self.values)
@@ -1223,7 +1232,7 @@ class DataFrame(NDFrame):
 
     @classmethod
     def from_csv(cls, path, header=0, sep=',', index_col=0,
-                 parse_dates=True, encoding=None):
+                 parse_dates=True, encoding=None, tupleize_cols=False):
         """
         Read delimited file into DataFrame
 
@@ -1239,6 +1248,9 @@ class DataFrame(NDFrame):
             is used. Different default from read_table
         parse_dates : boolean, default True
             Parse dates. Different default from read_table
+        tupleize_cols : boolean, default True
+            write multi_index columns as a list of tuples (if True)
+            or new (expanded format) if False)
 
         Notes
         -----
@@ -1253,7 +1265,7 @@ class DataFrame(NDFrame):
         from pandas.io.parsers import read_table
         return read_table(path, header=header, sep=sep,
                           parse_dates=parse_dates, index_col=index_col,
-                          encoding=encoding)
+                          encoding=encoding,tupleize_cols=False)
 
     def to_sparse(self, fill_value=None, kind='block'):
         """
@@ -1335,9 +1347,9 @@ class DataFrame(NDFrame):
     def to_csv(self, path_or_buf, sep=",", na_rep='', float_format=None,
                cols=None, header=True, index=True, index_label=None,
                mode='w', nanRep=None, encoding=None, quoting=None,
-               line_terminator='\n', chunksize=None,**kwds):
-        """
-        Write DataFrame to a comma-separated values (csv) file
+               line_terminator='\n', chunksize=None,
+               tupleize_cols=True, **kwds):
+        r"""Write DataFrame to a comma-separated values (csv) file
 
         Parameters
         ----------
@@ -1352,8 +1364,8 @@ class DataFrame(NDFrame):
         cols : sequence, optional
             Columns to write
         header : boolean or list of string, default True
-            Write out column names. If a list of string is given it is
-            assumed to be aliases for the column names
+            Write out column names. If a list of string is given it is assumed
+            to be aliases for the column names
         index : boolean, default True
             Write row names (index)
         index_label : string or sequence, or False, default None
@@ -1362,17 +1374,23 @@ class DataFrame(NDFrame):
             sequence should be given if the DataFrame uses MultiIndex.  If
             False do not print fields for index names. Use index_label=False
             for easier importing in R
-        nanRep : deprecated, use na_rep
-        mode : Python write mode, default 'w'
+        nanRep : None
+            deprecated, use na_rep
+        mode : str
+            Python write mode, default 'w'
         encoding : string, optional
             a string representing the encoding to use if the contents are
             non-ascii, for python versions prior to 3
-        line_terminator: string, default '\n'
+        line_terminator : string, default '\\n'
             The newline character or character sequence to use in the output
             file
         quoting : optional constant from csv module
             defaults to csv.QUOTE_MINIMAL
-        chunksize : rows to write at a time
+        chunksize : int or None
+            rows to write at a time
+        tupleize_cols : boolean, default True
+            write multi_index columns as a list of tuples (if True)
+            or new (expanded format) if False)
         """
         if nanRep is not None:  # pragma: no cover
             import warnings
@@ -1380,17 +1398,16 @@ class DataFrame(NDFrame):
                           FutureWarning)
             na_rep = nanRep
 
-
-        else:
-            formatter = fmt.CSVFormatter(self, path_or_buf,
-                                         line_terminator=line_terminator,
-                                         sep=sep, encoding=encoding,
-                                         quoting=quoting,na_rep=na_rep,
-                                         float_format=float_format, cols=cols,
-                                         header=header, index=index,
-                                         index_label=index_label,mode=mode,
-                                         chunksize=chunksize,engine=kwds.get("engine") )
-            formatter.save()
+        formatter = fmt.CSVFormatter(self, path_or_buf,
+                                     line_terminator=line_terminator,
+                                     sep=sep, encoding=encoding,
+                                     quoting=quoting,na_rep=na_rep,
+                                     float_format=float_format, cols=cols,
+                                     header=header, index=index,
+                                     index_label=index_label,mode=mode,
+                                     chunksize=chunksize,engine=kwds.get("engine"),
+                                     tupleize_cols=tupleize_cols)
+        formatter.save()
 
     def to_excel(self, excel_writer, sheet_name='sheet1', na_rep='',
                  float_format=None, cols=None, header=True, index=True,
@@ -1433,7 +1450,7 @@ class DataFrame(NDFrame):
         >>> df2.to_excel(writer,'sheet2')
         >>> writer.save()
         """
-        from pandas.io.parsers import ExcelWriter
+        from pandas.io.excel import ExcelWriter
         need_save = False
         if isinstance(excel_writer, basestring):
             excel_writer = ExcelWriter(excel_writer)
@@ -1451,6 +1468,57 @@ class DataFrame(NDFrame):
                                  startrow=startrow, startcol=startcol)
         if need_save:
             excel_writer.save()
+
+    def to_stata(self, fname, convert_dates=None, write_index=True, encoding="latin-1",
+                 byteorder=None):
+        """
+        A class for writing Stata binary dta files from array-like objects
+
+        Parameters
+        ----------
+        fname : file path or buffer
+            Where to save the dta file.
+        convert_dates : dict
+            Dictionary mapping column of datetime types to the stata internal
+            format that you want to use for the dates. Options are
+            'tc', 'td', 'tm', 'tw', 'th', 'tq', 'ty'. Column can be either a
+            number or a name.
+        encoding : str
+            Default is latin-1. Note that Stata does not support unicode.
+        byteorder : str
+            Can be ">", "<", "little", or "big". The default is None which uses
+            `sys.byteorder`
+
+        Examples
+        --------
+        >>> writer = StataWriter('./data_file.dta', data)
+        >>> writer.write_file()
+
+        Or with dates
+
+        >>> writer = StataWriter('./date_data_file.dta', data, {2 : 'tw'})
+        >>> writer.write_file()
+        """
+        from pandas.io.stata import StataWriter
+        writer = StataWriter(fname,self,convert_dates=convert_dates, encoding=encoding, byteorder=byteorder)
+        writer.write_file()
+
+    def to_sql(self, name, con, flavor='sqlite', if_exists='fail', **kwargs):
+        """
+        Write records stored in a DataFrame to a SQL database.
+
+        Parameters
+        ----------
+        name: name of SQL table
+        conn: an open SQL database connection object
+        flavor: {'sqlite', 'mysql', 'oracle'}, default 'sqlite'
+        if_exists: {'fail', 'replace', 'append'}, default 'fail'
+            fail: If table exists, do nothing.
+            replace: If table exists, drop it, recreate it, and insert data.
+            append: If table exists, insert data. Create if does not exist.
+        """
+        from pandas.io.sql import write_frame
+        write_frame(self, name, con, flavor=flavor, if_exists=if_exists, **kwargs)
 
     @Appender(fmt.docstring_to_string, indents=1)
     def to_string(self, buf=None, columns=None, col_space=None, colSpace=None,
@@ -1499,6 +1567,7 @@ class DataFrame(NDFrame):
                 classes=None, escape=True):
         """
         to_html-specific options
+
         bold_rows : boolean, default True
             Make the row labels bold in the output
         classes : str or list or tuple, default None
@@ -1506,7 +1575,7 @@ class DataFrame(NDFrame):
         escape : boolean, default True
             Convert the characters <, >, and & to HTML-safe sequences.
 
-        Render a DataFrame to an html table.
+        Render a DataFrame as an HTML table.
         """
 
         import warnings
@@ -1626,21 +1695,23 @@ class DataFrame(NDFrame):
     def dtypes(self):
         return self.apply(lambda x: x.dtype)
 
-    def convert_objects(self, convert_dates=True, convert_numeric=False):
+    def convert_objects(self, convert_dates=True, convert_numeric=False, copy=True):
         """
         Attempt to infer better dtype for object columns
-        Always returns a copy (even if no object columns)
 
         Parameters
         ----------
         convert_dates : if True, attempt to soft convert_dates, if 'coerce', force conversion (and non-convertibles get NaT)
         convert_numeric : if True attempt to coerce to numerbers (including strings), non-convertibles get NaN
+        copy : boolean, return a copy if True (True by default)
 
         Returns
         -------
         converted : DataFrame
         """
-        return self._constructor(self._data.convert(convert_dates=convert_dates, convert_numeric=convert_numeric))
+        return self._constructor(self._data.convert(convert_dates=convert_dates,
+                                                    convert_numeric=convert_numeric,
+                                                    copy=copy))
 
     #----------------------------------------------------------------------
     # properties for index and columns
@@ -1874,7 +1945,10 @@ class DataFrame(NDFrame):
             else:
                 label = self.index[i]
                 if isinstance(label, Index):
-                    return self.reindex(label)
+
+                    # a location index by definition
+                    i = _maybe_convert_indices(i, len(self._get_axis(axis)))
+                    return self.reindex(i, takeable=True)
                 else:
                     try:
                         new_values = self._data.fast_2d_xs(i, copy=copy)
@@ -1925,7 +1999,11 @@ class DataFrame(NDFrame):
             return self._getitem_multilevel(key)
         else:
             # get column
-            return self._get_item_cache(key)
+            if self.columns.is_unique:
+                return self._get_item_cache(key)
+
+            # duplicate columns
+            return self._constructor(self._data.get(key))
 
     def _getitem_slice(self, key):
         return self._slice(key, axis=0)
@@ -1988,7 +2066,10 @@ class DataFrame(NDFrame):
         else:
             mgr_axis = 0
 
-        new_data = self._data.get_slice(slobj, axis=mgr_axis, raise_on_error=raise_on_error)
+        self._consolidate_inplace()
+        new_data = self._data.get_slice(slobj, axis=mgr_axis,
+                                        raise_on_error=raise_on_error)
+
         return self._constructor(new_data)
 
     def _box_item_values(self, key, values):
@@ -2084,10 +2165,10 @@ class DataFrame(NDFrame):
         value = self._sanitize_column(key, value)
         NDFrame._set_item(self, key, value)
 
-    def insert(self, loc, column, value):
+    def insert(self, loc, column, value, allow_duplicates=False):
         """
-        Insert column into DataFrame at specified location. Raises Exception if
-        column is already contained in the DataFrame
+        Insert column into DataFrame at specified location.
+        if allow_duplicates is False, Raises Exception if column is already contained in the DataFrame
 
         Parameters
         ----------
@@ -2097,7 +2178,7 @@ class DataFrame(NDFrame):
         value : int, Series, or array-like
         """
         value = self._sanitize_column(column, value)
-        self._data.insert(loc, column, value)
+        self._data.insert(loc, column, value, allow_duplicates=allow_duplicates)
 
     def _sanitize_column(self, key, value):
         # Need to make sure new columns (which go into the BlockManager as new
@@ -2109,7 +2190,13 @@ class DataFrame(NDFrame):
                     # copy the values
                     value = value.values.copy()
                 else:
-                    value = value.reindex(self.index).values
+
+                    # GH 4107
+                    try:
+                        value = value.reindex(self.index).values
+                    except:
+                        raise TypeError('incompatible index of inserted column '
+                                        'with frame index')
 
                 if is_frame:
                     value = value.T
@@ -2119,7 +2206,10 @@ class DataFrame(NDFrame):
                                          'length of index')
 
                 if not isinstance(value, np.ndarray):
-                    value = com._asarray_tuplesafe(value)
+                    if isinstance(value, list) and len(value) > 0:
+                        value = com._possibly_convert_platform(value)
+                    else:
+                        value = com._asarray_tuplesafe(value)
                 elif isinstance(value, PeriodIndex):
                     value = value.asobject
                 elif value.ndim == 2:
@@ -2302,27 +2392,32 @@ class DataFrame(NDFrame):
     _xs = xs
 
     def lookup(self, row_labels, col_labels):
-        """
-        Label-based "fancy indexing" function for DataFrame. Given equal-length
-        arrays of row and column labels, return an array of the values
-        corresponding to each (row, col)  pair.
+        """Label-based "fancy indexing" function for DataFrame. Given
+        equal-length arrays of row and column labels, return an array of the
+        values corresponding to each (row, col)  pair.
 
         Parameters
         ----------
         row_labels : sequence
+            The row labels to use for lookup
         col_labels : sequence
+            The column labels to use for lookup
 
         Notes
         -----
         Akin to
 
-        result = []
-        for row, col in zip(row_labels, col_labels):
-            result.append(df.get_value(row, col))
+            .. code-block:: python
 
-        Example
-        -------
+                result = []
+                for row, col in zip(row_labels, col_labels):
+                    result.append(df.get_value(row, col))
+
+        Examples
+        --------
         values : ndarray
+            The found values
+
         """
         from itertools import izip
 
@@ -2476,7 +2571,7 @@ class DataFrame(NDFrame):
             return left_result, right_result
 
     def reindex(self, index=None, columns=None, method=None, level=None,
-                fill_value=NA, limit=None, copy=True):
+                fill_value=NA, limit=None, copy=True, takeable=False):
         """Conform DataFrame to new index with optional filling logic, placing
         NA/NaN in locations having no value in the previous index. A new object
         is produced unless the new index is equivalent to the current one and
@@ -2503,6 +2598,7 @@ class DataFrame(NDFrame):
             "compatible" value
         limit : int, default None
             Maximum size gap to forward or backward fill
+        takeable : the labels are locations (and not labels)
 
         Examples
         --------
@@ -2522,11 +2618,11 @@ class DataFrame(NDFrame):
 
         if columns is not None:
             frame = frame._reindex_columns(columns, copy, level,
-                                           fill_value, limit)
+                                           fill_value, limit, takeable)
 
         if index is not None:
             frame = frame._reindex_index(index, method, copy, level,
-                                         fill_value, limit)
+                                         fill_value, limit, takeable)
 
         return frame
 
@@ -2603,16 +2699,18 @@ class DataFrame(NDFrame):
             return self.copy() if copy else self
 
     def _reindex_index(self, new_index, method, copy, level, fill_value=NA,
-                       limit=None):
+                       limit=None, takeable=False):
         new_index, indexer = self.index.reindex(new_index, method, level,
-                                                limit=limit)
+                                                limit=limit, copy_if_needed=True,
+                                                takeable=takeable)
         return self._reindex_with_indexers(new_index, indexer, None, None,
                                            copy, fill_value)
 
     def _reindex_columns(self, new_columns, copy, level, fill_value=NA,
-                         limit=None):
+                         limit=None, takeable=False):
         new_columns, indexer = self.columns.reindex(new_columns, level=level,
-                                                    limit=limit)
+                                                    limit=limit, copy_if_needed=True,
+                                                    takeable=takeable)
         return self._reindex_with_indexers(None, None, new_columns, indexer,
                                            copy, fill_value)
 
@@ -2787,9 +2885,18 @@ class DataFrame(NDFrame):
         else:
             new_obj = self.copy()
 
-        def _maybe_cast(values):
+        def _maybe_cast(values, labels=None):
+
             if values.dtype == np.object_:
                 values = lib.maybe_convert_objects(values)
+
+            # if we have the labels, extract the values with a mask
+            if labels is not None:
+                mask = labels == -1
+                values = values.take(labels)
+                if mask.any():
+                    values, changed = com._maybe_upcast_putmask(values,mask,np.nan)
+
             return values
 
         new_index = np.arange(len(new_obj))
@@ -2822,9 +2929,9 @@ class DataFrame(NDFrame):
                             col_name = tuple(name_lst)
 
                     # to ndarray and maybe infer different dtype
-                    level_values = _maybe_cast(lev.values)
+                    level_values = _maybe_cast(lev.values, lab)
                     if level is None or i in level:
-                        new_obj.insert(0, col_name, level_values.take(lab))
+                        new_obj.insert(0, col_name, level_values)
 
         elif not drop:
             name = self.index.name
@@ -2844,8 +2951,8 @@ class DataFrame(NDFrame):
                   self.index.tz is not None):
                 values = self.index.asobject
             else:
-                values = self.index.values
-            new_obj.insert(0, name, _maybe_cast(values))
+                values = _maybe_cast(self.index.values)
+            new_obj.insert(0, name, values)
 
         new_obj.index = new_index
         if not inplace:
@@ -3097,7 +3204,8 @@ class DataFrame(NDFrame):
         return self.sort_index(by=columns, axis=axis, ascending=ascending,
                                inplace=inplace)
 
-    def sort_index(self, axis=0, by=None, ascending=True, inplace=False):
+    def sort_index(self, axis=0, by=None, ascending=True, inplace=False,
+                   kind='quicksort'):
         """
         Sort DataFrame either by labels (along either axis) or by the values in
         a column
@@ -3134,7 +3242,10 @@ class DataFrame(NDFrame):
         if by is not None:
             if axis != 0:
                 raise AssertionError('Axis must be 0')
-            if isinstance(by, (tuple, list)):
+            if not isinstance(by, (tuple, list)):
+                by = [by]
+
+            if len(by) > 1:
                 keys = []
                 for x in by:
                     k = self[x].values
@@ -3143,22 +3254,28 @@ class DataFrame(NDFrame):
                                          % str(x))
                     keys.append(k)
 
-                keys = [self[x].values for x in by]
+                def trans(v):
+                    if com.needs_i8_conversion(v):
+                        return v.view('i8')
+                    return v
+
+                keys = [trans(self[x].values) for x in by]
                 indexer = _lexsort_indexer(keys, orders=ascending)
                 indexer = com._ensure_platform_int(indexer)
             else:
+                by = by[0]
                 k = self[by].values
                 if k.ndim == 2:
                     raise ValueError('Cannot sort by duplicate column %s'
                                      % str(by))
-                indexer = k.argsort()
+                indexer = k.argsort(kind=kind)
                 if not ascending:
                     indexer = indexer[::-1]
         elif isinstance(labels, MultiIndex):
             indexer = _lexsort_indexer(labels.labels, orders=ascending)
             indexer = com._ensure_platform_int(indexer)
         else:
-            indexer = labels.argsort()
+            indexer = labels.argsort(kind=kind)
             if not ascending:
                 indexer = indexer[::-1]
 
@@ -3284,7 +3401,7 @@ class DataFrame(NDFrame):
         value : scalar or dict
             Value to use to fill holes (e.g. 0), alternately a dict of values
             specifying which value to use for each column (columns not in the
-            dict will not be filled)
+            dict will not be filled). This value cannot be a list.
         axis : {0, 1}, default 0
             0: fill column-by-column
             1: fill row-by-row
@@ -3295,7 +3412,7 @@ class DataFrame(NDFrame):
             a reference to the filled object, which is self if inplace=True
         limit : int, default None
             Maximum size gap to forward or backward fill
-        downcast : dict, default is None, a dict of item->dtype of what to 
+        downcast : dict, default is None, a dict of item->dtype of what to
             downcast if possible
 
         See also
@@ -3306,6 +3423,9 @@ class DataFrame(NDFrame):
         -------
         filled : DataFrame
         """
+        if isinstance(value, (list, tuple)):
+            raise TypeError('"value" parameter must be a scalar or dict, but '
+                            'you passed a "{0}"'.format(type(value).__name__))
         self._consolidate_inplace()
 
         axis = self._get_axis_number(axis)
@@ -3342,7 +3462,7 @@ class DataFrame(NDFrame):
                     result[k].fillna(v, inplace=True)
                 return result
             else:
-                new_data = self._data.fillna(value, inplace=inplace, 
+                new_data = self._data.fillna(value, inplace=inplace,
                                              downcast=downcast)
 
         if inplace:
@@ -3358,24 +3478,56 @@ class DataFrame(NDFrame):
         return self.fillna(method='bfill', axis=axis, inplace=inplace,
                            limit=limit)
 
-    def replace(self, to_replace, value=None, method='pad', axis=0,
-                inplace=False, limit=None):
+    def replace(self, to_replace=None, value=None, inplace=False, limit=None,
+                regex=False, method=None, axis=None):
         """
-        Replace values given in 'to_replace' with 'value' or using 'method'
+        Replace values given in 'to_replace' with 'value'.
 
         Parameters
         ----------
-        value : scalar or dict, default None
+        to_replace : str, regex, list, dict, Series, numeric, or None
+
+            * str or regex:
+
+                - str: string exactly matching `to_replace` will be replaced
+                  with `value`
+                - regex: regexs matching `to_replace` will be replaced with
+                  `value`
+
+            * list of str, regex, or numeric:
+
+                - First, if `to_replace` and `value` are both lists, they
+                  **must** be the same length.
+                - Second, if ``regex=True`` then all of the strings in **both**
+                  lists will be interpreted as regexs otherwise they will match
+                  directly. This doesn't matter much for `value` since there
+                  are only a few possible substitution regexes you can use.
+                - str and regex rules apply as above.
+
+            * dict:
+
+                - Nested dictionaries, e.g., {'a': {'b': nan}}, are read as
+                  follows: look in column 'a' for the value 'b' and replace it
+                  with nan. You can nest regular expressions as well. Note that
+                  column names (the top-level dictionary keys in a nested
+                  dictionary) **cannot** be regular expressions.
+                - Keys map to column names and values map to substitution
+                  values. You can treat this as a special case of passing two
+                  lists except that you are specifying the column to search in.
+
+            * None:
+
+                - This means that the ``regex`` argument must be a string,
+                  compiled regular expression, or list, dict, ndarray or Series
+                  of such elements. If `value` is also ``None`` then this
+                  **must** be a nested dictionary or ``Series``.
+
+            See the examples section for examples of each of these.
+        value : scalar, dict, list, str, regex, default None
             Value to use to fill holes (e.g. 0), alternately a dict of values
             specifying which value to use for each column (columns not in the
-            dict will not be filled)
-        method : {'backfill', 'bfill', 'pad', 'ffill', None}, default 'pad'
-            Method to use for filling holes in reindexed Series
-            pad / ffill: propagate last valid observation forward to next valid
-            backfill / bfill: use NEXT valid observation to fill gap
-        axis : {0, 1}, default 0
-            0: fill column-by-column
-            1: fill row-by-row
+            dict will not be filled). Regular expressions, strings and lists or
+            dicts of such objects are also allowed.
         inplace : boolean, default False
             If True, fill the DataFrame in place. Note: this will modify any
             other views on this DataFrame, like if you took a no-copy slice of
@@ -3383,23 +3535,96 @@ class DataFrame(NDFrame):
             a reference to the filled object, which is self if inplace=True
         limit : int, default None
             Maximum size gap to forward or backward fill
+        regex : bool or same types as `to_replace`, default False
+            Whether to interpret `to_replace` and/or `value` as regular
+            expressions. If this is ``True`` then `to_replace` *must* be a
+            string. Otherwise, `to_replace` must be ``None`` because this
+            parameter will be interpreted as a regular expression or a list,
+            dict, or array of regular expressions.
 
         See also
         --------
-        reindex, asfreq
+        reindex, asfreq, fillna
 
         Returns
         -------
         filled : DataFrame
+
+        Raises
+        ------
+        AssertionError
+            * If `regex` is not a ``bool`` and `to_replace` is not ``None``.
+        TypeError
+            * If `to_replace` is a ``dict`` and `value` is not a ``list``,
+              ``dict``, ``ndarray``, or ``Series``
+            * If `to_replace` is ``None`` and `regex` is not compilable into a
+              regular expression or is a list, dict, ndarray, or Series.
+        ValueError
+            * If `to_replace` and `value` are ``list`` s or ``ndarray`` s, but
+              they are not the same length.
+
+        Notes
+        -----
+        * Regex substitution is performed under the hood with ``re.sub``. The
+          rules for substitution for ``re.sub`` are the same.
+        * Regular expressions will only substitute on strings, meaning you
+          cannot provide, for example, a regular expression matching floating
+          point numbers and expect the columns in your frame that have a
+          numeric dtype to be matched. However, if those floating point numbers
+          *are* strings, then you can do this.
+        * This method has *a lot* of options. You are encouraged to experiment
+          and play with this method to gain intuition about how it works.
+
         """
+        if not com.is_bool(regex) and to_replace is not None:
+            raise AssertionError("'to_replace' must be 'None' if 'regex' is "
+                                 "not a bool")
+        if method is not None:
+            from warnings import warn
+            warn('the "method" argument is deprecated and will be removed in'
+                 'v0.13; this argument has no effect')
+
+        if axis is not None:
+            from warnings import warn
+            warn('the "axis" argument is deprecated and will be removed in'
+                 'v0.13; this argument has no effect')
+
         self._consolidate_inplace()
 
-        axis = self._get_axis_number(axis)
-
         if value is None:
-            return self._interpolate(to_replace, method, axis, inplace, limit)
+            if not isinstance(to_replace, (dict, Series)):
+                if not isinstance(regex, (dict, Series)):
+                    raise TypeError('If "to_replace" and "value" are both None'
+                                    ' then regex must be a mapping')
+                to_replace = regex
+                regex = True
+
+            items = to_replace.items()
+            keys, values = itertools.izip(*items)
+
+            are_mappings = [isinstance(v, (dict, Series)) for v in values]
+
+            if any(are_mappings):
+                if not all(are_mappings):
+                    raise TypeError("If a nested mapping is passed, all values"
+                                    " of the top level mapping must be "
+                                    "mappings")
+                # passed a nested dict/Series
+                to_rep_dict = {}
+                value_dict = {}
+
+                for k, v in items:
+                    to_rep_dict[k] = v.keys()
+                    value_dict[k] = v.values()
+
+                to_replace, value = to_rep_dict, value_dict
+            else:
+                to_replace, value = keys, values
+
+            return self.replace(to_replace, value, inplace=inplace,
+                                limit=limit, regex=regex)
         else:
-            if len(self.columns) == 0:
+            if not len(self.columns):
                 return self
 
             new_data = self._data
@@ -3409,18 +3634,21 @@ class DataFrame(NDFrame):
                     for c, src in to_replace.iteritems():
                         if c in value and c in self:
                             new_data = new_data.replace(src, value[c],
-                                                        filter=[ c ],
-                                                        inplace=inplace)
+                                                        filter=[c],
+                                                        inplace=inplace,
+                                                        regex=regex)
 
-                elif not isinstance(value, (list, np.ndarray)):
+                elif not isinstance(value, (list, np.ndarray)):  # {'A': NA} -> 0
                     new_data = self._data
                     for k, src in to_replace.iteritems():
                         if k in self:
                             new_data = new_data.replace(src, value,
-                                                        filter = [ k ],
-                                                        inplace=inplace)
+                                                        filter=[k],
+                                                        inplace=inplace,
+                                                        regex=regex)
                 else:
-                    raise ValueError('Fill value must be scalar or dict or Series')
+                    raise TypeError('Fill value must be scalar, dict, or '
+                                    'Series')
 
             elif isinstance(to_replace, (list, np.ndarray)):
                 # [NA, ''] -> [0, 'missing']
@@ -3431,63 +3659,95 @@ class DataFrame(NDFrame):
                                          (len(to_replace), len(value)))
 
                     new_data = self._data.replace_list(to_replace, value,
-                                                       inplace=inplace)
+                                                       inplace=inplace,
+                                                       regex=regex)
 
                 else:  # [NA, ''] -> 0
                     new_data = self._data.replace(to_replace, value,
-                                                  inplace=inplace)
-
+                                                  inplace=inplace, regex=regex)
+            elif to_replace is None:
+                if not (com.is_re_compilable(regex) or
+                        isinstance(regex, (list, dict, np.ndarray, Series))):
+                    raise TypeError("'regex' must be a string or a compiled "
+                                    "regular expression or a list or dict of "
+                                    "strings or regular expressions, you "
+                                    "passed a {0}".format(type(regex)))
+                return self.replace(regex, value, inplace=inplace, limit=limit,
+                                    regex=True)
             else:
 
                 # dest iterable dict-like
                 if isinstance(value, (dict, Series)):  # NA -> {'A' : 0, 'B' : -1}
-
                     new_data = self._data
+
                     for k, v in value.iteritems():
                         if k in self:
                             new_data = new_data.replace(to_replace, v,
-                                                        filter=[ k ],
-                                                        inplace=inplace)
+                                                        filter=[k],
+                                                        inplace=inplace,
+                                                        regex=regex)
 
                 elif not isinstance(value, (list, np.ndarray)):  # NA -> 0
                     new_data = self._data.replace(to_replace, value,
-                                                  inplace=inplace)
+                                                  inplace=inplace, regex=regex)
                 else:
-                    raise ValueError('Invalid to_replace type: %s' %
-                                     type(to_replace))  # pragma: no cover
+                    raise TypeError('Invalid "to_replace" type: '
+                                    '{0}'.format(type(to_replace)))  # pragma: no cover
 
+        new_data = new_data.convert(copy=not inplace, convert_numeric=False)
 
         if inplace:
             self._data = new_data
         else:
             return self._constructor(new_data)
 
-    def _interpolate(self, to_replace, method, axis, inplace, limit):
+    def interpolate(self, to_replace, method='pad', axis=0, inplace=False,
+                    limit=None):
+        """Interpolate values according to different methods.
+
+        Parameters
+        ----------
+        to_replace : dict, Series
+        method : str
+        axis : int
+        inplace : bool
+        limit : int, default None
+
+        Returns
+        -------
+        frame : interpolated
+
+        See Also
+        --------
+        reindex, replace, fillna
+        """
+        from warnings import warn
+        warn('DataFrame.interpolate will be removed in v0.13, please use '
+             'either DataFrame.fillna or DataFrame.replace instead',
+             FutureWarning)
         if self._is_mixed_type and axis == 1:
             return self.T.replace(to_replace, method=method, limit=limit).T
 
         method = com._clean_fill_method(method)
 
         if isinstance(to_replace, (dict, Series)):
-            if axis == 1:
-                return self.T.replace(to_replace, method=method,
-                                      limit=limit).T
-
-            rs = self if inplace else self.copy()
-            for k, v in to_replace.iteritems():
-                if k in rs:
-                    rs[k].replace(v, method=method, limit=limit,
-                                  inplace=True)
-            return rs if not inplace else None
-
+            if axis == 0:
+                return self.replace(to_replace, method=method, inplace=inplace,
+                                    limit=limit, axis=axis)
+            elif axis == 1:
+                obj = self.T
+                if inplace:
+                    obj.replace(to_replace, method=method, limit=limit,
+                                inplace=inplace, axis=0)
+                    return obj.T
+                return obj.replace(to_replace, method=method, limit=limit,
+                                   inplace=inplace, axis=0).T
+            else:
+                raise ValueError('Invalid value for axis')
         else:
-
-            new_data = self._data.interpolate(method  = method,
-                                              axis    = axis,
-                                              limit   = limit,
-                                              inplace = inplace,
-                                              missing = to_replace,
-                                              coerce  = False)
+            new_data = self._data.interpolate(method=method, axis=axis,
+                                              limit=limit, inplace=inplace,
+                                              missing=to_replace, coerce=False)
 
             if inplace:
                 self._data = new_data
@@ -3703,8 +3963,11 @@ class DataFrame(NDFrame):
 
         result = {}
         for col in new_columns:
-            series = this[col].values
-            otherSeries = other[col].values
+            series = this[col]
+            otherSeries = other[col]
+
+            this_dtype = series.dtype
+            other_dtype = otherSeries.dtype
 
             this_mask = isnull(series)
             other_mask = isnull(otherSeries)
@@ -3721,15 +3984,40 @@ class DataFrame(NDFrame):
                 series[this_mask] = fill_value
                 otherSeries[other_mask] = fill_value
 
-            arr = func(series, otherSeries)
+            # if we have different dtypes, possibily promote
+            new_dtype = this_dtype
+            if this_dtype != other_dtype:
+                new_dtype = com._lcd_dtypes(this_dtype,other_dtype)
+                series = series.astype(new_dtype)
+                otherSeries = otherSeries.astype(new_dtype)
+
+            # see if we need to be represented as i8 (datetimelike)
+            # try to keep us at this dtype
+            needs_i8_conversion = com.needs_i8_conversion(new_dtype)
+            if needs_i8_conversion:
+                this_dtype = new_dtype
+                arr = func(series, otherSeries, True)
+            else:
+                arr = func(series, otherSeries)
 
             if do_fill:
                 arr = com.ensure_float(arr)
                 arr[this_mask & other_mask] = NA
 
+            # try to downcast back to the original dtype
+            if needs_i8_conversion:
+                arr = com._possibly_cast_to_datetime(arr, this_dtype)
+            else:
+                arr = com._possibly_downcast_to_dtype(arr, this_dtype)
+
             result[col] = arr
 
-        return self._constructor(result, index=new_index, columns=new_columns)
+        # convert_objects just in case
+        return self._constructor(result,
+                                 index=new_index,
+                                 columns=new_columns).convert_objects(
+            convert_dates=True,
+            copy=False)
 
     def combine_first(self, other):
         """
@@ -3750,8 +4038,18 @@ class DataFrame(NDFrame):
         -------
         combined : DataFrame
         """
-        def combiner(x, y):
-            return expressions.where(isnull(x), y, x, raise_on_error=True)
+        def combiner(x, y, needs_i8_conversion=False):
+            x_values = x.values if hasattr(x,'values') else x
+            y_values = y.values if hasattr(y,'values') else y
+            if needs_i8_conversion:
+                mask = isnull(x)
+                x_values = x_values.view('i8')
+                y_values = y_values.view('i8')
+            else:
+                mask = isnull(x_values)
+
+            return expressions.where(mask, y_values, x_values, raise_on_error=True)
+
         return self.combine(other, combiner, overwrite=False)
 
     def update(self, other, join='left', overwrite=True, filter_func=None,
@@ -4204,7 +4502,7 @@ class DataFrame(NDFrame):
 
             if axis == 1:
                 result = result.T
-            result = result.convert_objects(convert_dates=False)
+            result = result.convert_objects(copy=False)
 
             return result
         else:
@@ -4255,9 +4553,6 @@ class DataFrame(NDFrame):
             if com.is_datetime64_dtype(x):
                 x = lib.map_infer(x, lib.Timestamp)
             return lib.map_infer(x, func)
-        #GH2786
-        if not self.columns.is_unique:
-            raise ValueError("applymap does not support dataframes having duplicate column labels")
         return self.apply(infer)
 
     #----------------------------------------------------------------------
@@ -4413,7 +4708,7 @@ class DataFrame(NDFrame):
     #----------------------------------------------------------------------
     # Statistical methods, etc.
 
-    def corr(self, method='pearson', min_periods=None):
+    def corr(self, method='pearson', min_periods=1):
         """
         Compute pairwise correlation of columns, excluding NA/null values
 
@@ -4426,7 +4721,7 @@ class DataFrame(NDFrame):
         min_periods : int, optional
             Minimum number of observations required per pair of columns
             to have a valid result. Currently only available for pearson
-            correlation
+            and spearman correlation
 
         Returns
         -------
@@ -4439,6 +4734,9 @@ class DataFrame(NDFrame):
         if method == 'pearson':
             correl = _algos.nancorr(com._ensure_float64(mat),
                                     minp=min_periods)
+        elif method == 'spearman':
+            correl = _algos.nancorr_spearman(com._ensure_float64(mat),
+                                             minp=min_periods)
         else:
             if min_periods is None:
                 min_periods = 1
@@ -4744,6 +5042,18 @@ class DataFrame(NDFrame):
                   extras='')
     @Appender(_stat_doc)
     def min(self, axis=0, skipna=True, level=None):
+        """
+        Notes
+        -----
+        This method returns the minimum of the values in the DataFrame. If you
+        want the *index* of the minimum, use ``DataFrame.idxmin``. This is the
+        equivalent of the ``numpy.ndarray`` method ``argmin``.
+
+        See Also
+        --------
+        DataFrame.idxmin
+        Series.idxmin
+        """
         if level is not None:
             return self._agg_by_level('min', axis=axis, level=level,
                                       skipna=skipna)
@@ -4754,6 +5064,18 @@ class DataFrame(NDFrame):
                   extras='')
     @Appender(_stat_doc)
     def max(self, axis=0, skipna=True, level=None):
+        """
+        Notes
+        -----
+        This method returns the maximum of the values in the DataFrame. If you
+        want the *index* of the maximum, use ``DataFrame.idxmax``. This is the
+        equivalent of the ``numpy.ndarray`` method ``argmax``.
+
+        See Also
+        --------
+        DataFrame.idxmax
+        Series.idxmax
+        """
         if level is not None:
             return self._agg_by_level('max', axis=axis, level=level,
                                       skipna=skipna)
@@ -4913,6 +5235,14 @@ class DataFrame(NDFrame):
         Returns
         -------
         idxmin : Series
+
+        Notes
+        -----
+        This method is the DataFrame version of ``ndarray.argmin``.
+
+        See Also
+        --------
+        Series.idxmin
         """
         axis = self._get_axis_number(axis)
         indices = nanops.nanargmin(self.values, axis=axis, skipna=skipna)
@@ -4936,6 +5266,14 @@ class DataFrame(NDFrame):
         Returns
         -------
         idxmax : Series
+
+        Notes
+        -----
+        This method is the DataFrame version of ``ndarray.argmax``.
+
+        See Also
+        --------
+        Series.idxmax
         """
         axis = self._get_axis_number(axis)
         indices = nanops.nanargmax(self.values, axis=axis, skipna=skipna)
@@ -5293,11 +5631,11 @@ def group_agg(values, bounds, f):
 
 def factor_agg(factor, vec, func):
     """
-    Aggregate array based on Factor
+    Aggregate array based on Categorical
 
     Parameters
     ----------
-    factor : Factor
+    factor : Categorical
         length n
     vec : sequence
         length n
@@ -5306,7 +5644,11 @@ def factor_agg(factor, vec, func):
 
     Returns
     -------
-    ndarray corresponding to Factor levels
+    ndarray corresponding to factor levels
+
+    See Also
+    --------
+    pandas.Categorical
     """
     indexer = np.argsort(factor.labels)
     unique_labels = np.arange(len(factor.levels))
@@ -5363,7 +5705,8 @@ def extract_index(data):
                 raw_lengths.append(len(v))
 
         if not indexes and not raw_lengths:
-            raise ValueError('If use all scalar values, must pass index')
+            raise ValueError('If using all scalar values, you must must pass'
+                             ' an index')
 
         if have_series or have_dicts:
             index = _union_indexes(indexes)
@@ -5448,7 +5791,11 @@ def _to_arrays(data, columns, coerce_float=False, dtype=None):
 
         return arrays, columns
 
-    if len(data) == 0:
+    if not len(data):
+        if isinstance(data, np.ndarray):
+            columns = data.dtype.names
+            if columns is not None:
+                return [[]] * len(columns), columns
         return [], []  # columns if columns is not None else []
     if isinstance(data[0], (list, tuple)):
         return _list_to_arrays(data, columns, coerce_float=coerce_float,

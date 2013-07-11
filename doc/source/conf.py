@@ -37,7 +37,7 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.doctest',
               'sphinx.ext.extlinks',
               'sphinx.ext.todo',
-              # 'numpydoc',
+              'numpydoc', # used to parse numpy-style docstrings for autodoc
               'ipython_directive',
               'ipython_console_highlighting',
               'sphinx.ext.intersphinx',
@@ -243,8 +243,6 @@ autosummary_generate = glob.glob("*.rst")
 
 # extlinks alias
 extlinks = {'issue': ('https://github.com/pydata/pandas/issues/%s',
-                      'issue '),
-            'pull request': ('https://github.com/pydata/pandas/pulls/%s',
-                             'pull request '),
-            'wiki': ('https://github.com/pydata/pandas/pulls/%s',
+                      'GH'),
+            'wiki': ('https://github.com/pydata/pandas/wiki/%s',
                      'wiki ')}

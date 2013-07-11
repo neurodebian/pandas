@@ -17,10 +17,12 @@ import numpy.ma as ma
 from pandas.core.common import (isnull, notnull, _is_bool_indexer,
                                 _default_index, _maybe_promote, _maybe_upcast,
                                 _asarray_tuplesafe, is_integer_dtype,
-                                _infer_dtype_from_scalar, is_list_like)
+                                _infer_dtype_from_scalar, is_list_like,
+                                _NS_DTYPE, _TD_DTYPE)
 from pandas.core.index import (Index, MultiIndex, InvalidIndexError,
                                _ensure_index, _handle_legacy_indexes)
-from pandas.core.indexing import _SeriesIndexer, _check_bool_indexer, _check_slice_bounds
+from pandas.core.indexing import (_SeriesIndexer, _check_bool_indexer,
+                                  _check_slice_bounds, _maybe_convert_indices)
 from pandas.tseries.index import DatetimeIndex
 from pandas.tseries.period import PeriodIndex, Period
 from pandas.util import py3compat
@@ -54,14 +56,17 @@ _SHOW_WARNINGS = True
 # Wrapper function for Series arithmetic methods
 
 
-def _arith_method(op, name):
+def _arith_method(op, name, fill_zeros=None):
     """
     Wrapper function for Series arithmetic operations, to avoid
     code duplication.
     """
     def na_op(x, y):
         try:
+
             result = op(x, y)
+            result = com._fill_zeros(result,y,fill_zeros)
+
         except TypeError:
             result = pa.empty(len(x), dtype=x.dtype)
             if isinstance(y, pa.Array):
@@ -75,7 +80,7 @@ def _arith_method(op, name):
 
         return result
 
-    def wrapper(self, other):
+    def wrapper(self, other, name=name):
         from pandas.core.frame import DataFrame
         dtype = None
         wrap_results = lambda x: x
@@ -93,21 +98,15 @@ def _arith_method(op, name):
                     values = np.array([values])
                 inferred_type = lib.infer_dtype(values)
                 if inferred_type in set(['datetime64','datetime','date','time']):
-                    if isinstance(values, pa.Array) and com.is_datetime64_dtype(values):
-                        pass
-                    else:
+                    if not (isinstance(values, pa.Array) and com.is_datetime64_dtype(values)):
                         values = tslib.array_to_datetime(values)
                 elif inferred_type in set(['timedelta','timedelta64']):
                     # need to convert timedelta to ns here
                     # safest to convert it to an object arrany to process
-                    if isinstance(values, pa.Array) and com.is_timedelta64_dtype(values):
-                        pass
-                    else:
+                    if not (isinstance(values, pa.Array) and com.is_timedelta64_dtype(values)):
                         values = com._possibly_cast_to_timedelta(values)
                 elif inferred_type in set(['integer']):
-                    if values.dtype == 'timedelta64[ns]':
-                        pass
-                    elif values.dtype.kind == 'm':
+                    if values.dtype.kind == 'm':
                         values = values.astype('timedelta64[ns]')
                 else:
                     values = pa.array(values)
@@ -121,7 +120,14 @@ def _arith_method(op, name):
             is_datetime_rhs  = com.is_datetime64_dtype(rvalues)
 
             # 2 datetimes or 2 timedeltas
-            if (is_timedelta_lhs and is_timedelta_rhs) or (is_datetime_lhs and is_datetime_rhs):
+            if (is_timedelta_lhs and is_timedelta_rhs) or (is_datetime_lhs and
+                    is_datetime_rhs):
+                if is_datetime_lhs and name != '__sub__':
+                    raise TypeError("can only operate on a datetimes for subtraction, "
+                                    "but the operator [%s] was passed" % name)
+                elif is_timedelta_lhs and name not in ['__add__','__sub__']:
+                    raise TypeError("can only operate on a timedeltas for "
+                                    "addition and subtraction, but the operator [%s] was passed" % name)
 
                 dtype = 'timedelta64[ns]'
 
@@ -135,6 +141,10 @@ def _arith_method(op, name):
 
             # datetime and timedelta
             elif (is_timedelta_lhs and is_datetime_rhs) or (is_timedelta_rhs and is_datetime_lhs):
+
+                if name not in ['__add__','__sub__']:
+                    raise TypeError("can only operate on a timedelta and a datetime for "
+                                    "addition and subtraction, but the operator [%s] was passed" % name)
                 dtype = 'M8[ns]'
 
             else:
@@ -384,8 +394,7 @@ def _make_stat_func(nanop, name, shortname, na_action=_doc_exclude_na,
 #----------------------------------------------------------------------
 # Series class
 
-
-class Series(pa.Array, generic.PandasObject):
+class Series(generic.PandasContainer, pa.Array):
     """
     One-dimensional ndarray with axis labels (including time series).
     Labels need not be unique but must be any hashable type. The object
@@ -409,9 +418,8 @@ class Series(pa.Array, generic.PandasObject):
         sequence are used, the index will override the keys found in the
         dict.
     dtype : numpy.dtype or None
-        If None, dtype will be inferred copy : boolean, default False Copy
-        input data
-    copy : boolean, default False
+        If None, dtype will be inferred
+    copy : boolean, default False, copy input data
     """
     _AXIS_NUMBERS = {
         'index': 0
@@ -512,15 +520,8 @@ class Series(pa.Array, generic.PandasObject):
         pass
 
     @property
-    def _constructor(self):
-        return Series
-
-    @property
     def _can_hold_na(self):
         return not is_integer_dtype(self.dtype)
-
-    def __hash__(self):
-        raise TypeError('unhashable type')
 
     _index = None
     index = lib.SeriesIndex()
@@ -593,7 +594,8 @@ class Series(pa.Array, generic.PandasObject):
             else:
                 label = self.index[i]
                 if isinstance(label, Index):
-                    return self.reindex(label)
+                    i = _maybe_convert_indices(i, len(self))
+                    return self.reindex(i, takeable=True)
                 else:
                     return _index.get_value_at(self, i)
 
@@ -753,7 +755,7 @@ class Series(pa.Array, generic.PandasObject):
             # GH 2745
             # treat like a scalar
             if len(other) == 1:
-                other = np.array(other[0]*len(ser))
+                other = np.array(other[0])
 
             # GH 3235
             # match True cond to other
@@ -918,14 +920,17 @@ class Series(pa.Array, generic.PandasObject):
         """
         See numpy.ndarray.astype
         """
-        casted = com._astype_nansafe(self.values, dtype)
-        return self._constructor(casted, index=self.index, name=self.name,
-                                 dtype=casted.dtype)
+        dtype = np.dtype(dtype)
+        if dtype == _NS_DTYPE or dtype == _TD_DTYPE:
+            values = com._possibly_cast_to_datetime(self.values,dtype)
+        else:
+            values = com._astype_nansafe(self.values, dtype)
+        return self._constructor(values, index=self.index, name=self.name,
+                                 dtype=values.dtype)
 
-    def convert_objects(self, convert_dates=True, convert_numeric=True):
+    def convert_objects(self, convert_dates=True, convert_numeric=False, copy=True):
         """
         Attempt to infer better dtype
-        Always return a copy
 
         Parameters
         ----------
@@ -935,6 +940,8 @@ class Series(pa.Array, generic.PandasObject):
         convert_numeric : boolean, default True
             if True attempt to coerce to numbers (including strings),
             non-convertibles get NaN
+        copy : boolean, default True
+            if True return a copy even if not object dtype
 
         Returns
         -------
@@ -944,7 +951,7 @@ class Series(pa.Array, generic.PandasObject):
             return Series(com._possibly_convert_objects(self.values,
                 convert_dates=convert_dates, convert_numeric=convert_numeric),
                 index=self.index, name=self.name)
-        return self.copy()
+        return self.copy() if copy else self
 
     def repeat(self, reps):
         """
@@ -1084,28 +1091,6 @@ class Series(pa.Array, generic.PandasObject):
 
             return df.reset_index(level=level, drop=drop)
 
-    def __str__(self):
-        """
-        Return a string representation for a particular DataFrame
-
-        Invoked by str(df) in both py2/py3.
-        Yields Bytestring in Py2, Unicode String in py3.
-        """
-
-        if py3compat.PY3:
-            return self.__unicode__()
-        return self.__bytes__()
-
-    def __bytes__(self):
-        """
-        Return a string representation for a particular DataFrame
-
-        Invoked by bytes(df) in py3 only.
-        Yields a bytestring in both py2/py3.
-        """
-        encoding = com.get_option("display.encoding")
-        return self.__unicode__().encode(encoding, 'replace')
-
     def __unicode__(self):
         """
         Return a string representation for a particular DataFrame
@@ -1126,16 +1111,9 @@ class Series(pa.Array, generic.PandasObject):
         else:
             result = u'Series([], dtype: %s)' % self.dtype
 
-        assert type(result) == unicode
+        if not ( type(result) == unicode):
+            raise AssertionError()
         return result
-
-    def __repr__(self):
-        """
-        Return a string representation for a particular Series
-
-        Yields Bytestring in Py2, Unicode String in py3.
-        """
-        return str(self)
 
     def _tidy_repr(self, max_vals=20):
         """
@@ -1194,12 +1172,18 @@ class Series(pa.Array, generic.PandasObject):
         the_repr = self._get_repr(float_format=float_format, na_rep=na_rep,
                                   length=length, dtype=dtype, name=name)
 
-        assert type(the_repr) == unicode
+        # catch contract violations
+        if not  type(the_repr) == unicode:
+            raise AssertionError("expected unicode string")
 
         if buf is None:
             return the_repr
         else:
-            print >> buf, the_repr
+            try:
+                buf.write(the_repr)
+            except AttributeError:
+                with open(buf, 'w') as f:
+                    f.write(the_repr)
 
     def _get_repr(self, name=False, print_header=False, length=True, dtype=True,
                   na_rep='NaN', float_format=None):
@@ -1212,7 +1196,8 @@ class Series(pa.Array, generic.PandasObject):
                                         length=length, dtype=dtype, na_rep=na_rep,
                                         float_format=float_format)
         result = formatter.to_string()
-        assert type(result) == unicode
+        if not ( type(result) == unicode):
+            raise AssertionError()
         return result
 
     def __iter__(self):
@@ -1237,16 +1222,18 @@ class Series(pa.Array, generic.PandasObject):
     __add__ = _arith_method(operator.add, '__add__')
     __sub__ = _arith_method(operator.sub, '__sub__')
     __mul__ = _arith_method(operator.mul, '__mul__')
-    __truediv__ = _arith_method(operator.truediv, '__truediv__')
-    __floordiv__ = _arith_method(operator.floordiv, '__floordiv__')
+    __truediv__ = _arith_method(operator.truediv, '__truediv__', fill_zeros=np.inf)
+    __floordiv__ = _arith_method(operator.floordiv, '__floordiv__', fill_zeros=np.inf)
     __pow__ = _arith_method(operator.pow, '__pow__')
+    __mod__ = _arith_method(operator.mod, '__mod__', fill_zeros=np.nan)
 
     __radd__ = _arith_method(_radd_compat, '__add__')
     __rmul__ = _arith_method(operator.mul, '__mul__')
     __rsub__ = _arith_method(lambda x, y: y - x, '__sub__')
-    __rtruediv__ = _arith_method(lambda x, y: y / x, '__truediv__')
-    __rfloordiv__ = _arith_method(lambda x, y: y // x, '__floordiv__')
+    __rtruediv__ = _arith_method(lambda x, y: y / x, '__truediv__', fill_zeros=np.inf)
+    __rfloordiv__ = _arith_method(lambda x, y: y // x, '__floordiv__', fill_zeros=np.inf)
     __rpow__ = _arith_method(lambda x, y: y ** x, '__pow__')
+    __rmod__ = _arith_method(lambda x, y: y % x, '__mod__', fill_zeros=np.nan)
 
     # comparisons
     __gt__ = _comp_method(operator.gt, '__gt__')
@@ -1280,8 +1267,8 @@ class Series(pa.Array, generic.PandasObject):
 
     # Python 2 division operators
     if not py3compat.PY3:
-        __div__ = _arith_method(operator.div, '__div__')
-        __rdiv__ = _arith_method(lambda x, y: y / x, '__div__')
+        __div__ = _arith_method(operator.div, '__div__', fill_zeros=np.inf)
+        __rdiv__ = _arith_method(lambda x, y: y / x, '__div__', fill_zeros=np.inf)
         __idiv__ = __div__
 
     #----------------------------------------------------------------------
@@ -1500,6 +1487,18 @@ class Series(pa.Array, generic.PandasObject):
                   na_action=_doc_exclude_na, extras='')
     @Appender(_stat_doc)
     def min(self, axis=None, out=None, skipna=True, level=None):
+        """
+        Notes
+        -----
+        This method returns the minimum of the values in the Series. If you
+        want the *index* of the minimum, use ``Series.idxmin``. This is the
+        equivalent of the ``numpy.ndarray`` method ``argmin``.
+
+        See Also
+        --------
+        Series.idxmin
+        DataFrame.idxmin
+        """
         if level is not None:
             return self._agg_by_level('min', level=level, skipna=skipna)
         return nanops.nanmin(self.values, skipna=skipna)
@@ -1508,6 +1507,18 @@ class Series(pa.Array, generic.PandasObject):
                   na_action=_doc_exclude_na, extras='')
     @Appender(_stat_doc)
     def max(self, axis=None, out=None, skipna=True, level=None):
+        """
+        Notes
+        -----
+        This method returns the maximum of the values in the Series. If you
+        want the *index* of the maximum, use ``Series.idxmax``. This is the
+        equivalent of the ``numpy.ndarray`` method ``argmax``.
+
+        See Also
+        --------
+        Series.idxmax
+        DataFrame.idxmax
+        """
         if level is not None:
             return self._agg_by_level('max', level=level, skipna=skipna)
         return nanops.nanmax(self.values, skipna=skipna)
@@ -1576,6 +1587,14 @@ class Series(pa.Array, generic.PandasObject):
         Returns
         -------
         idxmin : Index of minimum of values
+
+        Notes
+        -----
+        This method is the Series version of ``ndarray.argmin``.
+
+        See Also
+        --------
+        DataFrame.idxmin
         """
         i = nanops.nanargmin(self.values, skipna=skipna)
         if i == -1:
@@ -1594,6 +1613,14 @@ class Series(pa.Array, generic.PandasObject):
         Returns
         -------
         idxmax : Index of minimum of values
+
+        Notes
+        -----
+        This method is the Series version of ``ndarray.argmax``.
+
+        See Also
+        --------
+        DataFrame.idxmax
         """
         i = nanops.nanargmax(self.values, skipna=skipna)
         if i == -1:
@@ -1924,7 +1951,10 @@ class Series(pa.Array, generic.PandasObject):
         -------
         clipped : Series
         """
-        return pa.where(self > threshold, threshold, self)
+        if isnull(threshold):
+            raise ValueError("Cannot use an NA value as a clip threshold")
+
+        return self.where((self <= threshold) | isnull(self), threshold)
 
     def clip_lower(self, threshold):
         """
@@ -1938,7 +1968,51 @@ class Series(pa.Array, generic.PandasObject):
         -------
         clipped : Series
         """
-        return pa.where(self < threshold, threshold, self)
+        if isnull(threshold):
+            raise ValueError("Cannot use an NA value as a clip threshold")
+
+        return self.where((self >= threshold) | isnull(self), threshold)
+
+    def dot(self, other):
+        """
+        Matrix multiplication with DataFrame or inner-product with Series objects
+
+        Parameters
+        ----------
+        other : Series or DataFrame
+
+        Returns
+        -------
+        dot_product : scalar or Series
+        """
+        from pandas.core.frame import DataFrame
+        if isinstance(other, (Series, DataFrame)):
+            common = self.index.union(other.index)
+            if (len(common) > len(self.index) or
+                    len(common) > len(other.index)):
+                raise ValueError('matrices are not aligned')
+
+            left = self.reindex(index=common, copy=False)
+            right = other.reindex(index=common, copy=False)
+            lvals = left.values
+            rvals = right.values
+        else:
+            left = self
+            lvals = self.values
+            rvals = np.asarray(other)
+            if lvals.shape[0] != rvals.shape[0]:
+                raise Exception('Dot product shape mismatch, %s vs %s' %
+                                (lvals.shape, rvals.shape))
+
+        if isinstance(other, DataFrame):
+            return self._constructor(np.dot(lvals, rvals),
+                                     index=other.columns)
+        elif isinstance(other, Series):
+            return np.dot(lvals, rvals)
+        elif isinstance(rvals, np.ndarray):
+            return np.dot(lvals, rvals)
+        else:  # pragma: no cover
+            raise TypeError('unsupported type: %s' % type(other))
 
 #------------------------------------------------------------------------------
 # Combination
@@ -2020,6 +2094,7 @@ class Series(pa.Array, generic.PandasObject):
     except AttributeError:  # pragma: no cover
         # Python 3
         div = _flex_method(operator.truediv, 'divide')
+    mod = _flex_method(operator.mod, 'mod')
 
     def combine(self, other, func, fill_value=nan):
         """
@@ -2087,7 +2162,7 @@ class Series(pa.Array, generic.PandasObject):
     #----------------------------------------------------------------------
     # Reindexing, sorting
 
-    def sort(self, axis=0, kind='quicksort', order=None):
+    def sort(self, axis=0, kind='quicksort', order=None, ascending=True):
         """
         Sort values and index labels by value, in place. For compatibility with
         ndarray API. No return value
@@ -2099,8 +2174,15 @@ class Series(pa.Array, generic.PandasObject):
             Choice of sorting algorithm. See np.sort for more
             information. 'mergesort' is the only stable algorithm
         order : ignored
+        ascending : boolean, default True
+            Sort ascending. Passing False sorts descending
+
+        See Also
+        --------
+        pandas.Series.order
         """
-        sortedSeries = self.order(na_last=True, kind=kind)
+        sortedSeries = self.order(na_last=True, kind=kind,
+                                  ascending=ascending)
 
         true_base = self
         while true_base.base is not None:
@@ -2503,7 +2585,7 @@ class Series(pa.Array, generic.PandasObject):
         return self._constructor(new_values, new_index, name=self.name)
 
     def reindex(self, index=None, method=None, level=None, fill_value=pa.NA,
-                limit=None, copy=True):
+                limit=None, copy=True, takeable=False):
         """Conform Series to new index with optional filling logic, placing
         NA/NaN in locations having no value in the previous index. A new object
         is produced unless the new index is equivalent to the current one and
@@ -2528,6 +2610,7 @@ class Series(pa.Array, generic.PandasObject):
             "compatible" value
         limit : int, default None
             Maximum size gap to forward or backward fill
+        takeable : the labels are locations (and not labels)
 
         Returns
         -------
@@ -2549,7 +2632,8 @@ class Series(pa.Array, generic.PandasObject):
             return Series(nan, index=index, name=self.name)
 
         new_index, indexer = self.index.reindex(index, method=method,
-                                                level=level, limit=limit)
+                                                level=level, limit=limit,
+                                                takeable=takeable)
         new_values = com.take_1d(self.values, indexer, fill_value=fill_value)
         return Series(new_values, index=new_index, name=self.name)
 
@@ -2632,6 +2716,9 @@ class Series(pa.Array, generic.PandasObject):
         -------
         filled : Series
         """
+        if isinstance(value, (list, tuple)):
+            raise TypeError('"value" parameter must be a scalar or dict, but '
+                            'you passed a "{0}"'.format(type(value).__name__))
         if not self._can_hold_na:
             return self.copy() if not inplace else None
 
@@ -3066,14 +3153,15 @@ class Series(pa.Array, generic.PandasObject):
         invalid = isnull(values)
         valid = -invalid
 
-        firstIndex = valid.argmax()
-        valid = valid[firstIndex:]
-        invalid = invalid[firstIndex:]
-        inds = inds[firstIndex:]
-
         result = values.copy()
-        result[firstIndex:][invalid] = np.interp(inds[invalid], inds[valid],
-                                                 values[firstIndex:][valid])
+        if valid.any():
+            firstIndex = valid.argmax()
+            valid = valid[firstIndex:]
+            invalid = invalid[firstIndex:]
+            inds = inds[firstIndex:]
+
+            result[firstIndex:][invalid] = np.interp(
+                inds[invalid], inds[valid], values[firstIndex:][valid])
 
         return Series(result, index=self.index, name=self.name)
 

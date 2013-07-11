@@ -14,117 +14,58 @@
 #
 
 echo "inside $0"
-# Install Dependencie
-SITE_PKG_DIR=$VIRTUAL_ENV/lib/python$TRAVIS_PYTHON_VERSION/site-packages
-echo "Using SITE_PKG_DIR: $SITE_PKG_DIR"
 
-# workaround for travis ignoring system_site_packages in travis.yml
+# Install Dependencies
+# as of pip 1.4rc2, wheel files are still being broken regularly, this is a known good
+# commit. should revert to pypi when a final release is out
+pip install -I git+https://github.com/pypa/pip@42102e9deaea99db08b681d06906c2945f6f95e2#egg=pip
+pv="${TRAVIS_PYTHON_VERSION:0:1}"
+[ "$pv" == "2" ] && pv=""
+[ "$pv" == "2" ] && DISTRIBUTE_VERSION="==0.6.35"
+
+pip install -I distribute${DISTRIBUTE_VERSION}
+pip install wheel
+
+# comment this line to disable the fetching of wheel files
+PIP_ARGS+=" -I --use-wheel --find-links=http://cache27diy-cpycloud.rhcloud.com/${TRAVIS_PYTHON_VERSION}${JOB_TAG}/"
+
+# Force virtualenv to accpet system_site_packages
 rm -f $VIRTUAL_ENV/lib/python$TRAVIS_PYTHON_VERSION/no-global-site-packages.txt
 
-if [ x"$LOCALE_OVERRIDE" != x"" ]; then
+
+if [ -n "$LOCALE_OVERRIDE" ]; then
     # make sure the locale is available
     # probably useless, since you would need to relogin
     sudo locale-gen "$LOCALE_OVERRIDE"
-fi;
+fi
 
-#scipy is not included in the cached venv
-if [ x"$FULL_DEPS" == x"true" ] ; then
+time pip install $PIP_ARGS -r ci/requirements-${TRAVIS_PYTHON_VERSION}${JOB_TAG}.txt
+
+# Optional Deps
+if [ x"$FULL_DEPS" == x"true" ]; then
+    echo "Installing FULL_DEPS"
    # for pytables gets the lib as well
-   sudo apt-get $APT_ARGS install libhdf5-serial-dev;
+    time sudo apt-get $APT_ARGS install libhdf5-serial-dev
+    time sudo apt-get $APT_ARGS install python${pv}-bs4
+    time sudo apt-get $APT_ARGS install python${pv}-scipy
 
-   if [ ${TRAVIS_PYTHON_VERSION} == "3.2" ]; then
-       sudo apt-get $APT_ARGS install python3-scipy
-   elif [ ${TRAVIS_PYTHON_VERSION} == "2.7" ]; then
-       sudo apt-get $APT_ARGS install python-scipy
-   fi
+    time sudo apt-get $APT_ARGS remove python${pv}-lxml
+
+    # fool statsmodels into thinking pandas was already installed
+    # so it won't refuse to install itself.
+
+    SITE_PKG_DIR=$VIRTUAL_ENV/lib/python$TRAVIS_PYTHON_VERSION/site-packages
+    echo "Using SITE_PKG_DIR: $SITE_PKG_DIR"
+
+    mkdir  $SITE_PKG_DIR/pandas
+    touch $SITE_PKG_DIR/pandas/__init__.py
+    echo "version='0.10.0-phony'" >  $SITE_PKG_DIR/pandas/version.py
+    time pip install $PIP_ARGS git+git://github.com/statsmodels/statsmodels@c9062e43b8a5f7385537ca95#egg=statsmodels
+
+    rm -Rf $SITE_PKG_DIR/pandas # scrub phoney pandas
 fi
 
-# Everything installed inside this clause into site-packages
-# will get included in the cached venv downloaded from the net
-# in PTF mode
-if ( ! $VENV_FILE_AVAILABLE ); then
-    echo "Running full monty"
-    # Hard Deps
-    pip install $PIP_ARGS  nose python-dateutil pytz
-    pip install $PIP_ARGS  cython
-
-    if [ ${TRAVIS_PYTHON_VERSION} == "3.3" ]; then # should be >=3,3
-        pip install $PIP_ARGS numpy==1.7.0
-    elif [ ${TRAVIS_PYTHON_VERSION} == "3.2" ]; then
-        # sudo apt-get $APT_ARGS install python3-numpy; # 1.6.2 or precise
-        pip install $PIP_ARGS numpy==1.6.1
-    else
-        pip install $PIP_ARGS numpy==1.6.1
-    fi
-
-    # Optional Deps
-    if [ x"$FULL_DEPS" == x"true" ]; then
-        echo "Installing FULL_DEPS"
-        pip install $PIP_ARGS  cython
-
-        if [ ${TRAVIS_PYTHON_VERSION:0:1} == "2" ]; then
-            # installed explicitly above, to get the library as well
-        #    sudo apt-get $APT_ARGS install libhdf5-serial-dev;
-            pip install numexpr
-            pip install tables
-            pip install $PIP_ARGS xlwt
-        fi
-
-        pip install $PIP_ARGS matplotlib
-        pip install $PIP_ARGS openpyxl
-        pip install $PIP_ARGS xlrd>=0.9.0
-        pip install $PIP_ARGS 'http://downloads.sourceforge.net/project/pytseries/scikits.timeseries/0.91.3/scikits.timeseries-0.91.3.tar.gz?r='
-        pip install $PIP_ARGS patsy
-
-        # fool statsmodels into thinking pandas was already installed
-        # so it won't refuse to install itself. We want it in the zipped venv
-
-        mkdir  $SITE_PKG_DIR/pandas
-        touch $SITE_PKG_DIR/pandas/__init__.py
-        echo "version='0.10.0-phony'" >  $SITE_PKG_DIR/pandas/version.py
-        pip install $PIP_ARGS git+git://github.com/statsmodels/statsmodels@c9062e43b8a5f7385537ca95#egg=statsmodels
-
-        rm -Rf $SITE_PKG_DIR/pandas # scrub phoney pandas
-    fi
-
-    # pack up the venv and cache it
-    if [ x"$STORE_KEY" != x"" ] && $UPLOAD && $PLEASE_TRAVIS_FASTER ; then
-        VENV_FNAME="venv-$TRAVIS_PYTHON_VERSION.zip"
-
-        zip $ZIP_FLAGS -r "$HOME/$VENV_FNAME" $SITE_PKG_DIR/
-        ls -l "$HOME/$VENV_FNAME"
-        echo "posting venv"
-        # silent, don't expose key
-        curl -s --form upload=@"$HOME/$VENV_FNAME" "$CACHE_FILE_STORE_URL/$VENV_FNAME"
-    fi
-
-fi;
-
-#build and install pandas
-if [ x"$BUILD_CACHE_DIR" != x"" ]; then
-    scripts/use_build_cache.py -d
-    python setup.py install;
-else
-   python setup.py build_ext install
-fi
-
-# package pandas build artifacts and send them home
-# that's everything the build cache (scripts/use_build_cache.py)
-# stored during the build (.so, pyx->.c and 2to3)
-if  (! $CACHE_FILE_AVAILABLE) ; then
- if [ x"$STORE_KEY" != x"" ] && $UPLOAD && $PLEASE_TRAVIS_FASTER ; then
-     echo "Posting artifacts"
-     strip  "$BUILD_CACHE_DIR/*" &> /dev/null
-     echo  "$BUILD_CACHE_DIR"
-     cd "$BUILD_CACHE_DIR"/
-     zip -r $ZIP_FLAGS "$HOME/$CYTHON_HASH".zip *
-     cd "$TRAVIS_BUILD_DIR"
-     pwd
-     zip "$HOME/$CYTHON_HASH".zip $(find pandas | grep -P '\.(pyx|pxd)$' | sed -r 's/.(pyx|pxd)$/.c/')
-
-     # silent, don't expose key
-     curl   --connect-timeout 5 -s --form upload=@"$HOME/$CYTHON_HASH".zip "$CACHE_FILE_STORE_URL/$CYTHON_HASH.zip"
- fi
-fi
+# build pandas
+time python setup.py build_ext install
 
 true

@@ -1,5 +1,6 @@
 # pylint: disable=W0223
 
+from datetime import datetime
 from pandas.core.common import _asarray_tuplesafe
 from pandas.core.index import Index, MultiIndex, _ensure_index
 import pandas.core.common as com
@@ -124,8 +125,7 @@ class _NDFrameIndexer(object):
                 values = data.values
                 if np.prod(values.shape):
                     result, changed = com._maybe_upcast_indexer(values,plane_indexer,v,dtype=getattr(data,'dtype',None))
-                    if changed:
-                        self.obj[item] = result
+                    self.obj[item] = result
 
             labels = item_labels[het_idx]
 
@@ -139,14 +139,14 @@ class _NDFrameIndexer(object):
                         # align to
                         if item in value:
                             v = value[item]
-                            v = v.reindex(self.obj[item].reindex(v.index).dropna().index)
+                            v = v.reindex(self.obj[item].index & v.index)
                             setter(item, v.values)
                         else:
                             setter(item, np.nan)
 
-                # we have an equal len ndarray
-                elif isinstance(value, np.ndarray) and value.ndim > 1:
-                    if len(labels) != len(value):
+                # we have an equal len ndarray to our labels
+                elif isinstance(value, np.ndarray) and value.ndim == 2:
+                    if len(labels) != value.shape[1]:
                         raise ValueError('Must have equal len keys and value when'
                                          ' setting with an ndarray')
 
@@ -154,7 +154,8 @@ class _NDFrameIndexer(object):
                         setter(item, value[:,i])
 
                 # we have an equal len list/ndarray
-                elif len(labels) == 1 and len(self.obj[labels[0]]) == len(value):
+                elif len(labels) == 1 and (
+                    len(self.obj[labels[0]]) == len(value) or len(plane_indexer[0]) == len(value)):
                     setter(labels[0], value)
 
                 # per label values
@@ -253,12 +254,12 @@ class _NDFrameIndexer(object):
         except IndexingError:
             pass
 
+        # no multi-index, so validate all of the indexers
+        self._has_valid_tuple(tup)
+
         # ugly hack for GH #836
         if self._multi_take_opportunity(tup):
             return self._multi_take(tup)
-
-        # no multi-index, so validate all of the indexers
-        self._has_valid_tuple(tup)
 
         # no shortcut needed
         retval = self.obj
@@ -323,6 +324,7 @@ class _NDFrameIndexer(object):
                 keyarr = _asarray_tuplesafe(key)
 
             if _is_integer_dtype(keyarr) and not _is_integer_index(labels):
+                keyarr = com._ensure_platform_int(keyarr)
                 return labels.take(keyarr)
 
             return keyarr
@@ -456,11 +458,41 @@ class _NDFrameIndexer(object):
             else:
                 level = None
 
-            if labels.is_unique:
+            if labels.is_unique and Index(keyarr).is_unique:
                 return _reindex(keyarr, level=level)
             else:
-                mask = labels.isin(keyarr)
-                return self.obj.take(mask.nonzero()[0], axis=axis, convert=False)
+                indexer, missing = labels.get_indexer_non_unique(keyarr)
+                check = indexer != -1
+                result = self.obj.take(indexer[check], axis=axis, convert=False)
+
+                # need to merge the result labels and the missing labels
+                if len(missing):
+                    l = np.arange(len(indexer))
+
+                    missing = com._ensure_platform_int(missing)
+                    missing_labels = keyarr.take(missing)
+                    missing_indexer = com._ensure_int64(l[~check])
+                    cur_labels = result._get_axis(axis).values
+                    cur_indexer = com._ensure_int64(l[check])
+
+                    new_labels = np.empty(tuple([len(indexer)]),dtype=object)
+                    new_labels[cur_indexer]     = cur_labels
+                    new_labels[missing_indexer] = missing_labels
+                    new_indexer = (Index(cur_indexer) + Index(missing_indexer)).values
+                    new_indexer[missing_indexer] = -1
+
+                    # need to reindex with an indexer on a specific axis
+                    from pandas.core.frame import DataFrame
+                    if not (type(self.obj) == DataFrame):
+                        raise NotImplementedError("cannot handle non-unique indexing for non-DataFrame (yet)")
+
+                    args = [None] * 4
+                    args[2*axis] = new_labels
+                    args[2*axis+1] = new_indexer
+
+                    result = result._reindex_with_indexers(*args, copy=False, fill_value=np.nan)
+
+                return result
 
     def _convert_to_indexer(self, obj, axis=0):
         """
@@ -563,26 +595,22 @@ class _NDFrameIndexer(object):
                     check = labels.levels[0].get_indexer(objarr)
                 else:
                     level = None
-                    # XXX
+
+                    # unique index
                     if labels.is_unique:
                         indexer = check = labels.get_indexer(objarr)
-                    else:
-                        mask = np.zeros(len(labels), dtype=bool)
-                        lvalues = labels.values
-                        for x in objarr:
-                            # ugh
-                            to_or = lib.map_infer(lvalues, x.__eq__)
-                            if not to_or.any():
-                                raise KeyError('%s not in index' % str(x))
-                            mask |= to_or
 
-                        indexer = check = mask.nonzero()[0]
+                    # non-unique (dups)
+                    else:
+                        indexer, missing = labels.get_indexer_non_unique(objarr)
+                        check = indexer
 
                 mask = check == -1
                 if mask.any():
                     raise KeyError('%s not in index' % objarr[mask])
 
                 return indexer
+
         else:
             return labels.get_loc(obj)
 
@@ -744,6 +772,7 @@ class _LocIndexer(_LocationIndexer):
         labels = self.obj._get_axis(axis)
 
         if isinstance(key, slice):
+            self._has_valid_type(key,axis)
             return self._get_slice_axis(key, axis=axis)
         elif com._is_bool_indexer(key):
             return self._getbool_axis(key, axis=axis)
@@ -763,13 +792,28 @@ class _iLocIndexer(_LocationIndexer):
     _exception   = IndexError
 
     def _has_valid_type(self, key, axis):
-        return isinstance(key, slice) or com.is_integer(key) or com._is_bool_indexer(key) or _is_list_like(key)
+        if com._is_bool_indexer(key):
+            if hasattr(key,'index') and isinstance(key.index,Index):
+                if key.index.inferred_type == 'integer':
+                    raise NotImplementedError("iLocation based boolean indexing on an integer type is not available")
+                raise ValueError("iLocation based boolean indexing cannot use an indexable as a mask")
+            return True
+
+        return isinstance(key, slice) or com.is_integer(key) or _is_list_like(key)
 
     def _getitem_tuple(self, tup):
 
         self._has_valid_tuple(tup)
+        try:
+            return self._getitem_lowerdim(tup)
+        except:
+            pass
+
         retval = self.obj
         for i, key in enumerate(tup):
+            if i >= self.obj.ndim:
+                raise IndexingError('Too many indexers')
+
             if _is_null_slice(key):
                 continue
 
@@ -791,9 +835,11 @@ class _iLocIndexer(_LocationIndexer):
     def _getitem_axis(self, key, axis=0):
 
         if isinstance(key, slice):
+            self._has_valid_type(key,axis)
             return self._get_slice_axis(key, axis=axis)
 
         elif com._is_bool_indexer(key):
+            self._has_valid_type(key,axis)
             return self._getbool_axis(key, axis=axis)
 
         # a single integer or a list of integers
@@ -876,6 +922,10 @@ def _convert_to_index_sliceable(obj, key):
 
     elif isinstance(key, basestring):
 
+        # we are an actual column
+        if key in obj._data.items:
+            return None
+
         # we need a timelike key here
         if idx.is_all_dates:
             try:
@@ -953,7 +1003,6 @@ class _SeriesIndexer(_NDFrameIndexer):
     def _setitem_with_indexer(self, indexer, value):
         self.obj._set_values(indexer, value)
 
-
 def _check_bool_indexer(ax, key):
     # boolean indexing, need to check that the data are aligned, otherwise
     # disallowed
@@ -971,7 +1020,6 @@ def _check_bool_indexer(ax, key):
     # object array key, so no check needed here
     result = np.asarray(result, dtype=bool)
     return result
-
 
 def _is_series(obj):
     from pandas.core.series import Series
@@ -1052,9 +1100,14 @@ def _check_slice_bounds(slobj, values):
 
 def _maybe_droplevels(index, key):
     # drop levels
+    original_index = index
     if isinstance(key, tuple):
         for _ in key:
-            index = index.droplevel(0)
+            try:
+                index = index.droplevel(0)
+            except:
+                # we have dropped too much, so back out
+                return original_index
     else:
         index = index.droplevel(0)
 

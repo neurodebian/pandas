@@ -34,9 +34,9 @@ except ImportError:
     _have_setuptools = False
 
 setuptools_kwargs = {}
+min_numpy_ver = '1.6'
 if sys.version_info[0] >= 3:
 
-    min_numpy_ver = 1.6
     if sys.version_info[1] >= 3:  # 3.3 needs numpy 1.7+
         min_numpy_ver = "1.7.0b2"
 
@@ -45,6 +45,7 @@ if sys.version_info[0] >= 3:
                          'install_requires': ['python-dateutil >= 2',
                                               'pytz',
                                               'numpy >= %s' % min_numpy_ver],
+                         'setup_requires': ['numpy >= %s' % min_numpy_ver],
                          'use_2to3_exclude_fixers': ['lib2to3.fixes.fix_next',
                                                      ],
                          }
@@ -53,10 +54,12 @@ if sys.version_info[0] >= 3:
                  "\n$ pip install distribute")
 
 else:
+    min_numpy_ver = '1.6.1'
     setuptools_kwargs = {
         'install_requires': ['python-dateutil',
                              'pytz',
-                             'numpy >= 1.6.1'],
+                             'numpy >= %s' % min_numpy_ver],
+        'setup_requires': ['numpy >= %s' % min_numpy_ver],
         'zip_safe': False,
     }
 
@@ -184,11 +187,11 @@ CLASSIFIERS = [
 ]
 
 MAJOR = 0
-MINOR = 11
+MINOR = 12
 MICRO = 0
 ISRELEASED = True
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
-QUALIFIER = ''
+QUALIFIER = 'rc1'
 
 FULLVERSION = VERSION
 if not ISRELEASED:
@@ -244,12 +247,23 @@ class CleanCommand(Command):
                                'np_datetime_strings.c',
                                'period.c',
                                'tokenizer.c',
-                               'io.c']
+                               'io.c',
+                               'ujson.c',
+                               'objToJSON.c',
+                               'JSONtoObj.c',
+                               'ultrajsonenc.c',
+                               'ultrajsondec.c',
+                               ]
 
         for root, dirs, files in list(os.walk('pandas')):
             for f in files:
                 if f in self._clean_exclude:
                     continue
+
+                # XXX
+                if 'ujson' in f:
+                    continue
+
                 if os.path.splitext(f)[-1] in ('.pyc', '.so', '.o',
                                                '.pyo',
                                                '.pyd', '.c', '.orig'):
@@ -286,7 +300,7 @@ class CheckSDist(sdist):
                  'pandas/tslib.pyx',
                  'pandas/index.pyx',
                  'pandas/algos.pyx',
-                 'pandas/src/parser.pyx',
+                 'pandas/parser.pyx',
                  'pandas/src/sparse.pyx']
 
     def initialize_options(self):
@@ -412,6 +426,12 @@ ext_data = dict(
                        'pandas/src/datetime/np_datetime_strings.c']},
     algos={'pyxfile': 'algos',
            'depends': [srcpath('generated', suffix='.pyx')]},
+    parser=dict(pyxfile='parser',
+                depends=['pandas/src/parser/tokenizer.h',
+                         'pandas/src/parser/io.h',
+                         'pandas/src/numpy_helper.h'],
+                sources=['pandas/src/parser/tokenizer.c',
+                         'pandas/src/parser/io.c'])
 )
 
 extensions = []
@@ -439,28 +459,7 @@ sparse_ext = Extension('pandas._sparse',
                        include_dirs=[],
                        libraries=libraries)
 
-
-parser_ext = Extension('pandas._parser',
-                       depends=['pandas/src/parser/tokenizer.h',
-                                'pandas/src/parser/io.h',
-                                'pandas/src/numpy_helper.h'],
-                       sources=[srcpath('parser', suffix=suffix),
-                                'pandas/src/parser/tokenizer.c',
-                                'pandas/src/parser/io.c',
-                                ],
-                       include_dirs=common_include)
-
-sandbox_ext = Extension('pandas._sandbox',
-                        sources=[srcpath('sandbox', suffix=suffix)],
-                        include_dirs=common_include)
-
-
-cppsandbox_ext = Extension('pandas._cppsandbox',
-                           language='c++',
-                           sources=[srcpath('cppsandbox', suffix=suffix)],
-                           include_dirs=[])
-
-extensions.extend([sparse_ext, parser_ext])
+extensions.extend([sparse_ext])
 
 # if not ISRELEASED:
 #     extensions.extend([sandbox_ext])
@@ -471,6 +470,23 @@ if suffix == '.pyx' and 'setuptools' in sys.modules:
         if ext.sources[0].endswith('.c'):
             root, _ = os.path.splitext(ext.sources[0])
             ext.sources[0] = root + suffix
+
+ujson_ext = Extension('pandas.json',
+                      depends=['pandas/src/ujson/lib/ultrajson.h'],
+                      sources=['pandas/src/ujson/python/ujson.c',
+                               'pandas/src/ujson/python/objToJSON.c',
+                               'pandas/src/ujson/python/JSONtoObj.c',
+                               'pandas/src/ujson/lib/ultrajsonenc.c',
+                               'pandas/src/ujson/lib/ultrajsondec.c',
+                               'pandas/src/datetime/np_datetime.c',
+                               'pandas/src/datetime/np_datetime_strings.c'],
+                      include_dirs=['pandas/src/ujson/python',
+                                    'pandas/src/ujson/lib',
+                                    'pandas/src/datetime'] + common_include,
+                      extra_compile_args=['-D_GNU_SOURCE'])
+
+
+extensions.append(ujson_ext)
 
 
 if _have_setuptools:
@@ -500,16 +516,19 @@ setup(name=DISTNAME,
                 'pandas.tseries',
                 'pandas.tseries.tests',
                 'pandas.io.tests',
+                'pandas.io.tests.test_json',
                 'pandas.stats.tests',
                 ],
       package_data={'pandas.io': ['tests/data/legacy_hdf/*.h5',
                                   'tests/data/legacy_pickle/0.10.1/*.pickle',
                                   'tests/data/legacy_pickle/0.11.0/*.pickle',
                                   'tests/data/*.csv',
+                                  'tests/data/*.dta',
                                   'tests/data/*.txt',
                                   'tests/data/*.xls',
                                   'tests/data/*.xlsx',
-                                  'tests/data/*.table'],
+                                  'tests/data/*.table',
+                                  'tests/data/*.html'],
                     'pandas.tools': ['tests/*.csv'],
                     'pandas.tests': ['data/*.pickle',
                                      'data/*.csv'],

@@ -3,6 +3,7 @@ import operator
 
 from datetime import datetime, date
 import numpy as np
+from pandas.core.base import PandasObject
 
 import pandas.tseries.offsets as offsets
 from pandas.tseries.frequencies import (get_freq_code as _gfc,
@@ -12,7 +13,7 @@ from pandas.tseries.tools import parse_time_string
 import pandas.tseries.frequencies as _freq_mod
 
 import pandas.core.common as com
-from pandas.core.common import isnull
+from pandas.core.common import isnull, _NS_DTYPE, _INT64_DTYPE
 from pandas.util import py3compat
 
 from pandas.lib import Timestamp
@@ -40,7 +41,7 @@ def _field_accessor(name, alias):
     return property(f)
 
 
-class Period(object):
+class Period(PandasObject):
     """
     Represents an period of time
 
@@ -272,28 +273,6 @@ class Period(object):
 
         return "Period('%s', '%s')" % (formatted, freqstr)
 
-    def __str__(self):
-        """
-        Return a string representation for a particular DataFrame
-
-        Invoked by str(df) in both py2/py3.
-        Yields Bytestring in Py2, Unicode String in py3.
-        """
-
-        if py3compat.PY3:
-            return self.__unicode__()
-        return self.__bytes__()
-
-    def __bytes__(self):
-        """
-        Return a string representation for a particular DataFrame
-
-        Invoked by bytes(df) in py3 only.
-        Yields a bytestring in both py2/py3.
-        """
-        encoding = com.get_option("display.encoding")
-        return self.__unicode__().encode(encoding, 'replace')
-
     def __unicode__(self):
         """
         Return a string representation for a particular DataFrame
@@ -303,9 +282,7 @@ class Period(object):
         """
         base, mult = _gfc(self.freq)
         formatted = tslib.period_format(self.ordinal, base)
-        value = (u"%s" % formatted)
-        assert type(value) == unicode
-
+        value = ("%s" % formatted)
         return value
 
 
@@ -500,10 +477,13 @@ def _period_index_cmp(opname):
     def wrapper(self, other):
         if isinstance(other, Period):
             func = getattr(self.values, opname)
-            assert(other.freq == self.freq)
+            if not (other.freq == self.freq):
+                raise AssertionError()
+
             result = func(other.ordinal)
         elif isinstance(other, PeriodIndex):
-            assert(other.freq == self.freq)
+            if not (other.freq == self.freq):
+                raise AssertionError()
             return getattr(self.values, opname)(other.values)
         else:
             other = Period(other, freq=self.freq)
@@ -512,10 +492,6 @@ def _period_index_cmp(opname):
 
         return result
     return wrapper
-
-_INT64_DTYPE = np.dtype(np.int64)
-_NS_DTYPE = np.dtype('M8[ns]')
-
 
 class PeriodIndex(Int64Index):
     """
@@ -1103,10 +1079,30 @@ class PeriodIndex(Int64Index):
         output += 'length: %d' % len(self)
         return output
 
+    def __unicode__(self):
+        output = self.__class__.__name__
+        output += u'('
+        prefix = '' if py3compat.PY3 else 'u'
+        mapper = "{0}'{{0}}'".format(prefix)
+        output += '[{0}]'.format(', '.join(map(mapper.format, self)))
+        output += ", freq='{0}'".format(self.freq)
+        output += ')'
+        return output
+
+    def __bytes__(self):
+        encoding = com.get_option('display.encoding')
+        return self.__unicode__().encode(encoding, 'replace')
+
+    def __str__(self):
+        if py3compat.PY3:
+            return self.__unicode__()
+        return self.__bytes__()
+
     def take(self, indices, axis=None):
         """
         Analogous to ndarray.take
         """
+        indices = com._ensure_platform_int(indices)
         taken = self.values.take(indices, axis=axis)
         taken = taken.view(PeriodIndex)
         taken.freq = self.freq
@@ -1230,7 +1226,8 @@ def _range_from_fields(year=None, month=None, quarter=None, day=None,
             base, mult = _gfc(freq)
             if mult != 1:
                 raise ValueError('Only mult == 1 supported')
-            assert(base == FreqGroup.FR_QTR)
+            if not (base == FreqGroup.FR_QTR):
+                raise AssertionError()
 
         year, quarter = _make_field_arrays(year, quarter)
         for y, q in zip(year, quarter):

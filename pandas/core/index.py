@@ -9,6 +9,7 @@ import pandas.lib as lib
 import pandas.algos as _algos
 import pandas.index as _index
 from pandas.lib import Timestamp
+from pandas.core.base import PandasObject
 
 from pandas.util.decorators import cache_readonly
 from pandas.core.common import isnull
@@ -47,7 +48,7 @@ def _shouldbe_timestamp(obj):
             or tslib.is_timestamp_array(obj))
 
 
-class Index(np.ndarray):
+class Index(PandasObject, np.ndarray):
     """
     Immutable ndarray implementing an ordered, sliceable set. The basic object
     storing axis labels for all pandas objects
@@ -83,12 +84,12 @@ class Index(np.ndarray):
 
     _engine_type = _index.ObjectEngine
 
-    def __new__(cls, data, dtype=None, copy=False, name=None):
+    def __new__(cls, data, dtype=None, copy=False, name=None, **kwargs):
         from pandas.tseries.period import PeriodIndex
         if isinstance(data, np.ndarray):
             if issubclass(data.dtype.type, np.datetime64):
                 from pandas.tseries.index import DatetimeIndex
-                result = DatetimeIndex(data, copy=copy, name=name)
+                result = DatetimeIndex(data, copy=copy, name=name, **kwargs)
                 if dtype is not None and _o_dtype == dtype:
                     return Index(result.to_pydatetime(), dtype=_o_dtype)
                 else:
@@ -102,7 +103,7 @@ class Index(np.ndarray):
                 except TypeError:
                     pass
             elif isinstance(data, PeriodIndex):
-                return PeriodIndex(data, copy=copy, name=name)
+                return PeriodIndex(data, copy=copy, name=name, **kwargs)
 
             if issubclass(data.dtype.type, np.integer):
                 return Int64Index(data, copy=copy, dtype=dtype, name=name)
@@ -123,10 +124,10 @@ class Index(np.ndarray):
                 if (inferred.startswith('datetime') or
                         tslib.is_timestamp_array(subarr)):
                     from pandas.tseries.index import DatetimeIndex
-                    return DatetimeIndex(subarr, copy=copy, name=name)
+                    return DatetimeIndex(subarr, copy=copy, name=name, **kwargs)
 
                 elif inferred == 'period':
-                    return PeriodIndex(subarr, name=name)
+                    return PeriodIndex(subarr, name=name, **kwargs)
 
         subarr = subarr.view(cls)
         subarr.name = name
@@ -142,49 +143,14 @@ class Index(np.ndarray):
     def _shallow_copy(self):
         return self.view()
 
-    def __str__(self):
-        """
-        Return a string representation for a particular Index
-
-        Invoked by str(df) in both py2/py3.
-        Yields Bytestring in Py2, Unicode String in py3.
-        """
-
-        if py3compat.PY3:
-            return self.__unicode__()
-        return self.__bytes__()
-
-    def __bytes__(self):
-        """
-        Return a string representation for a particular Index
-
-        Invoked by bytes(df) in py3 only.
-        Yields a bytestring in both py2/py3.
-        """
-        encoding = com.get_option("display.encoding")
-        return self.__unicode__().encode(encoding, 'replace')
-
     def __unicode__(self):
         """
         Return a string representation for a particular Index
 
         Invoked by unicode(df) in py2 only. Yields a Unicode String in both py2/py3.
         """
-        if len(self) > 6 and len(self) > np.get_printoptions()['threshold']:
-            data = self[:3].format() + ["..."] + self[-3:].format()
-        else:
-            data = self.format()
-
-        prepr = com.pprint_thing(data, escape_chars=('\t', '\r', '\n'))
+        prepr = com.pprint_thing(self, escape_chars=('\t', '\r', '\n'),quote_strings=True)
         return '%s(%s, dtype=%s)' % (type(self).__name__, prepr, self.dtype)
-
-    def __repr__(self):
-        """
-        Return a string representation for a particular Index
-
-        Yields Bytestring in Py2, Unicode String in py3.
-        """
-        return str(self)
 
     def to_series(self):
         """
@@ -243,10 +209,6 @@ class Index(np.ndarray):
     names = property(fset=_set_names, fget=_get_names)
 
     @property
-    def _constructor(self):
-        return Index
-
-    @property
     def _has_complex_internals(self):
         # to disable groupby tricks in MultiIndex
         return False
@@ -283,7 +245,7 @@ class Index(np.ndarray):
     def is_lexsorted_for_tuple(self, tup):
         return True
 
-    @cache_readonly
+    @cache_readonly(allow_setting=True)
     def is_unique(self):
         return self._engine.is_unique
 
@@ -568,7 +530,7 @@ class Index(np.ndarray):
             return self
 
         offset = periods * freq
-        return Index([idx + offset for idx in self])
+        return Index([idx + offset for idx in self], name=self.name)
 
     def argsort(self, *args, **kwargs):
         """
@@ -864,6 +826,25 @@ class Index(np.ndarray):
 
         return com._ensure_platform_int(indexer)
 
+    def get_indexer_non_unique(self, target, **kwargs):
+        """ return an indexer suitable for taking from a non unique index
+            return the labels in the same order as the target, and
+            return a missing indexer into the target (missing are marked as -1
+            in the indexer); target must be an iterable """
+        target = _ensure_index(target)
+        pself, ptarget = self._possibly_promote(target)
+        if pself is not self or ptarget is not target:
+            return pself.get_indexer_non_unique(ptarget)
+
+        if self.is_all_dates:
+            self = Index(self.asi8)
+            tgt_values = target.asi8
+        else:
+            tgt_values = target.values
+
+        indexer, missing = self._engine.get_indexer_non_unique(tgt_values)
+        return Index(indexer), missing
+
     def _possibly_promote(self, other):
         # A hack, but it works
         from pandas.tseries.index import DatetimeIndex
@@ -906,7 +887,8 @@ class Index(np.ndarray):
         }
         return aliases.get(method, method)
 
-    def reindex(self, target, method=None, level=None, limit=None):
+    def reindex(self, target, method=None, level=None, limit=None,
+                copy_if_needed=False, takeable=False):
         """
         For Index, simply returns the new index and the results of
         get_indexer. Provided here to enable an interface that is amenable for
@@ -923,11 +905,32 @@ class Index(np.ndarray):
             _, indexer, _ = self._join_level(target, level, how='right',
                                              return_indexers=True)
         else:
+
             if self.equals(target):
                 indexer = None
+                
+                # to avoid aliasing an existing index
+                if copy_if_needed and target.name != self.name and self.name is not None:
+                    if target.name is None:
+                        target = self.copy()
+
             else:
-                indexer = self.get_indexer(target, method=method,
-                                           limit=limit)
+
+                if takeable:
+                    if method is not None or limit is not None:
+                        raise ValueError("cannot do a takeable reindex with "
+                                         "with a method or limit")
+                    return self[target], target
+
+                if self.is_unique:
+                    indexer = self.get_indexer(target, method=method,
+                                               limit=limit)
+                else:
+                    if method is not None or limit is not None:
+                        raise ValueError("cannot reindex a non-unique index "
+                                         "with a method or limit")
+                    indexer, _ = self.get_indexer_non_unique(target)
+
         return target, indexer
 
     def join(self, other, how='left', level=None, return_indexers=False):
@@ -1178,7 +1181,13 @@ class Index(np.ndarray):
         This function assumes that the data is sorted, so use at your own peril
         """
         start_slice, end_slice = self.slice_locs(start, end)
-        return slice(start_slice, end_slice, step)
+
+        # return a slice
+        if np.isscalar(start_slice) and np.isscalar(end_slice):
+            return slice(start_slice, end_slice, step)
+
+        # loc indexers
+        return Index(start_slice) & Index(end_slice)
 
     def slice_locs(self, start=None, end=None):
         """
@@ -1199,13 +1208,25 @@ class Index(np.ndarray):
         -----
         This function assumes that the data is sorted, so use at your own peril
         """
+
+        is_unique = self.is_unique
         if start is None:
             start_slice = 0
         else:
             try:
                 start_slice = self.get_loc(start)
+                
+                if not is_unique:
+
+                    # get_loc will return a boolean array for non_uniques
+                    # if we are not monotonic
+                    if isinstance(start_slice,np.ndarray):
+                        raise KeyError("cannot peform a slice operation "
+                                       "on a non-unique non-monotonic index")
+
                 if isinstance(start_slice, slice):
                     start_slice = start_slice.start
+
             except KeyError:
                 if self.is_monotonic:
                     start_slice = self.searchsorted(start, side='left')
@@ -1217,10 +1238,19 @@ class Index(np.ndarray):
         else:
             try:
                 end_slice = self.get_loc(end)
+
+                if not is_unique:
+
+                    # get_loc will return a boolean array for non_uniques
+                    if isinstance(end_slice,np.ndarray):
+                        raise KeyError("cannot perform a slice operation "
+                                       "on a non-unique non-monotonic index")
+
                 if isinstance(end_slice, slice):
                     end_slice = end_slice.stop
                 else:
                     end_slice += 1
+
             except KeyError:
                 if self.is_monotonic:
                     end_slice = self.searchsorted(end, side='right')
@@ -1346,10 +1376,6 @@ class Int64Index(Index):
         return 'integer'
 
     @property
-    def _constructor(self):
-        return Int64Index
-
-    @property
     def asi8(self):
         # do not cache or you'll create a memory leak
         return self.values.view('i8')
@@ -1468,28 +1494,6 @@ class MultiIndex(Index):
     def dtype(self):
         return np.dtype('O')
 
-    def __str__(self):
-        """
-        Return a string representation for a particular Index
-
-        Invoked by str(df) in both py2/py3.
-        Yields Bytestring in Py2, Unicode String in py3.
-        """
-
-        if py3compat.PY3:
-            return self.__unicode__()
-        return self.__bytes__()
-
-    def __bytes__(self):
-        """
-        Return a string representation for a particular Index
-
-        Invoked by bytes(df) in py3 only.
-        Yields a bytestring in both py2/py3.
-        """
-        encoding = com.get_option("display.encoding")
-        return self.__unicode__().encode(encoding, 'replace')
-
     def __unicode__(self):
         """
         Return a string representation for a particular Index
@@ -1498,27 +1502,10 @@ class MultiIndex(Index):
         """
         output = 'MultiIndex\n%s'
 
-        options = np.get_printoptions()
-        np.set_printoptions(threshold=50)
-
-        if len(self) > 100:
-            values = self[:50].format() + ["..."] + self[-50:].format()
-        else:
-            values = self.format()
-
-        summary = com.pprint_thing(values, escape_chars=('\t', '\r', '\n'))
-
-        np.set_printoptions(threshold=options['threshold'])
+        summary = com.pprint_thing(self, escape_chars=('\t', '\r', '\n'),
+                                   quote_strings=True)
 
         return output % summary
-
-    def __repr__(self):
-        """
-        Return a string representation for a particular Index
-
-        Yields Bytestring in Py2, Unicode String in py3.
-        """
-        return str(self)
 
     def __len__(self):
         return len(self.labels[0])
@@ -1708,9 +1695,15 @@ class MultiIndex(Index):
             sparsify = get_option("display.multi_sparse")
 
         if sparsify:
+            sentinal = ''
+            # GH3547
+            # use value of sparsify as sentinal,  unless it's an obvious "Truthey" value
+            if sparsify not in [True,1]:
+                sentinal = sparsify
             # little bit of a kludge job for #1217
             result_levels = _sparsify(result_levels,
-                                      start=int(names))
+                                      start=int(names),
+                                      sentinal=sentinal)
 
         if adjoin:
             return com.adjoin(space, *result_levels).split('\n')
@@ -2151,7 +2144,8 @@ class MultiIndex(Index):
 
         return com._ensure_platform_int(indexer)
 
-    def reindex(self, target, method=None, level=None, limit=None):
+    def reindex(self, target, method=None, level=None, limit=None,
+                copy_if_needed=False, takeable=False):
         """
         Performs any necessary conversion on the input index and calls
         get_indexer. This method is here so MultiIndex and an Index of
@@ -2639,7 +2633,7 @@ class MultiIndex(Index):
 
 # For utility purposes
 
-def _sparsify(label_list, start=0):
+def _sparsify(label_list, start=0,sentinal=''):
     pivoted = zip(*label_list)
     k = len(label_list)
 
@@ -2656,7 +2650,7 @@ def _sparsify(label_list, start=0):
                 break
 
             if p == t:
-                sparse_cur.append('')
+                sparse_cur.append(sentinal)
             else:
                 sparse_cur.extend(cur[i:])
                 result.append(sparse_cur)

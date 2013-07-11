@@ -18,7 +18,6 @@ from pandas.core.daterange import DateRange
 import pandas.core.datetools as datetools
 import pandas.tseries.offsets as offsets
 import pandas.tseries.frequencies as fmod
-from pandas.tseries.index import TimeSeriesError
 import pandas as pd
 
 from pandas.util.testing import assert_series_equal, assert_almost_equal
@@ -39,6 +38,7 @@ from pandas.util.testing import assert_frame_equal
 import pandas.util.py3compat as py3compat
 from pandas.core.datetools import BDay
 import pandas.core.common as com
+from pandas import concat
 
 from numpy.testing.decorators import slow
 
@@ -172,7 +172,6 @@ class TestTimeSeriesDuplicates(unittest.TestCase):
     def test_indexing_unordered(self):
 
         # GH 2437
-        from pandas import concat
         rng = date_range(start='2011-01-01', end='2011-01-15')
         ts  = Series(randn(len(rng)), index=rng)
         ts2 = concat([ts[0:4],ts[-4:],ts[4:-4]])
@@ -183,6 +182,23 @@ class TestTimeSeriesDuplicates(unittest.TestCase):
             result = ts2[t]
             self.assertTrue(expected == result)
 
+        # GH 3448 (ranges)
+        def compare(slobj):
+            result = ts2[slobj].copy()
+            result = result.sort_index()
+            expected = ts[slobj]
+            assert_series_equal(result,expected)
+
+        compare(slice('2011-01-01','2011-01-15'))
+        compare(slice('2010-12-30','2011-01-15'))
+        compare(slice('2011-01-01','2011-01-16'))
+
+        # partial ranges
+        compare(slice('2011-01-01','2011-01-6'))
+        compare(slice('2011-01-06','2011-01-8'))
+        compare(slice('2011-01-06','2011-01-12'))
+
+        # single values
         result = ts2['2011'].sort_index()
         expected = ts['2011']
         assert_series_equal(result,expected)
@@ -218,6 +234,31 @@ class TestTimeSeriesDuplicates(unittest.TestCase):
 
         result = df['2001']['A']
         assert_series_equal(expected,result)
+
+        # GH3546 (not including times on the last day)
+        idx = date_range(start='2013-05-31 00:00', end='2013-05-31 23:00', freq='H')
+        ts  = Series(range(len(idx)), index=idx)
+        expected = ts['2013-05']
+        assert_series_equal(expected,ts)
+
+        idx = date_range(start='2013-05-31 00:00', end='2013-05-31 23:59', freq='S')
+        ts  = Series(range(len(idx)), index=idx)
+        expected = ts['2013-05']
+        assert_series_equal(expected,ts)
+
+        idx = [ Timestamp('2013-05-31 00:00'), Timestamp(datetime(2013,5,31,23,59,59,999999))]
+        ts  = Series(range(len(idx)), index=idx)
+        expected = ts['2013']
+        assert_series_equal(expected,ts)
+
+        # GH 3925, indexing with a seconds resolution string / datetime object
+        df = DataFrame(randn(5,5),columns=['open','high','low','close','volume'],index=date_range('2012-01-02 18:01:00',periods=5,tz='US/Central',freq='s'))
+        expected = df.loc[[df.index[2]]]
+        result = df['2012-01-02 18:01:02']
+        self.assert_(result == expected)
+
+        # this is a single date, so will raise
+        self.assertRaises(KeyError, df.__getitem__, df.index[2],)
 
 def assert_range_equal(left, right):
     assert(left.equals(right))
@@ -561,6 +602,34 @@ class TestTimeSeries(unittest.TestCase):
 
             self.assert_((tmp['dates'].values == ex_vals).all())
 
+    def test_to_datetime_unit(self):
+
+        epoch = 1370745748
+        s = Series([ epoch + t for t in range(20) ])
+        result = to_datetime(s,unit='s')
+        expected = Series([ Timestamp('2013-06-09 02:42:28') + timedelta(seconds=t) for t in range(20) ])
+        assert_series_equal(result,expected)
+
+        s = Series([ epoch + t for t in range(20) ]).astype(float)
+        result = to_datetime(s,unit='s')
+        expected = Series([ Timestamp('2013-06-09 02:42:28') + timedelta(seconds=t) for t in range(20) ])
+        assert_series_equal(result,expected)
+
+        s = Series([ epoch + t for t in range(20) ] + [iNaT])
+        result = to_datetime(s,unit='s')
+        expected = Series([ Timestamp('2013-06-09 02:42:28') + timedelta(seconds=t) for t in range(20) ] + [NaT])
+        assert_series_equal(result,expected)
+
+        s = Series([ epoch + t for t in range(20) ] + [iNaT]).astype(float)
+        result = to_datetime(s,unit='s')
+        expected = Series([ Timestamp('2013-06-09 02:42:28') + timedelta(seconds=t) for t in range(20) ] + [NaT])
+        assert_series_equal(result,expected)
+
+        s = concat([Series([ epoch + t for t in range(20) ]).astype(float),Series([np.nan])],ignore_index=True)
+        result = to_datetime(s,unit='s')
+        expected = Series([ Timestamp('2013-06-09 02:42:28') + timedelta(seconds=t) for t in range(20) ] + [NaT])
+        assert_series_equal(result,expected)
+
     def test_series_ctor_datetime64(self):
         rng = date_range('1/1/2000 00:00:00', '1/1/2000 1:59:50',
                          freq='10s')
@@ -724,17 +793,47 @@ class TestTimeSeries(unittest.TestCase):
         xp = datetime(2001, 1, 1)
         self.assert_(rs, xp)
 
+    def test_dayfirst(self):
+
+        # GH 3341
+        result = to_datetime('13-01-2012', dayfirst=True)
+        expected = Timestamp('20120113')
+        self.assert_(result == expected)
+
+        #### dayfirst is essentially broken
+        #### to_datetime('01-13-2012', dayfirst=True)
+        #### self.assertRaises(ValueError, to_datetime('01-13-2012', dayfirst=True))
+
     def test_to_datetime_format(self):
         values = ['1/1/2000', '1/2/2000', '1/3/2000']
 
-        def _parse_format(fmt, values):
-            return to_datetime([datetime.strptime(x, fmt)
-                                for x in values])
+        results1 = [ Timestamp('20000101'), Timestamp('20000201'),
+                     Timestamp('20000301') ]
+        results2 = [ Timestamp('20000101'), Timestamp('20000102'),
+                     Timestamp('20000103') ]
+        for vals, expecteds in [ (values, (Index(results1), Index(results2))),
+                                 (Series(values),(Series(results1), Series(results2))),
+                                 (values[0], (results1[0], results2[0])),
+                                 (values[1], (results1[1], results2[1])),
+                                 (values[2], (results1[2], results2[2])) ]:
 
-        for fmt in ['%d/%m/%Y', '%m/%d/%Y']:
-            result = to_datetime(values, format=fmt)
-            expected = _parse_format(fmt, values)
-            self.assert_(result.equals(expected))
+            for i, fmt in enumerate(['%d/%m/%Y', '%m/%d/%Y']):
+                result = to_datetime(vals, format=fmt)
+                expected = expecteds[i]
+
+                if isinstance(expected, Series):
+                    assert_series_equal(result, Series(expected))
+                elif isinstance(expected, Timestamp):
+                    self.assert_(result == expected)
+                else:
+                    self.assert_(result.equals(expected))
+
+    def test_to_datetime_format_microsecond(self):
+        val = '01-Apr-2011 00:00:01.978'
+        format = '%d-%b-%Y %H:%M:%S.%f'
+        result = to_datetime(val, format=format)
+        exp = dt.datetime.strptime(val, format)
+        self.assert_(result == exp)
 
     def test_to_datetime_on_datetime64_series(self):
         # #2699
@@ -765,12 +864,35 @@ class TestTimeSeries(unittest.TestCase):
 
         self.assertEquals(NaT.weekday(), -1)
 
-    def test_to_datetime_empty_string(self):
+    def test_to_datetime_types(self):
+
+        # empty string
         result = to_datetime('')
-        self.assert_(result == '')
+        self.assert_(result is NaT)
 
         result = to_datetime(['', ''])
         self.assert_(isnull(result).all())
+
+        # ints
+        result = Timestamp(0)
+        expected = to_datetime(0)
+        self.assert_(result == expected)
+
+        # GH 3888 (strings)
+        expected = to_datetime(['2012'])[0]
+        result = to_datetime('2012')
+        self.assert_(result == expected)
+
+        ### array = ['2012','20120101','20120101 12:01:01']
+        array = ['20120101','20120101 12:01:01']
+        expected = list(to_datetime(array))
+        result = map(Timestamp,array)
+        tm.assert_almost_equal(result,expected)
+
+        ### currently fails ###
+        ### result = Timestamp('2012')
+        ### expected = to_datetime('2012')
+        ### self.assert_(result == expected)
 
     def test_to_datetime_other_datetime64_units(self):
         # 5/25/2012
@@ -1437,7 +1559,7 @@ class TestTimeSeries(unittest.TestCase):
                         (3, np.datetime64('2012-07-04'))],
                        columns=['a', 'date'])
         result = df.groupby('a').first()
-        self.assertEqual(result['date'][3], np.datetime64('2012-07-03'))
+        self.assertEqual(result['date'][3], datetime(2012,7,3))
 
     def test_series_interpolate_intraday(self):
         # #1698
@@ -1814,6 +1936,20 @@ class TestDatetimeIndex(unittest.TestCase):
         expected = [t.time() for t in rng]
         self.assert_((result == expected).all())
 
+    def test_date(self):
+        rng = pd.date_range('1/1/2000', freq='12H', periods=10)
+        result = pd.Index(rng).date
+        expected = [t.date() for t in rng]
+        self.assert_((result == expected).all())
+
+    def test_does_not_convert_mixed_integer(self):
+        df = tm.makeCustomDataframe(10, 10, data_gen_f=lambda *args, **kwargs:
+                                    randn(), r_idx_type='i', c_idx_type='dt')
+        cols = df.columns.join(df.index, how='outer')
+        joined = cols.join(df.columns)
+        self.assertEqual(cols.dtype, np.dtype('O'))
+        self.assertEqual(cols.dtype, joined.dtype)
+        self.assert_(np.array_equal(cols.values, joined.values))
 
 class TestLegacySupport(unittest.TestCase):
     _multiprocess_can_split_ = True
@@ -1871,7 +2007,7 @@ class TestLegacySupport(unittest.TestCase):
         pth, _ = os.path.split(os.path.abspath(__file__))
         filepath = os.path.join(pth, 'data', 'series_daterange0.pickle')
 
-        result = com.load(filepath)
+        result = pd.read_pickle(filepath)
 
         ex_index = DatetimeIndex([], freq='B')
 
@@ -2644,6 +2780,70 @@ class TestTimestamp(unittest.TestCase):
         self.assert_(stamp.month == 1)
         self.assert_(stamp.microsecond == 0)
         self.assert_(stamp.nanosecond == 500)
+
+    def test_unit(self):
+        def check(val,unit=None,h=1,s=1,us=0):
+            stamp = Timestamp(val, unit=unit)
+            self.assert_(stamp.year == 2000)
+            self.assert_(stamp.month == 1)
+            self.assert_(stamp.day == 1)
+            self.assert_(stamp.hour == h)
+            if unit != 'D':
+                self.assert_(stamp.minute == 1)
+                self.assert_(stamp.second == s)
+                self.assert_(stamp.microsecond == us)
+            else:
+                self.assert_(stamp.minute == 0)
+                self.assert_(stamp.second == 0)
+                self.assert_(stamp.microsecond == 0)
+            self.assert_(stamp.nanosecond == 0)
+
+        ts = Timestamp('20000101 01:01:01')
+        val = ts.value
+        days = (ts - Timestamp('1970-01-01')).days
+
+        check(val)
+        check(val/1000L,unit='us')
+        check(val/1000000L,unit='ms')
+        check(val/1000000000L,unit='s')
+        check(days,unit='D',h=0)
+
+        # using truediv, so these are like floats
+        if py3compat.PY3:
+            check((val+500000)/1000000000L,unit='s',us=500)
+            check((val+500000000)/1000000000L,unit='s',us=500000)
+            check((val+500000)/1000000L,unit='ms',us=500)
+
+        # get chopped in py2
+        else:
+            check((val+500000)/1000000000L,unit='s')
+            check((val+500000000)/1000000000L,unit='s')
+            check((val+500000)/1000000L,unit='ms')
+
+        # ok
+        check((val+500000)/1000L,unit='us',us=500)
+        check((val+500000000)/1000000L,unit='ms',us=500000)
+
+        # floats
+        check(val/1000.0 + 5,unit='us',us=5)
+        check(val/1000.0 + 5000,unit='us',us=5000)
+        check(val/1000000.0 + 0.5,unit='ms',us=500)
+        check(val/1000000.0 + 0.005,unit='ms',us=5)
+        check(val/1000000000.0 + 0.5,unit='s',us=500000)
+        check(days + 0.5,unit='D',h=12)
+
+        # nan
+        result = Timestamp(np.nan)
+        self.assert_(result is NaT)
+
+        result = Timestamp(None)
+        self.assert_(result is NaT)
+
+        result = Timestamp(iNaT)
+        self.assert_(result is NaT)
+
+        result = Timestamp(NaT)
+        self.assert_(result is NaT)
 
     def test_comparison(self):
         # 5-18-2012 00:00:00.000

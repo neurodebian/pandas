@@ -17,9 +17,10 @@ import numpy as np
 from pandas import DataFrame, Series, Index, MultiIndex, DatetimeIndex
 import pandas.io.parsers as parsers
 from pandas.io.parsers import (read_csv, read_table, read_fwf,
-                               ExcelFile, TextFileReader, TextParser)
+                                TextParser, TextFileReader)
+from pandas.io.excel import ExcelFile, ExcelWriter, read_excel
 from pandas.util.testing import (assert_almost_equal,
-                                 assert_series_equal, 
+                                 assert_series_equal,
                                  network,
                                  ensure_clean)
 import pandas.util.testing as tm
@@ -33,14 +34,14 @@ import pandas.tseries.tools as tools
 
 from numpy.testing.decorators import slow
 
-from pandas._parser import OverflowError
-
-from pandas.io.parsers import (ExcelFile, ExcelWriter, read_csv)
-
+from pandas.parser import OverflowError
 
 def _skip_if_no_xlrd():
     try:
         import xlrd
+        ver = tuple(map(int, xlrd.__VERSION__.split(".")[:2]))
+        if ver < (0, 9):
+            raise nose.SkipTest('xlrd not installed, skipping')
     except ImportError:
         raise nose.SkipTest('xlrd not installed, skipping')
 
@@ -181,6 +182,22 @@ class ExcelTests(unittest.TestCase):
         expected = DataFrame([[np.nan]], columns=['Test'])
         tm.assert_frame_equal(parsed, expected)
 
+    def test_excel_passes_na(self):
+        _skip_if_no_xlrd()
+
+        excel_data = ExcelFile(os.path.join(self.dirpath, 'test2.xlsx'))
+        parsed = excel_data.parse('Sheet1', keep_default_na=False,
+                                  na_values=['apple'])
+        expected = DataFrame([['NA'], [1], ['NA'], [np.nan], ['rabbit']],
+                             columns=['Test'])
+        tm.assert_frame_equal(parsed, expected)
+
+        parsed = excel_data.parse('Sheet1', keep_default_na=True,
+                                  na_values=['apple'])
+        expected = DataFrame([[np.nan], [1], [np.nan], [np.nan], ['rabbit']],
+                             columns=['Test'])
+        tm.assert_frame_equal(parsed, expected)
+
     def test_excel_table(self):
         _skip_if_no_xlrd()
 
@@ -215,6 +232,7 @@ class ExcelTests(unittest.TestCase):
         df = xl.parse('Sheet1', index_col=0, parse_dates=True)
 
     def test_xlsx_table(self):
+        _skip_if_no_xlrd()
         _skip_if_no_openpyxl()
 
         pth = os.path.join(self.dirpath, 'test.xlsx')
@@ -245,18 +263,6 @@ class ExcelTests(unittest.TestCase):
         # self.assertRaises(Exception, ExcelFile, open(xlsx_file, 'rb'),
         #                   kind='xls')
 
-    def test_specify_kind_xlsx(self):
-        _skip_if_no_openpyxl()
-        xlsx_file = os.path.join(self.dirpath, 'test.xlsx')
-        xls_file = os.path.join(self.dirpath, 'test.xls')
-
-        self.assertRaises(Exception, ExcelFile, xls_file, kind='xlsx')
-
-        ExcelFile(open(xlsx_file, 'rb'), kind='xlsx')
-
-        self.assertRaises(Exception, ExcelFile, open(xls_file, 'rb'),
-                          kind='xlsx')
-
     def read_csv(self, *args, **kwds):
         kwds = kwds.copy()
         kwds['engine'] = 'python'
@@ -283,19 +289,25 @@ class ExcelTests(unittest.TestCase):
 
             # test roundtrip
             self.frame.to_excel(path, 'test1')
-            reader = ExcelFile(path)
-            recons = reader.parse('test1', index_col=0)
+            recons = read_excel(path, 'test1', index_col=0)
             tm.assert_frame_equal(self.frame, recons)
-            
+
             self.frame.to_excel(path, 'test1', index=False)
-            reader = ExcelFile(path)
-            recons = reader.parse('test1', index_col=None)
+            recons = read_excel(path, 'test1', index_col=None)
             recons.index = self.frame.index
             tm.assert_frame_equal(self.frame, recons)
-            
+
             self.frame.to_excel(path, 'test1', na_rep='NA')
-            reader = ExcelFile(path)
-            recons = reader.parse('test1', index_col=0, na_values=['NA'])
+            recons = read_excel(path, 'test1', index_col=0, na_values=['NA'])
+            tm.assert_frame_equal(self.frame, recons)
+
+            # GH 3611
+            self.frame.to_excel(path, 'test1', na_rep='88')
+            recons = read_excel(path, 'test1', index_col=0, na_values=['88'])
+            tm.assert_frame_equal(self.frame, recons)
+
+            self.frame.to_excel(path, 'test1', na_rep='88')
+            recons = read_excel(path, 'test1', index_col=0, na_values=[88,88.0])
             tm.assert_frame_equal(self.frame, recons)
 
     def test_excel_roundtrip_xls_mixed(self):
@@ -306,6 +318,7 @@ class ExcelTests(unittest.TestCase):
 
     def test_excel_roundtrip_xlsx_mixed(self):
         _skip_if_no_openpyxl()
+        _skip_if_no_xlrd()
 
         self._check_extension_mixed('xlsx')
 
@@ -326,6 +339,7 @@ class ExcelTests(unittest.TestCase):
 
     def test_excel_roundtrip_xlsx_tsframe(self):
         _skip_if_no_openpyxl()
+        _skip_if_no_xlrd()
         self._check_extension_tsframe('xlsx')
 
     def _check_extension_tsframe(self, ext):
@@ -357,7 +371,7 @@ class ExcelTests(unittest.TestCase):
             self.frame.to_excel(path, 'test1', cols=['A', 'B'])
             self.frame.to_excel(path, 'test1', header=False)
             self.frame.to_excel(path, 'test1', index=False)
-            
+
             # Test np.int64, values read come back as float
             frame = DataFrame(np.random.randint(-10, 10, size=(10, 2)), dtype=np.int64)
             frame.to_excel(path, 'test1')
@@ -383,7 +397,7 @@ class ExcelTests(unittest.TestCase):
             self.frame.to_excel(path, 'test1', cols=['A', 'B'])
             self.frame.to_excel(path, 'test1', header=False)
             self.frame.to_excel(path, 'test1', index=False)
-            
+
             # Test reading/writing np.bool8, roundtrip only works for xlsx
             frame = (DataFrame(np.random.randn(10, 2)) >= 0)
             frame.to_excel(path, 'test1')
@@ -409,7 +423,7 @@ class ExcelTests(unittest.TestCase):
             self.frame.to_excel(path, 'test1', cols=['A', 'B'])
             self.frame.to_excel(path, 'test1', header=False)
             self.frame.to_excel(path, 'test1', index=False)
-            
+
             # Test writing to separate sheets
             writer = ExcelWriter(path)
             self.frame.to_excel(writer, 'test1')
@@ -423,7 +437,7 @@ class ExcelTests(unittest.TestCase):
             np.testing.assert_equal(2, len(reader.sheet_names))
             np.testing.assert_equal('test1', reader.sheet_names[0])
             np.testing.assert_equal('test2', reader.sheet_names[1])
-            
+
 
     def test_excel_roundtrip_xls_colaliases(self):
         _skip_if_no_excelsuite()
@@ -443,7 +457,7 @@ class ExcelTests(unittest.TestCase):
             self.frame.to_excel(path, 'test1', cols=['A', 'B'])
             self.frame.to_excel(path, 'test1', header=False)
             self.frame.to_excel(path, 'test1', index=False)
-            
+
             # column aliases
             col_aliases = Index(['AA', 'X', 'Y', 'Z'])
             self.frame2.to_excel(path, 'test1', header=col_aliases)
@@ -452,7 +466,7 @@ class ExcelTests(unittest.TestCase):
             xp = self.frame2.copy()
             xp.columns = col_aliases
             tm.assert_frame_equal(xp, rs)
-            
+
     def test_excel_roundtrip_xls_indexlabels(self):
         _skip_if_no_excelsuite()
         self._check_extension_indexlabels('xls')
@@ -526,7 +540,7 @@ class ExcelTests(unittest.TestCase):
 
             xf = ExcelFile(path)
             result = xf.parse(xf.sheet_names[0], index_col=0)
-            
+
             tm.assert_frame_equal(result, df)
             self.assertEqual(result.index.name, 'foo')
 
@@ -544,19 +558,6 @@ class ExcelTests(unittest.TestCase):
             reader = ExcelFile(path)
             recons = reader.parse('test1')
             tm.assert_frame_equal(self.tsframe, recons)
-
-    def test_excel_roundtrip_bool(self):
-        _skip_if_no_openpyxl()
-
-        # Test roundtrip np.bool8, does not seem to work for xls
-        path = '__tmp_excel_roundtrip_bool__.xlsx'
-        frame = (DataFrame(np.random.randn(10, 2)) >= 0)
-        with ensure_clean(path) as path:
-
-            frame.to_excel(path, 'test1')
-            reader = ExcelFile(path)
-            recons = reader.parse('test1')
-            tm.assert_frame_equal(frame, recons)
 
     def test_to_excel_periodindex(self):
         _skip_if_no_excelsuite()
@@ -580,6 +581,7 @@ class ExcelTests(unittest.TestCase):
         self._check_excel_multiindex('xls')
 
     def test_to_excel_multiindex_xlsx(self):
+        _skip_if_no_xlrd()
         _skip_if_no_openpyxl()
         self._check_excel_multiindex('xlsx')
 
@@ -612,6 +614,7 @@ class ExcelTests(unittest.TestCase):
 
     def test_to_excel_multiindex_xlsx_dates(self):
         _skip_if_no_openpyxl()
+        _skip_if_no_xlrd()
         self._check_excel_multiindex_dates('xlsx')
 
     def _check_excel_multiindex_dates(self, ext):
@@ -627,7 +630,7 @@ class ExcelTests(unittest.TestCase):
             tsframe.to_excel(path, 'test1', index_label=['time', 'foo'])
             reader = ExcelFile(path)
             recons = reader.parse('test1', index_col=[0, 1])
-            
+
             tm.assert_frame_equal(tsframe, recons, check_names=False)
             self.assertEquals(recons.index.names, ['time', 'foo'])
 
@@ -685,7 +688,7 @@ class ExcelTests(unittest.TestCase):
                 tm.assert_frame_equal(rs, xp)
 
     def test_to_excel_styleconverter(self):
-        from pandas.io.parsers import CellStyleConverter
+        from pandas.io.excel import CellStyleConverter
 
         try:
             import xlwt
@@ -821,11 +824,7 @@ class ExcelTests(unittest.TestCase):
     #         self.assertTrue(ws.cell(maddr).merged)
     #     os.remove(filename)
     def test_excel_010_hemstring(self):
-        try:
-            import xlwt
-            import openpyxl
-        except ImportError:
-            raise nose.SkipTest
+        _skip_if_no_excelsuite()
 
         from pandas.util.testing import makeCustomDataframe as mkdf
         # ensure limited functionality in 0.10
@@ -875,6 +874,23 @@ class ExcelTests(unittest.TestCase):
         res = roundtrip(DataFrame([0]), False, None)
         self.assertEqual(res.shape, (1, 2))
         self.assertTrue(res.ix[0, 0] is not np.nan)
+
+    def test_deprecated_from_parsers(self):
+
+        # since 0.12 changed the import path
+        import warnings
+
+        with warnings.catch_warnings() as w:
+            warnings.filterwarnings(action='ignore', category=FutureWarning)
+
+            _skip_if_no_xlrd()
+            from pandas.io.parsers import ExcelFile as xf
+            xf(self.xls1)
+
+            _skip_if_no_xlwt()
+            with ensure_clean('test.xls') as path:
+                from pandas.io.parsers import ExcelWriter as xw
+                xw(path)
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],

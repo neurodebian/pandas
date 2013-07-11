@@ -4,8 +4,8 @@ SQL-style merge routines
 
 import itertools
 import numpy as np
-
-from pandas.core.categorical import Factor
+import types
+from pandas.core.categorical import Categorical
 from pandas.core.frame import DataFrame, _merge_doc
 from pandas.core.generic import NDFrame
 from pandas.core.groupby import get_group_index
@@ -16,7 +16,7 @@ from pandas.core.index import (Index, MultiIndex, _get_combined_index,
 from pandas.core.internals import (IntBlock, BoolBlock, BlockManager,
                                    make_block, _consolidate)
 from pandas.util.decorators import cache_readonly, Appender, Substitution
-
+from pandas.core.common import PandasError
 from pandas.sparse.frame import SparseDataFrame
 import pandas.core.common as com
 
@@ -404,14 +404,17 @@ class _MergeOperation(object):
         elif self.left_on is not None:
             n = len(self.left_on)
             if self.right_index:
-                assert(len(self.left_on) == self.right.index.nlevels)
+                if not ((len(self.left_on) == self.right.index.nlevels)):
+                    raise AssertionError()
                 self.right_on = [None] * n
         elif self.right_on is not None:
             n = len(self.right_on)
             if self.left_index:
-                assert(len(self.right_on) == self.left.index.nlevels)
+                if not ((len(self.right_on) == self.left.index.nlevels)):
+                    raise AssertionError()
                 self.left_on = [None] * n
-        assert(len(self.right_on) == len(self.left_on))
+        if not ((len(self.right_on) == len(self.left_on))):
+            raise AssertionError()
 
 
 def _get_join_indexers(left_keys, right_keys, sort=False, how='inner'):
@@ -424,7 +427,8 @@ def _get_join_indexers(left_keys, right_keys, sort=False, how='inner'):
     -------
 
     """
-    assert(len(left_keys) == len(right_keys))
+    if not ((len(left_keys) == len(right_keys))):
+        raise AssertionError()
 
     left_labels = []
     right_labels = []
@@ -537,8 +541,9 @@ def _left_join_on_index(left_ax, right_ax, join_keys, sort=False):
     left_indexer = None
 
     if len(join_keys) > 1:
-        assert(isinstance(right_ax, MultiIndex) and
-               len(join_keys) == right_ax.nlevels)
+        if not ((isinstance(right_ax, MultiIndex) and
+               len(join_keys) == right_ax.nlevels) ):
+            raise AssertionError()
 
         left_tmp, right_indexer = \
             _get_multiindex_indexer(join_keys, right_ax,
@@ -637,7 +642,8 @@ class _BlockJoinOperation(object):
         if axis <= 0:  # pragma: no cover
             raise MergeError('Only axis >= 1 supported for this operation')
 
-        assert(len(data_list) == len(indexers))
+        if not ((len(data_list) == len(indexers))):
+            raise AssertionError()
 
         self.units = []
         for data, indexer in zip(data_list, indexers):
@@ -775,10 +781,10 @@ def _upcast_blocks(blocks):
     for block in blocks:
         if isinstance(block, IntBlock):
             newb = make_block(block.values.astype(float), block.items,
-                              block.ref_items)
+                              block.ref_items, placement=block._ref_locs)
         elif isinstance(block, BoolBlock):
             newb = make_block(block.values.astype(object), block.items,
-                              block.ref_items)
+                              block.ref_items, placement=block._ref_locs)
         else:
             newb = block
         new_blocks.append(newb)
@@ -882,6 +888,11 @@ class _Concatenator(object):
     def __init__(self, objs, axis=0, join='outer', join_axes=None,
                  keys=None, levels=None, names=None,
                  ignore_index=False, verify_integrity=False):
+        if not isinstance(objs, (list,tuple,types.GeneratorType,dict)):
+            raise AssertionError('first argument must be a list-like of pandas '
+                                 'objects, you passed an object of type '
+                                 '"{0}"'.format(type(objs).__name__))
+        
         if join == 'outer':
             self.intersect = False
         elif join == 'inner':
@@ -925,7 +936,8 @@ class _Concatenator(object):
             axis = 1 if axis == 0 else 0
 
         self._is_series = isinstance(sample, Series)
-        assert(0 <= axis <= sample.ndim)
+        if not ((0 <= axis <= sample.ndim)):
+            raise AssertionError()
 
         # note: this is the BlockManager axis (since DataFrame is transposed)
         self.axis = axis
@@ -972,11 +984,11 @@ class _Concatenator(object):
         return blockmaps, reindexed_data
 
     def _get_concatenated_data(self):
-        try:
-            # need to conform to same other (joined) axes for block join
-            blockmaps, rdata = self._prepare_blocks()
-            kinds = _get_all_block_kinds(blockmaps)
+        # need to conform to same other (joined) axes for block join
+        blockmaps, rdata = self._prepare_blocks()
+        kinds = _get_all_block_kinds(blockmaps)
 
+        try:
             new_blocks = []
             for kind in kinds:
                 klass_blocks = [mapping.get(kind) for mapping in blockmaps]
@@ -990,7 +1002,8 @@ class _Concatenator(object):
                 blk.ref_items = self.new_axes[0]
 
             new_data = BlockManager(new_blocks, self.new_axes)
-        except Exception:  # EAFP
+        # Eventual goal would be to move everything to PandasError or other explicit error
+        except (Exception, PandasError):  # EAFP
             # should not be possible to fail here for the expected reason with
             # axis = 0
             if self.axis == 0:  # pragma: no cover
@@ -1027,10 +1040,14 @@ class _Concatenator(object):
         if self.axis > 0:
             # Not safe to remove this check, need to profile
             if not _all_indexes_same([b.items for b in blocks]):
-                raise Exception('dtypes are not consistent throughout '
-                                'DataFrames')
+                # TODO: Either profile this piece or remove.
+                # FIXME: Need to figure out how to test whether this line exists or does not...(unclear if even possible
+                #        or maybe would require performance test)
+                raise PandasError('dtypes are not consistent throughout '
+                                  'DataFrames')
             return make_block(concat_values, blocks[0].items, self.new_axes[0])
         else:
+
             offsets = np.r_[0, np.cumsum([len(x._data.axes[0]) for
                                           x in self.objs])]
             indexer = np.concatenate([offsets[i] + b.ref_locs
@@ -1040,12 +1057,21 @@ class _Concatenator(object):
                 concat_items = indexer
             else:
                 concat_items = self.new_axes[0].take(indexer)
-
+                
             if self.ignore_index:
                 ref_items = self._get_fresh_axis()
                 return make_block(concat_values, concat_items, ref_items)
 
-            return make_block(concat_values, concat_items, self.new_axes[0])
+            block = make_block(concat_values, concat_items, self.new_axes[0])
+
+            # we need to set the ref_locs in this block so we have the mapping
+            # as we now have a non-unique index across dtypes, and we need to
+            # map the column location to the block location
+            # GH3602
+            if not self.new_axes[0].is_unique:
+                block._ref_locs = indexer
+
+            return block
 
     def _concat_single_item(self, objs, item):
         all_values = []
@@ -1084,7 +1110,8 @@ class _Concatenator(object):
                 to_concat.append(item_values)
 
         # this method only gets called with axis >= 1
-        assert(self.axis >= 1)
+        if not ((self.axis >= 1)):
+            raise AssertionError()
         return com._concat_compat(to_concat, axis=self.axis - 1)
 
     def _get_result_dim(self):
@@ -1103,7 +1130,8 @@ class _Concatenator(object):
                     continue
                 new_axes[i] = self._get_comb_axis(i)
         else:
-            assert(len(self.join_axes) == ndim - 1)
+            if not ((len(self.join_axes) == ndim - 1)):
+                raise AssertionError()
 
             # ufff...
             indices = range(ndim)
@@ -1160,7 +1188,7 @@ class _Concatenator(object):
         if self.verify_integrity:
             if not concat_index.is_unique:
                 overlap = concat_index.get_duplicates()
-                raise Exception('Indexes have overlapping values: %s'
+                raise ValueError('Indexes have overlapping values: %s'
                                 % str(overlap))
 
 
@@ -1176,7 +1204,7 @@ def _make_concat_multiindex(indexes, keys, levels=None, names=None):
             names = [None] * len(zipped)
 
         if levels is None:
-            levels = [Factor.from_array(zp).levels for zp in zipped]
+            levels = [Categorical.from_array(zp).levels for zp in zipped]
         else:
             levels = [_ensure_index(x) for x in levels]
     else:
@@ -1214,7 +1242,7 @@ def _make_concat_multiindex(indexes, keys, levels=None, names=None):
             levels.extend(concat_index.levels)
             label_list.extend(concat_index.labels)
         else:
-            factor = Factor.from_array(concat_index)
+            factor = Categorical.from_array(concat_index)
             levels.append(factor.levels)
             label_list.append(factor.labels)
 

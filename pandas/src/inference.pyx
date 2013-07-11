@@ -373,17 +373,20 @@ def maybe_convert_numeric(ndarray[object] values, set na_values,
     for i from 0 <= i < n:
         val = values[i]
 
-        if util.is_float_object(val):
-            floats[i] = complexes[i] = val
-            seen_float = 1
-        elif val in na_values:
+        if val in na_values:
             floats[i] = complexes[i] = nan
             seen_float = 1
+        elif util.is_float_object(val):
+            floats[i] = complexes[i] = val
+            seen_float = 1
+        elif util.is_integer_object(val):
+            floats[i] = ints[i] = val
+            seen_int = 1
         elif val is None:
             floats[i] = complexes[i] = nan
             seen_float = 1
-        elif len(val) == 0:
-            if convert_empty:
+        elif hasattr(val,'__len__') and len(val) == 0:
+            if convert_empty or coerce_numeric:
                 floats[i] = complexes[i] = nan
                 seen_float = 1
             else:
@@ -471,7 +474,7 @@ def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
             seen_float = 1
         elif util.is_datetime64_object(val):
             if convert_datetime:
-                idatetimes[i] = convert_to_tsobject(val, None).value
+                idatetimes[i] = convert_to_tsobject(val, None, None).value
                 seen_datetime = 1
             else:
                 seen_object = 1
@@ -493,7 +496,7 @@ def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
         elif PyDateTime_Check(val) or util.is_datetime64_object(val):
             if convert_datetime:
                 seen_datetime = 1
-                idatetimes[i] = convert_to_tsobject(val, None).value
+                idatetimes[i] = convert_to_tsobject(val, None, None).value
             else:
                 seen_object = 1
                 break
