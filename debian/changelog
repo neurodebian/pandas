@@ -1,10 +1,12 @@
-pandas (0.11.0-3) UNRELEASED; urgency=low
+pandas (0.11.0+git43-g7b2eaa4-1) experimental; urgency=low
 
+  * Fresh git snapshot of upstream candidate release. Experimental build
+    to verify functioning across the ports.
   * debian/control
     - dedented last "paragraph" to break it away from the 2nd one.
       Thanks Beatrice Torracca for the detailed report (Closes: #712260)
 
- --
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 11 Jul 2013 11:01:21 -0400
 
 pandas (0.11.0-2) unstable; urgency=low
 
