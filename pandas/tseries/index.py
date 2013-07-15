@@ -208,9 +208,10 @@ class DatetimeIndex(Int64Index):
                     return data
 
         if issubclass(data.dtype.type, basestring):
-            subarr = _str_to_dt_array(data, offset, dayfirst=dayfirst,
+            data = _str_to_dt_array(data, offset, dayfirst=dayfirst,
                                       yearfirst=yearfirst)
-        elif issubclass(data.dtype.type, np.datetime64):
+
+        if issubclass(data.dtype.type, np.datetime64):
             if isinstance(data, DatetimeIndex):
                 if tz is None:
                     tz = data.tz
@@ -1013,6 +1014,7 @@ class DatetimeIndex(Int64Index):
 
         self.offset = getattr(obj, 'offset', None)
         self.tz = getattr(obj, 'tz', None)
+        self.name = getattr(obj, 'name', None)
 
     def intersection(self, other):
         """
@@ -1069,7 +1071,7 @@ class DatetimeIndex(Int64Index):
             return self._view_like(left_chunk)
 
     def _partial_date_slice(self, reso, parsed, use_lhs=True, use_rhs=True):
-        
+
         is_monotonic = self.is_monotonic
 
         if reso == 'year':
@@ -1236,7 +1238,7 @@ class DatetimeIndex(Int64Index):
                         start_loc = self._get_string_slice(start).start
                     else:
                         start_loc = 0
-                        
+
                     if end:
                         end_loc = self._get_string_slice(end).stop
                     else:
@@ -1254,7 +1256,7 @@ class DatetimeIndex(Int64Index):
                         start_loc = self._get_string_slice(start,use_rhs=False)
                     else:
                         start_loc = np.arange(len(self))
-                        
+
                     if end:
                         end_loc = self._get_string_slice(end,use_lhs=False)
                     else:

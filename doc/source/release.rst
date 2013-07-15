@@ -78,6 +78,7 @@ pandas 0.12
     to specify custom column names of the returned DataFrame (:issue:`3649`),
     thanks @hoechenberger. If ``var_name`` is not specified and ``dataframe.columns.name``
     is not None, then this will be used as the ``var_name`` (:issue:`4144`).
+    Also support for MultiIndex columns.
   - clipboard functions use pyperclip (no dependencies on Windows, alternative
     dependencies offered for Linux) (:issue:`3837`).
   - Plotting functions now raise a ``TypeError`` before trying to plot anything
@@ -105,6 +106,8 @@ pandas 0.12
   - Added ``layout`` keyword to DataFrame.hist() for more customizable layout (:issue:`4050`)
   - Timestamp.min and Timestamp.max now represent valid Timestamp instances instead
     of the default datetime.min and datetime.max (respectively), thanks @SleepingPills
+  - ``read_html`` now raises when no tables are found and BeautifulSoup==4.2.0
+    is detected (:issue:`4214`)
 
 **API Changes**
 
@@ -200,6 +203,7 @@ pandas 0.12
   - Fixed an esoteric excel reading bug, xlrd>= 0.9.0 now required for excel
     support. Should provide python3 support (for reading) which has been
     lacking. (:issue:`3164`)
+  - Disallow Series constructor called with MultiIndex which caused segfault (:issue:`4187`)
   - Allow unioning of date ranges sharing a timezone (:issue:`3491`)
   - Fix to_csv issue when having a large number of rows and ``NaT`` in some
     columns (:issue:`3437`)
@@ -329,6 +333,13 @@ pandas 0.12
   - Fixed bug in ``Series.where`` where broadcasting a single element input vector
     to the length of the series resulted in multiplying the value
     inside the input (:issue:`4192`)
+  - Fixed bug in plotting that wasn't raising on invalid colormap for
+    matplotlib 1.1.1 (:issue:`4215`)
+  - Fixed the legend displaying in ``DataFrame.plot(kind='kde')`` (:issue:`4216`)
+  - Fixed bug where Index slices weren't carrying the name attribute
+    (:issue:`4226`)
+  - Fixed bug in initializing ``DatetimeIndex`` with an array of strings
+    in a certain time zone (:issue:`4229`)
 
 pandas 0.11.0
 =============

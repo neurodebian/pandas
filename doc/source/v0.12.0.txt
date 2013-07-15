@@ -344,6 +344,9 @@ Other Enhancements
   - Timestamp.min and Timestamp.max now represent valid Timestamp instances instead
     of the default datetime.min and datetime.max (respectively), thanks @SleepingPills
 
+  - ``read_html`` now raises when no tables are found and BeautifulSoup==4.2.0
+    is detected (:issue:`4214`)
+
 Experimental Features
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -463,7 +466,14 @@ Bug Fixes
     argument in ``to_datetime`` (:issue:`4152`)
   - Fixed bug in ``PandasAutoDateLocator`` where ``invert_xaxis`` triggered
     incorrectly ``MilliSecondLocator``  (:issue:`3990`)
-    
+  - Fixed bug in plotting that wasn't raising on invalid colormap for
+    matplotlib 1.1.1 (:issue:`4215`)
+  - Fixed the legend displaying in ``DataFrame.plot(kind='kde')`` (:issue:`4216`)
+  - Fixed bug where Index slices weren't carrying the name attribute
+    (:issue:`4226`)
+  - Fixed bug in initializing ``DatetimeIndex`` with an array of strings
+    in a certain time zone (:issue:`4229`)
+
 See the :ref:`full release notes
 <release>` or issue tracker
 on GitHub for a complete list.
