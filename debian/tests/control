@@ -12,7 +12,9 @@ Depends: python-all,
          python-tk,
          python-tz,
          python-xlrd,
-         python-xlwt
+         python-xlwt,
+         python-bs4,
+         python-html5lib
 
 Tests: unittests3
 Depends: python3-all,
@@ -23,4 +25,5 @@ Depends: python3-all,
          python3-pandas,
          python3-scipy,
          python3-tk,
-         python3-tz
+         python3-tz,
+         python3-bs4

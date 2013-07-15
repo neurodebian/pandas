@@ -5,8 +5,11 @@ pandas (0.12.0~rc1+git43-g7b2eaa4-1) experimental; urgency=low
   * debian/control
     - dedented last "paragraph" to break it away from the 2nd one.
       Thanks Beatrice Torracca for the detailed report (Closes: #712260)
+  * debian/{,tests/}control
+    - added python{,3}-bs4, python-html5lib to Build-Depends for more
+      thorough testing
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 11 Jul 2013 11:01:21 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 15 Jul 2013 12:53:03 -0400
 
 pandas (0.11.0-2) unstable; urgency=low
 

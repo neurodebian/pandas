@@ -17,6 +17,8 @@ Build-Depends: debhelper (>= 7.0.50),
                python-tk,
                python-openpyxl, python-xlwt, python-xlrd,
                python-statsmodels,
+               python-bs4,
+               python-html5lib,
                python3-all-dev,
                python3-setuptools,
                cython3 (>= 0.17.1~) | cython (<< 0.17.1~),
@@ -26,7 +28,8 @@ Build-Depends: debhelper (>= 7.0.50),
                python3-sphinx (>= 1.0~),
                python3-nose,
                python-matplotlib (<< 1.2.0~) | python3-matplotlib,
-               python3-tk
+               python3-tk,
+               python3-bs4,
 X-Python-Version: >= 2.6
 X-Python3-Version: >= 3.2
 Standards-Version: 3.9.3
