@@ -1,4 +1,4 @@
-pandas (0.12.0~rc1+git43-g7b2eaa4-1) experimental; urgency=low
+pandas (0.12.0~rc1+git79-g50eff60-1) experimental; urgency=low
 
   * Fresh git snapshot of upstream candidate release. Experimental build
     to verify functioning across the ports.
