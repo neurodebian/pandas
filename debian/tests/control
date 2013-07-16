@@ -14,7 +14,7 @@ Depends: python-all,
          python-xlrd,
          python-xlwt,
          python-bs4,
-         python-html5lib
+         python-html5lib,
 
 Tests: unittests3
 Depends: python3-all,
