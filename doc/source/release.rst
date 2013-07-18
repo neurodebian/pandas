@@ -235,7 +235,8 @@ pandas 0.12
       names (:issue:`3873`)
     - Bug in non-unique indexing via ``iloc`` (:issue:`4017`); added ``takeable`` argument to
       ``reindex`` for location-based taking
-    - Allow non-unique indexing in series via ``.ix/.loc`` and ``__getitem`` (:issue:`4246)
+    - Allow non-unique indexing in series via ``.ix/.loc`` and ``__getitem__`` (:issue:`4246`)
+    - Fixed non-unique indexing memory allocation issue with ``.ix/.loc`` (:issue:`4280`)
 
   - Fixed bug in groupby with empty series referencing a variable before assignment. (:issue:`3510`)
   - Allow index name to be used in groupby for non MultiIndex (:issue:`4014`)
@@ -342,6 +343,8 @@ pandas 0.12
   - Fixed bug in initializing ``DatetimeIndex`` with an array of strings
     in a certain time zone (:issue:`4229`)
   - Fixed bug where html5lib wasn't being properly skipped (:issue:`4265`)
+  - Fixed bug where get_data_famafrench wasn't using the correct file edges
+    (:issue:`4281`)
 
 pandas 0.11.0
 =============
