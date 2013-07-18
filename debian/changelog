@@ -1,4 +1,4 @@
-pandas (0.12.0~rc1+git101-gd070a1f-1) experimental; urgency=low
+pandas (0.12.0~rc1+git112-gb79996c-1) experimental; urgency=low
 
   * Fresh git snapshot of upstream candidate release. Experimental build
     to verify functioning across the ports.
@@ -10,7 +10,7 @@ pandas (0.12.0~rc1+git101-gd070a1f-1) experimental; urgency=low
     - added python{,3}-bs4, python-html5lib to Build-Depends for more
       thorough testing
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 16 Jul 2013 21:13:32 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 18 Jul 2013 13:15:19 -0400
 
 pandas (0.11.0-2) unstable; urgency=low
 
