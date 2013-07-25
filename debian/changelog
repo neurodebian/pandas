@@ -4,8 +4,11 @@ pandas (0.12.0-1) unstable; urgency=low
     - should address failed tests on 32bit platforms
   * debian/patches
     - neurodebian: allow to build for jessie with outdated cython
+  * debian/control
+    - build for Python2 >= 2.7 due to some (probably temporary) incompatibilities
+      in tests with 2.6
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 24 Jul 2013 18:29:28 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 24 Jul 2013 23:29:03 -0400
 
 pandas (0.12.0~rc1+git127-gec8920a-1) experimental; urgency=low
 
