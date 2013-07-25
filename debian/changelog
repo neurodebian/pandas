@@ -2,6 +2,8 @@ pandas (0.12.0-1) unstable; urgency=low
 
   * New upstream release:
     - should address failed tests on 32bit platforms
+  * debian/patches
+    - neurodebian: allow to build for jessie with outdated cython
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 24 Jul 2013 18:29:28 -0400
 
