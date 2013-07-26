@@ -7,5 +7,5 @@ cd "$ADTTMP"
 
 for py in $pys; do
 	echo "=== python$py ==="
-	nosetests-$py -a '!network' pandas 2>&1
+	xvfb-run nosetests-$py -a '!network' -v pandas 2>&1
 done
