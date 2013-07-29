@@ -15,6 +15,7 @@ Depends: python-all,
          python-xlwt,
          python-bs4,
          python-html5lib,
+         xauth,
          xvfb
 
 Tests: unittests3
@@ -28,4 +29,5 @@ Depends: python3-all,
          python3-tk,
          python3-tz,
          python3-bs4,
+         xauth,
          xvfb
