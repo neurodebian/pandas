@@ -6,6 +6,6 @@ pys="$(py3versions -r 2>/dev/null)"
 cd "$ADTTMP"
 
 for py in $pys; do
-	echo "=== python$py ==="
-	$py /usr/bin/nosetests3 -a '!network' pandas 2>&1
+	echo "=== $py ==="
+	xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" $py /usr/bin/nosetests3 -a '!network' -v pandas 2>&1
 done

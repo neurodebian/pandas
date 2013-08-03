@@ -1,3 +1,13 @@
+pandas (0.12.0-2) UNRELEASED; urgency=low
+
+  * DEP-8 tests improvements:
+    - Use Xvfb for running tests.
+    - Increase verbosity using -v flag.
+    - Fix printing interpreter version in unittests3.
+  * Fix indentaion in debian/control.
+
+ -- Dmitry Shachnev <mitya57@gmail.com>  Fri, 26 Jul 2013 09:44:29 +0400
+
 pandas (0.12.0-1) unstable; urgency=low
 
   * New upstream release:
