@@ -22,10 +22,11 @@ UVER := $(shell LC_ALL=C dpkg-parsechangelog | awk '/^Version:/{print $$2;}' | s
 MIN_CYTHONVER = 0.17.3
 
 # Some unittests might need to be excluded for different Python versions
-EXCLUDE_TESTS2 := 
-EXCLUDE_TESTS3.2 := 
+EXCLUDE_TESTS := --exclude test_bar_log
+EXCLUDE_TESTS2 :=
+EXCLUDE_TESTS3.2 :=
 #--exclude "test_bootstrap_plot"
-EXCLUDE_TESTS3.3 := 
+EXCLUDE_TESTS3.3 :=
 #--exclude "test_(bootstrap_plot|quoting|cant_compare_tz_naive_w_aware|more_flexible_frame_multi_function|yahoo)"
 
 # MPLVER := $(shell dpkg -l python-matplotlib | awk '/^ii/{print $$3;}' || echo 0)
@@ -88,7 +89,7 @@ ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 	export PYTHONPATH=`/bin/ls -d $$PWD/debian/tmp/usr/lib/python$$PY/*/`; \
 	export MPLCONFIGDIR=$(CURDIR)/build HOME=$(CURDIR)/build; \
 	python$* ci/print_versions.py; \
-    cd build/; python$* /usr/bin/nosetests -s -v -a '!network' $(EXCLUDE_TESTS$*) pandas;
+    cd build/; python$* /usr/bin/nosetests -s -v -a '!network' $(EXCLUDE_TESTS) $(EXCLUDE_TESTS$*) pandas;
 else
 	: # Skip unittests due to nocheck
 endif

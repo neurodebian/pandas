@@ -13,9 +13,14 @@ pandas (0.12.0-2) unstable; urgency=low
       python3 support since now we have python3-matplotlib in sid
   * debian/copyright
     - go through reported missing copyright/license statements (Closes:
-      #700564) Thanks Luca Falavigna for the report.
+      #700564) Thanks Luca Falavigna for the report
+  * debian/rules,patches
+    - exclude test test_bar_log due to incompatibility with matplotlib 1.3.0 (test
+      adjusted upstream and would be re-enabled for the new release).
+    - debian/patches/changeset_952c5f0bc433622d21df20ed761ee4cb728370eb.diff
+      adds matplotlib 1.3.0 compatibility
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 09 Sep 2013 14:18:11 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Sat, 14 Sep 2013 20:02:58 -0400
 
 pandas (0.12.0-1) unstable; urgency=low
 
