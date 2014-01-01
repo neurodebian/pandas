@@ -2,11 +2,16 @@
 
 import numpy as np
 
+from pandas import compat
+from pandas.compat import u
+
 from pandas.core.algorithms import factorize
 from pandas.core.base import PandasObject
 from pandas.core.index import Index
 import pandas.core.common as com
-from pandas.core.frame import DataFrame
+from pandas.util.terminal import get_terminal_size
+from pandas.core.config import get_option
+from pandas.core import format as fmt
 
 
 def _cat_compare_op(op):
@@ -26,7 +31,9 @@ def _cat_compare_op(op):
 
     return f
 
+
 class Categorical(PandasObject):
+
     """
     Represents a categorical variable in classic R / S-plus fashion
 
@@ -68,6 +75,7 @@ class Categorical(PandasObject):
     array(['a', 'b', 'c', 'a', 'b', 'c'], dtype=object)
     Levels (3): Index(['a', 'b', 'c'], dtype=object)
     """
+
     def __init__(self, labels, levels=None, name=None):
         if levels is None:
             if name is None:
@@ -134,20 +142,55 @@ class Categorical(PandasObject):
     def __len__(self):
         return len(self.labels)
 
-    def __unicode__(self):
-        temp = 'Categorical: %s\n%s\n%s'
-        values = com.pprint_thing(np.asarray(self))
-        levheader = 'Levels (%d): ' % len(self.levels)
-        levstring = np.array_repr(self.levels,
-                                  max_line_width=60)
+    def _tidy_repr(self, max_vals=20):
+        num = max_vals // 2
+        head = self[:num]._get_repr(length=False, name=False, footer=False)
+        tail = self[-(max_vals - num):]._get_repr(length=False,
+                                                  name=False,
+                                                  footer=False)
 
+        result = '%s\n...\n%s' % (head, tail)
+        # TODO: tidy_repr for footer since there may be a ton of levels?
+        result = '%s\n%s' % (result, self._repr_footer())
+
+        return compat.text_type(result)
+
+    def _repr_footer(self):
+        levheader = 'Levels (%d): ' % len(self.levels)
+        # TODO: should max_line_width respect a setting?
+        levstring = np.array_repr(self.levels, max_line_width=60)
         indent = ' ' * (levstring.find('[') + len(levheader) + 1)
         lines = levstring.split('\n')
         levstring = '\n'.join([lines[0]] +
                               [indent + x.lstrip() for x in lines[1:]])
-        name = '' if self.name is None else self.name
-        return temp % (name, values, levheader + levstring)
 
+        namestr = "Name: %s, " % self.name if self.name is not None else ""
+        return u('%s\n%sLength: %d' % (levheader + levstring, namestr,
+                                       len(self)))
+
+    def _get_repr(self, name=False, length=True, na_rep='NaN', footer=True):
+        formatter = fmt.CategoricalFormatter(self, name=name,
+                                             length=length, na_rep=na_rep,
+                                             footer=footer)
+        result = formatter.to_string()
+        return compat.text_type(result)
+
+    def __unicode__(self):
+        width, height = get_terminal_size()
+        max_rows = (height if get_option("display.max_rows") == 0
+                    else get_option("display.max_rows"))
+        if len(self.labels) > (max_rows or 1000):
+            result = self._tidy_repr(min(30, max_rows) - 4)
+        elif len(self.labels) > 0:
+            result = self._get_repr(length=len(self) > 50,
+                                    name=True)
+        else:
+            result = 'Categorical([], %s' % self._get_repr(name=True,
+                                                           length=False,
+                                                           footer=True,
+                                                           )
+
+        return result
 
     def __getitem__(self, key):
         if isinstance(key, (int, np.integer)):
@@ -181,24 +224,13 @@ class Categorical(PandasObject):
         """
         Returns a dataframe with frequency and counts by level.
         """
-        #Hack?
+        # Hack?
+        from pandas.core.frame import DataFrame
         grouped = DataFrame(self.labels).groupby(0)
         counts = grouped.count().values.squeeze()
-        freqs = counts/float(counts.sum())
-        return DataFrame.from_dict(dict(
-                                    counts=counts,
-                                    freqs=freqs,
-                                    levels=self.levels)).set_index('levels')
-
-
-class Factor(Categorical):
-    def __init__(self, labels, levels=None, name=None):
-        from warnings import warn
-        warn("Factor is deprecated. Use Categorical instead", FutureWarning)
-        super(Factor, self).__init__(labels, levels, name)
-
-    @classmethod
-    def from_array(cls, data):
-        from warnings import warn
-        warn("Factor is deprecated. Use Categorical instead", FutureWarning)
-        return super(Factor, cls).from_array(data)
+        freqs = counts / float(counts.sum())
+        return DataFrame.from_dict({
+            'counts': counts,
+            'freqs': freqs,
+            'levels': self.levels
+        }).set_index('levels')

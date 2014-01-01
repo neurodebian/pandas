@@ -9,17 +9,16 @@
    import random
    import os
    np.random.seed(123456)
-   from pandas import *
+   from pandas import options
    import pandas as pd
-   randn = np.random.randn
-   randint = np.random.randint
    np.set_printoptions(precision=4, suppress=True)
    options.display.mpl_style='default'
+   options.display.max_rows=15
 
    #### portions of this were borrowed from the
-   #### Pandas cheatsheet  
-   #### created during the PyData Workshop-Sprint 2012 
-   #### Hannah Chen, Henry Chow, Eric Cox, Robert Mauriello 
+   #### Pandas cheatsheet
+   #### created during the PyData Workshop-Sprint 2012
+   #### Hannah Chen, Henry Chow, Eric Cox, Robert Mauriello
 
 
 ********************
@@ -35,13 +34,14 @@ Customarily, we import as follows
 
    import pandas as pd
    import numpy as np
+   import matplotlib.pyplot as plt
 
 Object Creation
 ---------------
 
 See the :ref:`Data Structure Intro section <dsintro>`
 
-Creating a ``Series`` by passing a list of values, letting pandas create a default 
+Creating a ``Series`` by passing a list of values, letting pandas create a default
 integer index
 
 .. ipython:: python
@@ -62,10 +62,10 @@ Creating a ``DataFrame`` by passing a dict of objects that can be converted to s
 
 .. ipython:: python
 
-   df2 = pd.DataFrame({ 'A' : 1., 
-                        'B' : pd.Timestamp('20130102'), 
-                        'C' : pd.Series(1,index=range(4),dtype='float32'),
-                        'D' : np.array([3] * 4,dtype='int32'), 
+   df2 = pd.DataFrame({ 'A' : 1.,
+                        'B' : pd.Timestamp('20130102'),
+                        'C' : pd.Series(1,index=list(range(4)),dtype='float32'),
+                        'D' : np.array([3] * 4,dtype='int32'),
                         'E' : 'foo' })
    df2
 
@@ -74,6 +74,43 @@ Having specific :ref:`dtypes <basics.dtypes>`
 .. ipython:: python
 
    df2.dtypes
+
+If you're using IPython, tab completion for column names (as well as public
+attributes) is automatically enabled. Here's a subset of the attributes that
+will be completed:
+
+.. ipython::
+
+   @verbatim
+   In [1]: df2.<TAB>
+
+   df2.A                  df2.boxplot
+   df2.abs                df2.C
+   df2.add                df2.clip
+   df2.add_prefix         df2.clip_lower
+   df2.add_suffix         df2.clip_upper
+   df2.align              df2.columns
+   df2.all                df2.combine
+   df2.any                df2.combineAdd
+   df2.append             df2.combine_first
+   df2.apply              df2.combineMult
+   df2.applymap           df2.compound
+   df2.as_blocks          df2.consolidate
+   df2.asfreq             df2.convert_objects
+   df2.as_matrix          df2.copy
+   df2.astype             df2.corr
+   df2.at                 df2.corrwith
+   df2.at_time            df2.count
+   df2.axes               df2.cov
+   df2.B                  df2.cummax
+   df2.between_time       df2.cummin
+   df2.bfill              df2.cumprod
+   df2.blocks             df2.cumsum
+   df2.bool               df2.D
+
+As you can see, the columns ``A``, ``B``, ``C``, and ``D`` are automatically
+tab completed. ``E`` is there as well; the rest of the attributes have been
+truncated for brevity.
 
 Viewing Data
 ------------
@@ -122,7 +159,7 @@ Sorting by values
 Selection
 ---------
 
-.. note:: 
+.. note::
 
    While standard Python / Numpy expressions for selecting and setting are
    intuitive and come in handy for interactive work, for production code, we
@@ -247,7 +284,7 @@ error.
     x[4:10]
     x[8:10]
 
-Pandas will detect this and raise ``IndexError``, rather than return an empty 
+Pandas will detect this and raise ``IndexError``, rather than return an empty
 structure.
 
 ::
@@ -270,7 +307,6 @@ A ``where`` operation for getting.
 
    df[df > 0]
 
-
 Setting
 ~~~~~~~
 
@@ -279,7 +315,7 @@ by the indexes
 
 .. ipython:: python
 
-   s1 = pd.Series([1,2,3,4,5,6],index=date_range('20130102',periods=6))
+   s1 = pd.Series([1,2,3,4,5,6],index=pd.date_range('20130102',periods=6))
    s1
    df['F'] = s1
 
@@ -400,7 +436,7 @@ See more at :ref:`Histogramming and Discretization <basics.discretization>`
 
 .. ipython:: python
 
-   s = Series(np.random.randint(0,7,size=10))
+   s = pd.Series(np.random.randint(0,7,size=10))
    s
    s.value_counts()
 
@@ -411,7 +447,7 @@ See more at :ref:`Vectorized String Methods <basics.string_methods>`
 
 .. ipython:: python
 
-   s = Series(['A', 'B', 'C', 'Aaba', 'Baca', np.nan, 'CABA', 'dog', 'cat'])
+   s = pd.Series(['A', 'B', 'C', 'Aaba', 'Baca', np.nan, 'CABA', 'dog', 'cat'])
    s.str.lower()
 
 Merge
@@ -427,7 +463,7 @@ operations.
 
 See the :ref:`Merging section <merging>`
 
-Concatenating pandas objects together 
+Concatenating pandas objects together
 
 .. ipython:: python
 
@@ -437,7 +473,7 @@ Concatenating pandas objects together
    # break it into pieces
    pieces = [df[:3], df[3:7], df[7:]]
 
-   concat(pieces)
+   pd.concat(pieces)
 
 Join
 ~~~~
@@ -450,7 +486,7 @@ SQL style merges. See the :ref:`Database style joining <merging.join>`
    right = pd.DataFrame({'key': ['foo', 'foo'], 'rval': [4, 5]})
    left
    right
-   merge(left, right, on='key')
+   pd.merge(left, right, on='key')
 
 Append
 ~~~~~~
@@ -483,7 +519,8 @@ See the :ref:`Grouping section <groupby>`
                             'foo', 'bar', 'foo', 'foo'],
                       'B' : ['one', 'one', 'two', 'three',
                             'two', 'two', 'one', 'three'],
-                      'C' : randn(8), 'D' : randn(8)})
+                      'C' : np.random.randn(8),
+                      'D' : np.random.randn(8)})
    df
 
 Grouping and then applying a function ``sum`` to the resulting groups.
@@ -492,7 +529,7 @@ Grouping and then applying a function ``sum`` to the resulting groups.
 
    df.groupby('A').sum()
 
-Grouping by multiple columns forms a hierarchical index, which we then apply 
+Grouping by multiple columns forms a hierarchical index, which we then apply
 the function.
 
 .. ipython:: python
@@ -510,12 +547,12 @@ Stack
 
 .. ipython:: python
 
-   tuples = zip(*[['bar', 'bar', 'baz', 'baz',
-                   'foo', 'foo', 'qux', 'qux'],
-                  ['one', 'two', 'one', 'two',
-                   'one', 'two', 'one', 'two']])
+   tuples = list(zip(*[['bar', 'bar', 'baz', 'baz',
+                        'foo', 'foo', 'qux', 'qux'],
+                       ['one', 'two', 'one', 'two',
+                        'one', 'two', 'one', 'two']]))
    index = pd.MultiIndex.from_tuples(tuples, names=['first', 'second'])
-   df = pd.DataFrame(randn(8, 2), index=index, columns=['A', 'B'])
+   df = pd.DataFrame(np.random.randn(8, 2), index=index, columns=['A', 'B'])
    df2 = df[:4]
    df2
 
@@ -542,18 +579,18 @@ See the section on :ref:`Pivot Tables <reshaping.pivot>`.
 
 .. ipython:: python
 
-   df = DataFrame({'A' : ['one', 'one', 'two', 'three'] * 3,
-                   'B' : ['A', 'B', 'C'] * 4,
-                   'C' : ['foo', 'foo', 'foo', 'bar', 'bar', 'bar'] * 2,
-                   'D' : np.random.randn(12),
-                   'E' : np.random.randn(12)})
+   df = pd.DataFrame({'A' : ['one', 'one', 'two', 'three'] * 3,
+                      'B' : ['A', 'B', 'C'] * 4,
+                      'C' : ['foo', 'foo', 'foo', 'bar', 'bar', 'bar'] * 2,
+                      'D' : np.random.randn(12),
+                      'E' : np.random.randn(12)})
    df
 
 We can produce pivot tables from this data very easily:
 
 .. ipython:: python
 
-   pivot_table(df, values='D', rows=['A', 'B'], cols=['C'])
+   pd.pivot_table(df, values='D', rows=['A', 'B'], cols=['C'])
 
 
 Time Series
@@ -567,7 +604,7 @@ financial applications. See the :ref:`Time Series section <timeseries>`
 .. ipython:: python
 
    rng = pd.date_range('1/1/2012', periods=100, freq='S')
-   ts = pd.Series(randint(0, 500, len(rng)), index=rng)
+   ts = pd.Series(np.random.randint(0, 500, len(rng)), index=rng)
    ts.resample('5Min', how='sum')
 
 Time zone representation
@@ -575,7 +612,8 @@ Time zone representation
 .. ipython:: python
 
    rng = pd.date_range('3/6/2012 00:00', periods=5, freq='D')
-   ts = pd.Series(randn(len(rng)), rng)
+   ts = pd.Series(np.random.randn(len(rng)), rng)
+   ts
    ts_utc = ts.tz_localize('UTC')
    ts_utc
 
@@ -590,7 +628,7 @@ Converting between time span representations
 .. ipython:: python
 
    rng = pd.date_range('1/1/2012', periods=5, freq='M')
-   ts = pd.Series(randn(len(rng)), index=rng)
+   ts = pd.Series(np.random.randn(len(rng)), index=rng)
    ts
    ps = ts.to_period()
    ps
@@ -603,8 +641,8 @@ the quarter end:
 
 .. ipython:: python
 
-   prng = period_range('1990Q1', '2000Q4', freq='Q-NOV')
-   ts = Series(randn(len(prng)), prng)
+   prng = pd.period_range('1990Q1', '2000Q4', freq='Q-NOV')
+   ts = pd.Series(np.random.randn(len(prng)), prng)
    ts.index = (prng.asfreq('M', 'e') + 1).asfreq('H', 's') + 9
    ts.head()
 
@@ -619,11 +657,12 @@ Plotting
 
    import matplotlib.pyplot as plt
    plt.close('all')
+   from pandas import options
    options.display.mpl_style='default'
 
 .. ipython:: python
 
-   ts = pd.Series(randn(1000), index=pd.date_range('1/1/2000', periods=1000))
+   ts = pd.Series(np.random.randn(1000), index=pd.date_range('1/1/2000', periods=1000))
    ts = ts.cumsum()
 
    @savefig series_plot_basic.png
@@ -633,7 +672,7 @@ On DataFrame, ``plot`` is a convenience to plot all of the columns with labels:
 
 .. ipython:: python
 
-   df = pd.DataFrame(randn(1000, 4), index=ts.index,
+   df = pd.DataFrame(np.random.randn(1000, 4), index=ts.index,
                      columns=['A', 'B', 'C', 'D'])
    df = df.cumsum()
 
@@ -678,7 +717,7 @@ Reading from a HDF5 Store
 
 .. ipython:: python
 
-   read_hdf('foo.h5','df')
+   pd.read_hdf('foo.h5','df')
 
 .. ipython:: python
    :suppress:
@@ -694,15 +733,32 @@ Writing to an excel file
 
 .. ipython:: python
 
-   df.to_excel('foo.xlsx', sheet_name='sheet1')
+   df.to_excel('foo.xlsx', sheet_name='Sheet1')
 
 Reading from an excel file
 
 .. ipython:: python
 
-   read_excel('foo.xlsx', 'sheet1', index_col=None, na_values=['NA'])
+   pd.read_excel('foo.xlsx', 'Sheet1', index_col=None, na_values=['NA'])
 
 .. ipython:: python
    :suppress:
 
    os.remove('foo.xlsx')
+
+Gotchas
+-------
+
+If you are trying an operation and you see an exception like:
+
+.. code-block:: python
+
+    >>> if pd.Series([False, True, False]):
+        print("I was true")
+    Traceback
+        ...
+    ValueError: The truth value of an array is ambiguous. Use a.empty, a.any() or a.all().
+
+See :ref:`Comparisons<basics.compare>` for an explanation and what to do.
+
+See :ref:`Gotchas<gotchas>` as well.

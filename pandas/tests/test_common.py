@@ -1,22 +1,29 @@
 from datetime import datetime
-import sys
 import re
 
 import nose
-import unittest
+from nose.tools import assert_equal
+import numpy as np
+from pandas.tslib import iNaT
 
 from pandas import Series, DataFrame, date_range, DatetimeIndex, Timestamp
+from pandas import compat
+from pandas.compat import range, long, lrange, lmap, u
 from pandas.core.common import notnull, isnull
 import pandas.core.common as com
 import pandas.util.testing as tm
 import pandas.core.config as cf
-
-import numpy as np
-
-from pandas.tslib import iNaT
-from pandas.util import py3compat
+from pandas.core import nanops
 
 _multiprocess_can_split_ = True
+
+
+def test_mut_exclusive():
+    msg = "mutually exclusive arguments: '[ab]' and '[ab]'"
+    with tm.assertRaisesRegexp(TypeError, msg):
+        com._mut_exclusive(a=1, b=2)
+    assert com._mut_exclusive(a=1, b=None) == 1
+    assert com._mut_exclusive(major=None, major_axis=None) is None
 
 
 def test_is_sequence():
@@ -24,7 +31,7 @@ def test_is_sequence():
     assert(is_seq((1, 2)))
     assert(is_seq([1, 2]))
     assert(not is_seq("abcd"))
-    assert(not is_seq(u"abcd"))
+    assert(not is_seq(u("abcd")))
     assert(not is_seq(np.int64))
 
     class A(object):
@@ -32,6 +39,7 @@ def test_is_sequence():
             return 1
 
     assert(not is_seq(A()))
+
 
 def test_notnull():
     assert notnull(1.)
@@ -55,11 +63,9 @@ def test_notnull():
         assert result.sum() == 2
 
     with cf.option_context("mode.use_inf_as_null", False):
-        float_series = Series(np.random.randn(5))
-        obj_series = Series(np.random.randn(5), dtype=object)
-        assert(isinstance(notnull(float_series), Series))
-        assert(isinstance(notnull(obj_series), Series))
-
+        for s in [tm.makeFloatSeries(),tm.makeStringSeries(),
+                  tm.makeObjectSeries(),tm.makeTimeSeries(),tm.makePeriodSeries()]:
+            assert(isinstance(isnull(s), Series))
 
 def test_isnull():
     assert not isnull(1.)
@@ -68,18 +74,28 @@ def test_isnull():
     assert not isnull(np.inf)
     assert not isnull(-np.inf)
 
-    float_series = Series(np.random.randn(5))
-    obj_series = Series(np.random.randn(5), dtype=object)
-    assert(isinstance(isnull(float_series), Series))
-    assert(isinstance(isnull(obj_series), Series))
+    # series
+    for s in [tm.makeFloatSeries(),tm.makeStringSeries(),
+              tm.makeObjectSeries(),tm.makeTimeSeries(),tm.makePeriodSeries()]:
+            assert(isinstance(isnull(s), Series))
 
-    # call on DataFrame
-    df = DataFrame(np.random.randn(10, 5))
-    df['foo'] = 'bar'
-    result = isnull(df)
-    expected = result.apply(isnull)
-    tm.assert_frame_equal(result, expected)
+    # frame
+    for df in [tm.makeTimeDataFrame(),tm.makePeriodFrame(),tm.makeMixedDataFrame()]:
+        result = isnull(df)
+        expected = df.apply(isnull)
+        tm.assert_frame_equal(result, expected)
 
+    # panel
+    for p in [ tm.makePanel(), tm.makePeriodPanel(), tm.add_nans(tm.makePanel()) ]:
+        result = isnull(p)
+        expected = p.apply(isnull)
+        tm.assert_panel_equal(result, expected)
+
+    # panel 4d
+    for p in [ tm.makePanel4D(), tm.add_nans_panel4d(tm.makePanel4D()) ]:
+        result = isnull(p)
+        expected = p.apply(isnull)
+        tm.assert_panel4d_equal(result, expected)
 
 def test_isnull_lists():
     result = isnull([[False]])
@@ -94,7 +110,7 @@ def test_isnull_lists():
     result = isnull(['foo', 'bar'])
     assert(not result.any())
 
-    result = isnull([u'foo', u'bar'])
+    result = isnull([u('foo'), u('bar')])
     assert(not result.any())
 
 
@@ -112,28 +128,61 @@ def test_isnull_datetime():
     assert(mask[0])
     assert(not mask[1:].any())
 
+def test_downcast_conv():
+    # test downcasting
+
+    arr = np.array([8.5, 8.6, 8.7, 8.8, 8.9999999999995])
+    result = com._possibly_downcast_to_dtype(arr, 'infer')
+    assert (np.array_equal(result, arr))
+
+    arr = np.array([8., 8., 8., 8., 8.9999999999995])
+    result = com._possibly_downcast_to_dtype(arr, 'infer')
+    expected = np.array([8, 8, 8, 8, 9])
+    assert (np.array_equal(result, expected))
+
+    arr = np.array([8., 8., 8., 8., 9.0000000000005])
+    result = com._possibly_downcast_to_dtype(arr, 'infer')
+    expected = np.array([8, 8, 8, 8, 9])
+    assert (np.array_equal(result, expected))
+
+    # conversions
+
+    expected = np.array([1,2])
+    for dtype in [np.float64,object,np.int64]:
+        arr = np.array([1.0,2.0],dtype=dtype)
+        result = com._possibly_downcast_to_dtype(arr,'infer')
+        tm.assert_almost_equal(result, expected)
+
+    expected = np.array([1.0,2.0,np.nan])
+    for dtype in [np.float64,object]:
+        arr = np.array([1.0,2.0,np.nan],dtype=dtype)
+        result = com._possibly_downcast_to_dtype(arr,'infer')
+        tm.assert_almost_equal(result, expected)
+
 def test_datetimeindex_from_empty_datetime64_array():
     for unit in [ 'ms', 'us', 'ns' ]:
         idx = DatetimeIndex(np.array([], dtype='datetime64[%s]' % unit))
         assert(len(idx) == 0)
 
+
 def test_nan_to_nat_conversions():
 
     df = DataFrame(dict({
-        'A' : np.asarray(range(10),dtype='float64'),
+        'A' : np.asarray(lrange(10),dtype='float64'),
         'B' : Timestamp('20010101') }))
     df.iloc[3:6,:] = np.nan
     result = df.loc[4,'B'].value
     assert(result == iNaT)
 
-    values = df['B'].values
-    result, changed = com._maybe_upcast_indexer(values,tuple([slice(8,9)]),np.nan)
-    assert(isnull(result[8]))
+    s = df['B'].copy()
+    s._data = s._data.setitem(tuple([slice(8,9)]),np.nan)
+    assert(isnull(s[8]))
 
     # numpy < 1.7.0 is wrong
     from distutils.version import LooseVersion
     if LooseVersion(np.__version__) >= '1.7.0':
-        assert(result[8] == np.datetime64('NaT'))
+        assert(s[8].value == np.datetime64('NaT').astype(np.int64))
+
 
 def test_any_none():
     assert(com._any_none(1, 2, 3, None))
@@ -144,6 +193,21 @@ def test_all_not_none():
     assert(com._all_not_none(1, 2, 3, 4))
     assert(not com._all_not_none(1, 2, 3, None))
     assert(not com._all_not_none(None, None, None, None))
+
+
+def test_repr_binary_type():
+    import string
+    letters = string.ascii_letters
+    btype = compat.binary_type
+    try:
+        raw = btype(letters, encoding=cf.get_option('display.encoding'))
+    except TypeError:
+        raw = btype(letters)
+    b = compat.text_type(compat.bytes_to_str(raw))
+    res = com.pprint_thing(b, quote_strings=True)
+    assert_equal(res, repr(b))
+    res = com.pprint_thing(b, quote_strings=False)
+    assert_equal(res, b)
 
 
 def test_rands():
@@ -176,7 +240,7 @@ def test_iterpairs():
 def test_split_ranges():
     def _bin(x, width):
         "return int(x) as a base2 string of given width"
-        return ''.join(str((x >> i) & 1) for i in xrange(width - 1, -1, -1))
+        return ''.join(str((x >> i) & 1) for i in range(width - 1, -1, -1))
 
     def test_locs(mask):
         nfalse = sum(np.array(mask) == 0)
@@ -193,7 +257,7 @@ def test_split_ranges():
     # exhaustively test all possible mask sequences of length 8
     ncols = 8
     for i in range(2 ** ncols):
-        cols = map(int, list(_bin(i, ncols)))  # count up in base2
+        cols = lmap(int, list(_bin(i, ncols)))  # count up in base2
         mask = [cols[i] == 1 for i in range(len(cols))]
         test_locs(mask)
 
@@ -284,6 +348,55 @@ def test_ensure_int32():
     result = com._ensure_int32(values)
     assert(result.dtype == np.int32)
 
+
+class TestEnsureNumeric(tm.TestCase):
+    def test_numeric_values(self):
+        # Test integer
+        self.assertEqual(nanops._ensure_numeric(1), 1, 'Failed for int')
+        # Test float
+        self.assertEqual(nanops._ensure_numeric(1.1), 1.1, 'Failed for float')
+        # Test complex
+        self.assertEqual(nanops._ensure_numeric(1 + 2j), 1 + 2j,
+                         'Failed for complex')
+
+    def test_ndarray(self):
+        # Test numeric ndarray
+        values = np.array([1, 2, 3])
+        self.assertTrue(np.allclose(nanops._ensure_numeric(values), values),
+                        'Failed for numeric ndarray')
+
+        # Test object ndarray
+        o_values = values.astype(object)
+        self.assertTrue(np.allclose(nanops._ensure_numeric(o_values), values),
+                        'Failed for object ndarray')
+
+        # Test convertible string ndarray
+        s_values = np.array(['1', '2', '3'], dtype=object)
+        self.assertTrue(np.allclose(nanops._ensure_numeric(s_values), values),
+                        'Failed for convertible string ndarray')
+
+        # Test non-convertible string ndarray
+        s_values = np.array(['foo', 'bar', 'baz'], dtype=object)
+        self.assertRaises(ValueError,
+                          lambda: nanops._ensure_numeric(s_values))
+
+    def test_convertable_values(self):
+        self.assertTrue(np.allclose(nanops._ensure_numeric('1'), 1.0),
+                        'Failed for convertible integer string')
+        self.assertTrue(np.allclose(nanops._ensure_numeric('1.1'), 1.1),
+                        'Failed for convertible float string')
+        self.assertTrue(np.allclose(nanops._ensure_numeric('1+1j'), 1 + 1j),
+                        'Failed for convertible complex string')
+
+    def test_non_convertable_values(self):
+        self.assertRaises(TypeError,
+                          lambda: nanops._ensure_numeric('foo'))
+        self.assertRaises(TypeError,
+                          lambda: nanops._ensure_numeric({}))
+        self.assertRaises(TypeError,
+                          lambda: nanops._ensure_numeric([]))
+
+
 def test_ensure_platform_int():
 
     # verify that when we create certain types of indices
@@ -311,7 +424,7 @@ def test_ensure_platform_int():
 #     On Python 2, if sys.stdin.encoding is None (IPython with zmq frontend)
 #     common.console_encode should encode things as utf-8.
 #     """
-#     if py3compat.PY3:
+#     if compat.PY3:
 #         raise nose.SkipTest
 
 #     with tm.stdin_encoding(encoding=None):
@@ -332,8 +445,8 @@ def test_is_re():
 
 
 def test_is_recompilable():
-    passes = (r'a', u'x', r'asdf', re.compile('adsf'), ur'\u2233\s*',
-              re.compile(r''))
+    passes = (r'a', u('x'), r'asdf', re.compile('adsf'),
+              u(r'\u2233\s*'), re.compile(r''))
     fails = 1, [], object()
 
     for p in passes:
@@ -343,7 +456,9 @@ def test_is_recompilable():
         assert not com.is_re_compilable(f)
 
 
-class TestTake(unittest.TestCase):
+class TestTake(tm.TestCase):
+    # standard incompatible fill error
+    fill_error = re.compile("Incompatible type for fill_value")
 
     _multiprocess_can_split_ = True
 
@@ -365,8 +480,8 @@ class TestTake(unittest.TestCase):
                 expected[3] = np.nan
                 tm.assert_almost_equal(out, expected)
             else:
-                self.assertRaises(Exception, com.take_1d, data,
-                                  indexer, out=out)
+                with tm.assertRaisesRegexp(TypeError, self.fill_error):
+                    com.take_1d(data, indexer, out=out)
                 # no exception o/w
                 data.take(indexer, out=out)
 
@@ -450,13 +565,11 @@ class TestTake(unittest.TestCase):
                 tm.assert_almost_equal(out0, expected0)
                 tm.assert_almost_equal(out1, expected1)
             else:
-                self.assertRaises(Exception, com.take_nd, data,
-                                  indexer, out=out0, axis=0)
-                self.assertRaises(Exception, com.take_nd, data,
-                                  indexer, out=out1, axis=1)
-                # no exception o/w
-                data.take(indexer, out=out0, axis=0)
-                data.take(indexer, out=out1, axis=1)
+                for i, out in enumerate([out0, out1]):
+                    with tm.assertRaisesRegexp(TypeError, self.fill_error):
+                        com.take_nd(data, indexer, out=out, axis=i)
+                    # no exception o/w
+                    data.take(indexer, out=out, axis=i)
 
         _test_dtype(np.float64, True)
         _test_dtype(np.float32, True)
@@ -556,16 +669,11 @@ class TestTake(unittest.TestCase):
                 tm.assert_almost_equal(out1, expected1)
                 tm.assert_almost_equal(out2, expected2)
             else:
-                self.assertRaises(Exception, com.take_nd, data,
-                                  indexer, out=out0, axis=0)
-                self.assertRaises(Exception, com.take_nd, data,
-                                  indexer, out=out1, axis=1)
-                self.assertRaises(Exception, com.take_nd, data,
-                                  indexer, out=out2, axis=2)
-                # no exception o/w
-                data.take(indexer, out=out0, axis=0)
-                data.take(indexer, out=out1, axis=1)
-                data.take(indexer, out=out2, axis=2)
+                for i, out in enumerate([out0, out1, out2]):
+                    with tm.assertRaisesRegexp(TypeError, self.fill_error):
+                        com.take_nd(data, indexer, out=out, axis=i)
+                    # no exception o/w
+                    data.take(indexer, out=out, axis=i)
 
         _test_dtype(np.float64, True)
         _test_dtype(np.float32, True)
@@ -720,7 +828,7 @@ class TestTake(unittest.TestCase):
 
     def test_2d_datetime64(self):
         # 2005/01/01 - 2006/01/01
-        arr = np.random.randint(11045376L, 11360736L, (5,3))*100000000000
+        arr = np.random.randint(long(11045376), long(11360736), (5,3))*100000000000
         arr = arr.view(dtype='datetime64[ns]')
         indexer = [0, 2, -1, 1, -1]
 
@@ -765,6 +873,7 @@ class TestTake(unittest.TestCase):
         expected = arr.take(indexer, axis=1)
         expected[:, [2, 4]] = datetime(2007, 1, 1)
         tm.assert_almost_equal(result, expected)
+
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],

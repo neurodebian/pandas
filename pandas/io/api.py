@@ -10,4 +10,5 @@ from pandas.io.json import read_json
 from pandas.io.html import read_html
 from pandas.io.sql import read_sql
 from pandas.io.stata import read_stata
-from pandas.io.pickle import read_pickle
+from pandas.io.pickle import read_pickle, to_pickle
+from pandas.io.packers import read_msgpack, to_msgpack

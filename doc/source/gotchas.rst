@@ -7,12 +7,86 @@
    import os
    import numpy as np
    from pandas import *
+   options.display.max_rows=15
    randn = np.random.randn
    np.set_printoptions(precision=4, suppress=True)
+   from pandas.compat import lrange
 
 *******************
 Caveats and Gotchas
 *******************
+
+.. _gotchas.truth:
+
+Using If/Truth Statements with Pandas
+-------------------------------------
+
+Pandas follows the numpy convention of raising an error when you try to convert something to a ``bool``.
+This happens in a ``if`` or when using the boolean operations, ``and``, ``or``, or ``not``.  It is not clear
+what the result of
+
+.. code-block:: python
+
+    >>> if Series([False, True, False]):
+         ...
+
+should be. Should it be ``True`` because it's not zero-length? ``False`` because there are ``False`` values?
+It is unclear, so instead, pandas raises a ``ValueError``:
+
+.. code-block:: python
+
+    >>> if pd.Series([False, True, False]):
+        print("I was true")
+    Traceback
+        ...
+    ValueError: The truth value of an array is ambiguous. Use a.empty, a.any() or a.all().
+
+
+If you see that, you need to explicitly choose what you want to do with it (e.g., use `any()`, `all()` or `empty`).
+or, you might want to compare if the pandas object is ``None``
+
+.. code-block:: python
+
+    >>> if pd.Series([False, True, False]) is not None:
+           print("I was not None")
+    >>> I was not None
+
+
+or return if ``any`` value is ``True``.
+
+.. code-block:: python
+
+    >>> if pd.Series([False, True, False]).any():
+           print("I am any")
+    >>> I am any
+
+To evaluate single-element pandas objects in a boolean context, use the method ``.bool()``:
+
+.. ipython:: python
+
+   Series([True]).bool()
+   Series([False]).bool()
+   DataFrame([[True]]).bool()
+   DataFrame([[False]]).bool()
+
+Bitwise boolean
+~~~~~~~~~~~~~~~
+
+Bitwise boolean operators like ``==`` and ``!=`` will return a boolean ``Series``,
+which is almost always what you want anyways.
+
+.. code-block:: python
+
+   >>> s = pd.Series(range(5))
+   >>> s == 4
+   0    False
+   1    False
+   2    False
+   3    False
+   4     True
+   dtype: bool
+
+See :ref:`boolean comparisons<basics.compare>` for more examples.
 
 ``NaN``, Integer ``NA`` values and ``NA`` type promotions
 ---------------------------------------------------------
@@ -308,7 +382,7 @@ of the new set of columns rather than the original ones:
 
 .. ipython:: python
 
-   print open('tmp.csv').read()
+   print(open('tmp.csv').read())
 
    date_spec = {'nominal': [1, 2], 'actual': [1, 3]}
    df = read_csv('tmp.csv', header=None,
@@ -427,7 +501,7 @@ parse HTML tables in the top-level pandas io function ``read_html``.
       lxml will work correctly:
 
       .. code-block:: sh
-         
+
          # remove the included version
          conda remove lxml
 
@@ -437,8 +511,8 @@ parse HTML tables in the top-level pandas io function ``read_html``.
          # install the latest version of beautifulsoup4
          pip install 'bzr+lp:beautifulsoup'
 
-      Note that you need `bzr <http://bazaar.canonical.com/en>`_ and `git
-      <http://git-scm.com>`_ installed to perform the last two operations.
+      Note that you need `bzr <http://bazaar.canonical.com/en>`__ and `git
+      <http://git-scm.com>`__ installed to perform the last two operations.
 
 .. |svm| replace:: **strictly valid markup**
 .. _svm: http://validator.w3.org/docs/help.html#validation_basics
@@ -466,7 +540,7 @@ using something similar to the following:
 
 .. ipython:: python
 
-   x = np.array(range(10), '>i4') # big endian
+   x = np.array(list(range(10)), '>i4') # big endian
    newx = x.byteswap().newbyteorder() # force native byteorder
    s = Series(newx)
 

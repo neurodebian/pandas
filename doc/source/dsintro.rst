@@ -1,14 +1,6 @@
 .. currentmodule:: pandas
 .. _dsintro:
 
-************************
-Intro to Data Structures
-************************
-
-We'll start with a quick, non-comprehensive overview of the fundamental data
-structures in pandas to get you started. The fundamental behavior about data
-types, indexing, and axis labeling / alignment apply across all of the
-objects. To get started, import numpy and load pandas into your namespace:
 
 .. ipython:: python
    :suppress:
@@ -18,6 +10,17 @@ objects. To get started, import numpy and load pandas into your namespace:
    randn = np.random.randn
    np.set_printoptions(precision=4, suppress=True)
    set_option('display.precision', 4, 'display.max_columns', 8)
+   options.display.max_rows=15
+
+
+************************
+Intro to Data Structures
+************************
+
+We'll start with a quick, non-comprehensive overview of the fundamental data
+structures in pandas to get you started. The fundamental behavior about data
+types, indexing, and axis labeling / alignment apply across all of the
+objects. To get started, import numpy and load pandas into your namespace:
 
 .. ipython:: python
 
@@ -44,10 +47,15 @@ When using pandas, we recommend the following import convention:
 Series
 ------
 
-:class:`Series` is a one-dimensional labeled array (technically a subclass of
-ndarray) capable of holding any data type (integers, strings, floating point
-numbers, Python objects, etc.). The axis labels are collectively referred to as
-the **index**. The basic method to create a Series is to call:
+.. warning::
+
+   In 0.13.0 ``Series`` has internaly been refactored to no longer sub-class ``ndarray``
+   but instead subclass ``NDFrame``, similarly to the rest of the pandas containers. This should be
+   a transparent change with only very limited API implications (See the :ref:`Internal Refactoring<whatsnew_0130.refactoring>`)
+
+:class:`Series` is a one-dimensional labeled array capable of holding any data
+type (integers, strings, floating point numbers, Python objects, etc.). The axis
+labels are collectively referred to as the **index**. The basic method to create a Series is to call:
 
 ::
 
@@ -109,9 +117,8 @@ provided. The value will be repeated to match the length of **index**
 Series is ndarray-like
 ~~~~~~~~~~~~~~~~~~~~~~
 
-As a subclass of ndarray, Series is a valid argument to most NumPy functions
-and behaves similarly to a NumPy array. However, things like slicing also slice
-the index.
+``Series`` acts very similary to a ``ndarray``, and is a valid argument to most NumPy functions.
+However, things like slicing also slice the index.
 
 .. ipython :: python
 
@@ -152,6 +159,8 @@ Using the ``get`` method, a missing label will return None or specified default:
 
    s.get('f', np.nan)
 
+See also the :ref:`section on attribute access<indexing.attribute_access>`.
+
 Vectorized operations and label alignment with Series
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -177,7 +186,7 @@ labels.
 
 The result of an operation between unaligned Series will have the **union** of
 the indexes involved. If a label is not found in one Series or the other, the
-result will be marked as missing (NaN). Being able to write code without doing
+result will be marked as missing ``NaN``. Being able to write code without doing
 any explicit data alignment grants immense freedom and flexibility in
 interactive data analysis and research. The integrated data alignment features
 of the pandas data structures set pandas apart from the majority of related
@@ -567,8 +576,9 @@ indexing semantics are quite different in places from a matrix.
 Console display
 ~~~~~~~~~~~~~~~
 
-For very large DataFrame objects, only a summary will be printed to the console
-(here I am reading a CSV version of the **baseball** dataset from the **plyr**
+Very large DataFrames will be truncated to display them in the console.
+You can also get a summary using :meth:`~pandas.DataFrame.info`.
+(Here I am reading a CSV version of the **baseball** dataset from the **plyr**
 R package):
 
 .. ipython:: python
@@ -580,7 +590,8 @@ R package):
 .. ipython:: python
 
    baseball = read_csv('data/baseball.csv')
-   print baseball
+   print(baseball)
+   baseball.info()
 
 .. ipython:: python
    :suppress:
@@ -593,7 +604,7 @@ DataFrame in tabular form, though it won't always fit the console width:
 
 .. ipython:: python
 
-   print baseball.iloc[-20:, :12].to_string()
+   print(baseball.iloc[-20:, :12].to_string())
 
 New since 0.10.0, wide DataFrames will now be printed across multiple rows by
 default:
@@ -616,19 +627,8 @@ option:
 
    reset_option('line_width')
 
-You can also disable this feature via the ``expand_frame_repr`` option:
-
-.. ipython:: python
-
-   set_option('expand_frame_repr', False)
-
-   DataFrame(randn(3, 12))
-
-.. ipython:: python
-   :suppress:
-
-   reset_option('expand_frame_repr')
-
+You can also disable this feature via the ``expand_frame_repr`` option.
+This will print the table in one block.
 
 DataFrame column attribute access and IPython completion
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -909,6 +909,8 @@ copy by default unless the data are heterogeneous):
 
    p4d.transpose(3, 2, 1, 0)
 
+.. _dsintro.panelnd:
+
 PanelND (Experimental)
 ----------------------
 
@@ -924,11 +926,11 @@ Here we slice to a Panel4D.
     from pandas.core import panelnd
     Panel5D = panelnd.create_nd_panel_factory(
         klass_name   = 'Panel5D',
-        axis_orders  = [ 'cool', 'labels','items','major_axis','minor_axis'],
-        axis_slices  = { 'labels' : 'labels', 'items' : 'items',
-	                 'major_axis' : 'major_axis', 'minor_axis' : 'minor_axis' },
-        slicer       = Panel4D,
-        axis_aliases = { 'major' : 'major_axis', 'minor' : 'minor_axis' },
+        orders  = [ 'cool', 'labels','items','major_axis','minor_axis'],
+        slices  = { 'labels' : 'labels', 'items' : 'items',
+	                'major_axis' : 'major_axis', 'minor_axis' : 'minor_axis' },
+        slicer  = Panel4D,
+        aliases = { 'major' : 'major_axis', 'minor' : 'minor_axis' },
         stat_axis    = 2)
 
     p5d = Panel5D(dict(C1 = p4d))

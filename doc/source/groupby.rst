@@ -7,11 +7,13 @@
    import numpy as np
    np.random.seed(123456)
    from pandas import *
+   options.display.max_rows=15
    randn = np.random.randn
    np.set_printoptions(precision=4, suppress=True)
    import matplotlib.pyplot as plt
    plt.close('all')
    options.display.mpl_style='default'
+   from pandas.compat import zip
 
 *****************************
 Group By: split-apply-combine
@@ -187,6 +189,45 @@ however pass ``sort=False`` for potential speedups:
    df2.groupby(['X'], sort=True).sum()
    df2.groupby(['X'], sort=False).sum()
 
+.. _groupby.tabcompletion:
+
+``GroupBy`` will tab complete column names (and other attributes)
+
+.. ipython:: python
+   :suppress:
+
+   n = 10
+   weight = np.random.normal(166, 20, size=n)
+   height = np.random.normal(60, 10, size=n)
+   time = date_range('1/1/2000', periods=n)
+   gender = tm.choice(['male', 'female'], size=n)
+   df = DataFrame({'height': height, 'weight': weight,
+                           'gender': gender}, index=time)
+
+.. ipython:: python
+
+   df
+   gb = df.groupby('gender')
+
+
+.. ipython::
+
+   @verbatim
+   In [1]: gb.<TAB>
+   gb.agg        gb.boxplot    gb.cummin     gb.describe   gb.filter     gb.get_group  gb.height     gb.last       gb.median     gb.ngroups    gb.plot       gb.rank       gb.std        gb.transform
+   gb.aggregate  gb.count      gb.cumprod    gb.dtype      gb.first      gb.groups     gb.hist       gb.max        gb.min        gb.nth        gb.prod       gb.resample   gb.sum        gb.var
+   gb.apply      gb.cummax     gb.cumsum     gb.fillna     gb.gender     gb.head       gb.indices    gb.mean       gb.name       gb.ohlc       gb.quantile   gb.size       gb.tail       gb.weight
+
+
+.. ipython:: python
+   :suppress:
+
+   df = DataFrame({'A' : ['foo', 'bar', 'foo', 'bar',
+                          'foo', 'bar', 'foo', 'foo'],
+                   'B' : ['one', 'one', 'two', 'three',
+                          'two', 'two', 'one', 'three'],
+                   'C' : randn(8), 'D' : randn(8)})
+
 .. _groupby.multiindex:
 
 GroupBy with MultiIndex
@@ -198,9 +239,10 @@ natural to group by one of the levels of the hierarchy.
 .. ipython:: python
    :suppress:
 
+
    arrays = [['bar', 'bar', 'baz', 'baz', 'foo', 'foo', 'qux', 'qux'],
              ['one', 'two', 'one', 'two', 'one', 'two', 'one', 'two']]
-   tuples = zip(*arrays)
+   tuples = list(zip(*arrays))
    tuples
    index = MultiIndex.from_tuples(tuples, names=['first', 'second'])
    s = Series(randn(8), index=index)
@@ -234,7 +276,7 @@ Also as of v0.6, grouping with multiple levels is supported.
    arrays = [['bar', 'bar', 'baz', 'baz', 'foo', 'foo', 'qux', 'qux'],
              ['doo', 'doo', 'bee', 'bee', 'bop', 'bop', 'bop', 'bop'],
              ['one', 'two', 'one', 'two', 'one', 'two', 'one', 'two']]
-   tuples = zip(*arrays)
+   tuples = list(zip(*arrays))
    index = MultiIndex.from_tuples(tuples, names=['first', 'second', 'third'])
    s = Series(randn(8), index=index)
 
@@ -280,8 +322,8 @@ natural and functions similarly to ``itertools.groupby``:
    In [4]: grouped = df.groupby('A')
 
    In [5]: for name, group in grouped:
-      ...:        print name
-      ...:        print group
+      ...:        print(name)
+      ...:        print(group)
       ...:
 
 In the case of grouping by multiple keys, the group name will be a tuple:
@@ -289,8 +331,8 @@ In the case of grouping by multiple keys, the group name will be a tuple:
 .. ipython::
 
    In [5]: for name, group in df.groupby(['A', 'B']):
-      ...:        print name
-      ...:        print group
+      ...:        print(name)
+      ...:        print(group)
       ...:
 
 It's standard Python-fu but remember you can unpack the tuple in the for loop
@@ -511,7 +553,7 @@ than 2.
    sf = Series([1, 1, 2, 3, 3, 3])
    sf.groupby(sf).filter(lambda x: x.sum() > 2)
 
-The argument of ``filter`` must a function that, applied to the group as a 
+The argument of ``filter`` must be a function that, applied to the group as a
 whole, returns ``True`` or ``False``.
 
 Another useful operation is filtering out elements that belong to groups
@@ -529,6 +571,13 @@ with NaNs.
 .. ipython:: python
 
    dff.groupby('B').filter(lambda x: len(x) > 2, dropna=False)
+
+For dataframes with multiple columns, filters should explicitly specify a column as the filter criterion.
+
+.. ipython:: python
+   
+   dff['C'] = np.arange(8)
+   dff.groupby('B').filter(lambda x: len(x['C']) > 2)
 
 .. _groupby.dispatch:
 
@@ -609,7 +658,7 @@ The dimension of the returned result can also change:
 .. ipython:: python
 
     def f(x):
-	   return Series([ x, x**2 ], index = ['x', 'x^s'])
+      return Series([ x, x**2 ], index = ['x', 'x^s'])
     s = Series(np.random.rand(5))
     s
     s.apply(f)
@@ -657,3 +706,20 @@ can be used as group keys. If so, the order of the levels will be preserved:
    factor = qcut(data, [0, .25, .5, .75, 1.])
 
    data.groupby(factor).mean()
+
+Enumerate group items
+~~~~~~~~~~~~~~~~~~~~~
+
+.. versionadded:: 0.13.0
+
+To see the order in which each row appears within its group, use the
+``cumcount`` method:
+
+.. ipython:: python
+
+   df = pd.DataFrame(list('aaabba'), columns=['A'])
+   df
+
+   df.groupby('A').cumcount()
+
+   df.groupby('A').cumcount(ascending=False)  # kwarg only

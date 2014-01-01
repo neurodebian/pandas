@@ -7,6 +7,7 @@
    import numpy as np
    np.random.seed(123456)
    from pandas import *
+   options.display.max_rows=15
    import pandas.util.testing as tm
    randn = np.random.randn
    np.set_printoptions(precision=4, suppress=True)
@@ -25,7 +26,7 @@ Trellis plotting interface
 .. note::
 
    The tips data set can be downloaded `here
-   <http://wesmckinney.com/files/tips.csv>`_. Once you download it execute
+   <http://wesmckinney.com/files/tips.csv>`__. Once you download it execute
 
    .. code-block:: python
 

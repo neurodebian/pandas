@@ -13,6 +13,7 @@
    import matplotlib.pyplot as plt
    plt.close('all')
    options.display.mpl_style='default'
+   options.display.max_rows=15
 
 Computational tools
 ===================
@@ -450,25 +451,37 @@ average as
 
 .. math::
 
-    y_t = \alpha y_{t-1} + (1 - \alpha) x_t
+    y_t = (1 - \alpha) y_{t-1} + \alpha x_t
 
 One must have :math:`0 < \alpha \leq 1`, but rather than pass :math:`\alpha`
-directly, it's easier to think about either the **span** or **center of mass
-(com)** of an EW moment:
+directly, it's easier to think about either the **span**, **center of mass
+(com)** or **halflife** of an EW moment:
 
 .. math::
 
    \alpha =
     \begin{cases}
 	\frac{2}{s + 1}, s = \text{span}\\
-	\frac{1}{c + 1}, c = \text{center of mass}
+	\frac{1}{1 + c}, c = \text{center of mass}\\
+	1 - \exp^{\frac{\log 0.5}{h}}, h = \text{half life}
     \end{cases}
 
-You can pass one or the other to these functions but not both. **Span**
+.. note::
+  
+  the equation above is sometimes written in the form
+
+  .. math::
+
+    y_t = \alpha' y_{t-1} + (1 - \alpha') x_t
+
+  where :math:`\alpha' = 1 - \alpha`.
+
+You can pass one of the three to these functions but not more. **Span**
 corresponds to what is commonly called a "20-day EW moving average" for
 example. **Center of mass** has a more physical interpretation. For example,
-**span** = 20 corresponds to **com** = 9.5. Here is the list of functions
-available:
+**span** = 20 corresponds to **com** = 9.5. **Halflife** is the period of
+time for the exponential weight to reduce to one half. Here is the list of 
+functions available:
 
 .. csv-table::
     :header: "Function", "Description"

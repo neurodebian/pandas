@@ -147,6 +147,15 @@ timeseries_to_datetime_iso8601 = \
     Benchmark('to_datetime(strings)', setup,
               start_date=datetime(2012, 7, 11))
 
+setup = common_setup + """
+rng = date_range('1/1/2000', periods=10000, freq='D')
+strings = Series(rng.year*10000+rng.month*100+rng.day,dtype=np.int64).apply(str)
+"""
+
+timeseries_to_datetime_YYYYMMDD = \
+    Benchmark('to_datetime(strings,format="%Y%m%d")', setup,
+              start_date=datetime(2012, 7, 1))
+
 # ---- infer_freq
 # infer_freq
 
@@ -216,3 +225,21 @@ index = rng.repeat(10)
 
 datetimeindex_unique = Benchmark('index.unique()', setup,
                                  start_date=datetime(2012, 7, 1))
+
+# tz_localize with infer argument.  This is an attempt to emulate the results
+# of read_csv with duplicated data.  Not passing infer_dst will fail
+setup = common_setup + """
+dst_rng = date_range('10/29/2000 1:00:00',
+                     '10/29/2000 1:59:59', freq='S')
+index = date_range('10/29/2000', '10/29/2000 00:59:59', freq='S')
+index = index.append(dst_rng)
+index = index.append(dst_rng)
+index = index.append(date_range('10/29/2000 2:00:00',
+                                '10/29/2000 3:00:00', freq='S'))
+"""
+
+datetimeindex_infer_dst = \
+Benchmark('index.tz_localize("US/Eastern", infer_dst=True)',
+          setup, start_date=datetime(2013, 9, 30))
+
+

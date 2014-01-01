@@ -1,4 +1,5 @@
-import unittest
+from __future__ import print_function
+from pandas import compat
 import warnings
 import nose
 from nose.tools import assert_equal
@@ -11,12 +12,24 @@ from pandas.io import data as web
 from pandas.io.data import DataReader, SymbolWarning
 from pandas.util.testing import (assert_series_equal, assert_produces_warning,
                                  network, assert_frame_equal)
+import pandas.util.testing as tm
 from numpy.testing import assert_array_equal
+
+if compat.PY3:
+    from urllib.error import HTTPError
+else:
+    from urllib2 import HTTPError
+
+def _skip_if_no_lxml():
+    try:
+        import lxml
+    except ImportError:
+        raise nose.SkipTest("no lxml")
 
 
 def assert_n_failed_equals_n_null_columns(wngs, obj, cls=SymbolWarning):
     all_nan_cols = pd.Series(dict((k, pd.isnull(v).all()) for k, v in
-                                  obj.iteritems()))
+                                  compat.iteritems(obj)))
     n_all_nan_cols = all_nan_cols.sum()
     valid_warnings = pd.Series([wng for wng in wngs if isinstance(wng, cls)])
     assert_equal(len(valid_warnings), n_all_nan_cols)
@@ -25,7 +38,18 @@ def assert_n_failed_equals_n_null_columns(wngs, obj, cls=SymbolWarning):
     assert msgs.str.contains('|'.join(failed_symbols)).all()
 
 
-class TestGoogle(unittest.TestCase):
+class TestGoogle(tm.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super(TestGoogle, cls).setUpClass()
+        cls.locales = tm.get_locales(prefix='en_US')
+        if not cls.locales:
+            raise nose.SkipTest("US English locale not available for testing")
+
+    @classmethod
+    def tearDownClass(cls):
+        super(TestGoogle, cls).tearDownClass()
+        del cls.locales
 
     @network
     def test_google(self):
@@ -33,11 +57,12 @@ class TestGoogle(unittest.TestCase):
         # an exception when DataReader can't get a 200 response from
         # google
         start = datetime(2010, 1, 1)
-        end = datetime(2013, 01, 27)
+        end = datetime(2013, 1, 27)
 
-        self.assertEquals(
-            web.DataReader("F", 'google', start, end)['Close'][-1],
-            13.68)
+        for locale in self.locales:
+            with tm.set_locale(locale):
+                panel = web.DataReader("F", 'google', start, end)
+            self.assertEquals(panel.Close[-1], 13.68)
 
         self.assertRaises(Exception, web.DataReader, "NON EXISTENT TICKER",
                           'google', start, end)
@@ -49,47 +74,47 @@ class TestGoogle(unittest.TestCase):
 
     @network
     def test_get_goog_volume(self):
-        df = web.get_data_google('GOOG')
-        self.assertEqual(df.Volume.ix['OCT-08-2010'], 2863473)
+        for locale in self.locales:
+            with tm.set_locale(locale):
+                df = web.get_data_google('GOOG').sort_index()
+            self.assertEqual(df.Volume.ix['OCT-08-2010'], 2863473)
 
     @network
     def test_get_multi1(self):
-        sl = ['AAPL', 'AMZN', 'GOOG']
-        pan = web.get_data_google(sl, '2012')
-
-        def testit():
+        for locale in self.locales:
+            sl = ['AAPL', 'AMZN', 'GOOG']
+            with tm.set_locale(locale):
+                pan = web.get_data_google(sl, '2012')
             ts = pan.Close.GOOG.index[pan.Close.AAPL > pan.Close.GOOG]
-            self.assertEquals(ts[0].dayofyear, 96)
-
-        if (hasattr(pan, 'Close') and hasattr(pan.Close, 'GOOG') and
-            hasattr(pan.Close, 'AAPL')):
-            testit()
-        else:
-            self.assertRaises(AttributeError, testit)
+            if (hasattr(pan, 'Close') and hasattr(pan.Close, 'GOOG') and
+                hasattr(pan.Close, 'AAPL')):
+                self.assertEquals(ts[0].dayofyear, 96)
+            else:
+                self.assertRaises(AttributeError, lambda: pan.Close)
 
     @network
     def test_get_multi2(self):
         with warnings.catch_warnings(record=True) as w:
-            pan = web.get_data_google(['GE', 'MSFT', 'INTC'], 'JAN-01-12',
-                                      'JAN-31-12')
-            result = pan.Close.ix['01-18-12']
-            assert_n_failed_equals_n_null_columns(w, result)
+            for locale in self.locales:
+                with tm.set_locale(locale):
+                    pan = web.get_data_google(['GE', 'MSFT', 'INTC'],
+                                              'JAN-01-12', 'JAN-31-12')
+                result = pan.Close.ix['01-18-12']
+                assert_n_failed_equals_n_null_columns(w, result)
 
-            # sanity checking
+                # sanity checking
 
-            assert np.issubdtype(result.dtype, np.floating)
-            result = pan.Open.ix['Jan-15-12':'Jan-20-12']
-            self.assertEqual((4, 3), result.shape)
-            assert_n_failed_equals_n_null_columns(w, result)
+                assert np.issubdtype(result.dtype, np.floating)
+                result = pan.Open.ix['Jan-15-12':'Jan-20-12']
+                self.assertEqual((4, 3), result.shape)
+                assert_n_failed_equals_n_null_columns(w, result)
 
 
-class TestYahoo(unittest.TestCase):
+class TestYahoo(tm.TestCase):
     @classmethod
     def setUpClass(cls):
-        try:
-            import lxml
-        except ImportError:
-            raise nose.SkipTest
+        super(TestYahoo, cls).setUpClass()
+        _skip_if_no_lxml()
 
     @network
     def test_yahoo(self):
@@ -97,7 +122,7 @@ class TestYahoo(unittest.TestCase):
         # an exception when DataReader can't get a 200 response from
         # yahoo
         start = datetime(2010, 1, 1)
-        end = datetime(2013, 01, 27)
+        end = datetime(2013, 1, 27)
 
         self.assertEquals( web.DataReader("F", 'yahoo', start,
                                           end)['Close'][-1], 13.68)
@@ -105,7 +130,7 @@ class TestYahoo(unittest.TestCase):
     @network
     def test_yahoo_fails(self):
         start = datetime(2010, 1, 1)
-        end = datetime(2013, 01, 27)
+        end = datetime(2013, 1, 27)
         self.assertRaises(Exception, web.DataReader, "NON EXISTENT TICKER",
                           'yahoo', start, end)
 
@@ -205,13 +230,11 @@ class TestYahoo(unittest.TestCase):
         assert np.issubdtype(pan.values.dtype, np.floating)
 
 
-class TestYahooOptions(unittest.TestCase):
+class TestYahooOptions(tm.TestCase):
     @classmethod
     def setUpClass(cls):
-        try:
-            import lxml
-        except ImportError:
-            raise nose.SkipTest
+        super(TestYahooOptions, cls).setUpClass()
+        _skip_if_no_lxml()
 
         # aapl has monthlies
         cls.aapl = web.Options('aapl', 'yahoo')
@@ -225,6 +248,7 @@ class TestYahooOptions(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        super(TestYahooOptions, cls).tearDownClass()
         del cls.aapl, cls.expiry
 
     @network
@@ -267,15 +291,13 @@ class TestYahooOptions(unittest.TestCase):
             assert len(puts)>1
 
 
-class TestOptionsWarnings(unittest.TestCase):
+class TestOptionsWarnings(tm.TestCase):
     @classmethod
     def setUpClass(cls):
-        try:
-            import lxml
-        except ImportError:
-            raise nose.SkipTest
+        super(TestOptionsWarnings, cls).setUpClass()
+        _skip_if_no_lxml()
 
-        with assert_produces_warning():
+        with assert_produces_warning(FutureWarning):
             cls.aapl = web.Options('aapl')
 
         today = datetime.today()
@@ -287,6 +309,7 @@ class TestOptionsWarnings(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        super(TestOptionsWarnings, cls).tearDownClass()
         del cls.aapl, cls.year, cls.month
 
     @network
@@ -329,7 +352,11 @@ class TestOptionsWarnings(unittest.TestCase):
                 warnings.warn("IndexError thrown no tables found")
 
 
-class TestDataReader(unittest.TestCase):
+class TestDataReader(tm.TestCase):
+    def test_is_s3_url(self):
+        from pandas.io.common import _is_s3_url
+        self.assert_(_is_s3_url("s3://pandas/somethingelse.com"))
+
     @network
     def test_read_yahoo(self):
         gs = DataReader("GS", "yahoo")
@@ -355,19 +382,19 @@ class TestDataReader(unittest.TestCase):
             assert isinstance(ff, dict)
 
 
-class TestFred(unittest.TestCase):
+class TestFred(tm.TestCase):
     @network
     def test_fred(self):
         """
         Throws an exception when DataReader can't get a 200 response from
         FRED.
         """
-        start = datetime(2010, 1, 1)
-        end = datetime(2013, 01, 27)
 
-        self.assertEquals(
-            web.DataReader("GDP", "fred", start, end)['GDP'].tail(1),
-            15984.1)
+        start = datetime(2010, 1, 1)
+        end = datetime(2013, 1, 27)
+
+        received = web.DataReader("GDP", "fred", start, end)['GDP'].tail(1)[0]
+        self.assertEquals(int(received), 16535)
 
         self.assertRaises(Exception, web.DataReader, "NON EXISTENT SERIES",
                           'fred', start, end)
@@ -375,16 +402,16 @@ class TestFred(unittest.TestCase):
     @network
     def test_fred_nan(self):
         start = datetime(2010, 1, 1)
-        end = datetime(2013, 01, 27)
+        end = datetime(2013, 1, 27)
         df = web.DataReader("DFII5", "fred", start, end)
-        assert pd.isnull(df.ix['2010-01-01'])
+        assert pd.isnull(df.ix['2010-01-01'][0])
 
     @network
     def test_fred_parts(self):
         start = datetime(2010, 1, 1)
-        end = datetime(2013, 01, 27)
+        end = datetime(2013, 1, 27)
         df = web.get_data_fred("CPIAUCSL", start, end)
-        self.assertEqual(df.ix['2010-05-01'], 217.23)
+        self.assertEqual(df.ix['2010-05-01'][0], 217.23)
 
         t = df.CPIAUCSL.values
         assert np.issubdtype(t.dtype, np.floating)
@@ -405,6 +432,24 @@ class TestFred(unittest.TestCase):
         name = "NOT A REAL SERIES"
         self.assertRaises(Exception, web.get_data_fred, name)
 
+    @network
+    def test_fred_multi(self):
+        names = ['CPIAUCSL', 'CPALTT01USQ661S', 'CPILFESL']
+        start = datetime(2010, 1, 1)
+        end = datetime(2013, 1, 27)
+
+        received = web.DataReader(names, "fred", start, end).head(1)
+        expected = DataFrame([[217.478, 0.99701529, 220.544]], columns=names,
+                             index=[pd.tslib.Timestamp('2010-01-01 00:00:00')])
+        expected.index.rename('DATE', inplace=True)
+        assert_frame_equal(received, expected, check_less_precise=True)
+
+    @network
+    def test_fred_multi_bad_series(self):
+
+        names = ['NOTAREALSERIES', 'CPIAUCSL', "ALSO FAKE"]
+        with tm.assertRaises(HTTPError):
+            DataReader(names, data_source="fred")
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],

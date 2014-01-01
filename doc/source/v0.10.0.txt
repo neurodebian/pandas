@@ -111,7 +111,7 @@ Note:
 .. ipython:: python
 
     data= 'a,b,c\n1,Yes,2\n3,No,4'
-    print data
+    print(data)
     pd.read_csv(StringIO(data), header=None)
     pd.read_csv(StringIO(data), header=None, prefix='X')
 
@@ -121,7 +121,7 @@ Note:
 
 .. ipython:: python
 
-    print data
+    print(data)
     pd.read_csv(StringIO(data))
     pd.read_csv(StringIO(data), true_values=['Yes'], false_values=['No'])
 
@@ -262,7 +262,7 @@ Updated PyTables Support
      [ Term('major_axis>20000102'), Term('minor_axis', '=', ['A','B']) ])
 
    # removing data from tables
-   store.remove('wp', [ 'major_axis', '>', wp.major_axis[3] ])
+   store.remove('wp', Term('major_axis>20000103'))
    store.select('wp')
 
    # deleting a store

@@ -8,6 +8,7 @@
    np.random.seed(123456)
    from numpy import nan
    from pandas import *
+   options.display.max_rows=15
    randn = np.random.randn
    np.set_printoptions(precision=4, suppress=True)
 
@@ -119,7 +120,7 @@ behavior:
 
    from pandas.util.testing import rands
    df = DataFrame(np.random.randn(10, 4), columns=['a', 'b', 'c', 'd'],
-                  index=[rands(5) for _ in xrange(10)])
+                  index=[rands(5) for _ in range(10)])
    df
 
    concat([df.ix[:7, ['a', 'b']], df.ix[2:-2, ['c']],
@@ -304,7 +305,10 @@ better) than other open source implementations (like ``base::merge.data.frame``
 in R). The reason for this is careful algorithmic design and internal layout of
 the data in DataFrame.
 
-See the :ref:`cookbook<cookbook.merge>` for some advanced strategies
+See the :ref:`cookbook<cookbook.merge>` for some advanced strategies.
+
+Users who are familiar with SQL but new to pandas might be interested in a 
+:ref:`comparison with SQL<compare_with_sql.join>`.
 
 pandas provides a single function, ``merge``, as the entry point for all
 standard database join operations between DataFrame objects:

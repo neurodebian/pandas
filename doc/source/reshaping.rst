@@ -7,11 +7,13 @@
    import numpy as np
    np.random.seed(123456)
    from pandas import *
+   options.display.max_rows=15
    from pandas.core.reshape import *
    import pandas.util.testing as tm
    randn = np.random.randn
    np.set_printoptions(precision=4, suppress=True)
    from pandas.tools.tile import *
+   from pandas.compat import zip
 
 **************************
 Reshaping and Pivot Tables
@@ -116,10 +118,10 @@ from the hierarchical indexing section:
 
 .. ipython:: python
 
-   tuples = zip(*[['bar', 'bar', 'baz', 'baz',
+   tuples = list(zip(*[['bar', 'bar', 'baz', 'baz',
                    'foo', 'foo', 'qux', 'qux'],
                   ['one', 'two', 'one', 'two',
-                   'one', 'two', 'one', 'two']])
+                   'one', 'two', 'one', 'two']]))
    index = MultiIndex.from_tuples(tuples, names=['first', 'second'])
    df = DataFrame(randn(8, 2), index=index, columns=['A', 'B'])
    df2 = df[:4]
@@ -216,6 +218,20 @@ For instance,
    melt(cheese, id_vars=['first', 'last'])
    melt(cheese, id_vars=['first', 'last'], var_name='quantity')
 
+Another way to transform is to use the ``wide_to_long`` panel data convenience function.
+
+.. ipython:: python
+
+  dft = pd.DataFrame({"A1970" : {0 : "a", 1 : "b", 2 : "c"},
+                      "A1980" : {0 : "d", 1 : "e", 2 : "f"},
+                      "B1970" : {0 : 2.5, 1 : 1.2, 2 : .7},
+                      "B1980" : {0 : 3.2, 1 : 1.3, 2 : .1},
+                      "X"     : dict(zip(range(3), np.random.randn(3)))
+                     })
+  dft["id"] = dft.index
+  df
+  pd.wide_to_long(dft, ["A", "B"], i="id", j="year")
+
 Combining with stats and GroupBy
 --------------------------------
 
@@ -286,7 +302,7 @@ calling ``to_string`` if you wish:
 .. ipython:: python
 
    table = pivot_table(df, rows=['A', 'B'], cols=['C'])
-   print table.to_string(na_rep='')
+   print(table.to_string(na_rep=''))
 
 Note that ``pivot_table`` is also available as an instance method on DataFrame.
 
@@ -360,3 +376,66 @@ Alternatively we can specify custom bin-edges:
 .. ipython:: python
 
    cut(ages, bins=[0, 18, 35, 70])
+
+
+.. _reshaping.dummies:
+
+Computing indicator / dummy variables
+-------------------------------------
+
+To convert a categorical variable into a "dummy" or "indicator" DataFrame, for example
+a column in a DataFrame (a Series) which has ``k`` distinct values, can derive a DataFrame
+containing ``k`` columns of 1s and 0s:
+
+.. ipython:: python
+
+   df = DataFrame({'key': list('bbacab'), 'data1': range(6)})
+
+
+   get_dummies(df['key'])
+
+Sometimes it's useful to prefix the column names, for example when merging the result
+with the original DataFrame:
+
+.. ipython:: python
+
+   dummies = get_dummies(df['key'], prefix='key')
+   dummies
+
+
+   df[['data1']].join(dummies)
+
+This function is often used along with discretization functions like ``cut``:
+
+.. ipython:: python
+
+   values = randn(10)
+   values
+
+
+   bins = [0, 0.2, 0.4, 0.6, 0.8, 1]
+
+
+   get_dummies(cut(values, bins))
+
+Factorizing values
+------------------
+
+To encode 1-d values as an enumerated type use ``factorize``:
+
+.. ipython:: python
+
+   x = pd.Series(['A', 'A', np.nan, 'B', 3.14, np.inf])
+   x
+   labels, uniques = pd.factorize(x)
+   labels
+   uniques
+
+Note that ``factorize`` is similar to ``numpy.unique``, but differs in its
+handling of NaN:
+
+.. ipython:: python
+
+   pd.factorize(x, sort=True)
+   np.unique(x, return_inverse=True)[::-1]
+

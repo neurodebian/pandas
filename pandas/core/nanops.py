@@ -1,15 +1,19 @@
+from pandas import compat
 import sys
 import itertools
 import functools
 
 import numpy as np
 
-from pandas.core.common import isnull, notnull
+from pandas.core.common import isnull, notnull, _values_from_object, is_float
 import pandas.core.common as com
 import pandas.lib as lib
 import pandas.algos as algos
 import pandas.hashtable as _hash
 import pandas.tslib as tslib
+
+from pandas.compat import builtins
+
 
 try:
     import bottleneck as bn
@@ -19,6 +23,7 @@ except ImportError:  # pragma: no cover
 
 
 class disallow(object):
+
     def __init__(self, *dtypes):
         super(disallow, self).__init__()
         self.dtypes = tuple(np.dtype(dtype).type for dtype in dtypes)
@@ -30,7 +35,7 @@ class disallow(object):
     def __call__(self, f):
         @functools.wraps(f)
         def _f(*args, **kwargs):
-            obj_iter = itertools.chain(args, kwargs.itervalues())
+            obj_iter = itertools.chain(args, compat.itervalues(kwargs))
             if any(self.check(obj) for obj in obj_iter):
                 raise TypeError('reduction operation {0!r} not allowed for '
                                 'this dtype'.format(f.__name__.replace('nan',
@@ -40,6 +45,7 @@ class disallow(object):
 
 
 class bottleneck_switch(object):
+
     def __init__(self, zero_value=None, **kwargs):
         self.zero_value = zero_value
         self.kwargs = kwargs
@@ -55,7 +61,7 @@ class bottleneck_switch(object):
         @functools.wraps(alt)
         def f(values, axis=None, skipna=True, **kwds):
             if len(self.kwargs) > 0:
-                for k, v in self.kwargs.iteritems():
+                for k, v in compat.iteritems(self.kwargs):
                     if k not in kwds:
                         kwds[k] = v
             try:
@@ -71,7 +77,9 @@ class bottleneck_switch(object):
 
                 if _USE_BOTTLENECK and skipna and _bn_ok_dtype(values.dtype):
                     result = bn_func(values, axis=axis, **kwds)
-                    # prefer to treat inf/-inf as NA
+
+                    # prefer to treat inf/-inf as NA, but must compute the func
+                    # twice :(
                     if _has_infs(result):
                         result = alt(values, axis=axis, skipna=skipna, **kwds)
                 else:
@@ -86,7 +94,8 @@ class bottleneck_switch(object):
 
 def _bn_ok_dtype(dt):
     # Bottleneck chokes on datetime64
-    return dt != np.object_ and not issubclass(dt.type, (np.datetime64,np.timedelta64))
+    time_types = np.datetime64, np.timedelta64
+    return dt != np.object_ and not issubclass(dt.type, time_types)
 
 
 def _has_infs(result):
@@ -95,10 +104,9 @@ def _has_infs(result):
             return lib.has_infs_f8(result)
         elif result.dtype == 'f4':
             return lib.has_infs_f4(result)
-        else:  # pragma: no cover
-            raise TypeError('Only suppose float32/64 here')
-    else:
-        return np.isinf(result) or np.isneginf(result)
+        return False
+    return np.isinf(result) or np.isneginf(result)
+
 
 def _get_fill_value(dtype, fill_value=None, fill_value_typ=None):
     """ return the correct fill value for the dtype of the values """
@@ -122,20 +130,25 @@ def _get_fill_value(dtype, fill_value=None, fill_value_typ=None):
             else:
                 return tslib.iNaT
 
-def _get_values(values, skipna, fill_value=None, fill_value_typ=None, isfinite=False, copy=True):
+
+def _get_values(values, skipna, fill_value=None, fill_value_typ=None,
+                isfinite=False, copy=True):
     """ utility to get the values view, mask, dtype
         if necessary copy and mask using the specified fill_value
         copy = True will force the copy """
+    values = _values_from_object(values)
     if isfinite:
         mask = _isfinite(values)
     else:
         mask = isnull(values)
 
-    dtype    = values.dtype
+    dtype = values.dtype
     dtype_ok = _na_ok_dtype(dtype)
 
-    # get our fill value (in case we need to provide an alternative dtype for it)
-    fill_value = _get_fill_value(dtype, fill_value=fill_value, fill_value_typ=fill_value_typ)
+    # get our fill value (in case we need to provide an alternative
+    # dtype for it)
+    fill_value = _get_fill_value(dtype, fill_value=fill_value,
+                                 fill_value_typ=fill_value_typ)
 
     if skipna:
         if copy:
@@ -145,7 +158,8 @@ def _get_values(values, skipna, fill_value=None, fill_value_typ=None, isfinite=F
 
         # promote if needed
         else:
-            values, changed = com._maybe_upcast_putmask(values, mask, fill_value)
+            values, changed = com._maybe_upcast_putmask(values, mask,
+                                                        fill_value)
 
     elif copy:
         values = values.copy()
@@ -153,20 +167,25 @@ def _get_values(values, skipna, fill_value=None, fill_value_typ=None, isfinite=F
     values = _view_if_needed(values)
     return values, mask, dtype
 
+
 def _isfinite(values):
-    if issubclass(values.dtype.type, (np.timedelta64,np.datetime64)):
+    if issubclass(values.dtype.type, (np.timedelta64, np.datetime64)):
         return isnull(values)
     return -np.isfinite(values)
 
+
 def _na_ok_dtype(dtype):
-    return not issubclass(dtype.type, (np.integer, np.datetime64, np.timedelta64))
+    return not issubclass(dtype.type, (np.integer, np.datetime64,
+                                       np.timedelta64))
+
 
 def _view_if_needed(values):
-    if issubclass(values.dtype.type, (np.datetime64,np.timedelta64)):
+    if issubclass(values.dtype.type, (np.datetime64, np.timedelta64)):
         return values.view(np.int64)
     return values
 
-def _wrap_results(result,dtype):
+
+def _wrap_results(result, dtype):
     """ wrap our results if needed """
 
     if issubclass(dtype.type, np.datetime64):
@@ -179,22 +198,29 @@ def _wrap_results(result,dtype):
 
             # this is a scalar timedelta result!
             # we have series convert then take the element (scalar)
-            # as series will do the right thing in py3 (and deal with numpy 1.6.2
-            # bug in that it results dtype of timedelta64[us]
+            # as series will do the right thing in py3 (and deal with numpy
+            # 1.6.2 bug in that it results dtype of timedelta64[us]
             from pandas import Series
-            result = Series([result],dtype='timedelta64[ns]')
+
+            # coerce float to results
+            if is_float(result):
+                result = int(result)
+            result = Series([result], dtype='timedelta64[ns]')
         else:
             result = result.view(dtype)
 
     return result
 
+
 def nanany(values, axis=None, skipna=True):
     values, mask, dtype = _get_values(values, skipna, False, copy=skipna)
     return values.any(axis)
 
+
 def nanall(values, axis=None, skipna=True):
     values, mask, dtype = _get_values(values, skipna, True, copy=skipna)
     return values.all(axis)
+
 
 @disallow('M8')
 @bottleneck_switch(zero_value=0)
@@ -203,6 +229,7 @@ def nansum(values, axis=None, skipna=True):
     the_sum = values.sum(axis)
     the_sum = _maybe_null_out(the_sum, axis, mask)
     return the_sum
+
 
 @disallow('M8')
 @bottleneck_switch()
@@ -218,16 +245,21 @@ def nanmean(values, axis=None, skipna=True):
             the_mean[ct_mask] = np.nan
     else:
         the_mean = the_sum / count if count > 0 else np.nan
-    return the_mean
+
+    return _wrap_results(the_mean, dtype)
+
 
 @disallow('M8')
 @bottleneck_switch()
 def nanmedian(values, axis=None, skipna=True):
+
+    values, mask, dtype = _get_values(values, skipna)
+
     def get_median(x):
         mask = notnull(x)
         if not skipna and not mask.all():
             return np.nan
-        return algos.median(x[mask])
+        return algos.median(_values_from_object(x[mask]))
 
     if values.dtype != np.float64:
         values = values.astype('f8')
@@ -251,7 +283,7 @@ def nanmedian(values, axis=None, skipna=True):
         return ret
 
     # otherwise return a scalar value
-    return get_median(values) if notempty else np.nan
+    return _wrap_results(get_median(values), dtype) if notempty else np.nan
 
 
 @disallow('M8')
@@ -278,52 +310,60 @@ def nanvar(values, axis=None, skipna=True, ddof=1):
 
 @bottleneck_switch()
 def nanmin(values, axis=None, skipna=True):
-    values, mask, dtype = _get_values(values, skipna, fill_value_typ = '+inf')
+    values, mask, dtype = _get_values(values, skipna, fill_value_typ='+inf')
 
     # numpy 1.6.1 workaround in Python 3.x
-    if (values.dtype == np.object_
-            and sys.version_info[0] >= 3):  # pragma: no cover
-        import __builtin__
+    if (values.dtype == np.object_ and compat.PY3):
         if values.ndim > 1:
             apply_ax = axis if axis is not None else 0
-            result = np.apply_along_axis(__builtin__.min, apply_ax, values)
+            result = np.apply_along_axis(builtins.min, apply_ax, values)
         else:
-            result = __builtin__.min(values)
+            try:
+                result = builtins.min(values)
+            except:
+                result = np.nan
     else:
         if ((axis is not None and values.shape[axis] == 0)
                 or values.size == 0):
-            result = com.ensure_float(values.sum(axis))
-            result.fill(np.nan)
+            try:
+                result = com.ensure_float(values.sum(axis))
+                result.fill(np.nan)
+            except:
+                result = np.nan
         else:
             result = values.min(axis)
 
-    result = _wrap_results(result,dtype)
+    result = _wrap_results(result, dtype)
     return _maybe_null_out(result, axis, mask)
 
 
 @bottleneck_switch()
 def nanmax(values, axis=None, skipna=True):
-    values, mask, dtype = _get_values(values, skipna, fill_value_typ ='-inf')
+    values, mask, dtype = _get_values(values, skipna, fill_value_typ='-inf')
 
     # numpy 1.6.1 workaround in Python 3.x
-    if (values.dtype == np.object_
-            and sys.version_info[0] >= 3):  # pragma: no cover
-        import __builtin__
+    if (values.dtype == np.object_ and compat.PY3):
 
         if values.ndim > 1:
             apply_ax = axis if axis is not None else 0
-            result = np.apply_along_axis(__builtin__.max, apply_ax, values)
+            result = np.apply_along_axis(builtins.max, apply_ax, values)
         else:
-            result = __builtin__.max(values)
+            try:
+                result = builtins.max(values)
+            except:
+                result = np.nan
     else:
         if ((axis is not None and values.shape[axis] == 0)
                 or values.size == 0):
-            result = com.ensure_float(values.sum(axis))
-            result.fill(np.nan)
+            try:
+                result = com.ensure_float(values.sum(axis))
+                result.fill(np.nan)
+            except:
+                result = np.nan
         else:
             result = values.max(axis)
 
-    result = _wrap_results(result,dtype)
+    result = _wrap_results(result, dtype)
     return _maybe_null_out(result, axis, mask)
 
 
@@ -331,7 +371,8 @@ def nanargmax(values, axis=None, skipna=True):
     """
     Returns -1 in the NA case
     """
-    values, mask, dtype = _get_values(values, skipna, fill_value_typ = '-inf', isfinite=True)
+    values, mask, dtype = _get_values(values, skipna, fill_value_typ='-inf',
+                                      isfinite=True)
     result = values.argmax(axis)
     result = _maybe_arg_null_out(result, axis, mask, skipna)
     return result
@@ -341,7 +382,8 @@ def nanargmin(values, axis=None, skipna=True):
     """
     Returns -1 in the NA case
     """
-    values, mask, dtype = _get_values(values, skipna, fill_value_typ = '+inf', isfinite=True)
+    values, mask, dtype = _get_values(values, skipna, fill_value_typ='+inf',
+                                      isfinite=True)
     result = values.argmin(axis)
     result = _maybe_arg_null_out(result, axis, mask, skipna)
     return result
@@ -544,12 +586,14 @@ def _ensure_numeric(x):
     if isinstance(x, np.ndarray):
         if x.dtype == np.object_:
             x = x.astype(np.float64)
-    elif not (com.is_float(x) or com.is_integer(x)):
+    elif not (com.is_float(x) or com.is_integer(x) or com.is_complex(x)):
         try:
             x = float(x)
         except Exception:
-            raise TypeError('Could not convert %s to numeric' % str(x))
-
+            try:
+                x = complex(x)
+            except Exception:
+                raise TypeError('Could not convert %s to numeric' % str(x))
     return x
 
 # NA-friendly array comparisons

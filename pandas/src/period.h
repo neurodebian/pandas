@@ -8,6 +8,7 @@
 #define C_PERIOD_H
 
 #include <Python.h>
+#include "helper.h"
 #include "numpy/ndarraytypes.h"
 #include "headers/stdint.h"
 #include "limits.h"
@@ -37,6 +38,9 @@
 #define ORD_OFFSET 719163LL // days until 1970-01-01
 #define BDAY_OFFSET 513689LL // days until 1970-01-01
 #define WEEK_OFFSET 102737LL
+#define BASE_WEEK_TO_DAY_OFFSET 1 // difference between day 0 and end of week in days
+#define DAYS_PER_WEEK 7
+#define BUSINESS_DAYS_PER_WEEK 5
 #define HIGHFREQ_ORIG 0 // ORD_OFFSET * 86400LL // days until 1970-01-01
 
 #define FR_ANN  1000  /* Annual */
@@ -85,6 +89,9 @@
 #define FR_HR   7000  /* Hourly */
 #define FR_MIN  8000  /* Minutely */
 #define FR_SEC  9000  /* Secondly */
+#define FR_MS 10000  /* Millisecondly */
+#define FR_US 11000  /* Microsecondly */
+#define FR_NS 12000  /* Nanosecondly */
 
 #define FR_UND  -10000 /* Undefined */
 
@@ -102,6 +109,8 @@ typedef struct asfreq_info {
 
     int from_q_year_end; // month the year ends on in the "from" frequency
     int to_q_year_end;   // month the year ends on in the "to" frequency
+
+    npy_int64 intraday_conversion_factor;
 } asfreq_info;
 
 
@@ -130,7 +139,7 @@ typedef npy_int64 (*freq_conv_func)(npy_int64, char, asfreq_info*);
 npy_int64 asfreq(npy_int64 period_ordinal, int freq1, int freq2, char relation);
 
 npy_int64 get_period_ordinal(int year, int month, int day,
-                      int hour, int minute, int second,
+                      int hour, int minute, int second, int microseconds, int picoseconds,
                       int freq);
 
 npy_int64 get_python_ordinal(npy_int64 period_ordinal, int freq);
@@ -156,4 +165,5 @@ double getAbsTime(int freq, npy_int64 dailyDate, npy_int64 originalDate);
 char *c_strftime(struct date_info *dinfo, char *fmt);
 int get_yq(npy_int64 ordinal, int freq, int *quarter, int *year);
 
+void initialize_daytime_conversion_factor_matrix();
 #endif

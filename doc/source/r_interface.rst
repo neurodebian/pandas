@@ -2,6 +2,13 @@
 
 .. _rpy:
 
+.. ipython:: python
+   :suppress:
+
+   from pandas import *
+   options.display.max_rows=15
+
+
 ******************
 rpy2 / R interface
 ******************
@@ -20,7 +27,7 @@ its release 2.3, while the current interface is
 designed for the 2.2.x series. We recommend to use 2.2.x over other series 
 unless you are prepared to fix parts of the code, yet the rpy2-2.3.0
 introduces improvements such as a better R-Python bridge memory management
-layer so I might be a good idea to bite the bullet and submit patches for
+layer so it might be a good idea to bite the bullet and submit patches for
 the few minor differences that need to be fixed.
 
 
@@ -74,8 +81,8 @@ DataFrames into the equivalent R object (that is, **data.frame**):
                   index=["one", "two", "three"])
    r_dataframe = com.convert_to_r_dataframe(df)
 
-   print type(r_dataframe)
-   print r_dataframe
+   print(type(r_dataframe))
+   print(r_dataframe)
 
 
 The DataFrame's index is stored as the ``rownames`` attribute of the
@@ -90,8 +97,8 @@ R matrices bear no information on the data type):
 
    r_matrix = com.convert_to_r_matrix(df)
 
-   print type(r_matrix)
-   print r_matrix
+   print(type(r_matrix))
+   print(r_matrix)
 
 
 Calling R functions with pandas objects

@@ -5,6 +5,8 @@ with float64 data
 
 # pylint: disable=E1101,E1103,W0231
 
+from pandas.compat import range, lrange, zip
+from pandas import compat
 import numpy as np
 
 from pandas.core.index import Index, MultiIndex, _ensure_index
@@ -14,6 +16,7 @@ from pandas.sparse.frame import SparseDataFrame
 from pandas.util.decorators import deprecate
 
 import pandas.core.common as com
+import pandas.core.ops as ops
 
 
 class SparsePanelAxis(object):
@@ -31,13 +34,14 @@ class SparsePanelAxis(object):
         if isinstance(value, MultiIndex):
             raise NotImplementedError
 
-        for v in obj._frames.itervalues():
+        for v in compat.itervalues(obj._frames):
             setattr(v, self.frame_attr, value)
 
         setattr(obj, self.cache_field, value)
 
 
 class SparsePanel(Panel):
+
     """
     Sparse version of Panel
 
@@ -58,9 +62,12 @@ class SparsePanel(Panel):
     -----
     """
     ndim = 3
+    _typ = 'panel'
+    _subtyp = 'sparse_panel'
 
     def __init__(self, frames, items=None, major_axis=None, minor_axis=None,
-                 default_fill_value=np.nan, default_kind='block'):
+                 default_fill_value=np.nan, default_kind='block',
+                 copy=False):
         if isinstance(frames, np.ndarray):
             new_frames = {}
             for item, vals in zip(items, frames):
@@ -71,8 +78,9 @@ class SparsePanel(Panel):
                                     default_kind=default_kind)
             frames = new_frames
 
-        if not (isinstance(frames, dict)):
-            raise AssertionError()
+        if not isinstance(frames, dict):
+            raise TypeError('input must be a dict, a %r was passed' %
+                            type(frames).__name__)
 
         self.default_fill_value = fill_value = default_fill_value
         self.default_kind = kind = default_kind
@@ -93,7 +101,7 @@ class SparsePanel(Panel):
         # do we want to fill missing ones?
         for item in items:
             if item not in clean_frames:
-                raise Exception('column %s not found in data' % item)
+                raise ValueError('column %r not found in data' % item)
 
         self._items = items
         self.major_axis = major_axis
@@ -128,6 +136,9 @@ class SparsePanel(Panel):
         return Panel(self.values, self.items, self.major_axis,
                      self.minor_axis)
 
+    def as_matrix(self):
+        return self.values
+
     @property
     def values(self):
         # return dense values
@@ -160,6 +171,30 @@ class SparsePanel(Panel):
 
     # DataFrame's columns / "items"
     minor_axis = SparsePanelAxis('_minor_axis', 'columns')
+
+    def _ixs(self, i, axis=0):
+        """
+        for compat as we don't support Block Manager here
+        i : int, slice, or sequence of integers
+        axis : int
+        """
+
+        key = self._get_axis(axis)[i]
+
+        # xs cannot handle a non-scalar key, so just reindex here
+        if com.is_list_like(key):
+            return self.reindex(**{self._get_axis_name(axis): key})
+
+        return self.xs(key, axis=axis)
+
+    def _slice(self, slobj, axis=0, raise_on_error=False, typ=None):
+        """
+        for compat as we don't support Block Manager here
+        """
+        axis = self._get_axis_name(axis)
+        index = self._get_axis(axis)
+
+        return self.reindex(**{axis: index[slobj]})
 
     def _get_item_cache(self, key):
         return self._frames[key]
@@ -205,7 +240,7 @@ class SparsePanel(Panel):
 
     def __delitem__(self, key):
         loc = self.items.get_loc(key)
-        indices = range(loc) + range(loc + 1, len(self.items))
+        indices = lrange(loc) + lrange(loc + 1, len(self.items))
         del self._frames[key]
         self._items = self._items.take(indices)
 
@@ -226,19 +261,25 @@ class SparsePanel(Panel):
         self._minor_axis = _ensure_index(com._unpickle_array(minor))
         self._frames = frames
 
-    def copy(self):
+    def copy(self, deep=True):
         """
-        Make a (shallow) copy of the sparse panel
+        Make a copy of the sparse panel
 
         Returns
         -------
         copy : SparsePanel
         """
-        return SparsePanel(self._frames.copy(), items=self.items,
-                           major_axis=self.major_axis,
-                           minor_axis=self.minor_axis,
-                           default_fill_value=self.default_fill_value,
-                           default_kind=self.default_kind)
+
+        d = self._construct_axes_dict()
+        if deep:
+            new_data = dict((k, v.copy(deep=True)) for k, v in compat.iteritems(self._frames))
+            d = dict((k, v.copy(deep=True)) for k, v in compat.iteritems(d))
+        else:
+            new_data = self._frames.copy()
+        d['default_fill_value']=self.default_fill_value
+        d['default_kind']=self.default_kind
+
+        return SparsePanel(new_data, **d)
 
     def to_frame(self, filter_observations=True):
         """
@@ -285,7 +326,8 @@ class SparsePanel(Panel):
         minor_labels = inds // N
 
         index = MultiIndex(levels=[self.major_axis, self.minor_axis],
-                           labels=[major_labels, minor_labels])
+                           labels=[major_labels, minor_labels],
+                           verify_integrity=False)
 
         df = DataFrame(values, index=index, columns=self.items)
         return df.sortlevel(level=0)
@@ -310,8 +352,8 @@ class SparsePanel(Panel):
         -------
         reindexed : SparsePanel
         """
-        major = com._mut_exclusive(major, major_axis)
-        minor = com._mut_exclusive(minor, minor_axis)
+        major = com._mut_exclusive(major=major, major_axis=major_axis)
+        minor = com._mut_exclusive(minor=minor, minor_axis=minor_axis)
 
         if com._all_none(items, major, minor):
             raise ValueError('Must specify at least one axis')
@@ -326,12 +368,12 @@ class SparsePanel(Panel):
                     new_frames[item] = self._frames[item]
                 else:
                     raise NotImplementedError('Reindexing with new items not yet '
-                                    'supported')
+                                              'supported')
         else:
             new_frames = self._frames
 
         if copy:
-            new_frames = dict((k, v.copy()) for k, v in new_frames.iteritems())
+            new_frames = dict((k, v.copy()) for k, v in compat.iteritems(new_frames))
 
         return SparsePanel(new_frames, items=items,
                            major_axis=major,
@@ -346,7 +388,7 @@ class SparsePanel(Panel):
             return self._combinePanel(other, func)
         elif np.isscalar(other):
             new_frames = dict((k, func(v, other))
-                              for k, v in self.iterkv())
+                              for k, v in compat.iteritems(self))
             return self._new_like(new_frames)
 
     def _combineFrame(self, other, func, axis=0):
@@ -423,7 +465,7 @@ class SparsePanel(Panel):
         y : DataFrame
             index -> minor axis, columns -> items
         """
-        slices = dict((k, v.xs(key)) for k, v in self.iterkv())
+        slices = dict((k, v.xs(key)) for k, v in compat.iteritems(self))
         return DataFrame(slices, index=self.minor_axis, columns=self.items)
 
     def minor_xs(self, key):
@@ -440,19 +482,32 @@ class SparsePanel(Panel):
         y : SparseDataFrame
             index -> major axis, columns -> items
         """
-        slices = dict((k, v[key]) for k, v in self.iterkv())
+        slices = dict((k, v[key]) for k, v in compat.iteritems(self))
         return SparseDataFrame(slices, index=self.major_axis,
                                columns=self.items,
                                default_fill_value=self.default_fill_value,
                                default_kind=self.default_kind)
 
+    # TODO: allow SparsePanel to work with flex arithmetic.
+    # pow and mod only work for scalars for now
+    def pow(self, val, *args, **kwargs):
+        """wrapper around `__pow__` (only works for scalar values)"""
+        return self.__pow__(val)
+
+    def mod(self, val, *args, **kwargs):
+        """wrapper around `__mod__` (only works for scalar values"""
+        return self.__mod__(val)
+
+# Sparse objects opt out of numexpr
+SparsePanel._add_aggregate_operations(use_numexpr=False)
+ops.add_special_arithmetic_methods(SparsePanel, use_numexpr=False, **ops.panel_special_funcs)
 SparseWidePanel = SparsePanel
 
 
 def _convert_frames(frames, index, columns, fill_value=np.nan, kind='block'):
     from pandas.core.panel import _get_combined_index
     output = {}
-    for item, df in frames.iteritems():
+    for item, df in compat.iteritems(frames):
         if not isinstance(df, SparseDataFrame):
             df = SparseDataFrame(df, default_kind=kind,
                                  default_fill_value=fill_value)
@@ -469,7 +524,7 @@ def _convert_frames(frames, index, columns, fill_value=np.nan, kind='block'):
     index = _ensure_index(index)
     columns = _ensure_index(columns)
 
-    for item, df in output.iteritems():
+    for item, df in compat.iteritems(output):
         if not (df.index.equals(index) and df.columns.equals(columns)):
             output[item] = df.reindex(index=index, columns=columns)
 
@@ -477,7 +532,7 @@ def _convert_frames(frames, index, columns, fill_value=np.nan, kind='block'):
 
 
 def _stack_sparse_info(frame):
-    lengths = [s.sp_index.npoints for _, s in frame.iteritems()]
+    lengths = [s.sp_index.npoints for _, s in compat.iteritems(frame)]
 
     # this is pretty fast
     minor_labels = np.repeat(np.arange(len(frame.columns)), lengths)

@@ -1,4 +1,3 @@
-import unittest
 import nose
 import sys
 import functools
@@ -11,15 +10,20 @@ from pandas import Series, DataFrame, bdate_range, isnull, notnull
 from pandas.util.testing import (
     assert_almost_equal, assert_series_equal, assert_frame_equal
 )
-from pandas.util.py3compat import PY3
 import pandas.core.datetools as datetools
 import pandas.stats.moments as mom
 import pandas.util.testing as tm
+from pandas.compat import range, zip, PY3, StringIO
 
 N, K = 100, 10
 
+def _skip_if_no_scipy():
+    try:
+        import scipy.stats
+    except ImportError:
+        raise nose.SkipTest("no scipy.stats")
 
-class TestMoments(unittest.TestCase):
+class TestMoments(tm.TestCase):
 
     _multiprocess_can_split_ = True
 
@@ -64,10 +68,11 @@ class TestMoments(unittest.TestCase):
         self._check_moment_func(mom.rolling_mean, np.mean)
 
     def test_cmov_mean(self):
+        _skip_if_no_scipy()
         try:
             from scikits.timeseries.lib import cmov_mean
         except ImportError:
-            raise nose.SkipTest
+            raise nose.SkipTest("no scikits.timeseries")
 
         vals = np.random.randn(10)
         xp = cmov_mean(vals, 5)
@@ -81,10 +86,11 @@ class TestMoments(unittest.TestCase):
         assert_series_equal(xp, rs)
 
     def test_cmov_window(self):
+        _skip_if_no_scipy()
         try:
             from scikits.timeseries.lib import cmov_window
         except ImportError:
-            raise nose.SkipTest
+            raise nose.SkipTest("no scikits.timeseries")
 
         vals = np.random.randn(10)
         xp = cmov_window(vals, 5, 'boxcar')
@@ -98,10 +104,11 @@ class TestMoments(unittest.TestCase):
         assert_series_equal(xp, rs)
 
     def test_cmov_window_corner(self):
+        _skip_if_no_scipy()
         try:
             from scikits.timeseries.lib import cmov_window
         except ImportError:
-            raise nose.SkipTest
+            raise nose.SkipTest("no scikits.timeseries")
 
         # all nan
         vals = np.empty(10, dtype=float)
@@ -121,10 +128,11 @@ class TestMoments(unittest.TestCase):
         self.assert_(len(rs) == 5)
 
     def test_cmov_window_frame(self):
+        _skip_if_no_scipy()
         try:
             from scikits.timeseries.lib import cmov_window
         except ImportError:
-            raise nose.SkipTest
+            raise nose.SkipTest("no scikits.timeseries")
 
         # DataFrame
         vals = np.random.randn(10, 2)
@@ -133,10 +141,11 @@ class TestMoments(unittest.TestCase):
         assert_frame_equal(DataFrame(xp), rs)
 
     def test_cmov_window_na_min_periods(self):
+        _skip_if_no_scipy()
         try:
             from scikits.timeseries.lib import cmov_window
         except ImportError:
-            raise nose.SkipTest
+            raise nose.SkipTest("no scikits.timeseries")
 
         # min_periods
         vals = Series(np.random.randn(10))
@@ -149,10 +158,11 @@ class TestMoments(unittest.TestCase):
         assert_series_equal(xp, rs)
 
     def test_cmov_window_regular(self):
+        _skip_if_no_scipy()
         try:
             from scikits.timeseries.lib import cmov_window
         except ImportError:
-            raise nose.SkipTest
+            raise nose.SkipTest("no scikits.timeseries")
 
         win_types = ['triang', 'blackman', 'hamming', 'bartlett', 'bohman',
                      'blackmanharris', 'nuttall', 'barthann']
@@ -164,10 +174,11 @@ class TestMoments(unittest.TestCase):
             assert_series_equal(Series(xp), rs)
 
     def test_cmov_window_special(self):
+        _skip_if_no_scipy()
         try:
             from scikits.timeseries.lib import cmov_window
         except ImportError:
-            raise nose.SkipTest
+            raise nose.SkipTest("no scikits.timeseries")
 
         win_types = ['kaiser', 'gaussian', 'general_gaussian', 'slepian']
         kwds = [{'beta': 1.}, {'std': 1.}, {'power': 2., 'width': 2.},
@@ -307,7 +318,7 @@ class TestMoments(unittest.TestCase):
     def test_fperr_robustness(self):
         # TODO: remove this once python 2.5 out of picture
         if PY3:
-            raise nose.SkipTest
+            raise nose.SkipTest("doesn't work on python 3")
 
         # #2114
         data = '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x1a@\xaa\xaa\xaa\xaa\xaa\xaa\x02@8\x8e\xe38\x8e\xe3\xe8?z\t\xed%\xb4\x97\xd0?\xa2\x0c<\xdd\x9a\x1f\xb6?\x82\xbb\xfa&y\x7f\x9d?\xac\'\xa7\xc4P\xaa\x83?\x90\xdf\xde\xb0k8j?`\xea\xe9u\xf2zQ?*\xe37\x9d\x98N7?\xe2.\xf5&v\x13\x1f?\xec\xc9\xf8\x19\xa4\xb7\x04?\x90b\xf6w\x85\x9f\xeb>\xb5A\xa4\xfaXj\xd2>F\x02\xdb\xf8\xcb\x8d\xb8>.\xac<\xfb\x87^\xa0>\xe8:\xa6\xf9_\xd3\x85>\xfb?\xe2cUU\xfd?\xfc\x7fA\xed8\x8e\xe3?\xa5\xaa\xac\x91\xf6\x12\xca?n\x1cs\xb6\xf9a\xb1?\xe8%D\xf3L-\x97?5\xddZD\x11\xe7~?#>\xe7\x82\x0b\x9ad?\xd9R4Y\x0fxK?;7x;\nP2?N\xf4JO\xb8j\x18?4\xf81\x8a%G\x00?\x9a\xf5\x97\r2\xb4\xe5>\xcd\x9c\xca\xbcB\xf0\xcc>3\x13\x87(\xd7J\xb3>\x99\x19\xb4\xe0\x1e\xb9\x99>ff\xcd\x95\x14&\x81>\x88\x88\xbc\xc7p\xddf>`\x0b\xa6_\x96|N>@\xb2n\xea\x0eS4>U\x98\x938i\x19\x1b>\x8eeb\xd0\xf0\x10\x02>\xbd\xdc-k\x96\x16\xe8=(\x93\x1e\xf2\x0e\x0f\xd0=\xe0n\xd3Bii\xb5=*\xe9\x19Y\x8c\x8c\x9c=\xc6\xf0\xbb\x90]\x08\x83=]\x96\xfa\xc0|`i=>d\xfc\xd5\xfd\xeaP=R0\xfb\xc7\xa7\x8e6=\xc2\x95\xf9_\x8a\x13\x1e=\xd6c\xa6\xea\x06\r\x04=r\xda\xdd8\t\xbc\xea<\xf6\xe6\x93\xd0\xb0\xd2\xd1<\x9d\xdeok\x96\xc3\xb7<&~\xea9s\xaf\x9f<UUUUUU\x13@q\x1c\xc7q\x1c\xc7\xf9?\xf6\x12\xdaKh/\xe1?\xf2\xc3"e\xe0\xe9\xc6?\xed\xaf\x831+\x8d\xae?\xf3\x1f\xad\xcb\x1c^\x94?\x15\x1e\xdd\xbd>\xb8\x02@\xc6\xd2&\xfd\xa8\xf5\xe8?\xd9\xe1\x19\xfe\xc5\xa3\xd0?v\x82"\xa8\xb2/\xb6?\x9dX\x835\xee\x94\x9d?h\x90W\xce\x9e\xb8\x83?\x8a\xc0th~Kj?\\\x80\xf8\x9a\xa9\x87Q?%\xab\xa0\xce\x8c_7?1\xe4\x80\x13\x11*\x1f? \x98\x00\r\xb6\xc6\x04?\x80u\xabf\x9d\xb3\xeb>UNrD\xbew\xd2>\x1c\x13C[\xa8\x9f\xb8>\x12b\xd7<pj\xa0>m-\x1fQ@\xe3\x85>\xe6\x91)l\x00/m>Da\xc6\xf2\xaatS>\x05\xd7]\xee\xe3\xf09>'
@@ -420,7 +431,7 @@ class TestMoments(unittest.TestCase):
                           fill_value=None):
 
         series_result = func(self.series, 50)
-        self.assert_(isinstance(series_result, Series))
+        tm.assert_isinstance(series_result, Series)
 
         frame_result = func(self.frame, 50)
         self.assertEquals(type(frame_result), DataFrame)
@@ -475,7 +486,6 @@ class TestMoments(unittest.TestCase):
             assert_frame_equal(frame_xp, frame_rs)
 
     def test_legacy_time_rule_arg(self):
-        from StringIO import StringIO
         # suppress deprecation warnings
         sys.stderr = StringIO()
 
@@ -524,6 +534,16 @@ class TestMoments(unittest.TestCase):
         self.assertRaises(Exception, mom.ewma, self.arr, com=9.5, span=20)
         self.assertRaises(Exception, mom.ewma, self.arr)
 
+    def test_ewma_halflife_arg(self):
+        A = mom.ewma(self.arr, com=13.932726172912965)
+        B = mom.ewma(self.arr, halflife=10.0)
+        assert_almost_equal(A, B)
+
+        self.assertRaises(Exception, mom.ewma, self.arr, span=20, halflife=50)
+        self.assertRaises(Exception, mom.ewma, self.arr, com=9.5, halflife=50)
+        self.assertRaises(Exception, mom.ewma, self.arr, com=9.5, span=20, halflife=50)
+        self.assertRaises(Exception, mom.ewma, self.arr)
+
     def test_ew_empty_arrays(self):
         arr = np.array([], dtype=np.float64)
 
@@ -554,7 +574,7 @@ class TestMoments(unittest.TestCase):
 
     def _check_ew_structures(self, func):
         series_result = func(self.series, com=10)
-        self.assert_(isinstance(series_result, Series))
+        tm.assert_isinstance(series_result, Series)
         frame_result = func(self.frame, com=10)
         self.assertEquals(type(frame_result), DataFrame)
 
@@ -593,7 +613,7 @@ class TestMoments(unittest.TestCase):
     def test_flex_binary_moment(self):
         # GH3155
         # don't blow the stack
-        self.assertRaises(ValueError, mom._flex_binary_moment,5,6,None)
+        self.assertRaises(TypeError, mom._flex_binary_moment,5,6,None)
 
     def test_corr_sanity(self):
         #GH 3155
@@ -614,8 +634,11 @@ class TestMoments(unittest.TestCase):
         for i in range(10):
             df = DataFrame(np.random.rand(30,2))
             res = mom.rolling_corr(df[0],df[1],5,center=True)
-            print( res)
-            self.assertTrue(all([np.abs(np.nan_to_num(x)) <=1 for x in res]))
+            try:
+                self.assertTrue(all([np.abs(np.nan_to_num(x)) <=1 for x in res]))
+            except:
+                print(res)
+
 
     def test_flex_binary_frame(self):
         def _check(method):
@@ -755,7 +778,7 @@ class TestMoments(unittest.TestCase):
 
     def _check_expanding_structures(self, func):
         series_result = func(self.series)
-        self.assert_(isinstance(series_result, Series))
+        tm.assert_isinstance(series_result, Series)
         frame_result = func(self.frame)
         self.assertEquals(type(frame_result), DataFrame)
 

@@ -1,15 +1,16 @@
+from pandas.compat import range
 import re
 from numpy import nan, ndarray
 import numpy as np
 
 import operator
 import pickle
-import unittest
 
 from pandas.core.series import Series
 from pandas.core.common import notnull
 from pandas.sparse.api import SparseArray
 from pandas.util.testing import assert_almost_equal, assertRaisesRegexp
+import pandas.util.testing as tm
 
 
 def assert_sp_array_equal(left, right):
@@ -21,7 +22,7 @@ def assert_sp_array_equal(left, right):
         assert(left.fill_value == right.fill_value)
 
 
-class TestSparseArray(unittest.TestCase):
+class TestSparseArray(tm.TestCase):
     _multiprocess_can_split_ = True
 
     def setUp(self):
@@ -31,17 +32,18 @@ class TestSparseArray(unittest.TestCase):
 
     def test_get_item(self):
         errmsg = re.compile("bounds")
-        assertRaisesRegexp(IndexError, errmsg, lambda : self.arr[11])
-        assertRaisesRegexp(IndexError, errmsg, lambda : self.arr[-11])
+        assertRaisesRegexp(IndexError, errmsg, lambda: self.arr[11])
+        assertRaisesRegexp(IndexError, errmsg, lambda: self.arr[-11])
         self.assertEqual(self.arr[-1], self.arr[len(self.arr) - 1])
 
     def test_bad_take(self):
-        assertRaisesRegexp(IndexError, "bounds", lambda : self.arr.take(11))
-        self.assertRaises(IndexError, lambda : self.arr.take(-11))
+        assertRaisesRegexp(IndexError, "bounds", lambda: self.arr.take(11))
+        self.assertRaises(IndexError, lambda: self.arr.take(-11))
 
     def test_set_item(self):
         def setitem():
             self.arr[5] = 3
+
         def setslice():
             self.arr[1:5] = 2
         assertRaisesRegexp(TypeError, "item assignment", setitem)
@@ -128,23 +130,28 @@ class TestSparseArray(unittest.TestCase):
             res = op(first, second)
             exp = SparseArray(op(first.values, second.values),
                               fill_value=first.fill_value)
-            self.assert_(isinstance(res, SparseArray))
+            tm.assert_isinstance(res, SparseArray)
             assert_almost_equal(res.values, exp.values)
 
             res2 = op(first, second.values)
-            self.assert_(isinstance(res2, SparseArray))
+            tm.assert_isinstance(res2, SparseArray)
             assert_sp_array_equal(res, res2)
 
             res3 = op(first.values, second)
-            self.assert_(isinstance(res3, SparseArray))
+            tm.assert_isinstance(res3, SparseArray)
             assert_sp_array_equal(res, res3)
 
             res4 = op(first, 4)
-            self.assert_(isinstance(res4, SparseArray))
-            exp = op(first.values, 4)
-            exp_fv = op(first.fill_value, 4)
-            assert_almost_equal(res4.fill_value, exp_fv)
-            assert_almost_equal(res4.values, exp)
+            tm.assert_isinstance(res4, SparseArray)
+
+            # ignore this if the actual op raises (e.g. pow)
+            try:
+                exp = op(first.values, 4)
+                exp_fv = op(first.fill_value, 4)
+                assert_almost_equal(res4.fill_value, exp_fv)
+                assert_almost_equal(res4.values, exp)
+            except (ValueError) :
+                pass
 
         def _check_inplace_op(op):
             tmp = arr1.copy()

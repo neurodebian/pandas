@@ -26,7 +26,9 @@ line_re = re.compile('.*?\n')
 #-----------------------------------------------------------------------------
 # Code begins - classes and functions
 
+
 class IPythonConsoleLexer(Lexer):
+
     """
     For IPython console output or doctests, such as:
 
@@ -37,7 +39,7 @@ class IPythonConsoleLexer(Lexer):
       In [2]: a
       Out[2]: 'foo'
 
-      In [3]: print a
+      In [3]: print(a)
       foo
 
       In [4]: 1 / 0

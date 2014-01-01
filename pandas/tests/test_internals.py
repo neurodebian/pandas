@@ -1,16 +1,17 @@
 # pylint: disable=W0102
 
-import unittest
 import nose
 import numpy as np
 
 from pandas import Index, MultiIndex, DataFrame, Series
+from pandas.sparse.array import SparseArray
 from pandas.core.internals import *
 import pandas.core.internals as internals
 import pandas.util.testing as tm
 
 from pandas.util.testing import (
     assert_almost_equal, assert_frame_equal, randn)
+from pandas.compat import zip, u
 
 
 def assert_block_equal(left, right):
@@ -23,7 +24,7 @@ def assert_block_equal(left, right):
 def get_float_mat(n, k, dtype):
     return np.repeat(np.atleast_2d(np.arange(k, dtype=dtype)), n, axis=0)
 
-TEST_COLS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+TEST_COLS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 's1', 's2']
 N = 10
 
 
@@ -43,7 +44,6 @@ def get_obj_ex(cols=['b', 'd']):
     mat[:, 1] = 'bar'
     return make_block(mat.T, cols, TEST_COLS)
 
-
 def get_bool_ex(cols=['f']):
     mat = np.ones((N, 1), dtype=bool)
     return make_block(mat.T, cols, TEST_COLS)
@@ -58,6 +58,14 @@ def get_dt_ex(cols=['h']):
     mat = randn(N, 1).astype(int).astype('M8[ns]')
     return make_block(mat.T, cols, TEST_COLS)
 
+def get_sparse_ex1():
+    sa1 = SparseArray([0, 0, 1, 2, 3, 0, 4, 5, 0, 6], fill_value=0)
+    return make_block(sa1, ['s1'], TEST_COLS)
+
+def get_sparse_ex2():
+    sa2 = SparseArray([0, 0, 2, 3, 4, 0, 6, 7, 0, 8], fill_value=0)
+    return make_block(sa2, ['s2'], TEST_COLS)
+
 def create_blockmanager(blocks):
     l = []
     for b in blocks:
@@ -66,10 +74,20 @@ def create_blockmanager(blocks):
     for b in blocks:
         b.ref_items = items
 
-    index_sz = blocks[0].values.shape[1]
+    index_sz = blocks[0].shape[1]
     return BlockManager(blocks, [items, np.arange(index_sz)])
 
-class TestBlock(unittest.TestCase):
+def create_singleblockmanager(blocks):
+    l = []
+    for b in blocks:
+        l.extend(b.items)
+    items = Index(l)
+    for b in blocks:
+        b.ref_items = items
+
+    return SingleBlockManager(blocks, [items])
+
+class TestBlock(tm.TestCase):
 
     _multiprocess_can_split_ = True
 
@@ -176,7 +194,7 @@ class TestBlock(unittest.TestCase):
 
         # with dup column support this method was taken out
         # GH3679
-        raise nose.SkipTest
+        raise nose.SkipTest("skipping for now")
 
         bs = list(self.fblock.split_block_at('a'))
         self.assertEqual(len(bs), 1)
@@ -199,7 +217,7 @@ class TestBlock(unittest.TestCase):
         mat = np.empty((N, 2), dtype=object)
         mat[:, 0] = 'foo'
         mat[:, 1] = 'bar'
-        cols = ['b', u"\u05d0"]
+        cols = ['b', u("\u05d0")]
         str_repr = repr(make_block(mat.T, cols, TEST_COLS))
 
     def test_get(self):
@@ -215,7 +233,7 @@ class TestBlock(unittest.TestCase):
         pass
 
 
-class TestBlockManager(unittest.TestCase):
+class TestBlockManager(tm.TestCase):
 
     _multiprocess_can_split_ = True
 
@@ -343,8 +361,27 @@ class TestBlockManager(unittest.TestCase):
     def test_copy(self):
         shallow = self.mgr.copy(deep=False)
 
-        for cp_blk, blk in zip(shallow.blocks, self.mgr.blocks):
-            self.assert_(cp_blk.values is blk.values)
+        # we don't guaranteee block ordering
+        for blk in self.mgr.blocks:
+            found = False
+            for cp_blk in shallow.blocks:
+                if cp_blk.values is blk.values:
+                    found = True
+                    break
+            self.assert_(found == True)
+
+    def test_sparse(self):
+        mgr = create_blockmanager([get_sparse_ex1(),get_sparse_ex2()])
+
+        # what to test here?
+        self.assert_(mgr.as_matrix().dtype == np.float64)
+
+    def test_sparse_mixed(self):
+        mgr = create_blockmanager([get_sparse_ex1(),get_sparse_ex2(),get_float_ex()])
+        self.assert_(len(mgr.blocks) == 3)
+        self.assert_(isinstance(mgr,BlockManager))
+
+        # what to test here?
 
     def test_as_matrix_float(self):
 
@@ -385,7 +422,7 @@ class TestBlockManager(unittest.TestCase):
             self.assert_(tmgr.as_matrix().dtype == np.dtype(t))
 
     def test_convert(self):
-        
+
         def _compare(old_mgr, new_mgr):
             """ compare the blocks, numeric compare ==, object don't """
             old_blocks = set(old_mgr.blocks)
@@ -440,7 +477,7 @@ class TestBlockManager(unittest.TestCase):
         _check(new_mgr,FloatBlock,['b','g'])
         _check(new_mgr,IntBlock,['a','f'])
 
-        mgr = create_blockmanager([b, get_int_ex(['f'],np.int32), get_bool_ex(['bool']), get_dt_ex(['dt']), 
+        mgr = create_blockmanager([b, get_int_ex(['f'],np.int32), get_bool_ex(['bool']), get_dt_ex(['dt']),
                                    get_int_ex(['i'],np.int64), get_float_ex(['g'],np.float64), get_float_ex(['h'],np.float16)])
         new_mgr = mgr.convert(convert_numeric = True)
 
@@ -450,11 +487,19 @@ class TestBlockManager(unittest.TestCase):
         _check(new_mgr,BoolBlock,['bool'])
         _check(new_mgr,DatetimeBlock,['dt'])
 
-    def test_xs(self):
-        pass
-
     def test_interleave(self):
         pass
+
+    def test_interleave_non_unique_cols(self):
+        df = DataFrame([
+            [Timestamp('20130101'), 3.5],
+            [Timestamp('20130102'), 4.5]],
+            columns=['x', 'x'],
+            index=[1, 2])
+
+        df_unique = df.copy()
+        df_unique.columns = ['x', 'y']
+        np.testing.assert_array_equal(df_unique.values, df.values)
 
     def test_consolidate(self):
         pass
@@ -519,15 +564,15 @@ class TestBlockManager(unittest.TestCase):
         assert_frame_equal(xp, rs)
 
         xp = DataFrame({'bool': bool_ser})
-        rs = DataFrame(df._data.get_numeric_data(type_list=bool))
+        rs = DataFrame(df._data.get_bool_data())
         assert_frame_equal(xp, rs)
 
-        rs = DataFrame(df._data.get_numeric_data(type_list=bool))
+        rs = DataFrame(df._data.get_bool_data())
         df.ix[0, 'bool'] = not df.ix[0, 'bool']
 
         self.assertEqual(rs.ix[0, 'bool'], df.ix[0, 'bool'])
 
-        rs = DataFrame(df._data.get_numeric_data(type_list=bool, copy=True))
+        rs = DataFrame(df._data.get_bool_data(copy=True))
         df.ix[0, 'bool'] = not df.ix[0, 'bool']
 
         self.assertEqual(rs.ix[0, 'bool'], not df.ix[0, 'bool'])
@@ -535,14 +580,11 @@ class TestBlockManager(unittest.TestCase):
     def test_missing_unicode_key(self):
         df = DataFrame({"a": [1]})
         try:
-            df.ix[:, u"\u05d0"]  # should not raise UnicodeEncodeError
+            df.ix[:, u("\u05d0")]  # should not raise UnicodeEncodeError
         except KeyError:
             pass  # this is the expected exception
 
 if __name__ == '__main__':
-    # unittest.main()
     import nose
-    # nose.runmodule(argv=[__file__,'-vvs','-x', '--pdb-failure'],
-    #                exit=False)
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
                    exit=False)

@@ -16,7 +16,7 @@ _dtypes = {
 
 _lift_types = []
 
-for _k, _v in _dtypes.iteritems():
+for _k, _v in _dtypes.items():
     for _i in _v:
         _lift_types.append(_k + str(_i))
 
@@ -34,3 +34,19 @@ for _f in _lift_random:
     globals()[_f] = getattr(np.random, _f)
 
 NA = np.nan
+
+# a series-like ndarray ####
+
+
+class SNDArray(Array):
+
+    def __new__(cls, data, index=None, name=None):
+        data = data.view(SNDArray)
+        data.index = index
+        data.name = name
+
+        return data
+
+    @property
+    def values(self):
+        return self.view(Array)

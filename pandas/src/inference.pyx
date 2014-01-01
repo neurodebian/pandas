@@ -16,15 +16,14 @@ _TYPE_MAP = {
     np.string_: 'string',
     np.unicode_: 'unicode',
     np.bool_: 'boolean',
-    np.datetime64 : 'datetime64'
+    np.datetime64 : 'datetime64',
+    np.timedelta64 : 'timedelta64'
 }
 
 try:
     _TYPE_MAP[np.float128] = 'floating'
     _TYPE_MAP[np.complex256] = 'complex'
     _TYPE_MAP[np.float16] = 'floating'
-    _TYPE_MAP[np.datetime64] = 'datetime64'
-    _TYPE_MAP[np.timedelta64] = 'timedelta64'
 except AttributeError:
     pass
 
@@ -41,16 +40,16 @@ def infer_dtype(object _values):
             _values = list(_values)
         values = list_to_object_array(_values)
 
-    n = len(values)
-    if n == 0:
-        return 'empty'
-
     val_kind = values.dtype.type
     if val_kind in _TYPE_MAP:
         return _TYPE_MAP[val_kind]
 
     if values.dtype != np.object_:
         values = values.astype('O')
+
+    n = len(values)
+    if n == 0:
+        return 'empty'
 
     val = util.get_value_1d(values, 0)
 
@@ -331,7 +330,7 @@ def is_period(object o):
 
 def is_period_array(ndarray[object] values):
     cdef int i, n = len(values)
-    from pandas import Period
+    from pandas.tseries.period import Period
 
     if n == 0:
         return False
@@ -480,6 +479,9 @@ def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
                 seen_object = 1
                 # objects[i] = val.astype('O')
                 break
+        elif util.is_timedelta64_object(val):
+            seen_object = 1
+            break
         elif util.is_integer_object(val):
             seen_int = 1
             floats[i] = <float64_t> val
@@ -705,20 +707,22 @@ def try_parse_datetime_components(ndarray[object] years,
         Py_ssize_t i, n
         ndarray[object] result
         int secs
+        double float_secs
         double micros
 
     from datetime import datetime
 
     n = len(years)
-    if (len(months) != n and len(days) != n and len(hours) != n and
-        len(minutes) != n and len(seconds) != n):
+    if (len(months) != n or len(days) != n or len(hours) != n or
+        len(minutes) != n or len(seconds) != n):
         raise ValueError('Length of all datetime components must be equal')
     result = np.empty(n, dtype='O')
 
     for i from 0 <= i < n:
-        secs = int(seconds[i])
+        float_secs = float(seconds[i])
+        secs = int(float_secs)
 
-        micros = seconds[i] - secs
+        micros = float_secs - secs
         if micros > 0:
             micros = micros * 1000000
 

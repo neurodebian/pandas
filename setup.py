@@ -40,14 +40,12 @@ if sys.version_info[0] >= 3:
     if sys.version_info[1] >= 3:  # 3.3 needs numpy 1.7+
         min_numpy_ver = "1.7.0b2"
 
-    setuptools_kwargs = {'use_2to3': True,
+    setuptools_kwargs = {
                          'zip_safe': False,
                          'install_requires': ['python-dateutil >= 2',
                                               'pytz >= 2011k',
                                               'numpy >= %s' % min_numpy_ver],
                          'setup_requires': ['numpy >= %s' % min_numpy_ver],
-                         'use_2to3_exclude_fixers': ['lib2to3.fixes.fix_next',
-                                                     ],
                          }
     if not _have_setuptools:
         sys.exit("need setuptools/distribute for Py3k"
@@ -85,7 +83,7 @@ try:
 except ImportError:
     cython = False
 
-from os.path import splitext, basename, join as pjoin
+from os.path import join as pjoin
 
 
 class build_ext(_build_ext):
@@ -165,7 +163,7 @@ the ideal tool for all of these tasks.
 
 Note
 ----
-Windows binaries built against NumPy 1.6.1
+Windows binaries built against NumPy 1.7.1
 """
 
 DISTNAME = 'pandas'
@@ -182,12 +180,16 @@ CLASSIFIERS = [
     'Programming Language :: Python',
     'Programming Language :: Python :: 2',
     'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 2.6',
+    'Programming Language :: Python :: 2.7',
+    'Programming Language :: Python :: 3.2',
+    'Programming Language :: Python :: 3.3',
     'Programming Language :: Cython',
     'Topic :: Scientific/Engineering',
 ]
 
 MAJOR = 0
-MINOR = 12
+MINOR = 13
 MICRO = 0
 ISRELEASED = True
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
@@ -199,19 +201,20 @@ if not ISRELEASED:
     try:
         import subprocess
         try:
-            pipe = subprocess.Popen(["git", "rev-parse", "--short", "HEAD"],
+            pipe = subprocess.Popen(["git", "describe", "--always"],
                                     stdout=subprocess.PIPE).stdout
         except OSError:
             # msysgit compatibility
             pipe = subprocess.Popen(
-                ["git.cmd", "rev-parse", "--short", "HEAD"],
+                ["git.cmd", "describe", "--always"],
                 stdout=subprocess.PIPE).stdout
         rev = pipe.read().strip()
         # makes distutils blow up on Python 2.7
         if sys.version_info[0] >= 3:
             rev = rev.decode('ascii')
 
-        FULLVERSION += "-%s" % rev
+        FULLVERSION = rev.lstrip('v')
+
     except:
         warnings.warn("WARNING: Couldn't get git revision")
 else:
@@ -301,7 +304,8 @@ class CheckSDist(sdist):
                  'pandas/index.pyx',
                  'pandas/algos.pyx',
                  'pandas/parser.pyx',
-                 'pandas/src/sparse.pyx']
+                 'pandas/src/sparse.pyx',
+                 'pandas/src/testing.pyx']
 
     def initialize_options(self):
         sdist.initialize_options(self)
@@ -461,6 +465,30 @@ sparse_ext = Extension('pandas._sparse',
 
 extensions.extend([sparse_ext])
 
+testing_ext = Extension('pandas._testing',
+                       sources=[srcpath('testing', suffix=suffix)],
+                       include_dirs=[],
+                       libraries=libraries)
+
+extensions.extend([testing_ext])
+
+#----------------------------------------------------------------------
+# msgpack stuff here
+
+if sys.byteorder == 'big':
+    macros = [('__BIG_ENDIAN__', '1')]
+else:
+    macros = [('__LITTLE_ENDIAN__', '1')]
+
+msgpack_ext = Extension('pandas.msgpack',
+                        sources = [srcpath('msgpack',
+                                           suffix=suffix, subdir='')],
+                        language='c++',
+                        include_dirs=common_include,
+                        define_macros=macros)
+
+extensions.append(msgpack_ext)
+
 # if not ISRELEASED:
 #     extensions.extend([sandbox_ext])
 
@@ -472,7 +500,8 @@ if suffix == '.pyx' and 'setuptools' in sys.modules:
             ext.sources[0] = root + suffix
 
 ujson_ext = Extension('pandas.json',
-                      depends=['pandas/src/ujson/lib/ultrajson.h'],
+                      depends=['pandas/src/ujson/lib/ultrajson.h',
+                               'pandas/src/numpy_helper.h'],
                       sources=['pandas/src/ujson/python/ujson.c',
                                'pandas/src/ujson/python/objToJSON.c',
                                'pandas/src/ujson/python/JSONtoObj.c',
@@ -502,6 +531,8 @@ setup(name=DISTNAME,
       maintainer=AUTHOR,
       packages=['pandas',
                 'pandas.compat',
+                'pandas.computation',
+                'pandas.computation.tests',
                 'pandas.core',
                 'pandas.io',
                 'pandas.rpy',
@@ -511,6 +542,7 @@ setup(name=DISTNAME,
                 'pandas.stats',
                 'pandas.util',
                 'pandas.tests',
+                'pandas.tests.test_msgpack',
                 'pandas.tools',
                 'pandas.tools.tests',
                 'pandas.tseries',
@@ -522,13 +554,16 @@ setup(name=DISTNAME,
       package_data={'pandas.io': ['tests/data/legacy_hdf/*.h5',
                                   'tests/data/legacy_pickle/0.10.1/*.pickle',
                                   'tests/data/legacy_pickle/0.11.0/*.pickle',
+                                  'tests/data/legacy_pickle/0.12.0/*.pickle',
+                                  'tests/data/legacy_pickle/0.13.0/*.pickle',
                                   'tests/data/*.csv',
                                   'tests/data/*.dta',
                                   'tests/data/*.txt',
                                   'tests/data/*.xls',
                                   'tests/data/*.xlsx',
                                   'tests/data/*.table',
-                                  'tests/data/*.html'],
+                                  'tests/data/*.html',
+                                  'tests/test_json/data/*.json'],
                     'pandas.tools': ['tests/*.csv'],
                     'pandas.tests': ['data/*.pickle',
                                      'data/*.csv'],

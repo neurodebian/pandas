@@ -9,12 +9,15 @@
    from pandas import *
    randn = np.random.randn
    np.set_printoptions(precision=4, suppress=True)
+   options.display.max_rows = 15
 
 **********
 What's New
 **********
 
 These are new features and improvements of note in each release.
+
+.. include:: v0.13.0.txt
 
 .. include:: v0.12.0.txt
 

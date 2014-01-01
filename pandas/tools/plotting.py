@@ -4,6 +4,7 @@ import datetime
 import warnings
 import re
 from contextlib import contextmanager
+from distutils.version import LooseVersion
 
 import numpy as np
 
@@ -15,6 +16,8 @@ from pandas.tseries.index import DatetimeIndex
 from pandas.tseries.period import PeriodIndex, Period
 from pandas.tseries.frequencies import get_period_alias, get_base_alias
 from pandas.tseries.offsets import DateOffset
+from pandas.compat import range, lrange, lmap, map, zip
+import pandas.compat as compat
 
 try:  # mpl optional
     import pandas.tseries.converter as conv
@@ -96,13 +99,13 @@ def _get_standard_colors(num_colors=None, colormap=None, color_type='default',
     import matplotlib.pyplot as plt
 
     if color is None and colormap is not None:
-        if isinstance(colormap, basestring):
+        if isinstance(colormap, compat.string_types):
             import matplotlib.cm as cm
             cmap = colormap
             colormap = cm.get_cmap(colormap)
             if colormap is None:
                 raise ValueError("Colormap {0} is not recognized".format(cmap))
-        colors = map(colormap, np.linspace(0, 1, num=num_colors))
+        colors = lmap(colormap, np.linspace(0, 1, num=num_colors))
     elif color is not None:
         if colormap is not None:
             warnings.warn("'color' and 'colormap' cannot be used "
@@ -111,7 +114,7 @@ def _get_standard_colors(num_colors=None, colormap=None, color_type='default',
     else:
         if color_type == 'default':
             colors = plt.rcParams.get('axes.color_cycle', list('bgrcmyk'))
-            if isinstance(colors, basestring):
+            if isinstance(colors, compat.string_types):
                 colors = list(colors)
         elif color_type == 'random':
             import random
@@ -119,7 +122,7 @@ def _get_standard_colors(num_colors=None, colormap=None, color_type='default',
                 random.seed(column)
                 return [random.random() for _ in range(3)]
 
-            colors = map(random_color, range(num_colors))
+            colors = lmap(random_color, lrange(num_colors))
         else:
             raise NotImplementedError
 
@@ -198,8 +201,8 @@ plot_params = _Options()
 
 
 def scatter_matrix(frame, alpha=0.5, figsize=None, ax=None, grid=False,
-                   diagonal='hist', marker='.', density_kwds={}, hist_kwds={},
-                   **kwds):
+                   diagonal='hist', marker='.', density_kwds=None,
+                   hist_kwds=None, **kwds):
     """
     Draw a matrix of scatter plots.
 
@@ -226,6 +229,7 @@ def scatter_matrix(frame, alpha=0.5, figsize=None, ax=None, grid=False,
     >>> df = DataFrame(np.random.randn(1000, 4), columns=['A','B','C','D'])
     >>> scatter_matrix(df, alpha=0.2)
     """
+    import matplotlib.pyplot as plt
     from matplotlib.artist import setp
 
     df = frame._get_numeric_data()
@@ -240,8 +244,14 @@ def scatter_matrix(frame, alpha=0.5, figsize=None, ax=None, grid=False,
 
     marker = _get_marker_compat(marker)
 
-    for i, a in zip(range(n), df.columns):
-        for j, b in zip(range(n), df.columns):
+    hist_kwds = hist_kwds or {}
+    density_kwds = density_kwds or {}
+
+    # workaround because `c='b'` is hardcoded in matplotlibs scatter method
+    kwds.setdefault('c', plt.rcParams['patch.facecolor'])
+
+    for i, a in zip(lrange(n), df.columns):
+        for j, b in zip(lrange(n), df.columns):
             ax = axes[i, j]
 
             if i == j:
@@ -311,7 +321,6 @@ def _gca():
 def _gcf():
     import matplotlib.pyplot as plt
     return plt.gcf()
-
 
 def _get_marker_compat(marker):
     import matplotlib.lines as mlines
@@ -445,13 +454,14 @@ def andrews_curves(data, class_column, ax=None, samples=200, colormap=None,
 
     n = len(data)
     class_col = data[class_column]
+    uniq_class = class_col.drop_duplicates()
     columns = [data[col] for col in data.columns if (col != class_column)]
     x = [-pi + 2.0 * pi * (t / float(samples)) for t in range(samples)]
     used_legends = set([])
 
-    colors = _get_standard_colors(num_colors=n, colormap=colormap,
+    colors = _get_standard_colors(num_colors=len(uniq_class), colormap=colormap,
                                   color_type='random', color=kwds.get('color'))
-
+    col_dict = dict([(klass, col) for klass, col in zip(uniq_class, colors)])
     if ax is None:
         ax = plt.gca(xlim=(-pi, pi))
     for i in range(n):
@@ -462,9 +472,9 @@ def andrews_curves(data, class_column, ax=None, samples=200, colormap=None,
         if com.pprint_thing(class_col[i]) not in used_legends:
             label = com.pprint_thing(class_col[i])
             used_legends.add(label)
-            ax.plot(x, y, color=colors[i], label=label, **kwds)
+            ax.plot(x, y, color=col_dict[class_col[i]], label=label, **kwds)
         else:
-            ax.plot(x, y, color=colors[i], **kwds)
+            ax.plot(x, y, color=col_dict[class_col[i]], **kwds)
 
     ax.legend(loc='upper right')
     ax.grid()
@@ -500,7 +510,7 @@ def bootstrap_plot(series, fig=None, size=50, samples=500, **kwds):
                           for sampling in samplings])
     if fig is None:
         fig = plt.figure()
-    x = range(samples)
+    x = lrange(samples)
     axes = []
     ax1 = fig.add_subplot(2, 3, 1)
     ax1.set_xlabel("Sample")
@@ -598,7 +608,7 @@ def parallel_coordinates(data, class_column, cols=None, ax=None, colors=None,
             raise ValueError('Length of xticks must match number of columns')
         x = xticks
     else:
-        x = range(ncols)
+        x = lrange(ncols)
 
     if ax is None:
         ax = plt.gca()
@@ -647,6 +657,10 @@ def lag_plot(series, lag=1, ax=None, **kwds):
     ax: Matplotlib axis object
     """
     import matplotlib.pyplot as plt
+
+    # workaround because `c='b'` is hardcoded in matplotlibs scatter method
+    kwds.setdefault('c', plt.rcParams['patch.facecolor'])
+
     data = series.values
     y1 = data[:-lag]
     y2 = data[lag:]
@@ -681,7 +695,7 @@ def autocorrelation_plot(series, ax=None):
     def r(h):
         return ((data[:n - h] - mean) * (data[h:] - mean)).sum() / float(n) / c0
     x = np.arange(n) + 1
-    y = map(r, x)
+    y = lmap(r, x)
     z95 = 1.959963984540054
     z99 = 2.5758293035489004
     ax.axhline(y=z99 / np.sqrt(n), linestyle='--', color='grey')
@@ -819,6 +833,14 @@ class MPLPlot(object):
             warnings.warn("'color' and 'colormap' cannot be used "
                           "simultaneously. Using 'color'")
 
+        if 'color' in self.kwds and self.style is not None:
+            # need only a single match
+            if re.match('^[a-z]+?', self.style) is not None:
+                raise ValueError("Cannot pass 'style' string with a color "
+                                 "symbol and 'color' keyword argument. Please"
+                                 " use one or the other or pass 'style' "
+                                 "without a color symbol")
+
     def _iter_data(self):
         from pandas.core.frame import DataFrame
         if isinstance(self.data, (Series, np.ndarray)):
@@ -922,21 +944,7 @@ class MPLPlot(object):
         return (len(self.data.columns), 1)
 
     def _compute_plot_data(self):
-        try:
-            # might be an ndframe
-            numeric_data = self.data._get_numeric_data()
-        except AttributeError:  # TODO: rm in 0.13 (series-inherit-ndframe)
-            numeric_data = self.data
-            orig_dtype = numeric_data.dtype
-
-            # possible object array of numeric data
-            if orig_dtype == np.object_:
-                numeric_data = numeric_data.convert_objects()  # soft convert
-
-                # still an object dtype so we can't plot it
-                if numeric_data.dtype == np.object_:
-                    raise TypeError('Series has object dtype and cannot be'
-                                    ' converted: no numeric data to plot')
+        numeric_data = self.data.convert_objects()._get_numeric_data()
 
         try:
             is_empty = numeric_data.empty
@@ -1031,13 +1039,13 @@ class MPLPlot(object):
                 """
                 x = index._mpl_repr()
             elif is_datetype:
-                self.data = self.data.reindex(index=index.order())
+                self.data = self.data.sort_index()
                 x = self.data.index._mpl_repr()
             else:
                 self._need_to_set_index = True
-                x = range(len(index))
+                x = lrange(len(index))
         else:
-            x = range(len(index))
+            x = lrange(len(index))
 
         return x
 
@@ -1140,11 +1148,15 @@ class MPLPlot(object):
 
 
 class KdePlot(MPLPlot):
-    def __init__(self, data, **kwargs):
+    def __init__(self, data, bw_method=None, ind=None, **kwargs):
         MPLPlot.__init__(self, data, **kwargs)
+        self.bw_method=bw_method
+        self.ind=ind
 
     def _make_plot(self):
         from scipy.stats import gaussian_kde
+        from scipy import __version__ as spv
+        from distutils.version import LooseVersion
         plotf = self._get_plot_function()
         colors = self._get_colors()
         for i, (label, y) in enumerate(self._iter_data()):
@@ -1153,10 +1165,23 @@ class KdePlot(MPLPlot):
 
             label = com.pprint_thing(label)
 
-            gkde = gaussian_kde(y)
+            if LooseVersion(spv) >= '0.11.0':
+                gkde = gaussian_kde(y, bw_method=self.bw_method)
+            else:
+                gkde = gaussian_kde(y)
+                if self.bw_method is not None:
+                    msg = ('bw_method was added in Scipy 0.11.0.' +
+                           ' Scipy version in use is %s.' % spv)
+                    warnings.warn(msg)
+
             sample_range = max(y) - min(y)
-            ind = np.linspace(min(y) - 0.5 * sample_range,
-                              max(y) + 0.5 * sample_range, 1000)
+
+            if self.ind is None:
+                ind = np.linspace(min(y) - 0.5 * sample_range,
+                                  max(y) + 0.5 * sample_range, 1000)
+            else:
+                ind = self.ind
+
             ax.set_ylabel("Density")
 
             y = gkde.evaluate(ind)
@@ -1175,6 +1200,31 @@ class KdePlot(MPLPlot):
         if self.legend:
             for ax in self.axes:
                 ax.legend(loc='best')
+
+class ScatterPlot(MPLPlot):
+    def __init__(self, data, x, y, **kwargs):
+        MPLPlot.__init__(self, data, **kwargs)
+        self.kwds.setdefault('c', self.plt.rcParams['patch.facecolor'])
+        if x is None or y is None:
+            raise ValueError( 'scatter requires and x and y column')
+        if com.is_integer(x) and not self.data.columns.holds_integer():
+            x = self.data.columns[x]
+        if com.is_integer(y) and not self.data.columns.holds_integer():
+            y = self.data.columns[y]
+        self.x = x
+        self.y = y
+
+
+    def _make_plot(self):
+        x, y, data = self.x, self.y, self.data
+        ax = self.axes[0]
+        ax.scatter(data[x].values, data[y].values, **self.kwds)
+
+    def _post_plot_logic(self):
+        ax = self.axes[0]
+        x, y = self.x, self.y
+        ax.set_ylabel(com.pprint_thing(y))
+        ax.set_xlabel(com.pprint_thing(x))
 
 
 class LinePlot(MPLPlot):
@@ -1439,7 +1489,13 @@ class BarPlot(MPLPlot):
 
     def _make_plot(self):
         import matplotlib as mpl
+
+        # mpl decided to make their version string unicode across all Python
+        # versions for mpl >= 1.3 so we have to call str here for python 2
+        mpl_le_1_2_1 = str(mpl.__version__) <= LooseVersion('1.2.1')
+
         colors = self._get_colors()
+        ncolors = len(colors)
         rects = []
         labels = []
 
@@ -1453,19 +1509,18 @@ class BarPlot(MPLPlot):
             ax = self._get_ax(i)
             label = com.pprint_thing(label)
             kwds = self.kwds.copy()
-            kwds['color'] = colors[i % len(colors)]
+            kwds['color'] = colors[i % ncolors]
 
-            start =0
+            start = 0
             if self.log:
                 start = 1
                 if any(y < 1):
                     # GH3254
-                    start = 0 if mpl.__version__ == "1.2.1" else None
+                    start = 0 if mpl_le_1_2_1 else None
 
             if self.subplots:
                 rect = bar_f(ax, self.ax_pos, y,  self.bar_width,
-                             start = start,
-                             **kwds)
+                             start=start, **kwds)
                 ax.set_title(label)
             elif self.stacked:
                 mask = y > 0
@@ -1476,8 +1531,7 @@ class BarPlot(MPLPlot):
                 neg_prior = neg_prior + np.where(mask, 0, y)
             else:
                 rect = bar_f(ax, self.ax_pos + i * 0.75 / K, y, 0.75 / K,
-                             start = start,
-                              label=label, **kwds)
+                             start=start, label=label, **kwds)
             rects.append(rect)
             if self.mark_right:
                 labels.append(self._get_marked_label(label, i))
@@ -1533,7 +1587,7 @@ def plot_frame(frame=None, x=None, y=None, subplots=False, sharex=True,
                secondary_y=False, **kwds):
 
     """
-    Make line or bar plot of DataFrame's series with the index on the x-axis
+    Make line, bar, or scatter plots of DataFrame series with the index on the x-axis
     using matplotlib / pylab.
 
     Parameters
@@ -1564,10 +1618,11 @@ def plot_frame(frame=None, x=None, y=None, subplots=False, sharex=True,
     ax : matplotlib axis object, default None
     style : list or dict
         matplotlib line style per column
-    kind : {'line', 'bar', 'barh', 'kde', 'density'}
+    kind : {'line', 'bar', 'barh', 'kde', 'density', 'scatter'}
         bar : vertical bar plot
         barh : horizontal bar plot
         kde/density : Kernel Density Estimation plot
+        scatter: scatter plot
     logx : boolean, default False
         For line plots, use log scaling on x axis
     logy : boolean, default False
@@ -1603,36 +1658,50 @@ def plot_frame(frame=None, x=None, y=None, subplots=False, sharex=True,
         klass = BarPlot
     elif kind == 'kde':
         klass = KdePlot
+    elif kind == 'scatter':
+        klass = ScatterPlot
     else:
         raise ValueError('Invalid chart type given %s' % kind)
 
-    if x is not None:
-        if com.is_integer(x) and not frame.columns.holds_integer():
-            x = frame.columns[x]
-        frame = frame.set_index(x)
+    if kind == 'scatter':
+        plot_obj = klass(frame,  x=x, y=y, kind=kind, subplots=subplots,
+                         rot=rot,legend=legend, ax=ax, style=style,
+                         fontsize=fontsize, use_index=use_index, sharex=sharex,
+                         sharey=sharey, xticks=xticks, yticks=yticks,
+                         xlim=xlim, ylim=ylim, title=title, grid=grid,
+                         figsize=figsize, logx=logx, logy=logy,
+                         sort_columns=sort_columns, secondary_y=secondary_y,
+                         **kwds)
+    else:
+        if x is not None:
+            if com.is_integer(x) and not frame.columns.holds_integer():
+                x = frame.columns[x]
+            frame = frame.set_index(x)
 
-    if y is not None:
-        if com.is_integer(y) and not frame.columns.holds_integer():
-            y = frame.columns[y]
-        label = x if x is not None else frame.index.name
-        label = kwds.pop('label', label)
-        ser = frame[y]
-        ser.index.name = label
-        return plot_series(ser, label=label, kind=kind,
-                           use_index=use_index,
-                           rot=rot, xticks=xticks, yticks=yticks,
-                           xlim=xlim, ylim=ylim, ax=ax, style=style,
-                           grid=grid, logx=logx, logy=logy,
-                           secondary_y=secondary_y, title=title,
-                           figsize=figsize, fontsize=fontsize, **kwds)
+        if y is not None:
+            if com.is_integer(y) and not frame.columns.holds_integer():
+                y = frame.columns[y]
+            label = x if x is not None else frame.index.name
+            label = kwds.pop('label', label)
+            ser = frame[y]
+            ser.index.name = label
+            return plot_series(ser, label=label, kind=kind,
+                               use_index=use_index,
+                               rot=rot, xticks=xticks, yticks=yticks,
+                               xlim=xlim, ylim=ylim, ax=ax, style=style,
+                               grid=grid, logx=logx, logy=logy,
+                               secondary_y=secondary_y, title=title,
+                               figsize=figsize, fontsize=fontsize, **kwds)
 
-    plot_obj = klass(frame, kind=kind, subplots=subplots, rot=rot,
-                     legend=legend, ax=ax, style=style, fontsize=fontsize,
-                     use_index=use_index, sharex=sharex, sharey=sharey,
-                     xticks=xticks, yticks=yticks, xlim=xlim, ylim=ylim,
-                     title=title, grid=grid, figsize=figsize, logx=logx,
-                     logy=logy, sort_columns=sort_columns,
-                     secondary_y=secondary_y, **kwds)
+        else:
+            plot_obj = klass(frame, kind=kind, subplots=subplots, rot=rot,
+                             legend=legend, ax=ax, style=style, fontsize=fontsize,
+                             use_index=use_index, sharex=sharex, sharey=sharey,
+                             xticks=xticks, yticks=yticks, xlim=xlim, ylim=ylim,
+                             title=title, grid=grid, figsize=figsize, logx=logx,
+                             logy=logy, sort_columns=sort_columns,
+                             secondary_y=secondary_y, **kwds)
+
     plot_obj.generate()
     plot_obj.draw()
     if subplots:
@@ -1711,7 +1780,7 @@ def plot_series(series, label=None, kind='line', use_index=True, rot=None,
         if ax.get_yaxis().get_ticks_position().strip().lower() == 'right':
             fig = _gcf()
             axes = fig.get_axes()
-            for i in range(len(axes))[::-1]:
+            for i in reversed(range(len(axes))):
                 ax = axes[i]
                 ypos = ax.get_yaxis().get_ticks_position().strip().lower()
                 if ypos == 'left':
@@ -1868,6 +1937,9 @@ def scatter_plot(data, x, y, by=None, ax=None, figsize=None, grid=False, **kwarg
     """
     import matplotlib.pyplot as plt
 
+    # workaround because `c='b'` is hardcoded in matplotlibs scatter method
+    kwargs.setdefault('c', plt.rcParams['patch.facecolor'])
+
     def plot_group(group, ax):
         xvals = group[x].values
         yvals = group[y].values
@@ -1929,9 +2001,9 @@ def hist_frame(data, column=None, by=None, grid=True, xlabelsize=None,
         data = data[column]
 
     if by is not None:
-
         axes = grouped_hist(data, by=by, ax=ax, grid=grid, figsize=figsize,
-                            sharex=sharex, sharey=sharey, **kwds)
+                            sharex=sharex, sharey=sharey, layout=layout,
+                            **kwds)
 
         for ax in axes.ravel():
             if xlabelsize is not None:
@@ -2024,15 +2096,19 @@ def hist_series(self, by=None, ax=None, grid=True, xlabelsize=None,
     """
     import matplotlib.pyplot as plt
 
-    fig = kwds.get('figure', plt.gcf()
-                   if plt.get_fignums() else plt.figure(figsize=figsize))
-    if figsize is not None and tuple(figsize) != tuple(fig.get_size_inches()):
-        fig.set_size_inches(*figsize, forward=True)
-
     if by is None:
+        if kwds.get('layout', None) is not None:
+            raise ValueError("The 'layout' keyword is not supported when "
+                             "'by' is None")
+        # hack until the plotting interface is a bit more unified
+        fig = kwds.pop('figure', plt.gcf() if plt.get_fignums() else
+                       plt.figure(figsize=figsize))
+        if (figsize is not None and tuple(figsize) !=
+            tuple(fig.get_size_inches())):
+            fig.set_size_inches(*figsize, forward=True)
         if ax is None:
-            ax = fig.add_subplot(111)
-        if ax.get_figure() != fig:
+            ax = fig.gca()
+        elif ax.get_figure() != fig:
             raise AssertionError('passed axis not bound to passed figure')
         values = self.dropna().values
 
@@ -2146,8 +2222,11 @@ def _grouped_plot(plotf, data, column=None, by=None, numeric_only=True,
         grouped = grouped[column]
 
     ngroups = len(grouped)
-
     nrows, ncols = layout or _get_layout(ngroups)
+
+    if nrows * ncols < ngroups:
+        raise ValueError("Number of plots in 'layout' must greater than or "
+                         "equal to the number " "of groups in 'by'")
 
     if figsize is None:
         # our favorite default beating matplotlib's idea of the

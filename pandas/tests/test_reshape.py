@@ -1,27 +1,29 @@
 # pylint: disable-msg=W0612,E1101
 from copy import deepcopy
 from datetime import datetime, timedelta
-from StringIO import StringIO
-import cPickle as pickle
 import operator
 import os
-import unittest
 
 import nose
 
-from pandas import DataFrame
+from pandas import DataFrame, Series
 import pandas as pd
 
 from numpy import nan
 import numpy as np
 
-from pandas.core.reshape import melt, convert_dummies, lreshape
+from pandas.util.testing import assert_frame_equal
+from numpy.testing import assert_array_equal
+
+from pandas.core.reshape import (melt, convert_dummies, lreshape, get_dummies,
+                                 wide_to_long)
 import pandas.util.testing as tm
+from pandas.compat import StringIO, cPickle, range
 
 _multiprocess_can_split_ = True
 
 
-class TestMelt(unittest.TestCase):
+class TestMelt(tm.TestCase):
 
     def setUp(self):
         self.df = tm.makeTimeDataFrame()[:10]
@@ -56,9 +58,9 @@ class TestMelt(unittest.TestCase):
                                'id2': self.df['id2'].tolist() * 2,
                                'variable': ['A']*10 + ['B']*10,
                                'value': self.df['A'].tolist() + self.df['B'].tolist()},
-                              columns=['id1', 'id2', 'variable', 'value'])                  
+                              columns=['id1', 'id2', 'variable', 'value'])
         tm.assert_frame_equal(result4, expected4)
-      
+
     def test_custom_var_name(self):
         result5 = melt(self.df, var_name=self.var_name)
         self.assertEqual(result5.columns.tolist(), ['var', 'value'])
@@ -79,7 +81,7 @@ class TestMelt(unittest.TestCase):
                                'id2': self.df['id2'].tolist() * 2,
                                self.var_name: ['A']*10 + ['B']*10,
                                'value': self.df['A'].tolist() + self.df['B'].tolist()},
-                              columns=['id1', 'id2', self.var_name, 'value'])                  
+                              columns=['id1', 'id2', self.var_name, 'value'])
         tm.assert_frame_equal(result9, expected9)
 
     def test_custom_value_name(self):
@@ -97,12 +99,12 @@ class TestMelt(unittest.TestCase):
         self.assertEqual(result13.columns.tolist(), ['id1', 'id2', 'variable', 'val'])
 
         result14 = melt(self.df, id_vars=['id1', 'id2'],
-                        value_vars=['A', 'B'], value_name=self.value_name)         
+                        value_vars=['A', 'B'], value_name=self.value_name)
         expected14 = DataFrame({'id1': self.df['id1'].tolist() * 2,
                                 'id2': self.df['id2'].tolist() * 2,
                                 'variable': ['A']*10 + ['B']*10,
                                 self.value_name: self.df['A'].tolist() + self.df['B'].tolist()},
-                               columns=['id1', 'id2', 'variable', self.value_name])                  
+                               columns=['id1', 'id2', 'variable', self.value_name])
         tm.assert_frame_equal(result14, expected14)
 
     def test_custom_var_and_value_name(self):
@@ -122,12 +124,12 @@ class TestMelt(unittest.TestCase):
         self.assertEqual(result18.columns.tolist(), ['id1', 'id2', 'var', 'val'])
 
         result19 = melt(self.df, id_vars=['id1', 'id2'],
-                        value_vars=['A', 'B'], var_name=self.var_name, value_name=self.value_name)                        
+                        value_vars=['A', 'B'], var_name=self.var_name, value_name=self.value_name)
         expected19 = DataFrame({'id1': self.df['id1'].tolist() * 2,
                                 'id2': self.df['id2'].tolist() * 2,
                                 var_name: ['A']*10 + ['B']*10,
                                 value_name: self.df['A'].tolist() + self.df['B'].tolist()},
-                               columns=['id1', 'id2', self.var_name, self.value_name])                  
+                               columns=['id1', 'id2', self.var_name, self.value_name])
         tm.assert_frame_equal(result19, expected19)
 
     def test_custom_var_and_value_name(self):
@@ -146,7 +148,58 @@ class TestMelt(unittest.TestCase):
         self.assertEqual(res.columns.tolist(), ['CAP', 'low', 'value'])
 
 
-class TestConvertDummies(unittest.TestCase):
+class TestGetDummies(tm.TestCase):
+    def test_basic(self):
+        s_list = list('abc')
+        s_series = Series(s_list)
+        s_series_index = Series(s_list, list('ABC'))
+
+        expected = DataFrame({'a': {0: 1.0, 1: 0.0, 2: 0.0},
+                              'b': {0: 0.0, 1: 1.0, 2: 0.0},
+                              'c': {0: 0.0, 1: 0.0, 2: 1.0}})
+        assert_frame_equal(get_dummies(s_list), expected)
+        assert_frame_equal(get_dummies(s_series), expected)
+
+        expected.index = list('ABC')
+        assert_frame_equal(get_dummies(s_series_index), expected)
+
+    def test_just_na(self):
+        just_na_list = [np.nan]
+        just_na_series = Series(just_na_list)
+        just_na_series_index = Series(just_na_list, index = ['A'])
+
+        res_list = get_dummies(just_na_list)
+        res_series = get_dummies(just_na_series)
+        res_series_index = get_dummies(just_na_series_index)
+
+        self.assertEqual(res_list.empty, True)
+        self.assertEqual(res_series.empty, True)
+        self.assertEqual(res_series_index.empty, True)
+
+        self.assertEqual(res_list.index.tolist(), [0])
+        self.assertEqual(res_series.index.tolist(), [0])
+        self.assertEqual(res_series_index.index.tolist(), ['A'])
+
+    def test_include_na(self):
+        s = ['a', 'b', np.nan]
+        res = get_dummies(s)
+        exp = DataFrame({'a': {0: 1.0, 1: 0.0, 2: 0.0},
+                         'b': {0: 0.0, 1: 1.0, 2: 0.0}})
+        assert_frame_equal(res, exp)
+
+        res_na = get_dummies(s, dummy_na=True)
+        exp_na = DataFrame({nan: {0: 0.0, 1: 0.0, 2: 1.0},
+                            'a': {0: 1.0, 1: 0.0, 2: 0.0},
+                            'b': {0: 0.0, 1: 1.0, 2: 0.0}}).reindex_axis(['a', 'b', nan], 1)
+        # hack (NaN handling in assert_index_equal)
+        exp_na.columns = res_na.columns
+        assert_frame_equal(res_na, exp_na)
+
+        res_just_na = get_dummies([nan], dummy_na=True)
+        exp_just_na = DataFrame(Series(1.0,index=[0]),columns=[nan])
+        assert_array_equal(res_just_na.values, exp_just_na.values)
+
+class TestConvertDummies(tm.TestCase):
     def test_convert_dummies(self):
         df = DataFrame({'A': ['foo', 'bar', 'foo', 'bar',
                               'foo', 'bar', 'foo', 'foo'],
@@ -172,7 +225,7 @@ class TestConvertDummies(unittest.TestCase):
         tm.assert_frame_equal(result2, expected2)
 
 
-class TestLreshape(unittest.TestCase):
+class TestLreshape(tm.TestCase):
 
     def test_pairs(self):
         data = {'birthdt': ['08jan2009', '20dec2008', '30dec2008',
@@ -243,6 +296,27 @@ class TestLreshape(unittest.TestCase):
         spec = {'visitdt': ['visitdt%d' % i for i in range(1, 3)],
                 'wt': ['wt%d' % i for i in range(1, 4)]}
         self.assertRaises(ValueError, lreshape, df, spec)
+
+class TestWideToLong(tm.TestCase):
+    def test_simple(self):
+        np.random.seed(123)
+        x = np.random.randn(3)
+        df = pd.DataFrame({"A1970" : {0 : "a", 1 : "b", 2 : "c"},
+                           "A1980" : {0 : "d", 1 : "e", 2 : "f"},
+                           "B1970" : {0 : 2.5, 1 : 1.2, 2 : .7},
+                           "B1980" : {0 : 3.2, 1 : 1.3, 2 : .1},
+                           "X"     : dict(zip(range(3), x))
+                          })
+        df["id"] = df.index
+        exp_data = {"X" : x.tolist() + x.tolist(),
+                    "A" : ['a', 'b', 'c', 'd', 'e', 'f'],
+                    "B" : [2.5, 1.2, 0.7, 3.2, 1.3, 0.1],
+                    "year" : [1970, 1970, 1970, 1980, 1980, 1980],
+                    "id" : [0, 1, 2, 0, 1, 2]}
+        exp_frame = DataFrame(exp_data)
+        exp_frame = exp_frame.set_index(['id', 'year'])[["X", "A", "B"]]
+        long_frame = wide_to_long(df, ["A", "B"], i="id", j="year")
+        tm.assert_frame_equal(long_frame, exp_frame)
 
 
 if __name__ == '__main__':

@@ -40,8 +40,8 @@ frame_fillna_inplace = Benchmark('df.fillna(0, inplace=True)', setup,
 # reindex both axes
 
 setup = common_setup + """
-df = DataFrame(randn(1000, 1000))
-idx = np.arange(400, 700)
+df = DataFrame(randn(10000, 10000))
+idx = np.arange(4000, 7000)
 """
 
 frame_reindex_axis0 = Benchmark('df.reindex(idx)', setup)
@@ -83,7 +83,9 @@ frame_boolean_row_select = Benchmark('df[bool_arr]', setup,
 # iteritems (monitor no-copying behaviour)
 
 setup = common_setup + """
-df = DataFrame(randn(10000, 100))
+df = DataFrame(randn(10000, 1000))
+df2 = DataFrame(randn(3000,1),columns=['A'])
+df3 = DataFrame(randn(3000,1))
 
 def f():
     if hasattr(df, '_item_cache'):
@@ -94,6 +96,15 @@ def f():
 def g():
     for name, col in df.iteritems():
         pass
+
+def h():
+    for i in xrange(10000):
+        df2['A']
+
+def j():
+    for i in xrange(10000):
+        df3[0]
+
 """
 
 # as far back as the earliest test currently in the suite
@@ -102,6 +113,27 @@ frame_iteritems = Benchmark('f()', setup,
 
 frame_iteritems_cached = Benchmark('g()', setup,
                                    start_date=datetime(2010, 6, 1))
+
+frame_getitem_single_column = Benchmark('h()', setup,
+                                        start_date=datetime(2010, 6, 1))
+
+frame_getitem_single_column2 = Benchmark('j()', setup,
+                                         start_date=datetime(2010, 6, 1))
+
+#----------------------------------------------------------------------
+# assignment
+
+setup = common_setup + """
+idx = date_range('1/1/2000', periods=100000, freq='D')
+df = DataFrame(randn(100000, 1),columns=['A'],index=idx)
+def f(x):
+    x = x.copy()
+    x['date'] = x.index
+"""
+
+frame_assign_timeseries_index = Benchmark('f(df)', setup,
+                                          start_date=datetime(2013, 10, 1))
+
 
 #----------------------------------------------------------------------
 # to_string
@@ -112,6 +144,48 @@ df = DataFrame(randn(100, 10))
 
 frame_to_string_floats = Benchmark('df.to_string()', setup,
                                    start_date=datetime(2010, 6, 1))
+
+#----------------------------------------------------------------------
+# to_html
+
+setup = common_setup + """
+nrows=500
+df = DataFrame(randn(nrows, 10))
+df[0]=period_range("2000","2010",nrows)
+df[1]=range(nrows)
+
+"""
+
+frame_to_html_mixed = Benchmark('df.to_html()', setup,
+                                   start_date=datetime(2011, 11, 18))
+
+
+# truncated repr_html, single index
+
+setup = common_setup + """
+nrows=10000
+data=randn(nrows,10)
+idx=MultiIndex.from_arrays(np.tile(randn(3,nrows/100),100))
+df=DataFrame(data,index=idx)
+
+"""
+
+frame_html_repr_trunc_mi = Benchmark('df._repr_html_()', setup,
+                                   start_date=datetime(2013, 11, 25))
+
+# truncated repr_html, MultiIndex
+
+setup = common_setup + """
+nrows=10000
+data=randn(nrows,10)
+idx=randn(nrows)
+df=DataFrame(data,index=idx)
+
+"""
+
+frame_html_repr_trunc_si = Benchmark('df._repr_html_()', setup,
+                                   start_date=datetime(2013, 11, 25))
+
 
 # insert many columns
 
@@ -189,6 +263,9 @@ df = DataFrame(randn(1,100000))
 
 frame_xs_col = Benchmark('df.xs(50000,axis = 1)', setup)
 
+#----------------------------------------------------------------------
+# nulls/masking
+
 ## masking
 setup = common_setup + """
 data = np.random.randn(1000, 500)
@@ -198,8 +275,26 @@ bools = df > 0
 mask = isnull(df)
 """
 
-mask_bools = Benchmark('bools.mask(mask)', setup,
-                         start_date=datetime(2013,1,1))
+frame_mask_bools = Benchmark('bools.mask(mask)', setup,
+                             start_date=datetime(2013,1,1))
 
-mask_floats  = Benchmark('bools.astype(float).mask(mask)', setup,
-                         start_date=datetime(2013,1,1))
+frame_mask_floats  = Benchmark('bools.astype(float).mask(mask)', setup,
+                             start_date=datetime(2013,1,1))
+
+## isnull
+setup = common_setup + """
+data = np.random.randn(1000, 1000)
+df = DataFrame(data)
+"""
+frame_isnull  = Benchmark('isnull(df)', setup,
+                           start_date=datetime(2012,1,1))
+
+#----------------------------------------------------------------------
+# apply
+
+setup = common_setup + """
+s = Series(np.arange(1028.))
+df = DataFrame({ i:s for i in range(1028) })
+"""
+frame_apply_user_func = Benchmark('df.apply(lambda x: np.corrcoef(x,s)[0,1])', setup,
+                           start_date=datetime(2012,1,1))

@@ -2,7 +2,6 @@
 from datetime import datetime, time, timedelta, tzinfo, date
 import sys
 import os
-import unittest
 import nose
 
 import numpy as np
@@ -24,11 +23,11 @@ from pandas.util.testing import assert_series_equal, assert_almost_equal, assert
 import pandas.util.testing as tm
 
 import pandas.lib as lib
-import cPickle as pickle
 import pandas.core.datetools as dt
 from numpy.random import rand
 from pandas.util.testing import assert_frame_equal
-import pandas.util.py3compat as py3compat
+import pandas.compat as compat
+from pandas.compat import range, lrange, zip, cPickle as pickle
 from pandas.core.datetools import BDay
 import pandas.core.common as com
 
@@ -37,7 +36,7 @@ def _skip_if_no_pytz():
     try:
         import pytz
     except ImportError:
-        raise nose.SkipTest
+        raise nose.SkipTest("pytz not installed")
 
 try:
     import pytz
@@ -65,7 +64,7 @@ fixed_off = FixedOffset(-420, '-07:00')
 fixed_off_no_name = FixedOffset(-330, None)
 
 
-class TestTimeZoneSupport(unittest.TestCase):
+class TestTimeZoneSupport(tm.TestCase):
     _multiprocess_can_split_ = True
 
     def setUp(self):
@@ -180,7 +179,7 @@ class TestTimeZoneSupport(unittest.TestCase):
         expected = utc.tz_convert('US/Eastern')
         result = utc.astimezone('US/Eastern')
         self.assertEquals(expected, result)
-        self.assert_(isinstance(result, Timestamp))
+        tm.assert_isinstance(result, Timestamp)
 
     def test_create_with_tz(self):
         stamp = Timestamp('3/11/2012 05:00', tz='US/Eastern')
@@ -360,6 +359,32 @@ class TestTimeZoneSupport(unittest.TestCase):
         dr = date_range(datetime(2011, 3, 13), periods=48,
                         freq=datetools.Minute(30), tz=pytz.utc)
 
+    def test_infer_dst(self):
+        # November 6, 2011, fall back, repeat 2 AM hour
+        # With no repeated hours, we cannot infer the transition
+        tz = pytz.timezone('US/Eastern')
+        dr = date_range(datetime(2011, 11, 6, 0), periods=5,
+                        freq=datetools.Hour())
+        self.assertRaises(pytz.AmbiguousTimeError, dr.tz_localize,
+                          tz, infer_dst=True)
+
+        # With repeated hours, we can infer the transition
+        dr = date_range(datetime(2011, 11, 6, 0), periods=5,
+                        freq=datetools.Hour(), tz=tz)
+        di = DatetimeIndex(['11/06/2011 00:00', '11/06/2011 01:00',
+                            '11/06/2011 01:00', '11/06/2011 02:00',
+                            '11/06/2011 03:00'])
+        localized = di.tz_localize(tz, infer_dst=True)
+        self.assert_(np.array_equal(dr, localized))
+
+        # When there is no dst transition, nothing special happens
+        dr = date_range(datetime(2011, 6, 1, 0), periods=10,
+                        freq=datetools.Hour())
+        localized = dr.tz_localize(tz)
+        localized_infer = dr.tz_localize(tz, infer_dst=True)
+        self.assert_(np.array_equal(localized, localized_infer))
+
+
     # test utility methods
     def test_infer_tz(self):
         eastern = pytz.timezone('US/Eastern')
@@ -393,7 +418,7 @@ class TestTimeZoneSupport(unittest.TestCase):
         _skip_if_no_pytz()
         rng = date_range('1/1/2000', periods=20, tz='US/Eastern')
 
-        result = rng.take(range(5))
+        result = rng.take(lrange(5))
         self.assert_(result.tz == rng.tz)
         self.assert_(result.freq == rng.freq)
 
@@ -620,7 +645,7 @@ class TestTimeZoneSupport(unittest.TestCase):
                            tz='Europe/Berlin')
         ts = Series(index=index, data=index.hour)
         time_pandas = Timestamp('2012-12-24 17:00', tz='Europe/Berlin')
-        time_datetime = datetime(2012, 12, 24, 17, 00,
+        time_datetime = datetime(2012, 12, 24, 17, 0,
                                  tzinfo=pytz.timezone('Europe/Berlin'))
         self.assertEqual(ts[time_pandas], ts[time_datetime])
 
@@ -635,19 +660,19 @@ class TestTimeZoneSupport(unittest.TestCase):
         """ Test different DatetimeIndex constructions with timezone
         Follow-up of #4229
         """
-        
+
         arr = ['11/10/2005 08:00:00', '11/10/2005 09:00:00']
-        
+
         idx1 = to_datetime(arr).tz_localize('US/Eastern')
         idx2 = DatetimeIndex(start="2005-11-10 08:00:00", freq='H', periods=2, tz='US/Eastern')
         idx3 = DatetimeIndex(arr, tz='US/Eastern')
         idx4 = DatetimeIndex(np.array(arr), tz='US/Eastern')
-        
+
         for other in [idx2, idx3, idx4]:
             self.assert_(idx1.equals(other))
 
 
-class TestTimeZones(unittest.TestCase):
+class TestTimeZones(tm.TestCase):
     _multiprocess_can_split_ = True
 
     def setUp(self):
@@ -724,11 +749,11 @@ class TestTimeZones(unittest.TestCase):
 
         for how in ['inner', 'outer', 'left', 'right']:
             result = left.join(left[:-5], how=how)
-            self.assert_(isinstance(result, DatetimeIndex))
+            tm.assert_isinstance(result, DatetimeIndex)
             self.assert_(result.tz == left.tz)
 
             result = left.join(right[:-5], how=how)
-            self.assert_(isinstance(result, DatetimeIndex))
+            tm.assert_isinstance(result, DatetimeIndex)
             self.assert_(result.tz.zone == 'UTC')
 
     def test_join_aware(self):
@@ -746,7 +771,7 @@ class TestTimeZones(unittest.TestCase):
         test2 = DataFrame(np.zeros((3, 3)),
                           index=date_range("2012-11-15 00:00:00", periods=3,
                                            freq="250L", tz="US/Central"),
-                          columns=range(3, 6))
+                          columns=lrange(3, 6))
 
         result = test1.join(test2, how='outer')
         ex_index = test1.index.union(test2.index)
@@ -815,7 +840,7 @@ class TestTimeZones(unittest.TestCase):
         # mixed
 
         rng1 = date_range('1/1/2011 01:00', periods=1, freq='H')
-        rng2 = range(100)
+        rng2 = lrange(100)
         ts1 = Series(np.random.randn(len(rng1)), index=rng1)
         ts2 = Series(np.random.randn(len(rng2)), index=rng2)
         ts_result = ts1.append(ts2)

@@ -1,5 +1,4 @@
 import os
-import unittest
 from datetime import datetime
 
 import nose
@@ -7,16 +6,18 @@ import pandas as pd
 from pandas import DataFrame
 from pandas.util.testing import network, assert_frame_equal, with_connectivity_check
 from numpy.testing.decorators import slow
+import pandas.util.testing as tm
 
 try:
     import httplib2
+    import pandas.io.ga as ga
     from pandas.io.ga import GAnalytics, read_ga
-    from pandas.io.auth import AuthenticationConfigError, reset_token_store
+    from pandas.io.auth import AuthenticationConfigError, reset_default_token_store
     from pandas.io import auth
 except ImportError:
-    raise nose.SkipTest
+    raise nose.SkipTest("need httplib2 and auth libs")
 
-class TestGoogle(unittest.TestCase):
+class TestGoogle(tm.TestCase):
 
     _multiprocess_can_split_ = True
 
@@ -25,7 +26,7 @@ class TestGoogle(unittest.TestCase):
         with open(auth.DEFAULT_TOKEN_FILE, 'w') as fh:
             fh.write('test')
 
-        reset_token_store()
+        reset_default_token_store()
         self.assert_(not os.path.exists(auth.DEFAULT_TOKEN_FILE))
 
     @slow
@@ -68,7 +69,7 @@ class TestGoogle(unittest.TestCase):
             assert_frame_equal(df, df2)
 
         except AuthenticationConfigError:
-            raise nose.SkipTest
+            raise nose.SkipTest("authentication error")
 
     @slow
     @with_connectivity_check("http://www.google.com")
@@ -82,8 +83,8 @@ class TestGoogle(unittest.TestCase):
                 dimensions='date',
                 max_results=10, chunksize=5)
 
-            df1 = it.next()
-            df2 = it.next()
+            df1 = next(it)
+            df2 = next(it)
 
             for df in [df1, df2]:
                 assert isinstance(df, DataFrame)
@@ -96,7 +97,33 @@ class TestGoogle(unittest.TestCase):
             assert (df2.index > df1.index).all()
 
         except AuthenticationConfigError:
-            raise nose.SkipTest
+            raise nose.SkipTest("authentication error")
+
+    def test_v2_advanced_segment_format(self):
+        advanced_segment_id = 1234567
+        query = ga.format_query('google_profile_id', ['visits'], '2013-09-01', segment=advanced_segment_id)
+        assert query['segment'] == 'gaid::' + str(advanced_segment_id), "An integer value should be formatted as an advanced segment."
+
+    def test_v2_dynamic_segment_format(self):
+        dynamic_segment_id = 'medium==referral'
+        query = ga.format_query('google_profile_id', ['visits'], '2013-09-01', segment=dynamic_segment_id)
+        assert query['segment'] == 'dynamic::ga:' + str(dynamic_segment_id), "A string value with more than just letters and numbers should be formatted as a dynamic segment."
+
+    def test_v3_advanced_segment_common_format(self):
+        advanced_segment_id = 'aZwqR234'
+        query = ga.format_query('google_profile_id', ['visits'], '2013-09-01', segment=advanced_segment_id)
+        assert query['segment'] == 'gaid::' + str(advanced_segment_id), "A string value with just letters and numbers should be formatted as an advanced segment."
+
+    def test_v3_advanced_segment_weird_format(self):
+        advanced_segment_id = '_aZwqR234-s1'
+        query = ga.format_query('google_profile_id', ['visits'], '2013-09-01', segment=advanced_segment_id)
+        assert query['segment'] == 'gaid::' + str(advanced_segment_id), "A string value with just letters, numbers, and hyphens should be formatted as an advanced segment."
+
+    def test_v3_advanced_segment_with_underscore_format(self):
+        advanced_segment_id = 'aZwqR234_s1'
+        query = ga.format_query('google_profile_id', ['visits'], '2013-09-01', segment=advanced_segment_id)
+        assert query['segment'] == 'gaid::' + str(advanced_segment_id), "A string value with just letters, numbers, and underscores should be formatted as an advanced segment."
+
 
     @slow
     @with_connectivity_check("http://www.google.com")
@@ -150,7 +177,8 @@ class TestGoogle(unittest.TestCase):
             assert 'pageviewsPerVisit' in df
 
         except AuthenticationConfigError:
-            raise nose.SkipTest
+            raise nose.SkipTest("authentication error")
+
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],

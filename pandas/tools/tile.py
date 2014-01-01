@@ -8,6 +8,7 @@ from pandas.core.index import _ensure_index
 import pandas.core.algorithms as algos
 import pandas.core.common as com
 import pandas.core.nanops as nanops
+from pandas.compat import zip
 
 import numpy as np
 
@@ -221,7 +222,9 @@ def _format_levels(bins, prec, right=True,
 
 def _format_label(x, precision=3):
     fmt_str = '%%.%dg' % precision
-    if com.is_float(x):
+    if np.isinf(x):
+        return str(x)
+    elif com.is_float(x):
         frac, whole = np.modf(x)
         sgn = '-' if x < 0 else ''
         whole = abs(whole)
@@ -244,7 +247,7 @@ def _format_label(x, precision=3):
                 else:  # pragma: no cover
                     return sgn + '.'.join(('%d' % whole, val))
         else:
-            return sgn + '%d' % whole
+            return sgn + '%0.f' % whole
     else:
         return str(x)
 

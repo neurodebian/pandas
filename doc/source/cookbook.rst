@@ -10,6 +10,7 @@
    import os
    np.random.seed(123456)
    from pandas import *
+   options.display.max_rows=15
    import pandas as pd
    randn = np.random.randn
    randint = np.random.randint
@@ -35,6 +36,9 @@ These are some neat pandas ``idioms``
 `How to do if-then-else?
 <http://stackoverflow.com/questions/17128302/python-pandas-idiom-for-if-then-else>`__
 
+`How to do if-then-else #2
+<http://stackoverflow.com/questions/19913659/pandas-conditional-creation-of-a-series-dataframe-column>`__
+
 `How to split a frame with a boolean criterion?
 <http://stackoverflow.com/questions/14957116/how-to-split-a-dataframe-according-to-a-boolean-criterion>`__
 
@@ -56,8 +60,7 @@ Indexing using both row labels and conditionals, see
 <http://stackoverflow.com/questions/14725068/pandas-using-row-labels-in-boolean-indexing>`__
 
 Use loc for label-oriented slicing and iloc positional slicing, see
-`here
-<https://github.com/pydata/pandas/issues/2904>`__
+`here <https://github.com/pydata/pandas/issues/2904>`__
 
 Extend a panel frame by transposing, adding a new dimension, and transposing back to the original dimensions, see
 `here
@@ -84,6 +87,12 @@ The :ref:`multindexing <indexing.hierarchical>` docs.
 `Creating a multi-index from a labeled frame
 <http://stackoverflow.com/questions/14916358/reshaping-dataframes-in-pandas-based-on-column-labels>`__
 
+Arithmetic
+~~~~~~~~~~
+
+`Performing arithmetic with a multi-index that needs broadcastin
+<http://stackoverflow.com/questions/19501510/divide-entire-pandas-multiindex-dataframe-by-dataframe-variable/19502176#19502176>`__
+
 Slicing
 ~~~~~~~
 
@@ -92,6 +101,9 @@ Slicing
 
 `Slicing a multi-index with xs #2
 <http://stackoverflow.com/questions/14964493/multiindex-based-indexing-in-pandas>`__
+
+`Setting portions of a multi-index with xs
+<http://stackoverflow.com/questions/19319432/pandas-selecting-a-lower-level-in-a-dataframe-to-do-a-ffill>`__
 
 Sorting
 ~~~~~~~
@@ -111,12 +123,32 @@ Levels
 `Flatten Hierarchical columns
 <http://stackoverflow.com/questions/14507794/python-pandas-how-to-flatten-a-hierarchical-index-in-columns>`__
 
+panelnd
+~~~~~~~
+
+The :ref:`panelnd<dsintro.panelnd>` docs.
+
+`Construct a 5D panelnd
+<http://stackoverflow.com/questions/18748598/why-my-panelnd-factory-throwing-a-keyerror>`__
+
 .. _cookbook.missing_data:
 
 Missing Data
 ------------
 
-The :ref:`missing data <missing_data>` docs.
+The :ref:`missing data<missing_data>` docs.
+
+Fill forward a reversed timeseries
+
+.. ipython:: python
+
+   df = pd.DataFrame(np.random.randn(6,1), index=pd.date_range('2013-08-01', periods=6, freq='B'), columns=list('A'))
+   df.ix[3,'A'] = np.nan
+   df
+   df.reindex(df.index[::-1]).ffill()
+
+`cumsum reset at NaN values
+<http://stackoverflow.com/questions/18196811/cumsum-reset-at-nan>`__
 
 Replace
 ~~~~~~~
@@ -154,6 +186,7 @@ The :ref:`grouping <groupby>` docs.
 
 `Create a value counts column and reassign back to the DataFrame
 <http://stackoverflow.com/questions/17709270/i-want-to-create-a-column-of-value-counts-in-my-pandas-dataframe>`__
+
 
 Expanding Data
 ~~~~~~~~~~~~~~
@@ -232,6 +265,8 @@ The :ref:`Resample <timeseries.resampling>` docs.
 `Resample minute data
 <http://stackoverflow.com/questions/14861023/resampling-minute-data>`__
 
+`Resample with groupby <http://stackoverflow.com/q/18677271/564538>`__
+
 .. _cookbook.merge:
 
 Merge
@@ -279,6 +314,9 @@ The :ref:`Plotting <visualization>` docs.
 `Annotate a time-series plot
 <http://stackoverflow.com/questions/11067368/annotate-time-series-plot-in-matplotlib>`__
 
+`Annotate a time-series plot #2
+<http://stackoverflow.com/questions/17891493/annotating-points-from-a-pandas-dataframe-in-matplotlib-plot>`__
+
 Data In/Out
 -----------
 
@@ -292,14 +330,16 @@ CSV
 
 The :ref:`CSV <io.read_csv_table>` docs
 
-`read_csv in action
-<http://wesmckinney.com/blog/?p=635>`__
+`read_csv in action <http://wesmckinney.com/blog/?p=635>`__
 
 `appending to a csv
 <http://stackoverflow.com/questions/17134942/pandas-dataframe-output-end-of-csv>`__
 
 `Reading a csv chunk-by-chunk
 <http://stackoverflow.com/questions/11622652/large-persistent-dataframe-in-pandas/12193309#12193309>`__
+
+`Reading only certain rows of a csv chunk-by-chunk
+<http://stackoverflow.com/questions/19674212/pandas-data-frame-select-rows-and-clear-memory>`__
 
 `Reading the first few lines of a frame
 <http://stackoverflow.com/questions/15008970/way-to-read-first-few-lines-for-pandas-dataframe>`__
@@ -314,7 +354,7 @@ using that handle to read.
 <http://stackoverflow.com/questions/15555005/get-inferred-dataframe-types-iteratively-using-chunksize>`__
 
 `Dealing with bad lines
-<https://github.com/pydata/pandas/issues/2886>`__
+<http://github.com/pydata/pandas/issues/2886>`__
 
 `Dealing with bad lines II
 <http://nipunbatra.wordpress.com/2013/06/06/reading-unclean-data-csv-using-pandas/>`__
@@ -345,6 +385,11 @@ The :ref:`Excel <io.excel>` docs
 `Reading from a filelike handle
 <http://stackoverflow.com/questions/15588713/sheets-of-excel-workbook-from-a-url-into-a-pandas-dataframe>`__
 
+.. _cookbook.html:
+
+`Reading HTML tables from a server that cannot handle the default request
+header <http://stackoverflow.com/a/18939272/564538>`__
+
 .. _cookbook.hdf:
 
 HDFStore
@@ -356,7 +401,7 @@ The :ref:`HDFStores <io.hdf5>` docs
 <http://stackoverflow.com/questions/13926089/selecting-columns-from-pandas-hdfstore-table>`__
 
 `Managing heteregenous data using a linked multiple table hierarchy
-<https://github.com/pydata/pandas/issues/3032>`__
+<http://github.com/pydata/pandas/issues/3032>`__
 
 `Merging on-disk tables with millions of rows
 <http://stackoverflow.com/questions/14614512/merging-two-tables-with-millions-of-rows-in-python/14617925#14617925>`__
@@ -365,6 +410,12 @@ Deduplicating a large store by chunks, essentially a recusive reduction operatio
 csv file and creating a store by chunks, with date parsing as well.
 `See here
 <http://stackoverflow.com/questions/16110252/need-to-compare-very-large-files-around-1-5gb-in-python/16110391#16110391>`__
+
+`Creating a store chunk-by-chunk from a csv file
+<http://stackoverflow.com/questions/20428355/appending-column-to-frame-of-hdf-file-in-pandas/20428786#20428786>`__
+
+`Appending to a store, while creating a unique index
+<http://stackoverflow.com/questions/16997048/how-does-one-append-large-amounts-of-data-to-a-pandas-hdfstore-and-get-a-natural/16999397#16999397>`__
 
 `Large Data work flows
 <http://stackoverflow.com/questions/14262433/large-data-work-flows-using-pandas>`__
@@ -375,11 +426,17 @@ csv file and creating a store by chunks, with date parsing as well.
 `Groupby on a HDFStore
 <http://stackoverflow.com/questions/15798209/pandas-group-by-query-on-large-data-in-hdfstore>`__
 
+`Counting with a HDFStore
+<http://stackoverflow.com/questions/20497897/converting-dict-of-dicts-into-pandas-dataframe-memory-issues>`__
+
 `Troubleshoot HDFStore exceptions
 <http://stackoverflow.com/questions/15488809/how-to-trouble-shoot-hdfstore-exception-cannot-find-the-correct-atom-type>`__
 
 `Setting min_itemsize with strings
 <http://stackoverflow.com/questions/15988871/hdfstore-appendstring-dataframe-fails-when-string-column-contents-are-longer>`__
+
+`Using ptrepack to create a completely-sorted-index on a store
+<http://stackoverflow.com/questions/17893370/ptrepack-sortby-needs-full-index>`__
 
 Storing Attributes to a group node
 
@@ -411,7 +468,7 @@ Miscellaneous
 The :ref:`Timedeltas <timeseries.timedeltas>` docs.
 
 `Operating with timedeltas
-<https://github.com/pydata/pandas/pull/2899>`__
+<http://github.com/pydata/pandas/pull/2899>`__
 
 `Create timedeltas with date differences
 <http://stackoverflow.com/questions/15683588/iterating-through-a-pandas-dataframe>`__

@@ -50,8 +50,9 @@ cdef inline is_definitely_invalid_key(object val):
         except TypeError:
             return True
 
+    # we have a _data, means we are a NDFrame
     return (PySlice_Check(val) or cnp.PyArray_Check(val)
-            or PyList_Check(val))
+            or PyList_Check(val) or hasattr(val,'_data'))
 
 def get_value_at(ndarray arr, object loc):
     if arr.descr.type_num == NPY_DATETIME:
@@ -407,7 +408,7 @@ cdef class Float64Engine(IndexEngine):
                                          limit=limit)
 
 
-cdef Py_ssize_t _bin_search(ndarray values, object val):
+cdef Py_ssize_t _bin_search(ndarray values, object val) except -1:
     cdef:
         Py_ssize_t mid, lo = 0, hi = len(values) - 1
         object pval

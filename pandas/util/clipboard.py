@@ -44,6 +44,10 @@
 
 import platform, os
 
+class NoClipboardProgramError(OSError):
+    pass
+
+
 def winGetClipboard():
     ctypes.windll.user32.OpenClipboard(0)
     pcontents = ctypes.windll.user32.GetClipboardData(1) # 1 is CF_TEXT
@@ -129,29 +133,41 @@ elif os.name == 'mac' or platform.system() == 'Darwin':
     getcb = macGetClipboard
     setcb = macSetClipboard
 elif os.name == 'posix' or platform.system() == 'Linux':
-    xclipExists = os.system('which xclip') == 0
+    xclipExists = os.system('which xclip > /dev/null') == 0
     if xclipExists:
         getcb = xclipGetClipboard
         setcb = xclipSetClipboard
     else:
-        xselExists = os.system('which xsel') == 0
+        xselExists = os.system('which xsel > /dev/null') == 0
         if xselExists:
             getcb = xselGetClipboard
             setcb = xselSetClipboard
-        try:
-            import gtk
-            getcb = gtkGetClipboard
-            setcb = gtkSetClipboard
-        except:
+        else:
             try:
-                import PyQt4.QtCore
-                import PyQt4.QtGui
-                app = QApplication([])
-                cb = PyQt4.QtGui.QApplication.clipboard()
+                import gtk
+            except ImportError:
+                try:
+                    import PyQt4 as qt4
+                    import PyQt4.QtCore
+                    import PyQt4.QtGui
+                except ImportError:
+                    try:
+                        import PySide as qt4
+                        import PySide.QtCore
+                        import PySide.QtGui
+                    except ImportError:
+                        raise NoClipboardProgramError('Pyperclip requires the'
+                                                      ' gtk, PyQt4, or PySide'
+                                                      ' module installed, or '
+                                                      'either the xclip or '
+                                                      'xsel command.')
+                app = qt4.QtGui.QApplication([])
+                cb = qt4.QtGui.QApplication.clipboard()
                 getcb = qtGetClipboard
                 setcb = qtSetClipboard
-            except:
-                raise Exception('Pyperclip requires the gtk or PyQt4 module installed, or the xclip command.')
+            else:
+                getcb = gtkGetClipboard
+                setcb = gtkSetClipboard
 copy = setcb
 paste = getcb
 

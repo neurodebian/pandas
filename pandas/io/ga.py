@@ -5,6 +5,8 @@
 4. Download JSON secret file and move into same directory as this file
 """
 from datetime import datetime
+import re
+from pandas import compat
 import numpy as np
 from pandas import DataFrame
 import pandas as pd
@@ -16,8 +18,9 @@ from pandas.util.decorators import Appender, Substitution
 
 from apiclient.errors import HttpError
 from oauth2client.client import AccessTokenRefreshError
+from pandas.compat import zip, u
 
-TYPE_MAP = {u'INTEGER': int, u'FLOAT': float, u'TIME': int}
+TYPE_MAP = {u('INTEGER'): int, u('FLOAT'): float, u('TIME'): int}
 
 NO_CALLBACK = auth.OOB_CALLBACK_URN
 DOC_URL = auth.DOC_URL
@@ -45,8 +48,8 @@ profile_id : str
 %s
 """ % _QUERY_PARAMS
 
-_GA_READER_DOC = """Given query parameters, return a DataFrame with all the data
-or an iterator that returns DataFrames containing chunks of the data
+_GA_READER_DOC = """Given query parameters, return a DataFrame with all the
+data or an iterator that returns DataFrames containing chunks of the data
 
 Parameters
 ----------
@@ -86,11 +89,13 @@ redirect : str, optional
     Local host redirect if unspecified
 """
 
+
 def reset_token_store():
     """
     Deletes the default token store
     """
     auth.reset_default_token_store()
+
 
 @Substitution(extras=_AUTH_PARAMS)
 @Appender(_GA_READER_DOC)
@@ -182,9 +187,8 @@ class GDataReader(OAuthDataReader):
         return auth.init_service(http)
 
     def get_account(self, name=None, id=None, **kwargs):
-        """
-        Retrieve an account that matches the name, id, or some account attribute
-        specified in **kwargs
+        """ Retrieve an account that matches the name, id, or some account
+        attribute specified in **kwargs
 
         Parameters
         ----------
@@ -261,7 +265,7 @@ class GDataReader(OAuthDataReader):
         profile_id = profile.get('id')
 
         if index_col is None and dimensions is not None:
-            if isinstance(dimensions, basestring):
+            if isinstance(dimensions, compat.string_types):
                 dimensions = [dimensions]
             index_col = _clean_index(list(dimensions), parse_dates)
 
@@ -283,7 +287,7 @@ class GDataReader(OAuthDataReader):
                                         dayfirst=dayfirst,
                                         na_values=na_values,
                                         converters=converters, sort=sort)
-            except HttpError, inst:
+            except HttpError as inst:
                 raise ValueError('Google API error %s: %s' % (inst.resp.status,
                                  inst._get_reason()))
 
@@ -312,7 +316,7 @@ class GDataReader(OAuthDataReader):
 
         if isinstance(sort, bool) and sort:
             return df.sort_index()
-        elif isinstance(sort, (basestring, list, tuple, np.ndarray)):
+        elif isinstance(sort, (compat.string_types, list, tuple, np.ndarray)):
             return df.sort_index(by=sort)
 
         return df
@@ -330,14 +334,14 @@ class GAnalytics(GDataReader):
                            max_results=max_results, **kwargs)
         try:
             return self.service.data().ga().get(**qry)
-        except TypeError, error:
+        except TypeError as error:
             raise ValueError('Error making query: %s' % error)
 
 
 def format_query(ids, metrics, start_date, end_date=None, dimensions=None,
                  segment=None, filters=None, sort=None, start_index=None,
                  max_results=10000, **kwargs):
-    if isinstance(metrics, basestring):
+    if isinstance(metrics, compat.string_types):
         metrics = [metrics]
     met = ','.join(['ga:%s' % x for x in metrics])
 
@@ -356,8 +360,11 @@ def format_query(ids, metrics, start_date, end_date=None, dimensions=None,
     lst = [dimensions, filters, sort]
     [_maybe_add_arg(qry, n, d) for n, d in zip(names, lst)]
 
-    if isinstance(segment, basestring):
-        _maybe_add_arg(qry, 'segment', segment, 'dynamic::ga')
+    if isinstance(segment, compat.string_types):
+        if re.match("^[a-zA-Z0-9\-\_]+$", segment):
+            _maybe_add_arg(qry, 'segment', segment, 'gaid:')
+        else:
+            _maybe_add_arg(qry, 'segment', segment, 'dynamic::ga')
     elif isinstance(segment, int):
         _maybe_add_arg(qry, 'segment', segment, 'gaid:')
     elif segment:
@@ -374,16 +381,17 @@ def format_query(ids, metrics, start_date, end_date=None, dimensions=None,
 
 def _maybe_add_arg(query, field, data, prefix='ga'):
     if data is not None:
-        if isinstance(data, (basestring, int)):
+        if isinstance(data, (compat.string_types, int)):
             data = [data]
         data = ','.join(['%s:%s' % (prefix, x) for x in data])
         query[field] = data
 
+
 def _get_match(obj_store, name, id, **kwargs):
     key, val = None, None
     if len(kwargs) > 0:
-        key = kwargs.keys()[0]
-        val = kwargs.values()[0]
+        key = list(kwargs.keys())[0]
+        val = list(kwargs.values())[0]
 
     if name is None and id is None and key is None:
         return obj_store.get('items')[0]
@@ -412,7 +420,7 @@ def _clean_index(index_dims, parse_dates):
                     to_add.append('_'.join(lst))
                 to_remove.extend(lst)
     elif isinstance(parse_dates, dict):
-        for name, lst in parse_dates.iteritems():
+        for name, lst in compat.iteritems(parse_dates):
             if isinstance(lst, (list, tuple, np.ndarray)):
                 if _should_add(lst):
                     to_add.append(name)
@@ -435,12 +443,12 @@ def _get_column_types(header_info):
 
 def _get_dim_names(header_info):
     return [x['name'][3:] for x in header_info
-            if x['columnType'] == u'DIMENSION']
+            if x['columnType'] == u('DIMENSION')]
 
 
 def _get_met_names(header_info):
     return [x['name'][3:] for x in header_info
-            if x['columnType'] == u'METRIC']
+            if x['columnType'] == u('METRIC')]
 
 
 def _get_data_types(header_info):

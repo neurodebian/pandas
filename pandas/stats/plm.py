@@ -6,6 +6,8 @@ Linear regression objects for panel data
 # pylint: disable-msg=E1101,E1103
 
 from __future__ import division
+from pandas.compat import range
+from pandas import compat
 import warnings
 
 import numpy as np
@@ -56,7 +58,7 @@ class PanelOLS(OLS):
 
     def log(self, msg):
         if self._verbose:  # pragma: no cover
-            print (msg)
+            print(msg)
 
     def _prepare_data(self):
         """Cleans and stacks input data into DataFrame objects
@@ -101,10 +103,12 @@ class PanelOLS(OLS):
             y_regressor = y
 
         if weights is not None:
-            if not ((y_regressor.index.equals(weights.index))):
-                raise AssertionError()
-            if not ((x_regressor.index.equals(weights.index))):
-                raise AssertionError()
+            if not y_regressor.index.equals(weights.index):
+                raise AssertionError("y_regressor and weights must have the "
+                                     "same index")
+            if not x_regressor.index.equals(weights.index):
+                raise AssertionError("x_regressor and weights must have the "
+                                     "same index")
 
             rt_weights = np.sqrt(weights)
             y_regressor = y_regressor * rt_weights
@@ -171,8 +175,10 @@ class PanelOLS(OLS):
         # .iteritems
         iteritems = getattr(x, 'iteritems', x.items)
         for key, df in iteritems():
-            if not ((isinstance(df, DataFrame))):
-                raise AssertionError()
+            if not isinstance(df, DataFrame):
+                raise AssertionError("all input items must be DataFrames, "
+                                     "at least one is of "
+                                     "type {0}".format(type(df)))
 
             if _is_numeric(df):
                 x_converted[key] = df
@@ -261,7 +267,7 @@ class PanelOLS(OLS):
 
             val_map = cat_mappings.get(effect)
             if val_map:
-                val_map = dict((v, k) for k, v in val_map.iteritems())
+                val_map = dict((v, k) for k, v in compat.iteritems(val_map))
 
             if dropped_dummy or not self._use_all_dummies:
                 if effect in self._dropped_dummies:
@@ -640,8 +646,9 @@ class MovingPanelOLS(MovingOLS, PanelOLS):
         return (betas * x).sum(1)
 
     def _beta_matrix(self, lag=0):
-        if not ((lag >= 0)):
-            raise AssertionError()
+        if lag < 0:
+            raise AssertionError("'lag' must be greater than or equal to 0, "
+                                 "input was {0}".format(lag))
 
         index = self._y_trans.index
         major_labels = index.labels[0]
@@ -670,7 +677,7 @@ class MovingPanelOLS(MovingOLS, PanelOLS):
 def create_ols_dict(attr):
     def attr_getter(self):
         d = {}
-        for k, v in self.results.iteritems():
+        for k, v in compat.iteritems(self.results):
             result = getattr(v, attr)
             d[k] = result
 

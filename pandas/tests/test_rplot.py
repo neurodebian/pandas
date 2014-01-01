@@ -1,20 +1,16 @@
-import unittest
+from pandas.compat import range
 import pandas.tools.rplot as rplot
+import pandas.util.testing as tm
 from pandas import read_csv
 import os
 
 import nose
 
 
-try:
-    import matplotlib.pyplot as plt
-except:
-    raise nose.SkipTest
-
-
 def curpath():
     pth, _ = os.path.split(os.path.abspath(__file__))
     return pth
+
 
 def between(a, b, x):
     """Check if x is in the somewhere between a and b.
@@ -34,7 +30,9 @@ def between(a, b, x):
     else:
         return x <= a and x >= b
 
-class TestUtilityFunctions(unittest.TestCase):
+
+@tm.mplskip
+class TestUtilityFunctions(tm.TestCase):
     """
     Tests for RPlot utility functions.
     """
@@ -50,7 +48,7 @@ class TestUtilityFunctions(unittest.TestCase):
         self.assertTrue(aes['colour'] is None)
         self.assertTrue(aes['shape'] is None)
         self.assertTrue(aes['alpha'] is None)
-        self.assertTrue(type(aes) is dict)
+        self.assertTrue(isinstance(aes, dict))
 
     def test_make_aes2(self):
         self.assertRaises(ValueError, rplot.make_aes,
@@ -67,14 +65,14 @@ class TestUtilityFunctions(unittest.TestCase):
         dict2 = {1 : 1, 2 : 2, 4 : 4}
         union = rplot.dictionary_union(dict1, dict2)
         self.assertEqual(len(union), 4)
-        keys = union.keys()
+        keys = list(union.keys())
         self.assertTrue(1 in keys)
         self.assertTrue(2 in keys)
         self.assertTrue(3 in keys)
         self.assertTrue(4 in keys)
-        self.assertTrue(rplot.dictionary_union(dict1, {}) == dict1)
-        self.assertTrue(rplot.dictionary_union({}, dict1) == dict1)
-        self.assertTrue(rplot.dictionary_union({}, {}) == {})
+        self.assertEqual(rplot.dictionary_union(dict1, {}), dict1)
+        self.assertEqual(rplot.dictionary_union({}, dict1), dict1)
+        self.assertEqual(rplot.dictionary_union({}, {}), {})
 
     def test_merge_aes(self):
         layer1 = rplot.Layer(size=rplot.ScaleSize('test'))
@@ -82,14 +80,15 @@ class TestUtilityFunctions(unittest.TestCase):
         rplot.merge_aes(layer1, layer2)
         self.assertTrue(isinstance(layer2.aes['size'], rplot.ScaleSize))
         self.assertTrue(isinstance(layer2.aes['shape'], rplot.ScaleShape))
-        self.assertTrue(layer2.aes['size'] == layer1.aes['size'])
+        self.assertEqual(layer2.aes['size'], layer1.aes['size'])
         for key in layer2.aes.keys():
             if key != 'size' and key != 'shape':
                 self.assertTrue(layer2.aes[key] is None)
 
     def test_sequence_layers(self):
         layer1 = rplot.Layer(self.data)
-        layer2 = rplot.GeomPoint(x='SepalLength', y='SepalWidth', size=rplot.ScaleSize('PetalLength'))
+        layer2 = rplot.GeomPoint(x='SepalLength', y='SepalWidth',
+                                 size=rplot.ScaleSize('PetalLength'))
         layer3 = rplot.GeomPolyFit(2)
         result = rplot.sequence_layers([layer1, layer2, layer3])
         self.assertEqual(len(result), 3)
@@ -100,7 +99,9 @@ class TestUtilityFunctions(unittest.TestCase):
         self.assertTrue(self.data is last.data)
         self.assertTrue(rplot.sequence_layers([layer1])[0] is layer1)
 
-class TestTrellis(unittest.TestCase):
+
+@tm.mplskip
+class TestTrellis(tm.TestCase):
     def setUp(self):
         path = os.path.join(curpath(), 'data/tips.csv')
         self.data = read_csv(path, sep=',')
@@ -146,11 +147,15 @@ class TestTrellis(unittest.TestCase):
         self.assertEqual(self.trellis3.cols, 2)
         self.assertEqual(self.trellis3.rows, 1)
 
-class TestScaleGradient(unittest.TestCase):
+
+@tm.mplskip
+class TestScaleGradient(tm.TestCase):
     def setUp(self):
         path = os.path.join(curpath(), 'data/iris.csv')
         self.data = read_csv(path, sep=',')
-        self.gradient = rplot.ScaleGradient("SepalLength", colour1=(0.2, 0.3, 0.4), colour2=(0.8, 0.7, 0.6))
+        self.gradient = rplot.ScaleGradient("SepalLength", colour1=(0.2, 0.3,
+                                                                    0.4),
+                                            colour2=(0.8, 0.7, 0.6))
 
     def test_gradient(self):
         for index in range(len(self.data)):
@@ -162,7 +167,9 @@ class TestScaleGradient(unittest.TestCase):
             self.assertTrue(between(g1, g2, g))
             self.assertTrue(between(b1, b2, b))
 
-class TestScaleGradient2(unittest.TestCase):
+
+@tm.mplskip
+class TestScaleGradient2(tm.TestCase):
     def setUp(self):
         path = os.path.join(curpath(), 'data/iris.csv')
         self.data = read_csv(path, sep=',')
@@ -188,7 +195,9 @@ class TestScaleGradient2(unittest.TestCase):
                 self.assertTrue(between(g2, g3, g))
                 self.assertTrue(between(b2, b3, b))
 
-class TestScaleRandomColour(unittest.TestCase):
+
+@tm.mplskip
+class TestScaleRandomColour(tm.TestCase):
     def setUp(self):
         path = os.path.join(curpath(), 'data/iris.csv')
         self.data = read_csv(path, sep=',')
@@ -206,14 +215,17 @@ class TestScaleRandomColour(unittest.TestCase):
             self.assertTrue(g <= 1.0)
             self.assertTrue(b <= 1.0)
 
-class TestScaleConstant(unittest.TestCase):
+
+@tm.mplskip
+class TestScaleConstant(tm.TestCase):
     def test_scale_constant(self):
         scale = rplot.ScaleConstant(1.0)
         self.assertEqual(scale(None, None), 1.0)
         scale = rplot.ScaleConstant("test")
         self.assertEqual(scale(None, None), "test")
 
-class TestScaleSize(unittest.TestCase):
+
+class TestScaleSize(tm.TestCase):
     def setUp(self):
         path = os.path.join(curpath(), 'data/iris.csv')
         self.data = read_csv(path, sep=',')
@@ -233,8 +245,10 @@ class TestScaleSize(unittest.TestCase):
         self.assertRaises(ValueError, f)
 
 
-class TestRPlot(unittest.TestCase):
+@tm.mplskip
+class TestRPlot(tm.TestCase):
     def test_rplot1(self):
+        import matplotlib.pyplot as plt
         path = os.path.join(curpath(), 'data/tips.csv')
         plt.figure()
         self.data = read_csv(path, sep=',')
@@ -245,6 +259,7 @@ class TestRPlot(unittest.TestCase):
         self.plot.render(self.fig)
 
     def test_rplot2(self):
+        import matplotlib.pyplot as plt
         path = os.path.join(curpath(), 'data/tips.csv')
         plt.figure()
         self.data = read_csv(path, sep=',')
@@ -255,6 +270,7 @@ class TestRPlot(unittest.TestCase):
         self.plot.render(self.fig)
 
     def test_rplot3(self):
+        import matplotlib.pyplot as plt
         path = os.path.join(curpath(), 'data/tips.csv')
         plt.figure()
         self.data = read_csv(path, sep=',')
@@ -265,6 +281,7 @@ class TestRPlot(unittest.TestCase):
         self.plot.render(self.fig)
 
     def test_rplot_iris(self):
+        import matplotlib.pyplot as plt
         path = os.path.join(curpath(), 'data/iris.csv')
         plt.figure()
         self.data = read_csv(path, sep=',')
@@ -275,5 +292,7 @@ class TestRPlot(unittest.TestCase):
         self.fig = plt.gcf()
         plot.render(self.fig)
 
+
 if __name__ == '__main__':
+    import unittest
     unittest.main()

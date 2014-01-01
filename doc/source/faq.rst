@@ -12,6 +12,7 @@ Frequently Asked Questions (FAQ)
    import numpy as np
    np.random.seed(123456)
    from pandas import *
+   options.display.max_rows=15
    randn = np.random.randn
    randint = np.random.randint
    np.set_printoptions(precision=4, suppress=True)
@@ -21,6 +22,7 @@ Frequently Asked Questions (FAQ)
    import matplotlib.pyplot as plt
    plt.close('all')
    options.display.mpl_style='default'
+   from pandas.compat import lrange
 
 
 .. _ref-repr-control:
@@ -35,21 +37,25 @@ horizontal scrolling, auto-detection of width/height.
 To appropriately address all these environments, the display behavior is controlled
 by several options, which you're encouraged to tweak to suit your setup.
 
-As of 0.12, these are the relevant options, all under the `display` namespace,
-(e.g. display.width,  etc'):
+As of 0.13, these are the relevant options, all under the `display` namespace,
+(e.g. ``display.width``,  etc.):
 
 - notebook_repr_html: if True, IPython frontends with HTML support will display
   dataframes as HTML tables when possible.
-- expand_repr (default True):  when the frame width cannot fit within the screen,
-  the output will be broken into multiple pages to accomedate. This applies to
-  textual (as opposed to HTML) display only.
-- max_columns: max dataframe columns to display. a wider frame will trigger
-  a summary view, unless `expand_repr` is True and HTML output is disabled.
-- max_rows: max dataframe rows display. a longer frame will trigger a summary view.
-- width: width of display screen in characters, used to determine the width of lines
-  when expand_repr is active,  Setting this to None will trigger auto-detection of terminal
-  width, this only works for proper terminals, not IPython frontends such as ipnb.
-  width is ignored in IPython notebook, since the browser provides horizontal scrolling.
+- large_repr (default 'truncate'): when a :class:`~pandas.DataFrame`
+  exceeds max_columns or max_rows, it can be displayed either as a
+  truncated table or, with this set to 'info', as a short summary view.
+- max_columns (default 20): max dataframe columns to display.
+- max_rows (default 60): max dataframe rows display.
+
+Two additional options only apply to displaying DataFrames in terminals,
+not to the HTML view:
+
+- expand_repr (default True):  when the frame width cannot fit within
+  the screen, the output will be broken into multiple pages.
+- width: width of display screen in characters, used to determine the
+  width of lines when expand_repr is active. Setting this to None will
+  trigger auto-detection of terminal width.
 
 IPython users can use the IPython startup file to import pandas and set these
 options automatically when starting up.
@@ -65,7 +71,7 @@ operations implemented, most of them are very fast as well.
 It's very possible however that certain functionality that would make your
 life easier is missing. In that case you have several options:
 
-1) Open an issue on `Github <https://github.com/pydata/pandas/issues/>`_ , explain your need and the sort of functionality you would like to see implemented.
+1) Open an issue on `Github <https://github.com/pydata/pandas/issues/>`__ , explain your need and the sort of functionality you would like to see implemented.
 2) Fork the repo, Implement the functionality yourself and open a PR
    on Github.
 3) Write a method that performs the operation you are interested in and
@@ -85,7 +91,7 @@ life easier is missing. In that case you have several options:
        return [x for x in self.columns if 'foo' in x]
 
    pd.DataFrame.just_foo_cols = just_foo_cols # monkey-patch the DataFrame class
-   df = pd.DataFrame([range(4)],columns= ["A","foo","foozball","bar"])
+   df = pd.DataFrame([list(range(4))], columns=["A","foo","foozball","bar"])
    df.just_foo_cols()
    del pd.DataFrame.just_foo_cols # you can also remove the new method
 
@@ -258,10 +264,85 @@ using something similar to the following:
 
 .. ipython:: python
 
-   x = np.array(range(10), '>i4') # big endian
+   x = np.array(list(range(10)), '>i4') # big endian
    newx = x.byteswap().newbyteorder() # force native byteorder
    s = Series(newx)
 
 See `the NumPy documentation on byte order
 <http://docs.scipy.org/doc/numpy/user/basics.byteswapping.html>`__ for more
 details.
+
+
+Visualizing Data in Qt applications
+-----------------------------------
+
+There is experimental support for visualizing DataFrames in PyQt4 and PySide
+applications. At the moment you can display and edit the values of the cells
+in the DataFrame. Qt will take care of displaying just the portion of the
+DataFrame that is currently visible and the edits will be immediately saved to
+the underlying DataFrame
+
+To demonstrate this we will create a simple PySide application that will switch
+between two editable DataFrames. For this will use the ``DataFrameModel`` class
+that handles the access to the DataFrame, and the ``DataFrameWidget``, which is
+just a thin layer around the ``QTableView``.
+
+.. code-block:: python
+
+	import numpy as np
+	import pandas as pd
+	from pandas.sandbox.qtpandas import DataFrameModel, DataFrameWidget
+	from PySide import QtGui, QtCore
+
+	# Or if you use PyQt4:
+	# from PyQt4 import QtGui, QtCore
+
+	class MainWidget(QtGui.QWidget):
+	    def __init__(self, parent=None):
+	        super(MainWidget, self).__init__(parent)
+
+	        # Create two DataFrames
+	        self.df1 = pd.DataFrame(np.arange(9).reshape(3, 3),
+	                                columns=['foo', 'bar', 'baz'])
+	        self.df2 = pd.DataFrame({
+	                'int': [1, 2, 3],
+	                'float': [1.5, 2.5, 3.5],
+	                'string': ['a', 'b', 'c'],
+	                'nan': [np.nan, np.nan, np.nan]
+	            }, index=['AAA', 'BBB', 'CCC'],
+	            columns=['int', 'float', 'string', 'nan'])
+
+	        # Create the widget and set the first DataFrame
+	        self.widget = DataFrameWidget(self.df1)
+
+	        # Create the buttons for changing DataFrames
+	        self.button_first = QtGui.QPushButton('First')
+	        self.button_first.clicked.connect(self.on_first_click)
+	        self.button_second = QtGui.QPushButton('Second')
+	        self.button_second.clicked.connect(self.on_second_click)
+
+	        # Set the layout
+	        vbox = QtGui.QVBoxLayout()
+	        vbox.addWidget(self.widget)
+	        hbox = QtGui.QHBoxLayout()
+	        hbox.addWidget(self.button_first)
+	        hbox.addWidget(self.button_second)
+	        vbox.addLayout(hbox)
+	        self.setLayout(vbox)
+
+	    def on_first_click(self):
+	    	'''Sets the first DataFrame'''
+	        self.widget.setDataFrame(self.df1)
+
+	    def on_second_click(self):
+	    	'''Sets the second DataFrame'''
+	        self.widget.setDataFrame(self.df2)
+
+	if __name__ == '__main__':
+	    import sys
+
+	    # Initialize the application
+	    app = QtGui.QApplication(sys.argv)
+	    mw = MainWidget()
+	    mw.show()
+	    app.exec_()

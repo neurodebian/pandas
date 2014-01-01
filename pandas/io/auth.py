@@ -1,3 +1,4 @@
+from __future__ import print_function
 # see LICENSES directory for copyright and license
 import os
 import sys
@@ -54,8 +55,8 @@ def process_flags(flags=[]):
     # Let the gflags module process the command-line arguments.
     try:
         FLAGS(flags)
-    except gflags.FlagsError, e:
-        print ('%s\nUsage: %s ARGS\n%s' % (e, str(flags), FLAGS))
+    except gflags.FlagsError as e:
+        print('%s\nUsage: %s ARGS\n%s' % (e, str(flags), FLAGS))
         sys.exit(1)
 
     # Set the logging according to the command-line flag.
@@ -115,6 +116,7 @@ def init_service(http):
     Use the given http object to build the analytics service object
     """
     return gapi.build('analytics', 'v3', http=http)
+
 
 def reset_default_token_store():
     import os

@@ -1,10 +1,11 @@
 """
 SQL-style merge routines
 """
-
-import itertools
-import numpy as np
 import types
+
+import numpy as np
+from pandas.compat import range, long, lrange, lzip, zip
+import pandas.compat as compat
 from pandas.core.categorical import Categorical
 from pandas.core.frame import DataFrame, _merge_doc
 from pandas.core.generic import NDFrame
@@ -16,14 +17,16 @@ from pandas.core.index import (Index, MultiIndex, _get_combined_index,
 from pandas.core.internals import (IntBlock, BoolBlock, BlockManager,
                                    make_block, _consolidate)
 from pandas.util.decorators import cache_readonly, Appender, Substitution
-from pandas.core.common import PandasError
-from pandas.sparse.frame import SparseDataFrame
+from pandas.core.common import (PandasError, ABCSeries,
+                                is_timedelta64_dtype, is_datetime64_dtype,
+                                is_integer_dtype, isnull)
+
 import pandas.core.common as com
 
 import pandas.lib as lib
 import pandas.algos as algos
 import pandas.hashtable as _hash
-
+import pandas.tslib as tslib
 
 @Substitution('\nleft : DataFrame')
 @Appender(_merge_doc, indents=0)
@@ -304,8 +307,8 @@ class _MergeOperation(object):
         left_drop = []
         left, right = self.left, self.right
 
-        is_lkey = lambda x: isinstance(x, np.ndarray) and len(x) == len(left)
-        is_rkey = lambda x: isinstance(x, np.ndarray) and len(x) == len(right)
+        is_lkey = lambda x: isinstance(x, (np.ndarray, ABCSeries)) and len(x) == len(left)
+        is_rkey = lambda x: isinstance(x, (np.ndarray, ABCSeries)) and len(x) == len(right)
 
         # ugh, spaghetti re #733
         if _any(self.left_on) and _any(self.right_on):
@@ -404,17 +407,19 @@ class _MergeOperation(object):
         elif self.left_on is not None:
             n = len(self.left_on)
             if self.right_index:
-                if not ((len(self.left_on) == self.right.index.nlevels)):
-                    raise AssertionError()
+                if len(self.left_on) != self.right.index.nlevels:
+                    raise ValueError('len(left_on) must equal the number '
+                                         'of levels in the index of "right"')
                 self.right_on = [None] * n
         elif self.right_on is not None:
             n = len(self.right_on)
             if self.left_index:
-                if not ((len(self.right_on) == self.left.index.nlevels)):
-                    raise AssertionError()
+                if len(self.right_on) != self.left.index.nlevels:
+                    raise ValueError('len(right_on) must equal the number '
+                                         'of levels in the index of "left"')
                 self.left_on = [None] * n
-        if not ((len(self.right_on) == len(self.left_on))):
-            raise AssertionError()
+        if len(self.right_on) != len(self.left_on):
+            raise ValueError("len(right_on) must equal len(left_on)")
 
 
 def _get_join_indexers(left_keys, right_keys, sort=False, how='inner'):
@@ -427,8 +432,8 @@ def _get_join_indexers(left_keys, right_keys, sort=False, how='inner'):
     -------
 
     """
-    if not ((len(left_keys) == len(right_keys))):
-        raise AssertionError()
+    if len(left_keys) != len(right_keys):
+        raise AssertionError('left_key and right_keys must be the same length')
 
     left_labels = []
     right_labels = []
@@ -441,7 +446,7 @@ def _get_join_indexers(left_keys, right_keys, sort=False, how='inner'):
         right_labels.append(rlab)
         group_sizes.append(count)
 
-    max_groups = 1L
+    max_groups = long(1)
     for x in group_sizes:
         max_groups *= long(x)
 
@@ -542,8 +547,11 @@ def _left_join_on_index(left_ax, right_ax, join_keys, sort=False):
 
     if len(join_keys) > 1:
         if not ((isinstance(right_ax, MultiIndex) and
-               len(join_keys) == right_ax.nlevels) ):
-            raise AssertionError()
+                 len(join_keys) == right_ax.nlevels)):
+            raise AssertionError("If more than one join key is given then "
+                                 "'right_ax' must be a MultiIndex and the "
+                                 "number of join keys must be the number of "
+                                 "levels in right_ax")
 
         left_tmp, right_indexer = \
             _get_multiindex_indexer(join_keys, right_ax,
@@ -642,18 +650,21 @@ class _BlockJoinOperation(object):
         if axis <= 0:  # pragma: no cover
             raise MergeError('Only axis >= 1 supported for this operation')
 
-        if not ((len(data_list) == len(indexers))):
-            raise AssertionError()
+        if len(data_list) != len(indexers):
+            raise AssertionError("data_list and indexers must have the same "
+                                 "length")
 
         self.units = []
         for data, indexer in zip(data_list, indexers):
             if not data.is_consolidated():
                 data = data.consolidate()
+            data._set_ref_locs()
             self.units.append(_JoinUnit(data.blocks, indexer))
 
         self.join_index = join_index
         self.axis = axis
         self.copy = copy
+        self.offsets = None
 
         # do NOT sort
         self.result_items = _concat_indexes([d.items for d in data_list])
@@ -668,7 +679,7 @@ class _BlockJoinOperation(object):
             join_blocks = unit.get_upcasted_blocks()
             type_map = {}
             for blk in join_blocks:
-                type_map.setdefault(blk.dtype, []).append(blk)
+                type_map.setdefault(blk.ftype, []).append(blk)
             blockmaps.append((unit, type_map))
 
         return blockmaps
@@ -682,14 +693,29 @@ class _BlockJoinOperation(object):
         blockmaps = self._prepare_blocks()
         kinds = _get_merge_block_kinds(blockmaps)
 
-        result_blocks = []
-
         # maybe want to enable flexible copying <-- what did I mean?
+        kind_blocks = []
         for klass in kinds:
             klass_blocks = []
             for unit, mapping in blockmaps:
                 if klass in mapping:
                     klass_blocks.extend((unit, b) for b in mapping[klass])
+
+            # blocks that we are going to merge
+            kind_blocks.append(klass_blocks)
+
+        # create the merge offsets, essentially where the resultant blocks go in the result
+        if not self.result_items.is_unique:
+
+            # length of the merges for each of the klass blocks
+            self.offsets = np.zeros(len(blockmaps))
+            for kb in kind_blocks:
+                kl = list(b.get_merge_length() for unit, b in kb)
+                self.offsets += np.array(kl)
+
+        # merge the blocks to create the result blocks
+        result_blocks = []
+        for klass_blocks in kind_blocks:
             res_blk = self._get_merged_block(klass_blocks)
             result_blocks.append(res_blk)
 
@@ -697,11 +723,22 @@ class _BlockJoinOperation(object):
 
     def _get_merged_block(self, to_merge):
         if len(to_merge) > 1:
+
+            # placement set here
             return self._merge_blocks(to_merge)
         else:
             unit, block = to_merge[0]
-            return unit.reindex_block(block, self.axis,
-                                      self.result_items, copy=self.copy)
+            blk = unit.reindex_block(block, self.axis,
+                                     self.result_items, copy=self.copy)
+
+            # set placement / invalidate on a unique result
+            if self.result_items.is_unique and blk._ref_locs is not None:
+                if not self.copy:
+                    blk = blk.copy()
+                blk.set_ref_locs(None)
+
+            return blk
+
 
     def _merge_blocks(self, merge_chunks):
         """
@@ -710,11 +747,12 @@ class _BlockJoinOperation(object):
         funit, fblock = merge_chunks[0]
         fidx = funit.indexer
 
-        out_shape = list(fblock.values.shape)
+        out_shape = list(fblock.get_values().shape)
 
         n = len(fidx) if fidx is not None else out_shape[self.axis]
 
-        out_shape[0] = sum(len(blk) for unit, blk in merge_chunks)
+        merge_lengths = list(blk.get_merge_length() for unit, blk in merge_chunks)
+        out_shape[0] = sum(merge_lengths)
         out_shape[self.axis] = n
 
         # Should use Fortran order??
@@ -724,12 +762,22 @@ class _BlockJoinOperation(object):
         sofar = 0
         for unit, blk in merge_chunks:
             out_chunk = out[sofar: sofar + len(blk)]
-            com.take_nd(blk.values, unit.indexer, self.axis, out=out_chunk)
+            com.take_nd(blk.get_values(), unit.indexer, self.axis, out=out_chunk)
             sofar += len(blk)
 
         # does not sort
         new_block_items = _concat_indexes([b.items for _, b in merge_chunks])
-        return make_block(out, new_block_items, self.result_items)
+
+        # need to set placement if we have a non-unique result
+        # calculate by the existing placement plus the offset in the result set
+        placement = None
+        if not self.result_items.is_unique:
+            placement = []
+            offsets = np.append(np.array([0]),self.offsets.cumsum()[:-1])
+            for (unit, blk), offset in zip(merge_chunks,offsets):
+                placement.extend(blk.ref_locs+offset)
+
+        return make_block(out, new_block_items, self.result_items, placement=placement)
 
 
 class _JoinUnit(object):
@@ -881,8 +929,7 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
 
 class _Concatenator(object):
     """
-    Orchestrates a concatenation operation for BlockManagers, with little hacks
-    to support sparse data structures, etc.
+    Orchestrates a concatenation operation for BlockManagers
     """
 
     def __init__(self, objs, axis=0, join='outer', join_axes=None,
@@ -892,7 +939,7 @@ class _Concatenator(object):
             raise AssertionError('first argument must be a list-like of pandas '
                                  'objects, you passed an object of type '
                                  '"{0}"'.format(type(objs).__name__))
-        
+
         if join == 'outer':
             self.intersect = False
         elif join == 'inner':
@@ -935,9 +982,10 @@ class _Concatenator(object):
         if isinstance(sample, DataFrame):
             axis = 1 if axis == 0 else 0
 
-        self._is_series = isinstance(sample, Series)
-        if not ((0 <= axis <= sample.ndim)):
-            raise AssertionError()
+        self._is_series = isinstance(sample, ABCSeries)
+        if not 0 <= axis <= sample.ndim:
+            raise AssertionError("axis must be between 0 and {0}, "
+                                 "input was {1}".format(sample.ndim, axis))
 
         # note: this is the BlockManager axis (since DataFrame is transposed)
         self.axis = axis
@@ -955,11 +1003,12 @@ class _Concatenator(object):
 
     def get_result(self):
         if self._is_series and self.axis == 0:
-            new_data = com._concat_compat([x.values for x in self.objs])
+            new_data = com._concat_compat([x.get_values() for x in self.objs])
             name = com._consensus_name_attr(self.objs)
+            new_data = self._post_merge(new_data)
             return Series(new_data, index=self.new_axes[0], name=name)
         elif self._is_series:
-            data = dict(itertools.izip(xrange(len(self.objs)), self.objs))
+            data = dict(zip(range(len(self.objs)), self.objs))
             index, columns = self.new_axes
             tmpdf = DataFrame(data, index=index)
             if columns is not None:
@@ -967,7 +1016,13 @@ class _Concatenator(object):
             return tmpdf
         else:
             new_data = self._get_concatenated_data()
+            new_data = self._post_merge(new_data)
             return self.objs[0]._from_axes(new_data, self.new_axes)
+
+    def _post_merge(self, data):
+        if isinstance(data, BlockManager):
+            data = data.post_merge(self.objs)
+        return data
 
     def _get_fresh_axis(self):
         return Index(np.arange(len(self._get_concat_axis())))
@@ -975,12 +1030,12 @@ class _Concatenator(object):
     def _prepare_blocks(self):
         reindexed_data = self._get_reindexed_data()
 
+        # we are consolidating as we go, so just add the blocks, no-need for dtype mapping
         blockmaps = []
         for data in reindexed_data:
             data = data.consolidate()
-
-            type_map = dict((blk.dtype, blk) for blk in data.blocks)
-            blockmaps.append(type_map)
+            data._set_ref_locs()
+            blockmaps.append(data.get_block_map(typ='dict'))
         return blockmaps, reindexed_data
 
     def _get_concatenated_data(self):
@@ -989,9 +1044,15 @@ class _Concatenator(object):
         kinds = _get_all_block_kinds(blockmaps)
 
         try:
+            # need to conform to same other (joined) axes for block join
             new_blocks = []
             for kind in kinds:
-                klass_blocks = [mapping.get(kind) for mapping in blockmaps]
+                klass_blocks = []
+                for mapping in blockmaps:
+                    l = mapping.get(kind)
+                    if l is None:
+                        l = [ None ]
+                    klass_blocks.extend(l)
                 stacked_block = self._concat_blocks(klass_blocks)
                 new_blocks.append(stacked_block)
 
@@ -1002,8 +1063,10 @@ class _Concatenator(object):
                 blk.ref_items = self.new_axes[0]
 
             new_data = BlockManager(new_blocks, self.new_axes)
+
         # Eventual goal would be to move everything to PandasError or other explicit error
         except (Exception, PandasError):  # EAFP
+
             # should not be possible to fail here for the expected reason with
             # axis = 0
             if self.axis == 0:  # pragma: no cover
@@ -1019,22 +1082,20 @@ class _Concatenator(object):
         # HACK: ugh
 
         reindexed_data = []
-        if isinstance(self.objs[0], SparseDataFrame):
-            pass
-        else:
-            axes_to_reindex = list(enumerate(self.new_axes))
-            axes_to_reindex.pop(self.axis)
+        axes_to_reindex = list(enumerate(self.new_axes))
+        axes_to_reindex.pop(self.axis)
 
-            for obj in self.objs:
-                data = obj._data
-                for i, ax in axes_to_reindex:
-                    data = data.reindex_axis(ax, axis=i, copy=False)
-                reindexed_data.append(data)
+        for obj in self.objs:
+            data = obj._data.prepare_for_merge()
+            for i, ax in axes_to_reindex:
+                data = data.reindex_axis(ax, axis=i, copy=False)
+            reindexed_data.append(data)
 
         return reindexed_data
 
     def _concat_blocks(self, blocks):
-        values_list = [b.values for b in blocks if b is not None]
+
+        values_list = [b.get_values() for b in blocks if b is not None]
         concat_values = com._concat_compat(values_list, axis=self.axis)
 
         if self.axis > 0:
@@ -1045,7 +1106,10 @@ class _Concatenator(object):
                 #        or maybe would require performance test)
                 raise PandasError('dtypes are not consistent throughout '
                                   'DataFrames')
-            return make_block(concat_values, blocks[0].items, self.new_axes[0])
+            return make_block(concat_values,
+                              blocks[0].items,
+                              self.new_axes[0],
+                              placement=blocks[0]._ref_locs)
         else:
 
             offsets = np.r_[0, np.cumsum([len(x._data.axes[0]) for
@@ -1057,7 +1121,7 @@ class _Concatenator(object):
                 concat_items = indexer
             else:
                 concat_items = self.new_axes[0].take(indexer)
-                
+
             if self.ignore_index:
                 ref_items = self._get_fresh_axis()
                 return make_block(concat_values, concat_items, ref_items)
@@ -1069,49 +1133,88 @@ class _Concatenator(object):
             # map the column location to the block location
             # GH3602
             if not self.new_axes[0].is_unique:
-                block._ref_locs = indexer
+                block.set_ref_locs(indexer)
 
             return block
 
     def _concat_single_item(self, objs, item):
+        # this is called if we don't have consistent dtypes in a row-wise append
         all_values = []
-        dtypes = set()
+        dtypes = []
+        alls = set()
 
-        # le sigh
-        if isinstance(self.objs[0], SparseDataFrame):
-            objs = [x._data for x in self.objs]
-
+        # figure out the resulting dtype of the combination
         for data, orig in zip(objs, self.objs):
+            d = dict([ (t,False) for t in ['object','datetime','timedelta','other'] ])
             if item in orig:
                 values = data.get(item)
-                dtypes.add(values.dtype)
+                if hasattr(values,'to_dense'):
+                    values = values.to_dense()
                 all_values.append(values)
+
+                dtype = values.dtype
+
+                if issubclass(dtype.type, (np.object_, np.bool_)):
+                    d['object'] = True
+                    alls.add('object')
+                elif is_datetime64_dtype(dtype):
+                    d['datetime'] = True
+                    alls.add('datetime')
+                elif is_timedelta64_dtype(dtype):
+                    d['timedelta'] = True
+                    alls.add('timedelta')
+                else:
+                    d['other'] = True
+                    alls.add('other')
+
             else:
                 all_values.append(None)
+                d['other'] = True
+                alls.add('other')
 
-        # this stinks
-        have_object = False
-        for dtype in dtypes:
-            if issubclass(dtype.type, (np.object_, np.bool_)):
-                have_object = True
-        if have_object:
-            empty_dtype = np.object_
-        else:
-            empty_dtype = np.float64
+            dtypes.append(d)
+
+        if 'datetime' in alls or 'timedelta' in alls:
+
+            if 'object' in alls or 'other' in alls:
+
+                for v, d in zip(all_values,dtypes):
+                    if d.get('datetime') or d.get('timedelta'):
+                        pass
+
+                    # if we have all null, then leave a date/time like type
+                    # if we have only that type left
+                    elif v is None or isnull(v).all():
+
+                        alls.discard('other')
+                        alls.discard('object')
+
+        # create the result
+        if 'object' in alls:
+            empty_dtype, fill_value = np.object_, np.nan
+        elif 'other' in alls:
+            empty_dtype, fill_value = np.float64, np.nan
+        elif 'datetime' in alls:
+            empty_dtype, fill_value = 'M8[ns]', tslib.iNaT
+        elif 'timedelta' in alls:
+            empty_dtype, fill_value = 'm8[ns]', tslib.iNaT
+        else: # pragma
+            raise AssertionError("invalid dtype determination in concat_single_item")
 
         to_concat = []
         for obj, item_values in zip(objs, all_values):
-            if item_values is None:
+            if item_values is None or isnull(item_values).all():
                 shape = obj.shape[1:]
                 missing_arr = np.empty(shape, dtype=empty_dtype)
-                missing_arr.fill(np.nan)
+                missing_arr.fill(fill_value)
                 to_concat.append(missing_arr)
             else:
                 to_concat.append(item_values)
 
         # this method only gets called with axis >= 1
-        if not ((self.axis >= 1)):
-            raise AssertionError()
+        if self.axis < 1:
+            raise AssertionError("axis must be >= 1, input was"
+                                 " {0}".format(self.axis))
         return com._concat_compat(to_concat, axis=self.axis - 1)
 
     def _get_result_dim(self):
@@ -1130,11 +1233,12 @@ class _Concatenator(object):
                     continue
                 new_axes[i] = self._get_comb_axis(i)
         else:
-            if not ((len(self.join_axes) == ndim - 1)):
-                raise AssertionError()
+            if len(self.join_axes) != ndim - 1:
+                raise AssertionError("length of join_axes must not be "
+                                     "equal to {0}".format(ndim - 1))
 
             # ufff...
-            indices = range(ndim)
+            indices = lrange(ndim)
             indices.remove(self.axis)
 
             for i, ax in zip(indices, self.join_axes):
@@ -1153,7 +1257,11 @@ class _Concatenator(object):
         if self._is_series:
             all_indexes = [x.index for x in self.objs]
         else:
-            all_indexes = [x._data.axes[i] for x in self.objs]
+            try:
+                all_indexes = [x._data.axes[i] for x in self.objs]
+            except IndexError:
+                types = [type(x).__name__ for x in self.objs]
+                raise TypeError("Cannot concatenate list of %s" % types)
 
         return _get_combined_index(all_indexes, intersect=self.intersect)
 
@@ -1164,6 +1272,10 @@ class _Concatenator(object):
             elif self.keys is None:
                 names = []
                 for x in self.objs:
+                    if not isinstance(x, Series):
+                        raise TypeError("Cannot concatenate type 'Series' "
+                                        "with object of type "
+                                        "%r" % type(x).__name__)
                     if x.name is not None:
                         names.append(x.name)
                     else:
@@ -1199,7 +1311,7 @@ def _concat_indexes(indexes):
 def _make_concat_multiindex(indexes, keys, levels=None, names=None):
     if ((levels is None and isinstance(keys[0], tuple)) or
             (levels is not None and len(levels) > 1)):
-        zipped = zip(*keys)
+        zipped = lzip(*keys)
         if names is None:
             names = [None] * len(zipped)
 
@@ -1257,7 +1369,8 @@ def _make_concat_multiindex(indexes, keys, levels=None, names=None):
             # also copies
             names = names + _get_consensus_names(indexes)
 
-        return MultiIndex(levels=levels, labels=label_list, names=names)
+        return MultiIndex(levels=levels, labels=label_list, names=names,
+                          verify_integrity=False)
 
     new_index = indexes[0]
     n = len(new_index)
@@ -1293,11 +1406,12 @@ def _make_concat_multiindex(indexes, keys, levels=None, names=None):
     if len(new_names) < len(new_levels):
         new_names.extend(new_index.names)
 
-    return MultiIndex(levels=new_levels, labels=new_labels, names=new_names)
+    return MultiIndex(levels=new_levels, labels=new_labels, names=new_names,
+                      verify_integrity=False)
 
 
 def _should_fill(lname, rname):
-    if not isinstance(lname, basestring) or not isinstance(rname, basestring):
+    if not isinstance(lname, compat.string_types) or not isinstance(rname, compat.string_types):
         return True
     return lname == rname
 

@@ -1,5 +1,3 @@
-from unittest import TestCase
-
 from pandas import Series
 
 import nose
@@ -7,6 +5,7 @@ from numpy import nan
 import numpy as np
 import operator
 from numpy.testing import assert_almost_equal, assert_equal
+import pandas.util.testing as tm
 
 from pandas.core.sparse import SparseSeries
 from pandas import DataFrame
@@ -234,7 +233,7 @@ def test_intersect():
     check_cases(_check_case)
 
 
-class TestBlockIndex(TestCase):
+class TestBlockIndex(tm.TestCase):
 
     def test_equals(self):
         index = BlockIndex(10, [0, 4], [2, 5])
@@ -273,7 +272,7 @@ class TestBlockIndex(TestCase):
         self.assert_(index.to_block_index() is index)
 
 
-class TestIntIndex(TestCase):
+class TestIntIndex(tm.TestCase):
 
     def test_equals(self):
         index = IntIndex(10, [0, 1, 2, 3, 4])
@@ -288,7 +287,7 @@ class TestIntIndex(TestCase):
             # see if survive the round trip
             xbindex = xindex.to_int_index().to_block_index()
             ybindex = yindex.to_int_index().to_block_index()
-            self.assert_(isinstance(xbindex, BlockIndex))
+            tm.assert_isinstance(xbindex, BlockIndex)
             self.assert_(xbindex.equals(xindex))
             self.assert_(ybindex.equals(yindex))
         check_cases(_check_case)
@@ -298,7 +297,7 @@ class TestIntIndex(TestCase):
         self.assert_(index.to_int_index() is index)
 
 
-class TestSparseOperators(TestCase):
+class TestSparseOperators(tm.TestCase):
 
     def _nan_op_tests(self, sparse_op, python_op):
         def _check_case(xloc, xlen, yloc, ylen, eloc, elen):

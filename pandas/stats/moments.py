@@ -12,6 +12,7 @@ import numpy as np
 from pandas.core.api import DataFrame, Series, Panel, notnull
 import pandas.algos as algos
 import pandas.core.common as com
+from pandas.core.common import _values_from_object
 
 from pandas.util.decorators import Substitution, Appender
 
@@ -55,9 +56,11 @@ Parameters
 ----------
 %s
 com : float. optional
-    Center of mass: \alpha = com / (1 + com),
+    Center of mass: :math:`\alpha = 1 / (1 + com)`,
 span : float, optional
-    Specify decay in terms of span, \alpha = 2 / (span + 1)
+    Specify decay in terms of span, :math:`\alpha = 2 / (span + 1)`
+halflife : float, optional
+    Specify decay in terms of halflife, :math: `\alpha = 1 - exp(log(0.5) / halflife)`
 min_periods : int, default 0
     Number of observations in sample to require (only affects
     beginning)
@@ -74,8 +77,8 @@ Notes
 Either center of mass or span must be specified
 
 EWMA is sometimes specified using a "span" parameter s, we have have that the
-decay parameter \alpha is related to the span as
-:math:`\alpha = 1 - 2 / (s + 1) = c / (1 + c)`
+decay parameter :math:`\alpha` is related to the span as
+:math:`\alpha = 2 / (s + 1) = 1 / (1 + c)`
 
 where c is the center of mass. Given a span, the associated center of mass is
 :math:`c = (s - 1) / 2`
@@ -191,11 +194,12 @@ def rolling_corr(arg1, arg2, window, min_periods=None, freq=None,
 
 
 def _flex_binary_moment(arg1, arg2, f):
-    if not (isinstance(arg1,(np.ndarray, DataFrame)) and
-            isinstance(arg1,(np.ndarray, DataFrame))):
-        raise ValueError("arguments to moment function must be of type ndarray/DataFrame")
+    if not (isinstance(arg1,(np.ndarray, Series, DataFrame)) and
+            isinstance(arg2,(np.ndarray, Series, DataFrame))):
+        raise TypeError("arguments to moment function must be of type "
+                         "np.ndarray/Series/DataFrame")
 
-    if isinstance(arg1, np.ndarray) and isinstance(arg2, np.ndarray):
+    if isinstance(arg1, (np.ndarray,Series)) and isinstance(arg2, (np.ndarray,Series)):
         X, Y = _prep_binary(arg1, arg2)
         return f(X, Y)
     elif isinstance(arg1, DataFrame):
@@ -337,25 +341,29 @@ def _process_data_structure(arg, kill_inf=True):
 # Exponential moving moments
 
 
-def _get_center_of_mass(com, span):
-    if span is not None:
-        if com is not None:
-            raise Exception("com and span are mutually exclusive")
+def _get_center_of_mass(com, span, halflife):
+    valid_count = len([x for x in [com, span, halflife] if x is not None])
+    if valid_count > 1:
+        raise Exception("com, span, and halflife are mutually exclusive")
 
+    if span is not None:
         # convert span to center of mass
         com = (span - 1) / 2.
-
+    elif halflife is not None:
+        # convert halflife to center of mass
+        decay = 1 - np.exp(np.log(0.5) / halflife)
+        com = 1 / decay - 1
     elif com is None:
-        raise Exception("Must pass either com or span")
+        raise Exception("Must pass one of com, span, or halflife")
 
     return float(com)
 
 
 @Substitution("Exponentially-weighted moving average", _unary_arg, "")
 @Appender(_ewm_doc)
-def ewma(arg, com=None, span=None, min_periods=0, freq=None, time_rule=None,
+def ewma(arg, com=None, span=None, halflife=None, min_periods=0, freq=None, time_rule=None,
          adjust=True):
-    com = _get_center_of_mass(com, span)
+    com = _get_center_of_mass(com, span, halflife)
     arg = _conv_timerule(arg, freq, time_rule)
 
     def _ewma(v):
@@ -376,9 +384,9 @@ def _first_valid_index(arr):
 
 @Substitution("Exponentially-weighted moving variance", _unary_arg, _bias_doc)
 @Appender(_ewm_doc)
-def ewmvar(arg, com=None, span=None, min_periods=0, bias=False,
+def ewmvar(arg, com=None, span=None, halflife=None, min_periods=0, bias=False,
            freq=None, time_rule=None):
-    com = _get_center_of_mass(com, span)
+    com = _get_center_of_mass(com, span, halflife)
     arg = _conv_timerule(arg, freq, time_rule)
     moment2nd = ewma(arg * arg, com=com, min_periods=min_periods)
     moment1st = ewma(arg, com=com, min_periods=min_periods)
@@ -392,9 +400,9 @@ def ewmvar(arg, com=None, span=None, min_periods=0, bias=False,
 
 @Substitution("Exponentially-weighted moving std", _unary_arg, _bias_doc)
 @Appender(_ewm_doc)
-def ewmstd(arg, com=None, span=None, min_periods=0, bias=False,
+def ewmstd(arg, com=None, span=None, halflife=None, min_periods=0, bias=False,
            time_rule=None):
-    result = ewmvar(arg, com=com, span=span, time_rule=time_rule,
+    result = ewmvar(arg, com=com, span=span, halflife=halflife, time_rule=time_rule,
                     min_periods=min_periods, bias=bias)
     return _zsqrt(result)
 
@@ -403,17 +411,17 @@ ewmvol = ewmstd
 
 @Substitution("Exponentially-weighted moving covariance", _binary_arg, "")
 @Appender(_ewm_doc)
-def ewmcov(arg1, arg2, com=None, span=None, min_periods=0, bias=False,
+def ewmcov(arg1, arg2, com=None, span=None, halflife=None, min_periods=0, bias=False,
            freq=None, time_rule=None):
     X, Y = _prep_binary(arg1, arg2)
 
     X = _conv_timerule(X, freq, time_rule)
     Y = _conv_timerule(Y, freq, time_rule)
 
-    mean = lambda x: ewma(x, com=com, span=span, min_periods=min_periods)
+    mean = lambda x: ewma(x, com=com, span=span, halflife=halflife, min_periods=min_periods)
 
     result = (mean(X * Y) - mean(X) * mean(Y))
-    com = _get_center_of_mass(com, span)
+    com = _get_center_of_mass(com, span, halflife)
     if not bias:
         result *= (1.0 + 2.0 * com) / (2.0 * com)
 
@@ -422,15 +430,15 @@ def ewmcov(arg1, arg2, com=None, span=None, min_periods=0, bias=False,
 
 @Substitution("Exponentially-weighted moving " "correlation", _binary_arg, "")
 @Appender(_ewm_doc)
-def ewmcorr(arg1, arg2, com=None, span=None, min_periods=0,
+def ewmcorr(arg1, arg2, com=None, span=None, halflife=None, min_periods=0,
             freq=None, time_rule=None):
     X, Y = _prep_binary(arg1, arg2)
 
     X = _conv_timerule(X, freq, time_rule)
     Y = _conv_timerule(Y, freq, time_rule)
 
-    mean = lambda x: ewma(x, com=com, span=span, min_periods=min_periods)
-    var = lambda x: ewmvar(x, com=com, span=span, min_periods=min_periods,
+    mean = lambda x: ewma(x, com=com, span=span, halflife=halflife, min_periods=min_periods)
+    var = lambda x: ewmvar(x, com=com, span=span, halflife=halflife, min_periods=min_periods,
                            bias=True)
     return (mean(X * Y) - mean(X) * mean(Y)) / _zsqrt(var(X) * var(Y))
 

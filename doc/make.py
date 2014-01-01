@@ -14,6 +14,7 @@ Usage
 python make.py clean
 python make.py html
 """
+from __future__ import print_function
 
 import glob
 import os
@@ -60,7 +61,7 @@ def upload_prev(ver, doc_root='./'):
     remote_dir = '/usr/share/nginx/pandas/pandas-docs/version/%s/' % ver
     cmd = 'cd %s; rsync -avz . pandas@pandas.pydata.org:%s -essh'
     cmd = cmd % (local_dir, remote_dir)
-    print cmd
+    print(cmd)
     if os.system(cmd):
         raise SystemExit(
             'Upload to %s from %s failed' % (remote_dir, local_dir))
@@ -71,7 +72,12 @@ def upload_prev(ver, doc_root='./'):
     if os.system(pdf_cmd):
         raise SystemExit('Upload PDF to %s from %s failed' % (ver, doc_root))
 
-
+def build_pandas():
+        os.chdir('..')
+        os.system('python setup.py clean')
+        os.system('python setup.py build_ext --inplace')
+        os.chdir('doc')
+        
 def build_prev(ver):
     if os.system('git checkout v%s' % ver) != 1:
         os.chdir('..')
@@ -154,7 +160,7 @@ def auto_dev_build(debug=False):
         upload_dev_pdf()
         if not debug:
             sendmail(step)
-    except (Exception, SystemExit), inst:
+    except (Exception, SystemExit) as inst:
         msg = str(inst) + '\n'
         sendmail(step, '[ERROR] ' + msg)
 
@@ -237,6 +243,7 @@ funcd = {
     'clean': clean,
     'auto_dev': auto_dev_build,
     'auto_debug': lambda: auto_dev_build(True),
+    'build_pandas': build_pandas,
     'all': all,
 }
 
@@ -258,7 +265,7 @@ elif len(sys.argv) > 1:
         func = funcd.get(arg)
         if func is None:
             raise SystemExit('Do not know how to handle %s; valid args are %s' % (
-                arg, funcd.keys()))
+                arg, list(funcd.keys())))
         func()
 else:
     small_docs = False

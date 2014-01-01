@@ -2,13 +2,13 @@
 C/Cython ascii file parser tests
 """
 
-from pandas.util.py3compat import StringIO, BytesIO
+from pandas.compat import StringIO, BytesIO, map
 from datetime import datetime
+from pandas import compat
 import csv
 import os
 import sys
 import re
-import unittest
 
 import nose
 
@@ -18,11 +18,11 @@ import numpy as np
 from pandas import DataFrame, Series, Index, isnull, MultiIndex
 import pandas.io.parsers as parsers
 from pandas.io.parsers import (read_csv, read_table, read_fwf,
-                               TextParser)
+                               TextParser, TextFileReader)
 from pandas.util.testing import (assert_almost_equal, assert_frame_equal,
                                  assert_series_equal, network)
 import pandas.lib as lib
-from pandas.util import py3compat
+from pandas import compat
 from pandas.lib import Timestamp
 
 import pandas.util.testing as tm
@@ -31,7 +31,7 @@ from pandas.parser import TextReader
 import pandas.parser as parser
 
 
-class TestCParser(unittest.TestCase):
+class TestCParser(tm.TestCase):
 
     def setUp(self):
         self.dirpath = tm.get_data_path()
@@ -127,6 +127,16 @@ class TestCParser(unittest.TestCase):
 
         reader = TextReader(StringIO(data), delimiter=':',
                             thousands=',', header=None)
+        result = reader.read()
+
+        expected = [123456, 12500]
+        tm.assert_almost_equal(result[0], expected)
+
+    def test_integer_thousands_alt(self):
+        data = '123.456\n12.500'
+
+        reader = TextFileReader(StringIO(data), delimiter=':',
+                            thousands='.', header=None)
         result = reader.read()
 
         expected = [123456, 12500]
@@ -325,7 +335,7 @@ a,b,c
 
 
 def assert_array_dicts_equal(left, right):
-    for k, v in left.iteritems():
+    for k, v in compat.iteritems(left):
         assert(np.array_equal(v, right[k]))
 
 if __name__ == '__main__':

@@ -1,4 +1,5 @@
 """This module is designed for community supported date conversion functions"""
+from pandas.compat import range, map
 import numpy as np
 import pandas.lib as lib
 
@@ -32,7 +33,7 @@ def generic_parser(parse_func, *cols):
     N = _check_columns(cols)
     results = np.empty(N, dtype=object)
 
-    for i in xrange(N):
+    for i in range(N):
         args = [c[i] for c in cols]
         results[i] = parse_func(*args)
 
@@ -46,12 +47,16 @@ def _maybe_cast(arr):
 
 
 def _check_columns(cols):
-    if not ((len(cols) > 0)):
-        raise AssertionError()
+    if not len(cols):
+        raise AssertionError("There must be at least 1 column")
 
-    N = len(cols[0])
-    for c in cols[1:]:
-        if not ((len(c) == N)):
-            raise AssertionError()
+    head, tail = cols[0], cols[1:]
+
+    N = len(head)
+
+    for i, n in enumerate(map(len, tail)):
+        if n != N:
+            raise AssertionError('All columns must have the same length: {0}; '
+                                 'column {1} has length {2}'.format(N, i, n))
 
     return N

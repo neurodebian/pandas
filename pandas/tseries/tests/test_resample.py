@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 
+from pandas.compat import range, lrange, zip, product
 import numpy as np
 
 from pandas import Series, TimeSeries, DataFrame, Panel, isnull, notnull, Timestamp
@@ -10,10 +11,11 @@ from pandas.tseries.index import date_range
 from pandas.tseries.offsets import Minute, BDay
 from pandas.tseries.period import period_range, PeriodIndex, Period
 from pandas.tseries.resample import DatetimeIndex, TimeGrouper
+from pandas.tseries.frequencies import MONTHS, DAYS
+
 import pandas.tseries.offsets as offsets
 import pandas as pd
 
-import unittest
 import nose
 
 from pandas.util.testing import (assert_series_equal, assert_almost_equal,
@@ -27,10 +29,10 @@ def _skip_if_no_pytz():
     try:
         import pytz
     except ImportError:
-        raise nose.SkipTest
+        raise nose.SkipTest("pytz not installed")
 
 
-class TestResample(unittest.TestCase):
+class TestResample(tm.TestCase):
     _multiprocess_can_split_ = True
 
     def setUp(self):
@@ -258,6 +260,42 @@ class TestResample(unittest.TestCase):
         self.assertEquals(xs['low'], s[:5].min())
         self.assertEquals(xs['close'], s[4])
 
+    def test_resample_ohlc_dataframe(self):
+        df = (pd.DataFrame({'PRICE': {Timestamp('2011-01-06 10:59:05', tz=None): 24990,
+                                     Timestamp('2011-01-06 12:43:33', tz=None): 25499,
+                                     Timestamp('2011-01-06 12:54:09', tz=None): 25499},
+                           'VOLUME': {Timestamp('2011-01-06 10:59:05', tz=None): 1500000000,
+                                      Timestamp('2011-01-06 12:43:33', tz=None): 5000000000,
+                                      Timestamp('2011-01-06 12:54:09', tz=None): 100000000}})
+            ).reindex_axis(['VOLUME', 'PRICE'], axis=1)
+        res = df.resample('H', how='ohlc')
+        exp = pd.concat([df['VOLUME'].resample('H', how='ohlc'),
+                          df['PRICE'].resample('H', how='ohlc')],
+                        axis=1,
+                        keys=['VOLUME', 'PRICE'])
+        assert_frame_equal(exp, res)
+
+        df.columns = [['a', 'b'], ['c', 'd']]
+        res = df.resample('H', how='ohlc')
+        exp.columns = pd.MultiIndex.from_tuples([('a', 'c', 'open'), ('a', 'c', 'high'),
+            ('a', 'c', 'low'), ('a', 'c', 'close'), ('b', 'd', 'open'),
+            ('b', 'd', 'high'), ('b', 'd', 'low'), ('b', 'd', 'close')])
+        assert_frame_equal(exp, res)
+
+        # dupe columns fail atm
+        # df.columns = ['PRICE', 'PRICE']
+
+    def test_resample_dup_index(self):
+
+        # GH 4812
+        # dup columns with resample raising
+        df = DataFrame(np.random.randn(4,12),index=[2000,2000,2000,2000],columns=[ Period(year=2000,month=i+1,freq='M') for i in range(12) ])
+        df.iloc[3,:] = np.nan
+        result = df.resample('Q',axis=1)
+        expected = df.groupby(lambda x: int((x.month-1)/3),axis=1).mean()
+        expected.columns = [ Period(year=2000,quarter=i+1,freq='Q') for i in range(4) ]
+        assert_frame_equal(result, expected)
+
     def test_resample_reresample(self):
         dti = DatetimeIndex(
             start=datetime(2005, 1, 1), end=datetime(2005, 1, 10),
@@ -266,7 +304,7 @@ class TestResample(unittest.TestCase):
         bs = s.resample('B', closed='right', label='right')
         result = bs.resample('8H')
         self.assertEquals(len(result), 22)
-        self.assert_(isinstance(result.index.freq, offsets.DateOffset))
+        tm.assert_isinstance(result.index.freq, offsets.DateOffset)
         self.assert_(result.index.freq == offsets.Hour(8))
 
     def test_resample_timestamp_to_period(self):
@@ -400,6 +438,26 @@ class TestResample(unittest.TestCase):
             result = ts[2:].resample(freq, closed='left', label='left')
             expected = ts.resample(freq, closed='left', label='left')
             assert_series_equal(result, expected)
+
+    def test_resample_single_group(self):
+        mysum = lambda x: x.sum()
+
+        rng = date_range('2000-1-1', '2000-2-10', freq='D')
+        ts = Series(np.random.randn(len(rng)), index=rng)
+        assert_series_equal(ts.resample('M', how='sum'),
+                            ts.resample('M', how=mysum))
+
+        rng = date_range('2000-1-1', '2000-1-10', freq='D')
+        ts = Series(np.random.randn(len(rng)), index=rng)
+        assert_series_equal(ts.resample('M', how='sum'),
+                            ts.resample('M', how=mysum))
+
+        # GH 3849
+        s = Series([30.1, 31.6], index=[Timestamp('20070915 15:30:00'),
+                                        Timestamp('20070915 15:40:00')])
+        expected = Series([0.75], index=[Timestamp('20070915')])
+        result = s.resample('D', how=lambda x: np.std(x))
+        assert_series_equal(result, expected)
 
     def test_resample_base(self):
         rng = date_range('1/1/2000 00:00:00', '1/1/2000 02:00', freq='s')
@@ -535,7 +593,7 @@ class TestResample(unittest.TestCase):
         ts = Series(np.random.randn(len(rng)), index=rng)
 
         result = ts.resample('20min', how=['mean', 'sum'])
-        self.assert_(isinstance(result, DataFrame))
+        tm.assert_isinstance(result, DataFrame)
 
     def test_resample_not_monotonic(self):
         rng = pd.date_range('2012-06-12', periods=200, freq='h')
@@ -563,6 +621,7 @@ class TestResample(unittest.TestCase):
             tm.assert_frame_equal(result, exp)
 
     def test_how_lambda_functions(self):
+
         ts = _simple_ts('1/1/2000', '4/1/2000')
 
         result = ts.resample('M', how=lambda x: x.mean())
@@ -570,10 +629,10 @@ class TestResample(unittest.TestCase):
         tm.assert_series_equal(result, exp)
 
         self.assertRaises(Exception, ts.resample, 'M',
-                          how=[lambda x: x.mean(), lambda x: x.std()])
+                          how=[lambda x: x.mean(), lambda x: x.std(ddof=1)])
 
         result = ts.resample('M', how={'foo': lambda x: x.mean(),
-                                       'bar': lambda x: x.std()})
+                                       'bar': lambda x: x.std(ddof=1)})
         foo_exp = ts.resample('M', how='mean')
         bar_exp = ts.resample('M', how='std')
 
@@ -602,11 +661,7 @@ def _simple_pts(start, end, freq='D'):
     return TimeSeries(np.random.randn(len(rng)), index=rng)
 
 
-from pandas.tseries.frequencies import MONTHS, DAYS
-from pandas.util.compat import product
-
-
-class TestResamplePeriodIndex(unittest.TestCase):
+class TestResamplePeriodIndex(tm.TestCase):
 
     _multiprocess_can_split_ = True
 
@@ -770,7 +825,7 @@ class TestResamplePeriodIndex(unittest.TestCase):
                                   ts.index[-1].asfreq('D', 'end'),
                                   freq='Q-%s' % month)
 
-            expected = stamps.reindex(qdates.to_timestamp('D', 'e'),
+            expected = stamps.reindex(qdates.to_timestamp('D', 's'),
                                       method='ffill')
             expected.index = qdates
 
@@ -860,7 +915,7 @@ class TestResamplePeriodIndex(unittest.TestCase):
 
     def test_resample_tz_localized(self):
         dr = date_range(start='2012-4-13', end='2012-5-1')
-        ts = Series(range(len(dr)), dr)
+        ts = Series(lrange(len(dr)), dr)
 
         ts_utc = ts.tz_localize('UTC')
         ts_local = ts_utc.tz_convert('America/Los_Angeles')
@@ -998,7 +1053,8 @@ class TestResamplePeriodIndex(unittest.TestCase):
         result = series.resample('D')
         self.assertEquals(result.index[0], dates[0])
 
-class TestTimeGrouper(unittest.TestCase):
+
+class TestTimeGrouper(tm.TestCase):
 
     def setUp(self):
         self.ts = Series(np.random.randn(1000),
@@ -1071,6 +1127,21 @@ class TestTimeGrouper(unittest.TestCase):
             return x.mean(1)
         result = bingrouped.agg(f)
         tm.assert_panel_equal(result, binagg)
+
+    def test_fails_on_no_datetime_index(self):
+        index_names = ('Int64Index', 'PeriodIndex', 'Index', 'Float64Index',
+                       'MultiIndex')
+        index_funcs = (tm.makeIntIndex, tm.makePeriodIndex,
+                       tm.makeUnicodeIndex, tm.makeFloatIndex,
+                       lambda m: tm.makeCustomIndex(m, 2))
+        n = 2
+        for name, func in zip(index_names, index_funcs):
+            index = func(n)
+            df = DataFrame({'a': np.random.randn(n)}, index=index)
+            with tm.assertRaisesRegexp(TypeError,
+                                       "axis must be a DatetimeIndex, "
+                                       "but got an instance of %r" % name):
+                df.groupby(TimeGrouper('D'))
 
 
 if __name__ == '__main__':

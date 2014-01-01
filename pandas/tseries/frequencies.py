@@ -1,4 +1,6 @@
 from datetime import datetime
+from pandas.compat import range, long, zip
+from pandas import compat
 import re
 
 import numpy as np
@@ -22,6 +24,9 @@ class FreqGroup(object):
     FR_HR = 7000
     FR_MIN = 8000
     FR_SEC = 9000
+    FR_MS = 10000
+    FR_US = 11000
+    FR_NS = 12000
 
 
 class Resolution(object):
@@ -54,14 +59,14 @@ def get_to_timestamp_base(base):
 
 
 def get_freq_group(freq):
-    if isinstance(freq, basestring):
+    if isinstance(freq, compat.string_types):
         base, mult = get_freq_code(freq)
         freq = base
     return (freq // 1000) * 1000
 
 
 def get_freq(freq):
-    if isinstance(freq, basestring):
+    if isinstance(freq, compat.string_types):
         base, mult = get_freq_code(freq)
         freq = base
     return freq
@@ -90,6 +95,8 @@ def get_freq_code(freqstr):
                 code = _period_str_to_code(freqstr[0])
                 stride = freqstr[1]
             except:
+                if com.is_integer(freqstr[1]):
+                    raise
                 code = _period_str_to_code(freqstr[1])
                 stride = freqstr[0]
             return code, stride
@@ -114,164 +121,20 @@ def _get_freq_str(base, mult=1):
 # Offset names ("time rules") and related functions
 
 
-from pandas.tseries.offsets import (Micro, Milli, Second, Minute, Hour,
+from pandas.tseries.offsets import (Nano, Micro, Milli, Second, Minute, Hour,
                                     Day, BDay, CDay, Week, MonthBegin,
                                     MonthEnd, BMonthBegin, BMonthEnd,
                                     QuarterBegin, QuarterEnd, BQuarterBegin,
                                     BQuarterEnd, YearBegin, YearEnd,
-                                    BYearBegin, BYearEnd,
+                                    BYearBegin, BYearEnd, _make_offset
                                     )
 try:
     cday = CDay()
 except NotImplementedError:
     cday = None
 
-_offset_map = {
-    'D': Day(),
-    'C': cday,
-    'B': BDay(),
-    'H': Hour(),
-    'T': Minute(),
-    'S': Second(),
-    'L': Milli(),
-    'U': Micro(),
-    None: None,
-
-    # Monthly - Calendar
-    'M': MonthEnd(),
-    'MS': MonthBegin(),
-
-    # Monthly - Business
-    'BM': BMonthEnd(),
-    'BMS': BMonthBegin(),
-
-    # Annual - Calendar
-    'A-JAN': YearEnd(month=1),
-    'A-FEB': YearEnd(month=2),
-    'A-MAR': YearEnd(month=3),
-    'A-APR': YearEnd(month=4),
-    'A-MAY': YearEnd(month=5),
-    'A-JUN': YearEnd(month=6),
-    'A-JUL': YearEnd(month=7),
-    'A-AUG': YearEnd(month=8),
-    'A-SEP': YearEnd(month=9),
-    'A-OCT': YearEnd(month=10),
-    'A-NOV': YearEnd(month=11),
-    'A-DEC': YearEnd(month=12),
-
-    # Annual - Calendar (start)
-    'AS-JAN': YearBegin(month=1),
-    'AS-FEB': YearBegin(month=2),
-    'AS-MAR': YearBegin(month=3),
-    'AS-APR': YearBegin(month=4),
-    'AS-MAY': YearBegin(month=5),
-    'AS-JUN': YearBegin(month=6),
-    'AS-JUL': YearBegin(month=7),
-    'AS-AUG': YearBegin(month=8),
-    'AS-SEP': YearBegin(month=9),
-    'AS-OCT': YearBegin(month=10),
-    'AS-NOV': YearBegin(month=11),
-    'AS-DEC': YearBegin(month=12),
-
-    # Annual - Business
-    'BA-JAN': BYearEnd(month=1),
-    'BA-FEB': BYearEnd(month=2),
-    'BA-MAR': BYearEnd(month=3),
-    'BA-APR': BYearEnd(month=4),
-    'BA-MAY': BYearEnd(month=5),
-    'BA-JUN': BYearEnd(month=6),
-    'BA-JUL': BYearEnd(month=7),
-    'BA-AUG': BYearEnd(month=8),
-    'BA-SEP': BYearEnd(month=9),
-    'BA-OCT': BYearEnd(month=10),
-    'BA-NOV': BYearEnd(month=11),
-    'BA-DEC': BYearEnd(month=12),
-
-    # Annual - Business (Start)
-    'BAS-JAN': BYearBegin(month=1),
-    'BAS-FEB': BYearBegin(month=2),
-    'BAS-MAR': BYearBegin(month=3),
-    'BAS-APR': BYearBegin(month=4),
-    'BAS-MAY': BYearBegin(month=5),
-    'BAS-JUN': BYearBegin(month=6),
-    'BAS-JUL': BYearBegin(month=7),
-    'BAS-AUG': BYearBegin(month=8),
-    'BAS-SEP': BYearBegin(month=9),
-    'BAS-OCT': BYearBegin(month=10),
-    'BAS-NOV': BYearBegin(month=11),
-    'BAS-DEC': BYearBegin(month=12),
-
-    # Quarterly - Calendar
-    # 'Q'     : QuarterEnd(startingMonth=3),
-    'Q-JAN': QuarterEnd(startingMonth=1),
-    'Q-FEB': QuarterEnd(startingMonth=2),
-    'Q-MAR': QuarterEnd(startingMonth=3),
-    'Q-APR': QuarterEnd(startingMonth=4),
-    'Q-MAY': QuarterEnd(startingMonth=5),
-    'Q-JUN': QuarterEnd(startingMonth=6),
-    'Q-JUL': QuarterEnd(startingMonth=7),
-    'Q-AUG': QuarterEnd(startingMonth=8),
-    'Q-SEP': QuarterEnd(startingMonth=9),
-    'Q-OCT': QuarterEnd(startingMonth=10),
-    'Q-NOV': QuarterEnd(startingMonth=11),
-    'Q-DEC': QuarterEnd(startingMonth=12),
-
-    # Quarterly - Calendar (Start)
-    'QS': QuarterBegin(startingMonth=1),
-    'QS-JAN': QuarterBegin(startingMonth=1),
-    'QS-FEB': QuarterBegin(startingMonth=2),
-    'QS-MAR': QuarterBegin(startingMonth=3),
-    'QS-APR': QuarterBegin(startingMonth=4),
-    'QS-MAY': QuarterBegin(startingMonth=5),
-    'QS-JUN': QuarterBegin(startingMonth=6),
-    'QS-JUL': QuarterBegin(startingMonth=7),
-    'QS-AUG': QuarterBegin(startingMonth=8),
-    'QS-SEP': QuarterBegin(startingMonth=9),
-    'QS-OCT': QuarterBegin(startingMonth=10),
-    'QS-NOV': QuarterBegin(startingMonth=11),
-    'QS-DEC': QuarterBegin(startingMonth=12),
-
-    # Quarterly - Business
-    'BQ-JAN': BQuarterEnd(startingMonth=1),
-    'BQ-FEB': BQuarterEnd(startingMonth=2),
-    'BQ-MAR': BQuarterEnd(startingMonth=3),
-
-    'BQ': BQuarterEnd(startingMonth=12),
-    'BQ-APR': BQuarterEnd(startingMonth=4),
-    'BQ-MAY': BQuarterEnd(startingMonth=5),
-    'BQ-JUN': BQuarterEnd(startingMonth=6),
-    'BQ-JUL': BQuarterEnd(startingMonth=7),
-    'BQ-AUG': BQuarterEnd(startingMonth=8),
-    'BQ-SEP': BQuarterEnd(startingMonth=9),
-    'BQ-OCT': BQuarterEnd(startingMonth=10),
-    'BQ-NOV': BQuarterEnd(startingMonth=11),
-    'BQ-DEC': BQuarterEnd(startingMonth=12),
-
-    # Quarterly - Business (Start)
-    'BQS-JAN': BQuarterBegin(startingMonth=1),
-    'BQS': BQuarterBegin(startingMonth=1),
-    'BQS-FEB': BQuarterBegin(startingMonth=2),
-    'BQS-MAR': BQuarterBegin(startingMonth=3),
-    'BQS-APR': BQuarterBegin(startingMonth=4),
-    'BQS-MAY': BQuarterBegin(startingMonth=5),
-    'BQS-JUN': BQuarterBegin(startingMonth=6),
-    'BQS-JUL': BQuarterBegin(startingMonth=7),
-    'BQS-AUG': BQuarterBegin(startingMonth=8),
-    'BQS-SEP': BQuarterBegin(startingMonth=9),
-    'BQS-OCT': BQuarterBegin(startingMonth=10),
-    'BQS-NOV': BQuarterBegin(startingMonth=11),
-    'BQS-DEC': BQuarterBegin(startingMonth=12),
-
-    # Weekly
-    'W-MON': Week(weekday=0),
-    'W-TUE': Week(weekday=1),
-    'W-WED': Week(weekday=2),
-    'W-THU': Week(weekday=3),
-    'W-FRI': Week(weekday=4),
-    'W-SAT': Week(weekday=5),
-    'W-SUN': Week(weekday=6),
-
-}
+#: cache of previously seen offsets
+_offset_map = {}
 
 _offset_to_period_map = {
     'WEEKDAY': 'D',
@@ -289,6 +152,9 @@ _offset_to_period_map = {
     'B': 'B',
     'T': 'T',
     'S': 'S',
+    'L': 'L',
+    'U': 'U',
+    'N': 'N',
     'H': 'H',
     'Q': 'Q',
     'A': 'A',
@@ -363,25 +229,16 @@ _rule_aliases = {
     'us': 'U'
 }
 
+#TODO: Can this be killed?
 for _i, _weekday in enumerate(['MON', 'TUE', 'WED', 'THU', 'FRI']):
-    for _iweek in xrange(4):
+    for _iweek in range(4):
         _name = 'WOM-%d%s' % (_iweek + 1, _weekday)
-        _offset_map[_name] = offsets.WeekOfMonth(week=_iweek, weekday=_i)
         _rule_aliases[_name.replace('-', '@')] = _name
 
 # Note that _rule_aliases is not 1:1 (d[BA]==d[A@DEC]), and so traversal
 # order matters when constructing an inverse. we pick one. #2331
 _legacy_reverse_map = dict((v, k) for k, v in
-                           reversed(sorted(_rule_aliases.iteritems())))
-
-# for helping out with pretty-printing and name-lookups
-
-_offset_names = {}
-for name, offset in _offset_map.iteritems():
-    if offset is None:
-        continue
-    offset.name = name
-    _offset_names[offset] = name
+                           reversed(sorted(compat.iteritems(_rule_aliases))))
 
 
 def inferTimeRule(index):
@@ -416,7 +273,7 @@ def to_offset(freqstr):
     if isinstance(freqstr, tuple):
         name = freqstr[0]
         stride = freqstr[1]
-        if isinstance(stride, basestring):
+        if isinstance(stride, compat.string_types):
             name, stride = stride, name
         name, _ = _base_and_stride(name)
         delta = get_offset(name) * stride
@@ -446,7 +303,7 @@ def to_offset(freqstr):
 
 
 # hack to handle WOM-1MON
-opattern = re.compile(r'([\-]?\d*)\s*([A-Za-z]+([\-@]\d*[A-Za-z]+)?)')
+opattern = re.compile(r'([\-]?\d*)\s*([A-Za-z]+([\-@][\dA-Za-z\-]+)?)')
 
 
 def _base_and_stride(freqstr):
@@ -501,20 +358,19 @@ def get_offset(name):
     else:
         if name in _rule_aliases:
             name = _rule_aliases[name]
-
-    offset = _offset_map.get(name)
-
-    if offset is not None:
-        return offset
-    else:
-        raise ValueError('Bad rule name requested: %s.' % name)
+            
+    if name not in _offset_map:
+        try:
+            # generate and cache offset
+            offset = _make_offset(name)
+        except (ValueError, TypeError, KeyError):
+            # bad prefix or suffix
+            raise ValueError('Bad rule name requested: %s.' % name)
+        _offset_map[name] = offset
+    return _offset_map[name]
 
 
 getOffset = get_offset
-
-
-def hasOffsetName(offset):
-    return offset in _offset_names
 
 
 def get_offset_name(offset):
@@ -525,11 +381,18 @@ def get_offset_name(offset):
     --------
     get_offset_name(BMonthEnd(1)) --> 'EOM'
     """
-    name = _offset_names.get(offset)
-
-    if name is not None:
-        return name
-    else:
+    if offset is None:
+        raise ValueError("Offset can't be none!")
+    # Hack because this is what it did before...
+    if isinstance(offset, BDay):
+        if offset.n != 1:
+            raise ValueError('Bad rule given: %s.' % 'BusinessDays')
+        else:
+            return offset.rule_code
+    try:
+        return offset.freqstr
+    except AttributeError:
+        # Bad offset, give useful error.
         raise ValueError('Bad rule given: %s.' % offset)
 
 
@@ -537,11 +400,8 @@ def get_legacy_offset_name(offset):
     """
     Return the pre pandas 0.8.0 name for the date offset
     """
-    name = _offset_names.get(offset)
+    name = offset.name
     return _legacy_reverse_map.get(name, name)
-
-get_offset_name = get_offset_name
-
 
 def get_standard_freq(freq):
     """
@@ -607,10 +467,13 @@ _period_code_map = {
     "H": 7000,        # Hourly
     "T": 8000,        # Minutely
     "S": 9000,        # Secondly
+    "L": 10000,       # Millisecondly
+    "U": 11000,       # Microsecondly
+    "N": 12000,       # Nanosecondly
 }
 
 _reverse_period_code_map = {}
-for _k, _v in _period_code_map.iteritems():
+for _k, _v in compat.iteritems(_period_code_map):
     _reverse_period_code_map[_v] = _k
 
 # Additional aliases
@@ -634,6 +497,9 @@ def _period_alias_dictionary():
     H_aliases = ["H", "HR", "HOUR", "HRLY", "HOURLY"]
     T_aliases = ["T", "MIN", "MINUTE", "MINUTELY"]
     S_aliases = ["S", "SEC", "SECOND", "SECONDLY"]
+    L_aliases = ["L", "MS", "MILLISECOND", "MILLISECONDLY"]
+    U_aliases = ["U", "US", "MICROSECOND", "MICROSECONDLY"]
+    N_aliases = ["N", "NS", "NANOSECOND", "NANOSECONDLY"]
 
     for k in M_aliases:
         alias_dict[k] = 'M'
@@ -652,6 +518,15 @@ def _period_alias_dictionary():
 
     for k in S_aliases:
         alias_dict[k] = 'S'
+
+    for k in L_aliases:
+        alias_dict[k] = 'L'
+
+    for k in U_aliases:
+        alias_dict[k] = 'U'
+
+    for k in N_aliases:
+        alias_dict[k] = 'N'
 
     A_prefixes = ["A", "Y", "ANN", "ANNUAL", "ANNUALLY", "YR", "YEAR",
                   "YEARLY"]
@@ -720,6 +595,9 @@ _reso_period_map = {
     "hour": "H",
     "minute": "T",
     "second": "S",
+    "millisecond": "L",
+    "microsecond": "U",
+    "nanosecond": "N",
 }
 
 
@@ -742,8 +620,12 @@ def _period_str_to_code(freqstr):
     try:
         freqstr = freqstr.upper()
         return _period_code_map[freqstr]
-    except:
-        alias = _period_alias_dict[freqstr]
+    except KeyError:
+        try:
+            alias = _period_alias_dict[freqstr]
+        except KeyError:
+            raise ValueError("Unknown freqstr: %s" % freqstr)
+        
         return _period_code_map[alias]
 
 
@@ -770,7 +652,7 @@ def infer_freq(index, warn=True):
     inferer = _FrequencyInferer(index, warn=warn)
     return inferer.get_freq()
 
-_ONE_MICRO = 1000L
+_ONE_MICRO = long(1000)
 _ONE_MILLI = _ONE_MICRO * 1000
 _ONE_SECOND = _ONE_MILLI * 1000
 _ONE_MINUTE = 60 * _ONE_SECOND
@@ -960,16 +842,21 @@ class _FrequencyInferer(object):
                 'ce': 'M', 'be': 'BM'}.get(pos_check)
 
     def _get_wom_rule(self):
-        wdiffs = unique(np.diff(self.index.week))
-        if not lib.ismember(wdiffs, set([4, 5])).all():
-            return None
+#         wdiffs = unique(np.diff(self.index.week))
+        #We also need -47, -49, -48 to catch index spanning year boundary
+#         if not lib.ismember(wdiffs, set([4, 5, -47, -49, -48])).all():
+#             return None
 
         weekdays = unique(self.index.weekday)
         if len(weekdays) > 1:
             return None
+        
+        week_of_months = unique((self.index.day - 1) // 7)
+        if len(week_of_months) > 1:
+            return None
 
         # get which week
-        week = (self.index[0].day - 1) // 7 + 1
+        week = week_of_months[0] + 1
         wd = _weekday_rule_aliases[weekdays[0]]
 
         return 'WOM-%d%s' % (week, wd)

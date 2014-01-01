@@ -7,7 +7,8 @@ Unit test suite for OLS and PanelOLS classes
 from __future__ import division
 
 from datetime import datetime
-import unittest
+from pandas import compat
+from distutils.version import LooseVersion
 import nose
 import numpy as np
 from numpy.testing.decorators import slow
@@ -21,8 +22,8 @@ from pandas.stats.plm import NonPooledPanelOLS, PanelOLS
 from pandas.util.testing import (assert_almost_equal, assert_series_equal,
                                  assert_frame_equal, assertRaisesRegexp)
 import pandas.util.testing as tm
-
-from common import BaseTest
+import pandas.compat as compat
+from .common import BaseTest
 
 _have_statsmodels = True
 try:
@@ -40,7 +41,7 @@ def _check_repr(obj):
 
 
 def _compare_ols_results(model1, model2):
-    assert(type(model1) == type(model2))
+    tm.assert_isinstance(model1, type(model2))
 
     if hasattr(model1, '_window_type'):
         _compare_moving_ols(model1, model2)
@@ -68,6 +69,7 @@ class TestOLS(BaseTest):
 
     @classmethod
     def setUpClass(cls):
+        super(TestOLS, cls).setUpClass()
         try:
             import matplotlib as mpl
             mpl.use('Agg', warn=False)
@@ -75,7 +77,7 @@ class TestOLS(BaseTest):
             pass
 
         if not _have_statsmodels:
-            raise nose.SkipTest
+            raise nose.SkipTest("no statsmodels")
 
     def testOLSWithDatasets_ccard(self):
         self.checkDataSet(sm.datasets.ccard.load(), skip_moving=True)
@@ -97,10 +99,10 @@ class TestOLS(BaseTest):
 
     def testWLS(self):
         # WLS centered SS changed (fixed) in 0.5.0
-        if sm.version.version < '0.5.0':
-            raise nose.SkipTest
-
-        print( "Make sure you're using statsmodels 0.5.0.dev-cec4f26 or later.")
+        sm_version = sm.version.version
+        if sm_version < LooseVersion('0.5.0'):
+            raise nose.SkipTest("WLS centered SS not fixed in statsmodels"
+                                " version {0}".format(sm_version))
 
         X = DataFrame(np.random.randn(30, 4), columns=['A', 'B', 'C', 'D'])
         Y = Series(np.random.randn(30))
@@ -196,7 +198,7 @@ class TestOLS(BaseTest):
             date = index[i]
 
             x_iter = {}
-            for k, v in x.iteritems():
+            for k, v in compat.iteritems(x):
                 x_iter[k] = v.truncate(before=prior_date, after=date)
             y_iter = y.truncate(before=prior_date, after=date)
 
@@ -250,7 +252,7 @@ class TestOLS(BaseTest):
         summary = repr(model)
 
 
-class TestOLSMisc(unittest.TestCase):
+class TestOLSMisc(tm.TestCase):
 
     _multiprocess_can_split_ = True
 
@@ -258,9 +260,10 @@ class TestOLSMisc(unittest.TestCase):
     For test coverage with faux data
     '''
     @classmethod
-    def setupClass(cls):
+    def setUpClass(cls):
+        super(TestOLSMisc, cls).setUpClass()
         if not _have_statsmodels:
-            raise nose.SkipTest
+            raise nose.SkipTest("no statsmodels")
 
     def test_f_test(self):
         x = tm.makeTimeDataFrame()
@@ -367,7 +370,7 @@ class TestOLSMisc(unittest.TestCase):
         y = lp.pop('ItemA')
         model = ols(y=y, x=lp, entity_effects=True, window=20)
         self.assert_(notnull(model.beta.values).all())
-        self.assert_(isinstance(model, PanelOLS))
+        tm.assert_isinstance(model, PanelOLS)
         model.summary
 
     def test_series_rhs(self):
@@ -376,6 +379,9 @@ class TestOLSMisc(unittest.TestCase):
         model = ols(y=y, x=x)
         expected = ols(y=y, x={'x': x})
         assert_series_equal(model.beta, expected.beta)
+
+        # GH 5233/5250
+        assert_series_equal(model.y_predict, model.predict(x=x))
 
     def test_various_attributes(self):
         # just make sure everything "works". test correctness elsewhere
@@ -388,7 +394,7 @@ class TestOLSMisc(unittest.TestCase):
 
         for attr in series_attrs:
             value = getattr(model, attr)
-            self.assert_(isinstance(value, Series))
+            tm.assert_isinstance(value, Series)
 
         # works
         model._results
@@ -529,7 +535,7 @@ class TestPanelOLS(BaseTest):
 
         stack_y = y.stack()
         stack_x = DataFrame(dict((k, v.stack())
-                                 for k, v in x.iterkv()))
+                                 for k, v in compat.iteritems(x)))
 
         weights = x.std('items')
         stack_weights = weights.stack()
@@ -722,7 +728,7 @@ class TestPanelOLS(BaseTest):
             date = index[i]
 
             x_iter = {}
-            for k, v in x.iteritems():
+            for k, v in compat.iteritems(x):
                 x_iter[k] = v.truncate(before=prior_date, after=date)
             y_iter = y.truncate(before=prior_date, after=date)
 
@@ -799,7 +805,7 @@ def _period_slice(panelModel, i):
     return slice(L, R)
 
 
-class TestOLSFilter(unittest.TestCase):
+class TestOLSFilter(tm.TestCase):
 
     _multiprocess_can_split_ = True
 

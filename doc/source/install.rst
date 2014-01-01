@@ -16,11 +16,10 @@ compiler (MinGW or Visual Studio) installed. `How-to install MinGW on Windows
 Python version support
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Officially Python 2.6 to 2.7 and Python 3.1+, although Python 3 support is less
-well tested. Python 2.4 support is being phased out since the userbase has
-shrunk significantly. Continuing Python 2.4 support will require either monetary
-development support or someone contributing to the project to maintain
-compatibility.
+Officially Python 2.6 to 2.7 and Python 3.2+. Python 2.4 and Python 2.5 are no
+longer supported since the userbase has shrunk significantly. Continuing Python
+2.4 and 2.5 support will require either monetary development support or someone
+contributing to the project to restore compatibility.
 
 
 Binary installers
@@ -47,11 +46,11 @@ ___________
 
     Windows, all, stable, :ref:`all-platforms`,  ``pip install pandas``
     Mac, all, stable, :ref:`all-platforms`,  ``pip install pandas``
-    Linux, Debian, stable, `official Debian repository <http://packages.debian.org/search?keywords=pandas&searchon=names&suite=all&section=all>`_ , ``sudo apt-get install python-pandas``
-    Linux, Debian & Ubuntu, unstable (latest packages), `NeuroDebian <http://neuro.debian.net/index.html#how-to-use-this-repository>`_ , ``sudo apt-get install python-pandas``
-    Linux, Ubuntu, stable, `official Ubuntu repository <http://packages.ubuntu.com/search?keywords=pandas&searchon=names&suite=all&section=all>`_ , ``sudo apt-get install python-pandas``
-    Linux, Ubuntu, unstable (daily builds), `PythonXY PPA  <https://code.launchpad.net/~pythonxy/+archive/pythonxy-devel>`_; activate by: ``sudo add-apt-repository ppa:pythonxy/pythonxy-devel && sudo apt-get update``, ``sudo apt-get install python-pandas``
-	Linux, OpenSuse & Fedora, stable, `OpenSuse Repository  <http://software.opensuse.org/package/python-pandas?search_term=pandas>`_ , ``zypper in  python-pandas``
+    Linux, Debian, stable, `official Debian repository <http://packages.debian.org/search?keywords=pandas&searchon=names&suite=all&section=all>`__ , ``sudo apt-get install python-pandas``
+    Linux, Debian & Ubuntu, unstable (latest packages), `NeuroDebian <http://neuro.debian.net/index.html#how-to-use-this-repository>`__ , ``sudo apt-get install python-pandas``
+    Linux, Ubuntu, stable, `official Ubuntu repository <http://packages.ubuntu.com/search?keywords=pandas&searchon=names&suite=all&section=all>`__ , ``sudo apt-get install python-pandas``
+    Linux, Ubuntu, unstable (daily builds), `PythonXY PPA  <https://code.launchpad.net/~pythonxy/+archive/pythonxy-devel>`__; activate by: ``sudo add-apt-repository ppa:pythonxy/pythonxy-devel && sudo apt-get update``, ``sudo apt-get install python-pandas``
+	Linux, OpenSuse & Fedora, stable, `OpenSuse Repository  <http://software.opensuse.org/package/python-pandas?search_term=pandas>`__ , ``zypper in  python-pandas``
 
 
 
@@ -77,6 +76,7 @@ Recommended Dependencies
 
   * `numexpr <http://code.google.com/p/numexpr/>`__: for accelerating certain numerical operations.
     ``numexpr`` uses multiple cores as well as smart chunking and caching to achieve large speedups.
+
   * `bottleneck <http://berkeleyanalytics.com/bottleneck>`__: for accelerating certain types of ``nan``
     evaluations. ``bottleneck`` uses specialized cython routines to achieve large speedups.
 
@@ -101,15 +101,28 @@ Optional Dependencies
   * `openpyxl <http://packages.python.org/openpyxl/>`__, `xlrd/xlwt <http://www.python-excel.org/>`__
      * openpyxl version 1.6.1 or higher
      * Needed for Excel I/O
+  * `XlsxWriter <https://pypi.python.org/pypi/XlsxWriter>`__
+     * Alternative Excel writer.
   * `boto <https://pypi.python.org/pypi/boto>`__: necessary for Amazon S3
     access.
+  * One of `PyQt4
+    <http://www.riverbankcomputing.com/software/pyqt/download>`__, `PySide
+    <http://qt-project.org/wiki/Category:LanguageBindings::PySide>`__, `pygtk
+    <http://www.pygtk.org/>`__, `xsel
+    <http://www.vergenet.net/~conrad/software/xsel/>`__, or `xclip
+    <http://sourceforge.net/projects/xclip/>`__: necessary to use
+    :func:`~pandas.io.clipboard.read_clipboard`. Most package managers on Linux
+    distributions will have xclip and/or xsel immediately available for
+    installation.
+  * `Google bq Command Line Tool <https://developers.google.com/bigquery/bq-command-line-tool/>`__
+    * Needed for :mod:`~pandas.io.gbq`
   * One of the following combinations of libraries is needed to use the
     top-level :func:`~pandas.io.html.read_html` function:
 
     * `BeautifulSoup4`_ and `html5lib`_ (Any recent version of `html5lib`_ is
       okay.)
-    * `BeautifulSoup4`_ and `lxml`_ 
-    * `BeautifulSoup4`_ and `html5lib`_ and `lxml`_ 
+    * `BeautifulSoup4`_ and `lxml`_
+    * `BeautifulSoup4`_ and `html5lib`_ and `lxml`_
     * Only `lxml`_, although see :ref:`HTML reading gotchas <html-gotchas>`
       for reasons as to why you should probably **not** take this approach.
 

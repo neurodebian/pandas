@@ -1,18 +1,19 @@
+from pandas import compat
 import nose
-import unittest
 
 from numpy import nan
 import numpy as np
 
 from pandas import Series, DataFrame
 
-from pandas.util.compat import product
+from pandas.compat import product
 from pandas.util.testing import (assert_frame_equal,
                                  assert_series_equal,
                                  assert_almost_equal)
+import pandas.util.testing as tm
 
 
-class TestRank(unittest.TestCase):
+class TestRank(tm.TestCase):
     _multiprocess_can_split_ = True
     s = Series([1, 3, 4, 2, nan, 2, 1, 5, nan, 3])
     df = DataFrame({'A': s, 'B': s})
@@ -106,7 +107,7 @@ class TestRank(unittest.TestCase):
     def test_rank_int(self):
         s = self.s.dropna().astype('i8')
 
-        for method, res in self.results.iteritems():
+        for method, res in compat.iteritems(self.results):
             result = s.rank(method=method)
             expected = Series(res).dropna()
             expected.index = result.index

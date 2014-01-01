@@ -1,6 +1,5 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-from __future__ import with_statement  # support python 2.5
 import pandas as pd
 import unittest
 import warnings
@@ -438,5 +437,3 @@ class TestConfig(unittest.TestCase):
         options.c = 1
         self.assertEqual(len(holder), 1)
 
-# fmt.reset_printoptions and fmt.set_printoptions were altered
-# to use core.config, test_format exercises those paths.

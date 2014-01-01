@@ -1,14 +1,36 @@
 .. _release:
 
-=============
+.. currentmodule:: pandas
+
+.. ipython:: python
+   :suppress:
+
+   import os
+   import csv
+   from pandas.compat import StringIO
+   import pandas as pd
+   ExcelWriter = pd.ExcelWriter
+
+   import numpy as np
+   np.random.seed(123456)
+   randn = np.random.randn
+   np.set_printoptions(precision=4, suppress=True)
+
+   import matplotlib.pyplot as plt
+   plt.close('all')
+
+   from pandas import *
+   options.display.max_rows=15
+   import pandas.util.testing as tm
+
+*************
 Release Notes
-=============
+*************
 
 This is the list of changes to pandas between each release. For full details,
 see the commit logs at http://github.com/pydata/pandas
 
-What is it
-----------
+**What is it**
 
 pandas is a Python package providing fast, flexible, and expressive data
 structures designed to make working with “relational” or “labeled” data both
@@ -17,34 +39,809 @@ doing practical, real world data analysis in Python. Additionally, it has the
 broader goal of becoming the most powerful and flexible open source data
 analysis / manipulation tool available in any language.
 
-Where to get it
----------------
+**Where to get it**
 
 * Source code: http://github.com/pydata/pandas
 * Binary installers on PyPI: http://pypi.python.org/pypi/pandas
 * Documentation: http://pandas.pydata.org
 
-pandas 0.13
-===========
+pandas 0.13.0
+-------------
 
 **Release date:** not-yet-released
 
-**New features**
+New features
+~~~~~~~~~~~~
 
-**Improvements to existing features**
+  - ``plot(kind='kde')`` now accepts the optional parameters ``bw_method`` and
+    ``ind``, passed to scipy.stats.gaussian_kde() (for scipy >= 0.11.0) to set
+    the bandwidth, and to gkde.evaluate() to specify the indicies at which it
+    is evaluated, respecttively. See scipy docs. (:issue:`4298`)
+  - Added ``isin`` method to DataFrame (:issue:`4211`)
+  - ``df.to_clipboard()`` learned a new ``excel`` keyword that let's you
+    paste df data directly into excel (enabled by default). (:issue:`5070`).
+  - Clipboard functionality now works with PySide (:issue:`4282`)
+  - New ``extract`` string method returns regex matches more conveniently
+    (:issue:`4685`)
+  - Auto-detect field widths in read_fwf when unspecified (:issue:`4488`)
+  - ``to_csv()`` now outputs datetime objects according to a specified format
+    string via the ``date_format`` keyword (:issue:`4313`)
+  - Added ``LastWeekOfMonth`` DateOffset (:issue:`4637`)
+  - Added ``cumcount`` groupby method (:issue:`4646`)
+  - Added ``FY5253``, and ``FY5253Quarter`` DateOffsets (:issue:`4511`)
+  - Added ``mode()`` method to ``Series`` and ``DataFrame`` to get the
+    statistical mode(s) of a column/series. (:issue:`5367`)
 
-**API Changes**
+Experimental Features
+~~~~~~~~~~~~~~~~~~~~~
 
-**Experimental Features**
+  - The new :func:`~pandas.eval` function implements expression evaluation
+    using ``numexpr`` behind the scenes. This results in large speedups for
+    complicated expressions involving large DataFrames/Series.
+  - :class:`~pandas.DataFrame` has a new :meth:`~pandas.DataFrame.eval` that
+    evaluates an expression in the context of the ``DataFrame``; allows
+    inline expression assignment
+  - A :meth:`~pandas.DataFrame.query` method has been added that allows
+    you to select elements of a ``DataFrame`` using a natural query syntax
+    nearly identical to Python syntax.
+  - ``pd.eval`` and friends now evaluate operations involving ``datetime64``
+    objects in Python space because ``numexpr`` cannot handle ``NaT`` values
+    (:issue:`4897`).
+  - Add msgpack support via ``pd.read_msgpack()`` and ``pd.to_msgpack()`` /
+    ``df.to_msgpack()`` for serialization of arbitrary pandas (and python
+    objects) in a lightweight portable binary format (:issue:`686`, :issue:`5506`)
+  - Added PySide support for the qtpandas DataFrameModel and DataFrameWidget.
+  - Added :mod:`pandas.io.gbq` for reading from (and writing to) Google
+    BigQuery into a DataFrame. (:issue:`4140`)
 
-**Bug Fixes**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-pandas 0.12
-===========
+  - ``read_html`` now raises a ``URLError`` instead of catching and raising a
+    ``ValueError`` (:issue:`4303`, :issue:`4305`)
+  - ``read_excel`` now supports an integer in its ``sheetname`` argument giving
+    the index of the sheet to read in (:issue:`4301`).
+  - ``get_dummies`` works with NaN (:issue:`4446`)
+  - Added a test for ``read_clipboard()`` and ``to_clipboard()``
+    (:issue:`4282`)
+  - Added bins argument to ``value_counts`` (:issue:`3945`), also sort and
+    ascending, now available in Series method as well as top-level function.
+  - Text parser now treats anything that reads like inf ("inf", "Inf", "-Inf",
+    "iNf", etc.) to infinity. (:issue:`4220`, :issue:`4219`), affecting
+    ``read_table``, ``read_csv``, etc.
+  - Added a more informative error message when plot arguments contain
+    overlapping color and style arguments (:issue:`4402`)
+  - Significant table writing performance improvements in ``HDFStore``
+  - JSON date serialisation now performed in low-level C code.
+  - JSON support for encoding datetime.time
+  - Expanded JSON docs, more info about orient options and the use of the numpy
+    param when decoding.
+  - Add ``drop_level`` argument to xs (:issue:`4180`)
+  - Can now resample a DataFrame with ohlc (:issue:`2320`)
+  - ``Index.copy()`` and ``MultiIndex.copy()`` now accept keyword arguments to
+    change attributes (i.e., ``names``, ``levels``, ``labels``)
+    (:issue:`4039`)
+  - Add ``rename`` and ``set_names`` methods to ``Index`` as well as
+    ``set_names``, ``set_levels``, ``set_labels`` to ``MultiIndex``.
+    (:issue:`4039`) with improved validation for all (:issue:`4039`,
+    :issue:`4794`)
+  - A Series of dtype ``timedelta64[ns]`` can now be divided/multiplied
+    by an integer series (:issue:`4521`)
+  - A Series of dtype ``timedelta64[ns]`` can now be divided by another
+    ``timedelta64[ns]`` object to yield a ``float64`` dtyped Series. This
+    is frequency conversion; astyping is also supported.
+  - Timedelta64 support ``fillna/ffill/bfill`` with an integer interpreted as
+    seconds, or a ``timedelta`` (:issue:`3371`)
+  - Box numeric ops on ``timedelta`` Series (:issue:`4984`)
+  - Datetime64 support ``ffill/bfill``
+  - Performance improvements with ``__getitem__`` on ``DataFrames`` with
+    when the key is a column
+  - Support for using a ``DatetimeIndex/PeriodsIndex`` directly in a datelike
+    calculation e.g. s-s.index (:issue:`4629`)
+  - Better/cleaned up exceptions in core/common, io/excel and core/format
+    (:issue:`4721`, :issue:`3954`), as well as cleaned up test cases in
+    tests/test_frame, tests/test_multilevel (:issue:`4732`).
+  - Performance improvement of timesesies plotting with PeriodIndex and added
+    test to vbench (:issue:`4705` and :issue:`4722`)
+  - Add ``axis`` and ``level`` keywords to ``where``, so that the ``other``
+    argument can now be an alignable pandas object.
+  - ``to_datetime`` with a format of '%Y%m%d' now parses much faster
+  - It's now easier to hook new Excel writers into pandas (just subclass
+    ``ExcelWriter`` and register your engine). You can specify an ``engine`` in
+    ``to_excel`` or in ``ExcelWriter``.  You can also specify which writers you
+    want to use by default with config options ``io.excel.xlsx.writer`` and
+    ``io.excel.xls.writer``. (:issue:`4745`, :issue:`4750`)
+  - ``Panel.to_excel()`` now accepts keyword arguments that will be passed to
+    its ``DataFrame``'s ``to_excel()`` methods. (:issue:`4750`)
+  - Added XlsxWriter as an optional ``ExcelWriter``  engine. This is about 5x
+    faster than the default openpyxl xlsx writer and is equivalent in speed
+    to the xlwt xls writer module. (:issue:`4542`)
+  - allow DataFrame constructor to accept more list-like objects, e.g. list of
+    ``collections.Sequence`` and ``array.Array`` objects (:issue:`3783`,
+    :issue:`4297`, :issue:`4851`), thanks @lgautier
+  - DataFrame constructor now accepts a numpy masked record array
+    (:issue:`3478`), thanks @jnothman
+  - ``__getitem__`` with ``tuple`` key (e.g., ``[:, 2]``) on ``Series``
+    without ``MultiIndex`` raises ``ValueError`` (:issue:`4759`, :issue:`4837`)
+  - ``read_json`` now raises a (more informative) ``ValueError`` when the dict
+    contains a bad key and ``orient='split'`` (:issue:`4730`, :issue:`4838`)
+  - ``read_stata`` now accepts Stata 13 format (:issue:`4291`)
+  - ``ExcelWriter`` and ``ExcelFile`` can be used as contextmanagers.
+    (:issue:`3441`, :issue:`4933`)
+  - ``pandas`` is now tested with two different versions of ``statsmodels``
+    (0.4.3 and 0.5.0) (:issue:`4981`).
+  - Better string representations of ``MultiIndex`` (including ability to
+    roundtrip via ``repr``). (:issue:`3347`, :issue:`4935`)
+  - Both ExcelFile and read_excel to accept an xlrd.Book for the io
+    (formerly path_or_buf) argument; this requires engine to be set.
+    (:issue:`4961`).
+  - ``concat`` now gives a more informative error message when passed objects
+    that cannot be concatenated (:issue:`4608`).
+  - Add ``halflife`` option to exponentially weighted moving functions (PR
+    :issue:`4998`)
+  - ``to_dict`` now takes ``records`` as a possible outtype.  Returns an array
+    of column-keyed dictionaries. (:issue:`4936`)
+  - ``tz_localize`` can infer a fall daylight savings transition based on the
+    structure of unlocalized data (:issue:`4230`)
+  - DatetimeIndex is now in the API documentation
+  - Improve support for converting R datasets to pandas objects (more
+    informative index for timeseries and numeric, support for factors, dist,
+    and high-dimensional arrays).
+  - :func:`~pandas.read_html` now supports the ``parse_dates``,
+    ``tupleize_cols`` and ``thousands`` parameters (:issue:`4770`).
+  - :meth:`~pandas.io.json.json_normalize` is a new method to allow you to
+    create a flat table from semi-structured JSON data. :ref:`See the
+    docs<io.json_normalize>` (:issue:`1067`)
+  - ``DataFrame.from_records()`` will now accept generators (:issue:`4910`)
+  - ``DataFrame.interpolate()`` and ``Series.interpolate()`` have been expanded
+    to include interpolation methods from scipy. (:issue:`4434`, :issue:`1892`)
+  - ``Series`` now supports a ``to_frame`` method to convert it to a
+    single-column DataFrame (:issue:`5164`)
+  - DatetimeIndex (and date_range) can now be constructed in a left- or
+    right-open fashion using the ``closed`` parameter (:issue:`4579`)
+  - Python csv parser now supports usecols (:issue:`4335`)
+  - Added support for Google Analytics v3 API segment IDs that also supports v2
+    IDs. (:issue:`5271`)
+  - ``NDFrame.drop()`` now accepts names as well as integers for the axis
+    argument. (:issue:`5354`)
+  - Added short docstrings to a few methods that were missing them + fixed the
+    docstrings for Panel flex methods. (:issue:`5336`)
+  - ``NDFrame.drop()``, ``NDFrame.dropna()``, and ``.drop_duplicates()`` all
+    accept ``inplace`` as a kewyord argument; however, this only means that the
+    wrapper is updated inplace, a copy is still made internally.
+    (:issue:`1960`, :issue:`5247`, :issue:`5628`, and related :issue:`2325` [still not
+    closed])
+  - Fixed bug in `tools.plotting.andrews_curvres` so that lines are drawn grouped
+    by color as expected.
+  - ``read_excel()`` now tries to convert integral floats (like ``1.0``) to int
+    by default. (:issue:`5394`)
+  - Excel writers now have a default option ``merge_cells`` in ``to_excel()``
+    to merge cells in MultiIndex and Hierarchical Rows. Note: using this
+    option it is no longer possible to round trip Excel files with merged
+    MultiIndex and Hierarchical Rows. Set the ``merge_cells`` to ``False`` to
+    restore the previous behaviour.  (:issue:`5254`)
+  - The FRED DataReader now accepts multiple series (:issue`3413`)
+  - StataWriter adjusts variable names to Stata's limitations (:issue:`5709`)
+
+API Changes
+~~~~~~~~~~~
+
+  - ``DataFrame.reindex()`` and forward/backward filling now raises ValueError
+    if either index is not monotonic (:issue:`4483`, :issue:`4484`).
+  - ``pandas`` now is Python 2/3 compatible without the need for 2to3 thanks to
+    @jtratner. As a result, pandas now uses iterators more extensively. This
+    also led to the introduction of substantive parts of the Benjamin
+    Peterson's ``six`` library into compat. (:issue:`4384`, :issue:`4375`,
+    :issue:`4372`)
+  - ``pandas.util.compat`` and ``pandas.util.py3compat`` have been merged into
+    ``pandas.compat``. ``pandas.compat`` now includes many functions allowing
+    2/3 compatibility. It contains both list and iterator versions of range,
+    filter, map and zip, plus other necessary elements for Python 3
+    compatibility. ``lmap``, ``lzip``, ``lrange`` and ``lfilter`` all produce
+    lists instead of iterators, for compatibility with ``numpy``, subscripting
+    and ``pandas`` constructors.(:issue:`4384`, :issue:`4375`, :issue:`4372`)
+  - deprecated ``iterkv``, which will be removed in a future release (was just
+    an alias of iteritems used to get around ``2to3``'s changes).
+    (:issue:`4384`, :issue:`4375`, :issue:`4372`)
+  - ``Series.get`` with negative indexers now returns the same as ``[]``
+    (:issue:`4390`)
+  - allow ``ix/loc`` for Series/DataFrame/Panel to set on any axis even when
+    the single-key is not currently contained in the index for that axis
+    (:issue:`2578`, :issue:`5226`, :issue:`5632`, :issue:`5720`,
+    :issue:`5744`, :issue:`5756`)
+  - Default export for ``to_clipboard`` is now csv with a sep of `\t` for
+    compat (:issue:`3368`)
+  - ``at`` now will enlarge the object inplace (and return the same)
+    (:issue:`2578`)
+  - ``DataFrame.plot`` will scatter plot x versus y by passing
+    ``kind='scatter'`` (:issue:`2215`)
+
+  - ``HDFStore``
+
+    - ``append_to_multiple`` automatically synchronizes writing rows to multiple
+      tables and adds a ``dropna`` kwarg (:issue:`4698`)
+    - handle a passed ``Series`` in table format (:issue:`4330`)
+    - added an ``is_open`` property to indicate if the underlying file handle
+      is_open; a closed store will now report 'CLOSED' when viewing the store
+      (rather than raising an error) (:issue:`4409`)
+    - a close of a ``HDFStore`` now will close that instance of the
+      ``HDFStore`` but will only close the actual file if the ref count (by
+      ``PyTables``) w.r.t. all of the open handles are 0. Essentially you have
+      a local instance of ``HDFStore`` referenced by a variable. Once you close
+      it, it will report closed. Other references (to the same file) will
+      continue to operate until they themselves are closed. Performing an
+      action on a closed file will raise ``ClosedFileError``
+    - removed the ``_quiet`` attribute, replace by a ``DuplicateWarning`` if
+      retrieving duplicate rows from a table (:issue:`4367`)
+    - removed the ``warn`` argument from ``open``. Instead a
+      ``PossibleDataLossError`` exception will be raised if you try to use
+      ``mode='w'`` with an OPEN file handle (:issue:`4367`)
+    - allow a passed locations array or mask as a ``where`` condition
+      (:issue:`4467`)
+    - add the keyword ``dropna=True`` to ``append`` to change whether ALL nan
+      rows are not written to the store (default is ``True``, ALL nan rows are
+      NOT written), also settable via the option ``io.hdf.dropna_table``
+      (:issue:`4625`)
+    - the ``format`` keyword now replaces the ``table`` keyword; allowed values
+      are ``fixed(f)|table(t)`` the ``Storer`` format has been renamed to
+      ``Fixed``
+    - a column multi-index will be recreated properly (:issue:`4710`); raise on
+      trying to use a multi-index with data_columns on the same axis
+    - ``select_as_coordinates`` will now return an ``Int64Index`` of the
+      resultant selection set
+    - support ``timedelta64[ns]`` as a serialization type (:issue:`3577`)
+    - store `datetime.date` objects as ordinals rather then timetuples to avoid
+      timezone issues (:issue:`2852`), thanks @tavistmorph and @numpand
+    - ``numexpr`` 2.2.2 fixes incompatiblity in PyTables 2.4 (:issue:`4908`)
+    - ``flush`` now accepts an ``fsync`` parameter, which defaults to ``False``
+      (:issue:`5364`)
+    - ``unicode`` indices not supported on ``table`` formats (:issue:`5386`)
+    - pass thru store creation arguments; can be used to support in-memory stores
+  - ``JSON``
+
+    - added ``date_unit`` parameter to specify resolution of timestamps.
+      Options are seconds, milliseconds, microseconds and nanoseconds.
+      (:issue:`4362`, :issue:`4498`).
+    - added ``default_handler`` parameter to allow a callable to be passed
+      which will be responsible for handling otherwise unserialisable objects.
+      (:issue:`5138`)
+
+  - ``Index`` and ``MultiIndex`` changes (:issue:`4039`):
+
+    - Setting ``levels`` and ``labels`` directly on ``MultiIndex`` is now
+      deprecated. Instead, you can use the ``set_levels()`` and
+      ``set_labels()`` methods.
+    - ``levels``, ``labels`` and ``names`` properties no longer return lists,
+      but instead return containers that do not allow setting of items
+      ('mostly immutable')
+    - ``levels``, ``labels`` and ``names`` are validated upon setting and are
+      either copied or shallow-copied.
+    - inplace setting of ``levels`` or ``labels`` now correctly invalidates the
+      cached properties. (:issue:`5238`).
+    - ``__deepcopy__`` now returns a shallow copy (currently: a view) of the
+      data - allowing metadata changes.
+    - ``MultiIndex.astype()`` now only allows ``np.object_``-like dtypes and
+      now returns a ``MultiIndex`` rather than an ``Index``. (:issue:`4039`)
+    - Added ``is_`` method to ``Index`` that allows fast equality comparison of
+      views (similar to ``np.may_share_memory`` but no false positives, and
+      changes on ``levels`` and ``labels`` setting on ``MultiIndex``).
+      (:issue:`4859` , :issue:`4909`)
+    - Aliased ``__iadd__`` to ``__add__``. (:issue:`4996`)
+    - Added ``is_`` method to ``Index`` that allows fast equality comparison of
+      views (similar to ``np.may_share_memory`` but no false positives, and
+      changes on ``levels`` and ``labels`` setting on ``MultiIndex``).
+      (:issue:`4859`, :issue:`4909`)
+
+  - Infer and downcast dtype if ``downcast='infer'`` is passed to
+    ``fillna/ffill/bfill`` (:issue:`4604`)
+  - ``__nonzero__`` for all NDFrame objects, will now raise a ``ValueError``,
+    this reverts back to (:issue:`1073`, :issue:`4633`) behavior. Add
+    ``.bool()`` method to ``NDFrame`` objects to facilitate evaluating of
+    single-element boolean Series
+  - ``DataFrame.update()`` no longer raises a ``DataConflictError``, it now
+    will raise a ``ValueError`` instead (if necessary) (:issue:`4732`)
+  - ``Series.isin()`` and ``DataFrame.isin()``  now raise a ``TypeError`` when
+    passed a string (:issue:`4763`). Pass a ``list`` of one element (containing
+    the string) instead.
+  - Remove undocumented/unused ``kind`` keyword argument from ``read_excel``,
+    and ``ExcelFile``. (:issue:`4713`, :issue:`4712`)
+  - The ``method`` argument of ``NDFrame.replace()`` is valid again, so that a
+    a list can be passed to ``to_replace`` (:issue:`4743`).
+  - provide automatic dtype conversions on _reduce operations (:issue:`3371`)
+  - exclude non-numerics if mixed types with datelike in _reduce operations
+    (:issue:`3371`)
+  - default for ``tupleize_cols`` is now ``False`` for both ``to_csv`` and
+    ``read_csv``. Fair warning in 0.12 (:issue:`3604`)
+  - moved timedeltas support to pandas.tseries.timedeltas.py; add timedeltas
+    string parsing, add top-level ``to_timedelta`` function
+  - ``NDFrame`` now is compatible with Python's toplevel ``abs()`` function
+    (:issue:`4821`).
+  - raise a ``TypeError`` on invalid comparison ops on Series/DataFrame (e.g.
+    integer/datetime) (:issue:`4968`)
+  - Added a new index type, ``Float64Index``. This will be automatically
+    created when passing floating values in index creation.  This enables a
+    pure label-based slicing paradigm that makes ``[],ix,loc`` for scalar
+    indexing and slicing work exactly the same.  Indexing on other index types
+    are preserved (and positional fallback for ``[],ix``), with the exception,
+    that floating point slicing on indexes on non ``Float64Index`` will raise a
+    ``TypeError``, e.g. ``Series(range(5))[3.5:4.5]`` (:issue:`263`,:issue:`5375`)
+  - Make Categorical repr nicer (:issue:`4368`)
+  - Remove deprecated ``Factor`` (:issue:`3650`)
+  - Remove deprecated ``set_printoptions/reset_printoptions`` (:issue:``3046``)
+  - Remove deprecated ``_verbose_info`` (:issue:`3215`)
+  - Begin removing methods that don't make sense on ``GroupBy`` objects
+    (:issue:`4887`).
+  - Remove deprecated ``read_clipboard/to_clipboard/ExcelFile/ExcelWriter``
+    from ``pandas.io.parsers`` (:issue:`3717`)
+  - All non-Index NDFrames (``Series``, ``DataFrame``, ``Panel``, ``Panel4D``,
+    ``SparsePanel``, etc.), now support the entire set of arithmetic operators
+    and arithmetic flex methods (add, sub, mul, etc.). ``SparsePanel`` does not
+    support ``pow`` or ``mod`` with non-scalars. (:issue:`3765`)
+  - Arithemtic func factories are now passed real names (suitable for using
+    with super) (:issue:`5240`)
+  - Provide numpy compatibility with 1.7 for a calling convention like
+    ``np.prod(pandas_object)`` as numpy call with additional keyword args
+    (:issue:`4435`)
+  - Provide __dir__ method (and local context) for tab completion / remove
+    ipython completers code (:issue:`4501`)
+  - Support non-unique axes in a Panel via indexing operations (:issue:`4960`)
+  - ``.truncate`` will raise a ``ValueError`` if invalid before and afters
+    dates are given (:issue:`5242`)
+  - ``Timestamp`` now supports ``now/today/utcnow`` class methods
+    (:issue:`5339`)
+  - default for `display.max_seq_len` is now 100 rather then `None`. This activates
+    truncated display ("...") of long sequences in various places. (:issue:`3391`)
+  - **All** division with ``NDFrame`` - likes is now truedivision, regardless
+    of the future import. You can use ``//`` and ``floordiv`` to do integer
+    division.
+
+  .. code-block:: python
+
+    In [3]: arr = np.array([1, 2, 3, 4])
+
+    In [4]: arr2 = np.array([5, 3, 2, 1])
+
+    In [5]: arr / arr2
+    Out[5]: array([0, 0, 1, 4])
+
+    In [6]: pd.Series(arr) / pd.Series(arr2) # no future import required
+    Out[6]:
+    0    0.200000
+    1    0.666667
+    2    1.500000
+    3    4.000000
+    dtype: float64
+
+  - raise/warn ``SettingWithCopyError/Warning`` exception/warning when setting of a
+    copy thru chained assignment is detected, settable via option ``mode.chained_assignment``
+  - test the list of ``NA`` values in the csv parser. add ``N/A``, ``#NA`` as independent default
+    na values (:issue:`5521`)
+  - The refactoring involving``Series`` deriving from ``NDFrame`` breaks ``rpy2<=2.3.8``. an Issue
+    has been opened against rpy2 and a workaround is detailed in :issue:`5698`. Thanks @JanSchulz.
+
+
+Internal Refactoring
+~~~~~~~~~~~~~~~~~~~~
+
+In 0.13.0 there is a major refactor primarily to subclass ``Series`` from
+``NDFrame``, which is the base class currently for ``DataFrame`` and ``Panel``,
+to unify methods and behaviors. Series formerly subclassed directly from
+``ndarray``. (:issue:`4080`, :issue:`3862`, :issue:`816`)
+See :ref:`Internal Refactoring<whatsnew_0130.refactoring>`
+
+ - Refactor of series.py/frame.py/panel.py to move common code to generic.py
+
+  - added ``_setup_axes`` to created generic NDFrame structures
+  - moved methods
+
+    - ``from_axes``, ``_wrap_array``, ``axes``, ``ix``, ``loc``, ``iloc``,
+      ``shape``, ``empty``, ``swapaxes``, ``transpose``, ``pop``
+    - ``__iter__``, ``keys``, ``__contains__``, ``__len__``, ``__neg__``,
+      ``__invert__``
+    - ``convert_objects``, ``as_blocks``, ``as_matrix``, ``values``
+    - ``__getstate__``, ``__setstate__`` (compat remains in frame/panel)
+    - ``__getattr__``, ``__setattr__``
+    - ``_indexed_same``, ``reindex_like``, ``align``, ``where``, ``mask``
+    - ``fillna``, ``replace`` (``Series`` replace is now consistent with
+      ``DataFrame``)
+    - ``filter`` (also added axis argument to selectively filter on a different
+      axis)
+    - ``reindex``, ``reindex_axis``, ``take``
+    - ``truncate`` (moved to become part of ``NDFrame``)
+    - ``isnull/notnull`` now available on ``NDFrame`` objects
+
+ - These are API changes which make ``Panel`` more consistent with ``DataFrame``
+
+  - ``swapaxes`` on a ``Panel`` with the same axes specified now return a copy
+  - support attribute access for setting
+  - ``filter`` supports same api as original ``DataFrame`` filter
+  - ``fillna`` refactored to ``core/generic.py``, while > 3ndim is
+    ``NotImplemented``
+
+ - Series now inherits from ``NDFrame`` rather than directly from ``ndarray``.
+   There are several minor changes that affect the API.
+
+  - numpy functions that do not support the array interface will now return
+    ``ndarrays`` rather than series, e.g. ``np.diff``, ``np.ones_like``,
+    ``np.where``
+  - ``Series(0.5)`` would previously return the scalar ``0.5``, this is no
+    longer supported
+  - ``TimeSeries`` is now an alias for ``Series``. the property
+    ``is_time_series`` can be used to distinguish (if desired)
+
+ - Refactor of Sparse objects to use BlockManager
+
+  - Created a new block type in internals, ``SparseBlock``, which can hold
+    multi-dtypes and is non-consolidatable. ``SparseSeries`` and
+    ``SparseDataFrame`` now inherit more methods from there hierarchy
+    (Series/DataFrame), and no longer inherit from ``SparseArray`` (which
+    instead is the object of the ``SparseBlock``)
+  - Sparse suite now supports integration with non-sparse data. Non-float
+    sparse data is supportable (partially implemented)
+  - Operations on sparse structures within DataFrames should preserve
+    sparseness, merging type operations will convert to dense (and back to
+    sparse), so might be somewhat inefficient
+  - enable setitem on ``SparseSeries`` for boolean/integer/slices
+  - ``SparsePanels`` implementation is unchanged (e.g. not using BlockManager,
+    needs work)
+
+ - added ``ftypes`` method to Series/DataFame, similar to ``dtypes``, but
+   indicates if the underlying is sparse/dense (as well as the dtype)
+ - All ``NDFrame`` objects now have a ``_prop_attributes``, which can be used
+   to indcated various values to propogate to a new object from an existing
+   (e.g. name in ``Series`` will follow more automatically now)
+ - Internal type checking is now done via a suite of generated classes,
+   allowing ``isinstance(value, klass)`` without having to directly import the
+   klass, courtesy of @jtratner
+ - Bug in Series update where the parent frame is not updating its cache based
+   on changes (:issue:`4080`, :issue:`5216`) or types (:issue:`3217`), fillna
+   (:issue:`3386`)
+ - Indexing with dtype conversions fixed (:issue:`4463`, :issue:`4204`)
+ - Refactor ``Series.reindex`` to core/generic.py (:issue:`4604`,
+   :issue:`4618`), allow ``method=`` in reindexing on a Series to work
+ - ``Series.copy`` no longer accepts the ``order`` parameter and is now
+   consistent with ``NDFrame`` copy
+ - Refactor ``rename`` methods to core/generic.py; fixes ``Series.rename`` for
+   (:issue:`4605`), and adds ``rename`` with the same signature for ``Panel``
+ - Series (for index) / Panel (for items) now as attribute access to its
+   elements  (:issue:`1903`)
+ - Refactor ``clip`` methods to core/generic.py (:issue:`4798`)
+ - Refactor of ``_get_numeric_data/_get_bool_data`` to core/generic.py,
+   allowing Series/Panel functionaility
+ - Refactor of Series arithmetic with time-like objects
+   (datetime/timedelta/time etc.) into a separate, cleaned up wrapper class.
+   (:issue:`4613`)
+ - Complex compat for ``Series`` with ``ndarray``. (:issue:`4819`)
+ - Removed unnecessary ``rwproperty`` from codebase in favor of builtin
+   property. (:issue:`4843`)
+ - Refactor object level numeric methods (mean/sum/min/max...) from object
+   level modules to ``core/generic.py`` (:issue:`4435`).
+ - Refactor cum objects to core/generic.py (:issue:`4435`), note that these
+   have a more numpy-like function signature.
+ - :func:`~pandas.read_html` now uses ``TextParser`` to parse HTML data from
+   bs4/lxml (:issue:`4770`).
+ - Removed the ``keep_internal`` keyword parameter in
+   ``pandas/core/groupby.py`` because it wasn't being used (:issue:`5102`).
+ - Base ``DateOffsets`` are no longer all instantiated on importing pandas,
+   instead they are generated and cached on the fly. The internal
+   representation and handling of DateOffsets has also been clarified.
+   (:issue:`5189`, related :issue:`5004`)
+ - ``MultiIndex`` constructor now validates that passed levels and labels are
+   compatible. (:issue:`5213`, :issue:`5214`)
+ - Unity ``dropna`` for Series/DataFrame signature (:issue:`5250`),
+   tests from :issue:`5234`, courtesy of @rockg
+ - Rewrite assert_almost_equal() in cython for performance (:issue:`4398`)
+ - Added an internal ``_update_inplace`` method to facilitate updating
+   ``NDFrame`` wrappers on inplace ops (only is for convenience of caller,
+   doesn't actually prevent copies). (:issue:`5247`)
+
+.. _release.bug_fixes-0.13.0:
+
+
+Bug Fixes
+~~~~~~~~~
+
+  - ``HDFStore``
+
+    - raising an invalid ``TypeError`` rather than ``ValueError`` when
+      appending with a different block ordering (:issue:`4096`)
+    - ``read_hdf`` was not respecting as passed ``mode`` (:issue:`4504`)
+    - appending a 0-len table will work correctly (:issue:`4273`)
+    - ``to_hdf`` was raising when passing both arguments ``append`` and
+      ``table`` (:issue:`4584`)
+    - reading from a store with duplicate columns across dtypes would raise
+      (:issue:`4767`)
+    - Fixed a bug where ``ValueError`` wasn't correctly raised when column
+      names weren't strings (:issue:`4956`)
+    - A zero length series written in Fixed format not deserializing properly.
+      (:issue:`4708`)
+    - Fixed decoding perf issue on pyt3 (:issue:`5441`)
+    - Validate levels in a multi-index before storing (:issue:`5527`)
+    - Correctly handle ``data_columns`` with a Panel (:issue:`5717`)
+  - Fixed bug in tslib.tz_convert(vals, tz1, tz2): it could raise IndexError
+    exception while trying to access trans[pos + 1] (:issue:`4496`)
+  - The ``by`` argument now works correctly with the ``layout`` argument
+    (:issue:`4102`, :issue:`4014`) in ``*.hist`` plotting methods
+  - Fixed bug in ``PeriodIndex.map`` where using ``str`` would return the str
+    representation of the index (:issue:`4136`)
+  - Fixed test failure ``test_time_series_plot_color_with_empty_kwargs`` when
+    using custom matplotlib default colors (:issue:`4345`)
+  - Fix running of stata IO tests. Now uses temporary files to write
+    (:issue:`4353`)
+  - Fixed an issue where ``DataFrame.sum`` was slower than ``DataFrame.mean``
+    for integer valued frames (:issue:`4365`)
+  - ``read_html`` tests now work with Python 2.6 (:issue:`4351`)
+  - Fixed bug where ``network`` testing was throwing ``NameError`` because a
+    local variable was undefined (:issue:`4381`)
+  - In ``to_json``, raise if a passed ``orient`` would cause loss of data
+    because of a duplicate index (:issue:`4359`)
+  - In ``to_json``, fix date handling so milliseconds are the default timestamp
+    as the docstring says (:issue:`4362`).
+  - ``as_index`` is no longer ignored when doing groupby apply (:issue:`4648`,
+    :issue:`3417`)
+  - JSON NaT handling fixed, NaTs are now serialised to `null` (:issue:`4498`)
+  - Fixed JSON handling of escapable characters in JSON object keys
+    (:issue:`4593`)
+  - Fixed passing ``keep_default_na=False`` when ``na_values=None``
+    (:issue:`4318`)
+  - Fixed bug with ``values`` raising an error on a DataFrame with duplicate
+    columns and mixed dtypes, surfaced in (:issue:`4377`)
+  - Fixed bug with duplicate columns and type conversion in ``read_json`` when
+    ``orient='split'`` (:issue:`4377`)
+  - Fixed JSON bug where locales with decimal separators other than '.' threw
+    exceptions when encoding / decoding certain values. (:issue:`4918`)
+  - Fix ``.iat`` indexing with a ``PeriodIndex`` (:issue:`4390`)
+  - Fixed an issue where ``PeriodIndex`` joining with self was returning a new
+    instance rather than the same instance (:issue:`4379`); also adds a test
+    for this for the other index types
+  - Fixed a bug with all the dtypes being converted to object when using the
+    CSV cparser with the usecols parameter (:issue:`3192`)
+  - Fix an issue in merging blocks where the resulting DataFrame had partially
+    set _ref_locs (:issue:`4403`)
+  - Fixed an issue where hist subplots were being overwritten when they were
+    called using the top level matplotlib API (:issue:`4408`)
+  - Fixed a bug where calling ``Series.astype(str)`` would truncate the string
+    (:issue:`4405`, :issue:`4437`)
+  - Fixed a py3 compat issue where bytes were being repr'd as tuples
+    (:issue:`4455`)
+  - Fixed Panel attribute naming conflict if item is named 'a'
+    (:issue:`3440`)
+  - Fixed an issue where duplicate indexes were raising when plotting
+    (:issue:`4486`)
+  - Fixed an issue where cumsum and cumprod didn't work with bool dtypes
+    (:issue:`4170`, :issue:`4440`)
+  - Fixed Panel slicing issued in ``xs`` that was returning an incorrect dimmed
+    object (:issue:`4016`)
+  - Fix resampling bug where custom reduce function not used if only one group
+    (:issue:`3849`, :issue:`4494`)
+  - Fixed Panel assignment with a transposed frame (:issue:`3830`)
+  - Raise on set indexing with a Panel and a Panel as a value which needs
+    alignment (:issue:`3777`)
+  - frozenset objects now raise in the ``Series`` constructor (:issue:`4482`,
+    :issue:`4480`)
+  - Fixed issue with sorting a duplicate multi-index that has multiple dtypes
+    (:issue:`4516`)
+  - Fixed bug in ``DataFrame.set_values`` which was causing name attributes to
+    be lost when expanding the index. (:issue:`3742`, :issue:`4039`)
+  - Fixed issue where individual ``names``, ``levels`` and ``labels`` could be
+    set on ``MultiIndex`` without validation (:issue:`3714`, :issue:`4039`)
+  - Fixed (:issue:`3334`) in pivot_table. Margins did not compute if values is
+    the index.
+  - Fix bug in having a rhs of ``np.timedelta64`` or ``np.offsets.DateOffset``
+    when operating with datetimes (:issue:`4532`)
+  - Fix arithmetic with series/datetimeindex and ``np.timedelta64`` not working
+    the same (:issue:`4134`) and buggy timedelta in numpy 1.6 (:issue:`4135`)
+  - Fix bug in ``pd.read_clipboard`` on windows with PY3 (:issue:`4561`); not
+    decoding properly
+  - ``tslib.get_period_field()`` and ``tslib.get_period_field_arr()`` now raise
+    if code argument out of range (:issue:`4519`, :issue:`4520`)
+  - Fix boolean indexing on an empty series loses index names (:issue:`4235`),
+    infer_dtype works with empty arrays.
+  - Fix reindexing with multiple axes; if an axes match was not replacing the
+    current axes, leading to a possible lazay frequency inference issue
+    (:issue:`3317`)
+  - Fixed issue where ``DataFrame.apply`` was reraising exceptions incorrectly
+    (causing the original stack trace to be truncated).
+  - Fix selection with ``ix/loc`` and non_unique selectors (:issue:`4619`)
+  - Fix assignment with iloc/loc involving a dtype change in an existing column
+    (:issue:`4312`, :issue:`5702`) have internal setitem_with_indexer in core/indexing
+    to use Block.setitem
+  - Fixed bug where thousands operator was not handled correctly for floating
+    point numbers in csv_import (:issue:`4322`)
+  - Fix an issue with CacheableOffset not properly being used by many
+    DateOffset; this prevented the DateOffset from being cached (:issue:`4609`)
+  - Fix boolean comparison with a DataFrame on the lhs, and a list/tuple on the
+    rhs (:issue:`4576`)
+  - Fix error/dtype conversion with setitem of ``None`` on ``Series/DataFrame``
+    (:issue:`4667`)
+  - Fix decoding based on a passed in non-default encoding in ``pd.read_stata``
+    (:issue:`4626`)
+  - Fix ``DataFrame.from_records`` with a plain-vanilla ``ndarray``.
+    (:issue:`4727`)
+  - Fix some inconsistencies with ``Index.rename`` and ``MultiIndex.rename``,
+    etc. (:issue:`4718`, :issue:`4628`)
+  - Bug in using ``iloc/loc`` with a cross-sectional and duplicate indicies
+    (:issue:`4726`)
+  - Bug with using ``QUOTE_NONE`` with ``to_csv`` causing ``Exception``.
+    (:issue:`4328`)
+  - Bug with Series indexing not raising an error when the right-hand-side has
+    an incorrect length (:issue:`2702`)
+  - Bug in multi-indexing with a partial string selection as one part of a
+    MultIndex (:issue:`4758`)
+  - Bug with reindexing on the index with a non-unique index will now raise
+    ``ValueError`` (:issue:`4746`)
+  - Bug in setting with ``loc/ix`` a single indexer with a multi-index axis and
+    a numpy array, related to (:issue:`3777`)
+  - Bug in concatenation with duplicate columns across dtypes not merging with
+    axis=0 (:issue:`4771`, :issue:`4975`)
+  - Bug in ``iloc`` with a slice index failing (:issue:`4771`)
+  - Incorrect error message with no colspecs or width in ``read_fwf``.
+    (:issue:`4774`)
+  - Fix bugs in indexing in a Series with a duplicate index (:issue:`4548`,
+    :issue:`4550`)
+  - Fixed bug with reading compressed files with ``read_fwf`` in Python 3.
+    (:issue:`3963`)
+  - Fixed an issue with a duplicate index and assignment with a dtype change
+    (:issue:`4686`)
+  - Fixed bug with reading compressed files in as ``bytes`` rather than ``str``
+    in Python 3. Simplifies bytes-producing file-handling in Python 3
+    (:issue:`3963`, :issue:`4785`).
+  - Fixed an issue related to ticklocs/ticklabels with log scale bar plots
+    across different versions of matplotlib (:issue:`4789`)
+  - Suppressed DeprecationWarning associated with internal calls issued by
+    repr() (:issue:`4391`)
+  - Fixed an issue with a duplicate index and duplicate selector with ``.loc``
+    (:issue:`4825`)
+  - Fixed an issue with ``DataFrame.sort_index`` where, when sorting by a
+    single column and passing a list for ``ascending``, the argument for
+    ``ascending`` was being interpreted as ``True`` (:issue:`4839`,
+    :issue:`4846`)
+  - Fixed ``Panel.tshift`` not working. Added `freq` support to ``Panel.shift``
+    (:issue:`4853`)
+  - Fix an issue in TextFileReader w/ Python engine (i.e. PythonParser)
+    with thousands != "," (:issue:`4596`)
+  - Bug in getitem with a duplicate index when using where (:issue:`4879`)
+  - Fix Type inference code coerces float column into datetime (:issue:`4601`)
+  - Fixed ``_ensure_numeric`` does not check for complex numbers
+    (:issue:`4902`)
+  - Fixed a bug in ``Series.hist`` where two figures were being created when
+    the ``by`` argument was passed (:issue:`4112`, :issue:`4113`).
+  - Fixed a bug in ``convert_objects`` for > 2 ndims (:issue:`4937`)
+  - Fixed a bug in DataFrame/Panel cache insertion and subsequent indexing
+    (:issue:`4939`, :issue:`5424`)
+  - Fixed string methods for ``FrozenNDArray`` and ``FrozenList``
+    (:issue:`4929`)
+  - Fixed a bug with setting invalid or out-of-range values in indexing
+    enlargement scenarios (:issue:`4940`)
+  - Tests for fillna on empty Series (:issue:`4346`), thanks @immerrr
+  - Fixed ``copy()`` to shallow copy axes/indices as well and thereby keep
+    separate metadata. (:issue:`4202`, :issue:`4830`)
+  - Fixed skiprows option in Python parser for read_csv (:issue:`4382`)
+  - Fixed bug preventing ``cut`` from working with ``np.inf`` levels without
+    explicitly passing labels (:issue:`3415`)
+  - Fixed wrong check for overlapping in ``DatetimeIndex.union``
+    (:issue:`4564`)
+  - Fixed conflict between thousands separator and date parser in csv_parser
+    (:issue:`4678`)
+  - Fix appending when dtypes are not the same (error showing mixing
+    float/np.datetime64) (:issue:`4993`)
+  - Fix repr for DateOffset. No longer show duplicate entries in kwds.
+    Removed unused offset fields. (:issue:`4638`)
+  - Fixed wrong index name during read_csv if using usecols. Applies to c
+    parser only. (:issue:`4201`)
+  - ``Timestamp`` objects can now appear in the left hand side of a comparison
+    operation with a ``Series`` or ``DataFrame`` object (:issue:`4982`).
+  - Fix a bug when indexing with ``np.nan`` via ``iloc/loc`` (:issue:`5016`)
+  - Fixed a bug where low memory c parser could create different types in
+    different chunks of the same file. Now coerces to numerical type or raises
+    warning. (:issue:`3866`)
+  - Fix a bug where reshaping a ``Series`` to its own shape raised
+    ``TypeError`` (:issue:`4554`) and other reshaping issues.
+  - Bug in setting with ``ix/loc`` and a mixed int/string index (:issue:`4544`)
+  - Make sure series-series boolean comparions are label based (:issue:`4947`)
+  - Bug in multi-level indexing with a Timestamp partial indexer
+    (:issue:`4294`)
+  - Tests/fix for multi-index construction of an all-nan frame (:issue:`4078`)
+  - Fixed a bug where :func:`~pandas.read_html` wasn't correctly inferring
+    values of tables with commas (:issue:`5029`)
+  - Fixed a bug where :func:`~pandas.read_html` wasn't providing a stable
+    ordering of returned tables (:issue:`4770`, :issue:`5029`).
+  - Fixed a bug where :func:`~pandas.read_html` was incorrectly parsing when
+    passed ``index_col=0`` (:issue:`5066`).
+  - Fixed a bug where :func:`~pandas.read_html` was incorrectly infering the
+    type of headers (:issue:`5048`).
+  - Fixed a bug where ``DatetimeIndex`` joins with ``PeriodIndex`` caused a
+    stack overflow (:issue:`3899`).
+  - Fixed a bug where ``groupby`` objects didn't allow plots (:issue:`5102`).
+  - Fixed a bug where ``groupby`` objects weren't tab-completing column names
+    (:issue:`5102`).
+  - Fixed a bug where ``groupby.plot()`` and friends were duplicating figures
+    multiple times (:issue:`5102`).
+  - Provide automatic conversion of ``object`` dtypes on fillna, related
+    (:issue:`5103`)
+  - Fixed a bug where default options were being overwritten in the option
+    parser cleaning (:issue:`5121`).
+  - Treat a list/ndarray identically for ``iloc`` indexing with list-like
+    (:issue:`5006`)
+  - Fix ``MultiIndex.get_level_values()`` with missing values (:issue:`5074`)
+  - Fix bound checking for Timestamp() with datetime64 input (:issue:`4065`)
+  - Fix a bug where ``TestReadHtml`` wasn't calling the correct ``read_html()``
+    function (:issue:`5150`).
+  - Fix a bug with ``NDFrame.replace()`` which made replacement appear as
+    though it was (incorrectly) using regular expressions (:issue:`5143`).
+  - Fix better error message for to_datetime (:issue:`4928`)
+  - Made sure different locales are tested on travis-ci (:issue:`4918`). Also
+    adds a couple of utilities for getting locales and setting locales with a
+    context manager.
+  - Fixed segfault on ``isnull(MultiIndex)`` (now raises an error instead)
+    (:issue:`5123`, :issue:`5125`)
+  - Allow duplicate indices when performing operations that align
+    (:issue:`5185`, :issue:`5639`)
+  - Compound dtypes in a constructor raise ``NotImplementedError``
+    (:issue:`5191`)
+  - Bug in comparing duplicate frames (:issue:`4421`) related
+  - Bug in describe on duplicate frames
+  - Bug in ``to_datetime`` with a format and ``coerce=True`` not raising
+    (:issue:`5195`)
+  - Bug in ``loc`` setting with multiple indexers and a rhs of a Series that
+    needs broadcasting (:issue:`5206`)
+  - Fixed bug where inplace setting of levels or labels on ``MultiIndex`` would
+    not clear cached ``values`` property and therefore return wrong ``values``.
+    (:issue:`5215`)
+  - Fixed bug where filtering a grouped DataFrame or Series did not maintain
+    the original ordering (:issue:`4621`).
+  - Fixed ``Period`` with a business date freq to always roll-forward if on a
+    non-business date. (:issue:`5203`)
+  - Fixed bug in Excel writers where frames with duplicate column names weren't
+    written correctly. (:issue:`5235`)
+  - Fixed issue with ``drop`` and a non-unique index on Series (:issue:`5248`)
+  - Fixed seg fault in C parser caused by passing more names than columns in
+    the file. (:issue:`5156`)
+  - Fix ``Series.isin`` with date/time-like dtypes (:issue:`5021`)
+  - C and Python Parser can now handle the more common multi-index column
+    format which doesn't have a row for index names (:issue:`4702`)
+  - Bug when trying to use an out-of-bounds date as an object dtype
+    (:issue:`5312`)
+  - Bug when trying to display an embedded PandasObject (:issue:`5324`)
+  - Allows operating of Timestamps to return a datetime if the result is out-of-bounds
+    related (:issue:`5312`)
+  - Fix return value/type signature of ``initObjToJSON()`` to be compatible
+    with numpy's ``import_array()`` (:issue:`5334`, :issue:`5326`)
+  - Bug when renaming then set_index on a DataFrame (:issue:`5344`)
+  - Test suite no longer leaves around temporary files when testing graphics. (:issue:`5347`)
+    (thanks for catching this @yarikoptic!)
+  - Fixed html tests on win32. (:issue:`4580`)
+  - Make sure that ``head/tail`` are ``iloc`` based, (:issue:`5370`)
+  - Fixed bug for ``PeriodIndex`` string representation if there are 1 or 2
+    elements. (:issue:`5372`)
+  - The GroupBy methods ``transform`` and ``filter`` can be used on Series
+    and DataFrames that have repeated (non-unique) indices. (:issue:`4620`)
+  - Fix empty series not printing name in repr (:issue:`4651`)
+  - Make tests create temp files in temp directory by default. (:issue:`5419`)
+  - ``pd.to_timedelta`` of a scalar returns a scalar (:issue:`5410`)
+  - ``pd.to_timedelta`` accepts ``NaN`` and ``NaT``, returning ``NaT`` instead of raising (:issue:`5437`)
+  - performance improvements in ``isnull`` on larger size pandas objects
+  - Fixed various setitem with 1d ndarray that does not have a matching
+    length to the indexer (:issue:`5508`)
+  - Bug in getitem with a multi-index and ``iloc`` (:issue:`5528`)
+  - Bug in delitem on a Series (:issue:`5542`)
+  - Bug fix in apply when using custom function and objects are not mutated (:issue:`5545`)
+  - Bug in selecting from a non-unique index with ``loc`` (:issue:`5553`)
+  - Bug in groupby returning non-consistent types when user function returns a ``None``, (:issue:`5592`)
+  - Work around regression in numpy 1.7.0 which erroneously raises IndexError from ``ndarray.item`` (:issue:`5666`)
+  - Bug in repeated indexing of object with resultant non-unique index (:issue:`5678`)
+  - Bug in fillna with Series and a passed series/dict (:issue:`5703`)
+  - Bug in groupby transform with a datetime-like grouper (:issue:`5712`)
+  - Bug in multi-index selection in PY3 when using certain keys (:issue:`5725`)
+  - Row-wise concat of differeing dtypes failing in certain cases (:issue:`5754`)
+
+pandas 0.12.0
+-------------
 
 **Release date:** 2013-07-24
 
-**New features**
+New features
+~~~~~~~~~~~~
 
   - ``pd.read_html()`` can now parse HTML strings, files or urls and returns a
     list of ``DataFrame`` s courtesy of @cpcloud. (:issue:`3477`,
@@ -73,7 +870,8 @@ pandas 0.12
   - DataFrame plotting methods can sample column colors from a Matplotlib
     colormap via the ``colormap`` keyword. (:issue:`3860`)
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Fixed various issues with internal pprinting code, the repr() for various objects
     including TimeStamp and Index now produces valid python code strings and
@@ -127,7 +925,8 @@ pandas 0.12
   - ``read_html`` now raises when no tables are found and BeautifulSoup==4.2.0
     is detected (:issue:`4214`)
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - ``HDFStore``
 
@@ -211,12 +1010,14 @@ pandas 0.12
     ``__repr__``). Plus string safety throughout. Now employed in many places
     throughout the pandas library. (:issue:`4090`, :issue:`4092`)
 
-**Experimental Features**
+Experimental Features
+~~~~~~~~~~~~~~~~~~~~~
 
   - Added experimental ``CustomBusinessDay`` class to support ``DateOffsets``
     with custom holiday calendars and custom weekmasks. (:issue:`2301`)
 
-**Bug Fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fixed an esoteric excel reading bug, xlrd>= 0.9.0 now required for excel
     support. Should provide python3 support (for reading) which has been
@@ -365,11 +1166,12 @@ pandas 0.12
     (:issue:`4281`)
 
 pandas 0.11.0
-=============
+-------------
 
 **Release date:** 2013-04-22
 
-**New features**
+New features
+~~~~~~~~~~~~
 
   - New documentation section, ``10 Minutes to Pandas``
   - New documentation section, ``Cookbook``
@@ -394,7 +1196,8 @@ pandas 0.11.0
   - Added to_series() method to indices, to facilitate the creation of indexeres
     (:issue:`3275`)
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Improved performance of df.to_csv() by up to 10x in some cases. (:issue:`3059`)
   - added ``blocks`` attribute to DataFrames, to return a dict of dtypes to
@@ -480,7 +1283,8 @@ pandas 0.11.0
     HTML character escaping (enabled by default) and escapes ``&``, in addition
     to ``<`` and ``>``.  (:issue:`2919`)
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - Do not automatically upcast numeric specified dtypes to ``int64`` or
     ``float64`` (:issue:`622` and :issue:`797`)
@@ -531,7 +1335,8 @@ pandas 0.11.0
   - HTML repr output in IPython qtconsole is once again controlled by the option
     `display.notebook_repr_html`, and on by default.
 
-**Bug Fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fix seg fault on empty data frame when fillna with ``pad`` or ``backfill``
     (:issue:`2778`)
@@ -655,15 +1460,17 @@ pandas 0.11.0
 
 
 pandas 0.10.1
-=============
+-------------
 
 **Release date:** 2013-01-22
 
-**New features**
+New features
+~~~~~~~~~~~~
 
   - Add data inferface to World Bank WDI pandas.io.wb (:issue:`2592`)
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - Restored inplace=True behavior returning self (same object) with
     deprecation warning until 0.11 (:issue:`1893`)
@@ -674,7 +1481,8 @@ pandas 0.10.1
       ``complib`` to be consistent across library)
     - warn `PerformanceWarning` if you are attempting to store types that will be pickled by PyTables
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - ``HDFStore``
 
@@ -714,7 +1522,8 @@ pandas 0.10.1
   - Implement ``kind`` option in ``ExcelFile`` to indicate whether it's an XLS
     or XLSX file (:issue:`2613`)
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fix read_csv/read_table multithreading issues (:issue:`2608`)
   - ``HDFStore``
@@ -762,14 +1571,17 @@ pandas 0.10.1
   - Fix Period resampling bug when all values fall into a single bin (:issue:`2070`)
   - Fix buggy interaction with usecols argument in read_csv when there is an
     implicit first index column (:issue:`2654`)
+  - Fix bug in ``Index.summary()`` where string format methods were being called incorrectly.
+    (:issue:`3869`)
 
 
 pandas 0.10.0
-=============
+-------------
 
 **Release date:** 2012-12-17
 
-**New features**
+New features
+~~~~~~~~~~~~
 
   - Brand new high-performance delimited file parsing engine written in C and
     Cython. 50% or better performance in many standard use cases with a
@@ -822,13 +1634,15 @@ pandas 0.10.0
     default now (:issue:`2436`)
   - Scikits.timeseries-like moving window functions via ``rolling_window`` (:issue:`1270`)
 
-**Experimental Features**
+Experimental Features
+~~~~~~~~~~~~~~~~~~~~~
 
   - Add support for Panel4D, a named 4 Dimensional stucture
   - Add support for ndpanel factory functions, to create custom,
     domain-specific N-Dimensional containers
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - The default binning/labeling behavior for ``resample`` has been changed to
     `closed='left', label='left'` for daily and lower frequencies. This had
@@ -865,7 +1679,8 @@ pandas 0.10.0
   - File parsers will not handle NA sentinel values arising from passed
     converter functions
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Add ``nrows`` option to DataFrame.from_records for iterators (:issue:`1794`)
   - Unstack/reshape algorithm rewrite to avoid high memory use in cases where
@@ -913,7 +1728,8 @@ pandas 0.10.0
   - Escape more special characters in console output (:issue:`2492`)
   - df.select now invokes bool on the result of crit(x) (:issue:`2487`)
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fix major performance regression in DataFrame.iteritems (:issue:`2273`)
   - Fixes bug when negative period passed to Series/DataFrame.diff (:issue:`2266`)
@@ -983,11 +1799,12 @@ pandas 0.10.0
 
 
 pandas 0.9.1
-============
+------------
 
 **Release date:** 2012-11-14
 
-**New features**
+New features
+~~~~~~~~~~~~
 
   - Can specify multiple sort orders in DataFrame/Series.sort/sort_index (:issue:`928`)
   - New `top` and `bottom` options for handling NAs in rank (:issue:`1508`, :issue:`2159`)
@@ -995,7 +1812,8 @@ pandas 0.9.1
   - Add `at_time` and `between_time` functions to DataFrame (:issue:`2149`)
   - Add flexible `pow` and `rpow` methods to DataFrame (:issue:`2190`)
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - Upsampling period index "spans" intervals. Example: annual periods
     upsampled to monthly will span all months in each year
@@ -1004,7 +1822,8 @@ pandas 0.9.1
   - File parsers no longer coerce to float or bool for columns that have custom
     converters specified (:issue:`2184`)
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Time rule inference for week-of-month (e.g. WOM-2FRI) rules (:issue:`2140`)
   - Improve performance of datetime + business day offset with large number of
@@ -1019,7 +1838,8 @@ pandas 0.9.1
   - Turn off pandas-style tick locators and formatters (:issue:`2205`)
   - DataFrame[DataFrame] uses DataFrame.where to compute masked frame (:issue:`2230`)
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fix some duplicate-column DataFrame constructor issues (:issue:`2079`)
   - Fix bar plot color cycle issues (:issue:`2082`)
@@ -1076,11 +1896,12 @@ pandas 0.9.1
 
 
 pandas 0.9.0
-============
+------------
 
 **Release date:** 10/7/2012
 
-**New features**
+New features
+~~~~~~~~~~~~
 
   - Add ``str.encode`` and ``str.decode`` to Series (:issue:`1706`)
   - Add `to_latex` method to DataFrame (:issue:`1735`)
@@ -1091,7 +1912,8 @@ pandas 0.9.0
     FALSE, variants thereof) (:issue:`1691`, :issue:`1295`)
   - Add Panel.update method, analogous to DataFrame.update (:issue:`1999`, :issue:`1988`)
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Proper handling of NA values in merge operations (:issue:`1990`)
   - Add ``flags`` option for ``re.compile`` in some Series.str methods (:issue:`1659`)
@@ -1115,7 +1937,8 @@ pandas 0.9.0
   - TimeSeries.between_time can now select times across midnight (:issue:`1871`)
   - Enable `skip_footer` parameter in `ExcelFile.parse` (:issue:`1843`)
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - Change default header names in read_* functions to more Pythonic X0, X1,
     etc. instead of X.1, X.2. (:issue:`2000`)
@@ -1139,7 +1962,8 @@ pandas 0.9.0
     `keep_default_na` is set to false explicitly (:issue:`1657`)
   - Enable `skipfooter` parameter in text parsers as an alias for `skip_footer`
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Perform arithmetic column-by-column in mixed-type DataFrame to avoid type
     upcasting issues. Caused downstream DataFrame.diff bug (:issue:`1896`)
@@ -1305,11 +2129,12 @@ pandas 0.9.0
 
 
 pandas 0.8.1
-============
+------------
 
 **Release date:** July 22, 2012
 
-**New features**
+New features
+~~~~~~~~~~~~
 
   - Add vectorized, NA-friendly string methods to Series (:issue:`1621`, :issue:`620`)
   - Can pass dict of per-column line styles to DataFrame.plot (:issue:`1559`)
@@ -1321,7 +2146,8 @@ pandas 0.8.1
     hierarchical indexes (:issue:`1538`)
   - Add ``dropna`` method to Panel (:issue:`171`)
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Use moving min/max algorithms from Bottleneck in rolling_min/rolling_max
     for > 100x speedup. (:issue:`1504`, :issue:`50`)
@@ -1344,7 +2170,8 @@ pandas 0.8.1
   - Handling of tz-aware datetime.datetime objects in to_datetime; raise
     Exception unless utc=True given (:issue:`1581`)
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fix NA handling in DataFrame.to_panel (:issue:`1582`)
   - Handle TypeError issues inside PyObject_RichCompareBool calls in khash
@@ -1395,11 +2222,12 @@ pandas 0.8.1
 
 
 pandas 0.8.0
-============
+------------
 
 **Release date:** 6/29/2012
 
-**New features**
+New features
+~~~~~~~~~~~~
 
   - New unified DatetimeIndex class for nanosecond-level timestamp data
   - New Timestamp datetime.datetime subclass with easy time zone conversions,
@@ -1463,7 +2291,8 @@ pandas 0.8.0
   - Add ``secondary_y`` option to Series.plot
   - Add experimental ``lreshape`` function for reshaping wide to long
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Switch to klib/khash-based hash tables in Index classes for better
     performance in many cases and lower memory footprint
@@ -1510,7 +2339,8 @@ pandas 0.8.0
   - Add ``raise_conflict`` argument to DataFrame.update (:issue:`1526`)
   - Support file-like objects in ExcelFile (:issue:`1529`)
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - Rename `pandas._tseries` to `pandas.lib`
   - Rename Factor to Categorical and add improvements. Numerous Categorical bug
@@ -1531,7 +2361,8 @@ pandas 0.8.0
     as array of tuples) internally, speed up construction time and many methods
     which construct intermediate hierarchical indexes (:issue:`1467`)
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fix OverflowError from storing pre-1970 dates in HDFStore by switching to
     datetime64 (:issue:`179`)
@@ -1589,11 +2420,12 @@ pandas 0.8.0
 
 
 pandas 0.7.3
-============
+------------
 
 **Release date:** April 12, 2012
 
-**New features / modules**
+New features
+~~~~~~~~~~~~
 
   - Support for non-unique indexes: indexing and selection, many-to-one and
     many-to-many joins (:issue:`1306`)
@@ -1626,14 +2458,16 @@ pandas 0.7.3
   - Use exogenous / X variable index in result of OLS.y_predict. Add
     OLS.predict method (:issue:`1027`, :issue:`1008`)
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - Calling apply on grouped Series, e.g. describe(), will no longer yield
     DataFrame by default. Will have to call unstack() to get prior behavior
   - NA handling in non-numeric comparisons has been tightened up (:issue:`933`, :issue:`953`)
   - No longer assign dummy names key_0, key_1, etc. to groupby index (:issue:`1291`)
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fix logic error when selecting part of a row in a DataFrame with a
     MultiIndex index (:issue:`1013`)
@@ -1660,24 +2494,27 @@ pandas 0.7.3
 
 
 pandas 0.7.2
-============
+------------
 
 **Release date:** March 16, 2012
 
-**New features / modules**
+New features
+~~~~~~~~~~~~
 
   - Add additional tie-breaking methods in DataFrame.rank (:issue:`874`)
   - Add ascending parameter to rank in Series, DataFrame (:issue:`875`)
   - Add sort_columns parameter to allow unsorted plots (:issue:`918`)
   - IPython tab completion on GroupBy objects
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - Series.sum returns 0 instead of NA when called on an empty
     series. Analogously for a DataFrame whose rows or columns are length 0
     (:issue:`844`)
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Don't use groups dict in Grouper.size (:issue:`860`)
   - Use khash for Series.value_counts, add raw function to algorithms.py (:issue:`861`)
@@ -1694,7 +2531,8 @@ pandas 0.7.2
   - Add ``axis`` option to DataFrame.fillna (:issue:`174`)
   - Fixes to Panel to make it easier to subclass (:issue:`888`)
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fix overflow-related bugs in groupby (:issue:`850`, :issue:`851`)
   - Fix unhelpful error message in parsers (:issue:`856`)
@@ -1718,11 +2556,12 @@ pandas 0.7.2
 
 
 pandas 0.7.1
-============
+------------
 
 **Release date:** February 29, 2012
 
-**New features / modules**
+New features
+~~~~~~~~~~~~
 
   - Add ``to_clipboard`` function to pandas namespace for writing objects to
     the system clipboard (:issue:`774`)
@@ -1737,12 +2576,14 @@ pandas 0.7.1
     (:issue:`773`)
   - Support for reading Excel 2007 XML documents using openpyxl
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Improve performance and memory usage of fillna on DataFrame
   - Can concatenate a list of Series along axis=1 to obtain a DataFrame (:issue:`787`)
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fix memory leak when inserting large number of columns into a single
     DataFrame (:issue:`790`)
@@ -1769,11 +2610,12 @@ pandas 0.7.1
 
 
 pandas 0.7.0
-============
+------------
 
 **Release date:** 2/9/2012
 
-**New features / modules**
+New features
+~~~~~~~~~~~~
 
   - New ``merge`` function for efficiently performing full gamut of database /
     relational-algebra operations. Refactored existing join methods to use the
@@ -1840,7 +2682,8 @@ pandas 0.7.0
   - Add ``abs`` method to Pandas objects
   - Added ``algorithms`` module to start collecting central algos
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - Label-indexing with integer indexes now raises KeyError if a label is not
     found instead of falling back on location-based indexing (:issue:`700`)
@@ -1870,7 +2713,8 @@ pandas 0.7.0
   - Rename ``col_or_columns`` argument in ``DataFrame.drop_duplicates`` (GH
     :issue:`734`)
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Better error message in DataFrame constructor when passed column labels
     don't match data (:issue:`497`)
@@ -1937,7 +2781,8 @@ pandas 0.7.0
     containing "empty" ('') lower levels without passing the empty levels (PR
     :issue:`768`)
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Raise exception in out-of-bounds indexing of Series instead of
     seg-faulting, regression from earlier releases (:issue:`495`)
@@ -2050,53 +2895,55 @@ pandas 0.7.0
   - Fix bug in DateRange.intersection causing incorrect results with some
     overlapping ranges (:issue:`771`)
 
-Thanks
-------
-- Craig Austin
-- Chris Billington
-- Marius Cobzarenco
-- Mario Gamboa-Cavazos
-- Hans-Martin Gaudecker
-- Arthur Gerigk
-- Yaroslav Halchenko
-- Jeff Hammerbacher
-- Matt Harrison
-- Andreas Hilboll
-- Luc Kesters
-- Adam Klein
-- Gregg Lind
-- Solomon Negusse
-- Wouter Overmeire
-- Christian Prinoth
-- Jeff Reback
-- Sam Reckoner
-- Craig Reeson
-- Jan Schulz
-- Skipper Seabold
-- Ted Square
-- Graham Taylor
-- Aman Thakral
-- Chris Uga
-- Dieter Vandenbussche
-- Texas P.
-- Pinxing Ye
-- ... and everyone I forgot
+**Thanks**
+
+  - Craig Austin
+  - Chris Billington
+  - Marius Cobzarenco
+  - Mario Gamboa-Cavazos
+  - Hans-Martin Gaudecker
+  - Arthur Gerigk
+  - Yaroslav Halchenko
+  - Jeff Hammerbacher
+  - Matt Harrison
+  - Andreas Hilboll
+  - Luc Kesters
+  - Adam Klein
+  - Gregg Lind
+  - Solomon Negusse
+  - Wouter Overmeire
+  - Christian Prinoth
+  - Jeff Reback
+  - Sam Reckoner
+  - Craig Reeson
+  - Jan Schulz
+  - Skipper Seabold
+  - Ted Square
+  - Graham Taylor
+  - Aman Thakral
+  - Chris Uga
+  - Dieter Vandenbussche
+  - Texas P.
+  - Pinxing Ye
+  - ... and everyone I forgot
 
 
 
 pandas 0.6.1
-============
+------------
 
 **Release date:** 12/13/2011
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - Rename `names` argument in DataFrame.from_records to `columns`. Add
     deprecation warning
   - Boolean get/set operations on Series with boolean Series will reindex
     instead of requiring that the indexes be exactly equal (:issue:`429`)
 
-**New features / modules**
+New features
+~~~~~~~~~~~~
 
   - Can pass Series to DataFrame.append with ignore_index=True for appending a
     single row (:issue:`430`)
@@ -2122,7 +2969,8 @@ pandas 0.6.1
     :issue:`114`)
   - Add `Series.from_csv` function (:issue:`482`)
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Improve memory usage of `DataFrame.describe` (do not copy data
     unnecessarily) (:issue:`425`)
@@ -2149,7 +2997,8 @@ pandas 0.6.1
     (:issue:`478`)
   - Improve performance of DataFrame.{index, columns} attribute lookup
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fix O(K^2) memory leak caused by inserting many columns without
     consolidating, had been present since 0.4.0 (:issue:`467`)
@@ -2182,38 +3031,40 @@ pandas 0.6.1
   - Preserve Index / MultiIndex names in GroupBy.apply concatenation step (GH
     :issue:`481`)
 
-Thanks
-------
-- Ralph Bean
-- Luca Beltrame
-- Marius Cobzarenco
-- Andreas Hilboll
-- Jev Kuznetsov
-- Adam Lichtenstein
-- Wouter Overmeire
-- Fernando Perez
-- Nathan Pinger
-- Christian Prinoth
-- Alex Reyfman
-- Joon Ro
-- Chang She
-- Ted Square
-- Chris Uga
-- Dieter Vandenbussche
+**Thanks**
+
+  - Ralph Bean
+  - Luca Beltrame
+  - Marius Cobzarenco
+  - Andreas Hilboll
+  - Jev Kuznetsov
+  - Adam Lichtenstein
+  - Wouter Overmeire
+  - Fernando Perez
+  - Nathan Pinger
+  - Christian Prinoth
+  - Alex Reyfman
+  - Joon Ro
+  - Chang She
+  - Ted Square
+  - Chris Uga
+  - Dieter Vandenbussche
 
 
 
 pandas 0.6.0
-============
+------------
 
 **Release date:** 11/25/2011
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - Arithmetic methods like `sum` will attempt to sum dtype=object values by
     default instead of excluding them (:issue:`382`)
 
-**New features / modules**
+New features
+~~~~~~~~~~~~
 
   - Add `melt` function to `pandas.core.reshape`
   - Add `level` parameter to group by level in Series and DataFrame
@@ -2260,7 +3111,8 @@ pandas 0.6.0
   - Add `DataFrame.boxplot` function (:issue:`368`, others)
   - Can pass extra args, kwds to DataFrame.apply (:issue:`376`)
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Raise more helpful exception if date parsing fails in DateRange (:issue:`298`)
   - Vastly improved performance of GroupBy on axes with a MultiIndex (:issue:`299`)
@@ -2296,7 +3148,8 @@ pandas 0.6.0
     function
   - Handle NumPy scalar integers at C level in Cython conversion routines
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fix bug in `DataFrame.to_csv` when writing a DataFrame with an index
     name (:issue:`290`)
@@ -2348,33 +3201,32 @@ pandas 0.6.0
   - Index name was not being pickled (:issue:`408`)
   - Level name should be passed to result index in GroupBy.apply (:issue:`416`)
 
-Thanks
-------
+**Thanks**
 
-- Craig Austin
-- Marius Cobzarenco
-- Joel Cross
-- Jeff Hammerbacher
-- Adam Klein
-- Thomas Kluyver
-- Jev Kuznetsov
-- Kieran O'Mahony
-- Wouter Overmeire
-- Nathan Pinger
-- Christian Prinoth
-- Skipper Seabold
-- Chang She
-- Ted Square
-- Aman Thakral
-- Chris Uga
-- Dieter Vandenbussche
-- carljv
-- rsamson
+  - Craig Austin
+  - Marius Cobzarenco
+  - Joel Cross
+  - Jeff Hammerbacher
+  - Adam Klein
+  - Thomas Kluyver
+  - Jev Kuznetsov
+  - Kieran O'Mahony
+  - Wouter Overmeire
+  - Nathan Pinger
+  - Christian Prinoth
+  - Skipper Seabold
+  - Chang She
+  - Ted Square
+  - Aman Thakral
+  - Chris Uga
+  - Dieter Vandenbussche
+  - carljv
+  - rsamson
 
 
 
 pandas 0.5.0
-============
+------------
 
 **Release date:** 10/24/2011
 
@@ -2391,7 +3243,8 @@ performance improvements that are worth taking a look at.
 Thanks to all for bug reports, contributed patches and generally providing
 feedback on the library.
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - `read_table`, `read_csv`, and `ExcelFile.parse` default arguments for
     `index_col` is now None. To use one or more of the columns as the resulting
@@ -2456,7 +3309,8 @@ feedback on the library.
       `major_xs`)
     * `Panel.toWide`, use `Panel.to_wide` instead
 
-**New features / modules**
+New features
+~~~~~~~~~~~~
 
   - Added `DataFrame.align` method with standard join options
   - Added `parse_dates` option to `read_csv` and `read_table` methods to
@@ -2485,7 +3339,8 @@ feedback on the library.
   - Add convenience `set_index` function for creating a DataFrame index from
     its existing columns
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Major performance improvements in file parsing functions `read_csv` and
     `read_table`
@@ -2511,7 +3366,8 @@ feedback on the library.
     DataFrame objects
   - Better handling of pyx file dependencies in Cython module build (:issue:`271`)
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - `read_csv` / `read_table` fixes
 
@@ -2558,22 +3414,18 @@ feedback on the library.
     MultiIndex (:issue:`285`)
   - Fix bug when slicing Series with negative indices before beginning
 
-Thanks
-------
+**Thanks**
 
-- Thomas Kluyver
-- Daniel Fortunov
-- Aman Thakral
-- Luca Beltrame
-- Wouter Overmeire
+  - Thomas Kluyver
+  - Daniel Fortunov
+  - Aman Thakral
+  - Luca Beltrame
+  - Wouter Overmeire
 
 
 
 pandas 0.4.3
-============
-
-Release notes
--------------
+------------
 
 **Release date:** 10/9/2011
 
@@ -2581,7 +3433,8 @@ This is largely a bugfix release from 0.4.2 but also includes a handful of new
 and enhanced features. Also, pandas can now be installed and used on Python 3
 (thanks Thomas Kluyver!).
 
-**New features / modules**
+New features
+~~~~~~~~~~~~
 
   - Python 3 support using 2to3 (:issue:`200`, Thomas Kluyver)
   - Add `name` attribute to `Series` and added relevant logic and tests. Name
@@ -2591,7 +3444,8 @@ and enhanced features. Also, pandas can now be installed and used on Python 3
     round-tripped to flat files, pickle, HDF5, etc.
   - Add `isnull` and `notnull` as instance methods on Series (:issue:`209`, :issue:`203`)
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Skip xlrd-related unit tests if not installed
   - `Index.append` and `MultiIndex.append` can accept a list of Index objects to
@@ -2601,7 +3455,8 @@ and enhanced features. Also, pandas can now be installed and used on Python 3
     number of blocks (:issue:`205`)
   - Refactored `Series.__repr__` to be a bit more clean and consistent
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - `Series.describe` and `DataFrame.describe` now bring the 25% and 75%
     quartiles instead of the 10% and 90% deciles. The other outputs have not
@@ -2609,7 +3464,8 @@ and enhanced features. Also, pandas can now be installed and used on Python 3
   - `Series.toString` will print deprecation warning, has been de-camelCased to
     `to_string`
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fix broken interaction between `Index` and `Int64Index` when calling
     intersection. Implement `Int64Index.intersection`
@@ -2627,8 +3483,7 @@ and enhanced features. Also, pandas can now be installed and used on Python 3
   - Fix bug writing Series to CSV in Python 3 (:issue:`209`)
   - Miscellaneous Python 3 bugfixes
 
-Thanks
-------
+**Thanks**
 
   - Thomas Kluyver
   - rsamson
@@ -2636,10 +3491,7 @@ Thanks
 
 
 pandas 0.4.2
-============
-
-Release notes
--------------
+------------
 
 **Release date:** 10/3/2011
 
@@ -2647,7 +3499,8 @@ This is a performance optimization release with several bug fixes. The new
 Int64Index and new merging / joining Cython code and related Python
 infrastructure are the main new additions
 
-**New features / modules**
+New features
+~~~~~~~~~~~~
 
   - Added fast `Int64Index` type with specialized join, union,
     intersection. Will result in significant performance enhancements for
@@ -2665,7 +3518,8 @@ infrastructure are the main new additions
   - Add method `get_level_values` to `MultiIndex`
   - Implemented shallow copy of `BlockManager` object in `DataFrame` internals
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Improved performance of `isnull` and `notnull`, a regression from v0.3.0
     (:issue:`187`)
@@ -2689,11 +3543,13 @@ infrastructure are the main new additions
   - Added informative Exception when passing dict to DataFrame groupby
     aggregation with axis != 0
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
 None
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fixed minor unhandled exception in Cython code implementing fast groupby
     aggregation operations
@@ -2707,26 +3563,23 @@ None
   - Raise SkipTest for pre-epoch HDFStore failure. Real fix will be sorted out
     via datetime64 dtype
 
-Thanks
-------
+**Thanks**
 
-- Uri Laserson
-- Scott Sinclair
+  - Uri Laserson
+  - Scott Sinclair
 
 
 
 pandas 0.4.1
-============
-
-Release notes
--------------
+------------
 
 **Release date:** 9/25/2011
 
 This is primarily a bug fix release but includes some new features and
 improvements
 
-**New features / modules**
+New features
+~~~~~~~~~~~~
 
   - Added new `DataFrame` methods `get_dtype_counts` and property `dtypes`
   - Setting of values using ``.ix`` indexing attribute in mixed-type DataFrame
@@ -2739,7 +3592,8 @@ improvements
   - Added `ignore_index` option to `DataFrame.append` for combining unindexed
     records stored in a DataFrame
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Some speed enhancements with internal Index type-checking function
   - `DataFrame.rename` has a new `copy` parameter which can rename a DataFrame
@@ -2754,11 +3608,13 @@ improvements
   - Optimized `_ensure_index` function resulting in performance savings in
     type-checking Index objects
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
 None
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fixed DataFrame constructor bug causing downstream problems (e.g. .copy()
     failing) when passing a Series as the values along with a column name and
@@ -2780,25 +3636,23 @@ None
   - Fix bug in `HDFStore` in which Panel data could be appended to a Table with
     different item order, thus resulting in an incorrect result read back
 
-Thanks
-------
-- Yaroslav Halchenko
-- Jeff Reback
-- Skipper Seabold
-- Dan Lovell
-- Nick Pentreath
+**Thanks**
+
+  - Yaroslav Halchenko
+  - Jeff Reback
+  - Skipper Seabold
+  - Dan Lovell
+  - Nick Pentreath
 
 
 
 pandas 0.4.0
-============
-
-Release notes
--------------
+------------
 
 **Release date:** 9/12/2011
 
-**New features / modules**
+New features
+~~~~~~~~~~~~
 
   - `pandas.core.sparse` module: "Sparse" (mostly-NA, or some other fill value)
     versions of `Series`, `DataFrame`, and `Panel`. For low-density data, this
@@ -2883,7 +3737,8 @@ Release notes
   - `pandas.io.data` module providing a consistent interface for reading time
     series data from several different sources
 
-**Improvements to existing features**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   * The 2-dimensional `DataFrame` and `DataMatrix` classes have been extensively
     redesigned internally into a single class `DataFrame`, preserving where
@@ -2927,7 +3782,8 @@ Release notes
   * `Panel` constructor can accept a dict of DataFrame-like objects. Do not
     need to use `from_dict` anymore (`from_dict` is there to stay, though).
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   * The `DataMatrix` variable now refers to `DataFrame`, will be removed within
     two releases
@@ -3009,7 +3865,8 @@ Release notes
   * Added optional `encoding` argument to `read_csv`, `read_table`, `to_csv`,
     `from_csv` to handle unicode in python 2.x
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   * Column ordering in `pandas.io.parsers.parseCSV` will match CSV in the presence
     of mixed-type data
@@ -3034,8 +3891,8 @@ Release notes
     the `PanelOLS` classes
   * `HDFStore` can handle duplicates in table format, will take
 
-Thanks
-------
+**Thanks**
+
   - Joon Ro
   - Michael Pennington
   - Chris Uga
@@ -3056,14 +3913,12 @@ Thanks
   - Chris Jordan-Squire
 
 pandas 0.3.0
-============
-
-Release notes
--------------
+------------
 
 **Release date:** February 20, 2011
 
-**New features / modules**
+New features
+~~~~~~~~~~~~
 
   - `corrwith` function to compute column- or row-wise correlations between two
     DataFrame objects
@@ -3080,7 +3935,8 @@ Release notes
   - `pandas.rpy` (experimental) module created, provide some interfacing /
     conversion between rpy2 and pandas
 
-**Improvements**
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   - Unit test coverage: 100% line coverage of core data structures
   - Speed enhancement to rolling_{median, max, min}
@@ -3090,7 +3946,8 @@ Release notes
 	matplotlib Axis arguments, plot DataFrame columns in multiple subplots,
 	etc.)
 
-**API Changes**
+API Changes
+~~~~~~~~~~~
 
   - Exponentially-weighted moment functions in `pandas.stats.moments` have a
     more consistent API and accept a min_periods argument like their regular
@@ -3103,7 +3960,8 @@ Release notes
   - Removed **cap** and **floor** functions from DataFrame, renamed to
     **clip_upper** and **clip_lower** for consistency with NumPy
 
-**Bug fixes**
+Bug Fixes
+~~~~~~~~~
 
   - Fixed bug in IndexableSkiplist Cython code that was breaking rolling_max
     function

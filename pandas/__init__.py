@@ -7,7 +7,7 @@ try:
 except Exception:  # pragma: no cover
     import sys
     e = sys.exc_info()[1]  # Py25 and Py3 current exception syntax conflict
-    print (e)
+    print(e)
     if 'No module named lib' in str(e):
         raise ImportError('C extensions not built: if you installed already '
                           'verify that you are not importing from the source '
@@ -17,6 +17,18 @@ except Exception:  # pragma: no cover
 
 from datetime import datetime
 import numpy as np
+
+# XXX: HACK for NumPy 1.5.1 to suppress warnings
+try:
+    np.seterr(all='ignore')
+except Exception:  # pragma: no cover
+    pass
+
+# numpy versioning
+from distutils.version import LooseVersion
+_np_version = np.version.short_version
+_np_version_under1p6 = LooseVersion(_np_version) < '1.6'
+_np_version_under1p7 = LooseVersion(_np_version) < '1.7'
 
 from pandas.version import version as __version__
 from pandas.info import __doc__
@@ -29,8 +41,7 @@ from pandas.sparse.api import *
 from pandas.stats.api import *
 from pandas.tseries.api import *
 from pandas.io.api import *
-
-from pandas.util.testing import debug
+from pandas.computation.api import *
 
 from pandas.tools.describe import value_range
 from pandas.tools.merge import merge, concat, ordered_merge

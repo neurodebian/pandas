@@ -3,12 +3,14 @@
 
 from libc.stdio cimport fopen, fclose
 from libc.stdlib cimport malloc, free
-from libc.string cimport strncpy, strlen, strcmp
+from libc.string cimport strncpy, strlen, strcmp, strcasecmp
 cimport libc.stdio as stdio
+import warnings
 
 from cpython cimport (PyObject, PyBytes_FromString,
                       PyBytes_AsString, PyBytes_Check,
                       PyUnicode_Check, PyUnicode_AsUTF8String)
+from io.common import DtypeWarning
 
 
 cdef extern from "Python.h":
@@ -56,6 +58,9 @@ cdef extern from "headers/stdint.h":
     enum: INT32_MIN
     enum: INT64_MAX
     enum: INT64_MIN
+
+cdef extern from "headers/portable.h":
+    pass
 
 try:
     basestring
@@ -183,7 +188,7 @@ cdef extern from "parser/tokenizer.h":
     uint64_t str_to_uint64(char *p_item, uint64_t uint_max, int *error)
 
     inline int to_double(char *item, double *p_value,
-                         char sci, char decimal)
+                         char sci, char decimal, char thousands)
     inline int to_complex(char *item, double *p_real,
                           double *p_imag, char sci, char decimal)
     inline int to_longlong(char *item, long long *p_value)
@@ -232,7 +237,7 @@ cdef class TextReader:
     cdef:
         parser_t *parser
         object file_handle, na_fvalues
-        bint factorize, na_filter, verbose, has_usecols, has_mi_columns
+        bint na_filter, verbose, has_usecols, has_mi_columns
         int parser_start
         list clocks
         char *c_encoding
@@ -245,6 +250,7 @@ cdef class TextReader:
         object memory_map
         object as_recarray
         object header, orig_header, names, header_start, header_end
+        object index_col
         object low_memory
         object skiprows
         object compact_ints, use_unsigned
@@ -261,6 +267,7 @@ cdef class TextReader:
                   header=0,
                   header_start=0,
                   header_end=0,
+                  index_col=None,
                   names=None,
 
                   memory_map=False,
@@ -271,7 +278,6 @@ cdef class TextReader:
 
                   converters=None,
 
-                  factorize=True,
                   as_recarray=False,
 
                   skipinitialspace=False,
@@ -307,7 +313,7 @@ cdef class TextReader:
                   skip_footer=0,
                   verbose=False,
                   mangle_dupe_cols=True,
-                  tupleize_cols=True):
+                  tupleize_cols=False):
 
         self.parser = parser_new()
         self.parser.chunksize = tokenize_chunksize
@@ -333,8 +339,6 @@ cdef class TextReader:
                 raise ValueError('only length-1 separators excluded right now')
             self.parser.delimiter = ord(delimiter)
 
-        self.factorize = factorize
-
         #----------------------------------------
         # parser options
 
@@ -352,7 +356,7 @@ cdef class TextReader:
 
         if thousands is not None:
             if len(thousands) != 1:
-                raise ValueError('Only length-1 decimal markers supported')
+                raise ValueError('Only length-1 thousands markers supported')
             self.parser.thousands = ord(thousands)
 
         if escapechar is not None:
@@ -436,6 +440,8 @@ cdef class TextReader:
 
         # XXX
         self.noconvert = set()
+
+        self.index_col = index_col
 
         #----------------------------------------
         # header stuff
@@ -572,7 +578,7 @@ cdef class TextReader:
         # header is now a list of lists, so field_count should use header[0]
 
         cdef:
-            size_t i, start, data_line, field_count, passed_count, hr
+            size_t i, start, data_line, field_count, passed_count, hr, unnamed_count
             char *word
             object name
             int status
@@ -604,6 +610,7 @@ cdef class TextReader:
 
                 # TODO: Py3 vs. Py2
                 counts = {}
+                unnamed_count = 0
                 for i in range(field_count):
                     word = self.parser.words[start + i]
 
@@ -621,6 +628,7 @@ cdef class TextReader:
                             name = 'Unnamed: %d_level_%d' % (i,level)
                         else:
                             name = 'Unnamed: %d' % i
+                        unnamed_count += 1
 
                     count = counts.get(name, 0)
                     if count > 0 and self.mangle_dupe_cols and not self.has_mi_columns:
@@ -628,6 +636,19 @@ cdef class TextReader:
                     else:
                         this_header.append(name)
                     counts[name] = count + 1
+
+                if self.has_mi_columns:
+
+                    # if we have grabbed an extra line, but its not in our format
+                    # so save in the buffer, and create an blank extra line for the rest of the
+                    # parsing code
+                    if hr == self.header[-1]:
+                        lc = len(this_header)
+                        ic = len(self.index_col) if self.index_col is not None else 0
+                        if lc != unnamed_count and lc-ic > unnamed_count:
+                           hr -= 1
+                           self.parser_start -= 1
+                           this_header = [ None ] * lc
 
                 data_line = hr + 1
                 header.append(this_header)
@@ -799,7 +820,6 @@ cdef class TextReader:
             raise StopIteration
         self._end_clock('Tokenization')
 
-
         self._start_clock()
         columns = self._convert_column_data(rows=rows,
                                             footer=footer,
@@ -838,11 +858,12 @@ cdef class TextReader:
 
     def _convert_column_data(self, rows=None, upcast_na=False, footer=0):
         cdef:
-            Py_ssize_t i, nused, ncols
+            Py_ssize_t i, nused
             kh_str_t *na_hashset = NULL
             int start, end
             object name, na_flist
             bint na_filter = 0
+            Py_ssize_t num_cols
 
         start = self.parser_start
 
@@ -855,17 +876,37 @@ cdef class TextReader:
         # if footer > 0:
         #     end -= footer
 
+        #print >> sys.stderr, self.table_width
+        #print >> sys.stderr, self.leading_cols
+        #print >> sys.stderr, self.parser.lines
+        #print >> sys.stderr, start
+        #print >> sys.stderr, end
+        #print >> sys.stderr, self.header
+        #print >> sys.stderr, "index"
+        num_cols = -1
+        for i in range(self.parser.lines):
+            num_cols = (num_cols < self.parser.line_fields[i]) * self.parser.line_fields[i] +\
+                (num_cols >= self.parser.line_fields[i]) * num_cols
+
+        if self.table_width - self.leading_cols > num_cols:
+            raise CParserError("Too many columns specified: expected %s and found %s" %
+                (self.table_width - self.leading_cols, num_cols))
+
         results = {}
         nused = 0
         for i in range(self.table_width):
             if i < self.leading_cols:
                 # Pass through leading columns always
                 name = i
+            elif self.usecols and nused == len(self.usecols):
+                # Once we've gathered all requested columns, stop. GH5766
+                break
             else:
                 name = self._get_column_name(i, nused)
                 if self.has_usecols and not (i in self.usecols or
                                              name in self.usecols):
                     continue
+                nused += 1
 
             conv = self._get_converter(i, name)
 
@@ -903,10 +944,6 @@ cdef class TextReader:
                 raise Exception('Unable to parse column %d' % i)
 
             results[i] = col_res
-
-            # number of used column names
-            if i > self.leading_cols:
-                nused += 1
 
         self.parser_start += end - start
 
@@ -1397,11 +1434,11 @@ cdef _try_double(parser_t *parser, int col, int line_start, int line_end,
                 na_count += 1
                 data[0] = NA
             else:
-                error = to_double(word, data, parser.sci, parser.decimal)
+                error = to_double(word, data, parser.sci, parser.decimal, parser.thousands)
                 if error != 1:
-                    if strcmp(word, cinf) == 0:
+                    if strcasecmp(word, cinf) == 0:
                         data[0] = INF
-                    elif strcmp(word, cneginf) == 0:
+                    elif strcasecmp(word, cneginf) == 0:
                         data[0] = NEGINF
                     else:
                         return None, None
@@ -1413,11 +1450,11 @@ cdef _try_double(parser_t *parser, int col, int line_start, int line_end,
     else:
         for i in range(lines):
             word = COLITER_NEXT(it)
-            error = to_double(word, data, parser.sci, parser.decimal)
+            error = to_double(word, data, parser.sci, parser.decimal, parser.thousands)
             if error != 1:
-                if strcmp(word, cinf) == 0:
+                if strcasecmp(word, cinf) == 0:
                     data[0] = INF
-                elif strcmp(word, cneginf) == 0:
+                elif strcasecmp(word, cneginf) == 0:
                     data[0] = NEGINF
                 else:
                     return None, None
@@ -1447,7 +1484,6 @@ cdef _try_int64(parser_t *parser, int col, int line_start, int line_end,
     if na_filter:
         for i in range(lines):
             word = COLITER_NEXT(it)
-
             k = kh_get_str(na_hashset, word)
             # in the hash table
             if k != na_hashset.n_buckets:
@@ -1735,11 +1771,28 @@ def _concatenate_chunks(list chunks):
     cdef:
         list names = list(chunks[0].keys())
         object name
+        list warning_columns
+        object warning_names
+        object common_type
 
     result = {}
+    warning_columns = list()
     for name in names:
         arrs = [chunk.pop(name) for chunk in chunks]
+        # Check each arr for consistent types.
+        dtypes = set([a.dtype for a in arrs])
+        if len(dtypes) > 1:
+            common_type = np.find_common_type(dtypes, [])
+            if common_type == np.object:
+                warning_columns.append(str(name))
         result[name] = np.concatenate(arrs)
+
+    if warning_columns:
+        warning_names = ','.join(warning_columns)
+        warning_message = " ".join(["Columns (%s) have mixed types." % warning_names,
+            "Specify dtype option on import or set low_memory=False."
+          ])
+        warnings.warn(warning_message, DtypeWarning)
     return result
 
 #----------------------------------------------------------------------
@@ -1812,16 +1865,6 @@ cdef _apply_converter(object f, parser_t *parser, int col,
 
     return lib.maybe_convert_objects(result)
 
-    # if issubclass(values.dtype.type, (np.number, np.bool_)):
-    #     return values
-
-    # # XXX
-    # na_values = set([''])
-    # try:
-    #     return lib.maybe_convert_numeric(values, na_values, False)
-    # except Exception:
-    #     na_count = lib.sanitize_objects(values, na_values, False)
-    #     return result
 
 def _to_structured_array(dict columns, object names):
     cdef:

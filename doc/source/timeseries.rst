@@ -11,6 +11,7 @@
    randn = np.random.randn
    randint = np.random.randint
    np.set_printoptions(precision=4, suppress=True)
+   options.display.max_rows=15
    from dateutil.relativedelta import relativedelta
    from pandas.tseries.api import *
    from pandas.tseries.offsets import *
@@ -142,8 +143,10 @@ you can pass the ``dayfirst`` flag:
    can't be parsed with the day being first it will be parsed as if
    ``dayfirst`` were False.
 
+Invalid Data
+~~~~~~~~~~~~
 
-Pass ``coerce=True`` to convert bad data to ``NaT`` (not a time):
+Pass ``coerce=True`` to convert invalid data to ``NaT`` (not a time):
 
 .. ipython:: python
 
@@ -151,10 +154,31 @@ Pass ``coerce=True`` to convert bad data to ``NaT`` (not a time):
 
    to_datetime(['2009-07-31', 'asd'], coerce=True)
 
+
+Take care, ``to_datetime`` may not act as you expect on mixed data:
+
+.. ipython:: python
+
+   to_datetime([1, '1'])
+
+Epoch Timestamps
+~~~~~~~~~~~~~~~~
+
 It's also possible to convert integer or float epoch times. The default unit
 for these is nanoseconds (since these are how Timestamps are stored). However,
 often epochs are stored in another ``unit`` which can be specified:
 
+Typical epoch stored units
+
+.. ipython:: python
+
+   to_datetime([1349720105, 1349806505, 1349892905,
+                1349979305, 1350065705], unit='s')
+
+   to_datetime([1349720105100, 1349720105200, 1349720105300,
+                1349720105400, 1349720105500 ], unit='ms')
+
+These *work*, but the results may be unexpected.
 
 .. ipython:: python
 
@@ -165,12 +189,6 @@ often epochs are stored in another ``unit`` which can be specified:
 .. note::
 
    Epoch times will be rounded to the nearest nanosecond.
-
-Take care, ``to_datetime`` may not act as you expect on mixed data:
-
-.. ipython:: python
-
-   pd.to_datetime([1, '1'])
 
 .. _timeseries.daterange:
 
@@ -297,7 +315,7 @@ the year or year and month as strings:
 
    ts['2011-6']
 
-This type of slicing will work on a DataFrame with a ``DateTimeIndex`` as well. Since the 
+This type of slicing will work on a DataFrame with a ``DateTimeIndex`` as well. Since the
 partial string selection is a form of label slicing, the endpoints **will be** included. This
 would include matching times on an included date. Here's an example:
 
@@ -333,7 +351,7 @@ We are stopping on the included end-point as its part of the index
 
 .. warning::
 
-   The following selection will raises a ``KeyError``; otherwise this selection methodology
+   The following selection will raise a ``KeyError``; otherwise this selection methodology
    would be inconsistent with other selection methods in pandas (as this is not a *slice*, nor does it
    resolve to one)
 
@@ -403,6 +421,7 @@ frequency increment. Specific offset logic like "month", "business day", or
     CDay, "custom business day (experimental)"
     Week, "one week, optionally anchored on a day of the week"
     WeekOfMonth, "the x-th day of the y-th week of each month"
+    LastWeekOfMonth, "the x-th day of the last week of each month"
     MonthEnd, "calendar month end"
     MonthBegin, "calendar month begin"
     BMonthEnd, "business month end"
@@ -411,10 +430,12 @@ frequency increment. Specific offset logic like "month", "business day", or
     QuarterBegin, "calendar quarter begin"
     BQuarterEnd, "business quarter end"
     BQuarterBegin, "business quarter begin"
+    FY5253Quarter, "retail (aka 52-53 week) quarter"
     YearEnd, "calendar year end"
     YearBegin, "calendar year begin"
     BYearEnd, "business year end"
     BYearBegin, "business year begin"
+    FY5253, "retail (aka 52-53 week) year"
     Hour, "one hour"
     Minute, "one minute"
     Second, "one second"
@@ -514,10 +535,10 @@ calendars which account for local holidays and local weekend conventions.
     holidays = ['2012-05-01', datetime(2013, 5, 1), np.datetime64('2014-05-01')]
     bday_egypt = CustomBusinessDay(holidays=holidays, weekmask=weekmask_egypt)
     dt = datetime(2013, 4, 30)
-    print dt + 2 * bday_egypt
+    print(dt + 2 * bday_egypt)
     dts = date_range(dt, periods=5, freq=bday_egypt).to_series()
-    print dts
-    print Series(dts.weekday, dts).map(Series('Mon Tue Wed Thu Fri Sat Sun'.split()))
+    print(dts)
+    print(Series(dts.weekday, dts).map(Series('Mon Tue Wed Thu Fri Sat Sun'.split())))
 
 .. note::
 
@@ -678,7 +699,7 @@ strongly recommended that you switch to using the new offset aliases.
     "A\@DEC", "BA\-DEC"
     "min", "T"
     "ms", "L"
-    "us": "U"
+    "us", "U"
 
 As you can see, legacy quarterly and annual frequencies are business quarter
 and business year ends. Please also note the legacy time rule for milliseconds
@@ -1095,7 +1116,7 @@ Localization of Timestamps functions just like DatetimeIndex and TimeSeries:
    rng[5].tz_localize('Asia/Shanghai')
 
 
-Operations between TimeSeries in difficult time zones will yield UTC
+Operations between TimeSeries in different time zones will yield UTC
 TimeSeries, aligning the data on the UTC timestamps:
 
 .. ipython:: python
@@ -1108,16 +1129,32 @@ TimeSeries, aligning the data on the UTC timestamps:
 
 .. _timeseries.timedeltas:
 
+In some cases, localize cannot determine the DST and non-DST hours when there are
+duplicates.  This often happens when reading files that simply duplicate the hours.
+The infer_dst argument in tz_localize will attempt
+to determine the right offset.
+
+.. ipython:: python
+   :okexcept:
+
+   rng_hourly = DatetimeIndex(['11/06/2011 00:00', '11/06/2011 01:00',
+                               '11/06/2011 01:00', '11/06/2011 02:00',
+                               '11/06/2011 03:00'])
+   rng_hourly.tz_localize('US/Eastern')
+   rng_hourly_eastern = rng_hourly.tz_localize('US/Eastern', infer_dst=True)
+   rng_hourly_eastern.values
+
 Time Deltas
 -----------
 
 Timedeltas are differences in times, expressed in difference units, e.g. days,hours,minutes,seconds.
-They can be both positive and negative.
+They can be both positive and negative. :ref:`DateOffsets<timeseries.offsets>` that are absolute in nature
+(``Day, Hour, Minute, Second, Milli, Micro, Nano``) can be used as ``timedeltas``.
 
 .. ipython:: python
 
    from datetime import datetime, timedelta
-   s  = Series(date_range('2012-1-1', periods=3, freq='D'))
+   s = Series(date_range('2012-1-1', periods=3, freq='D'))
    td = Series([ timedelta(days=i) for i in range(3) ])
    df = DataFrame(dict(A = s, B = td))
    df
@@ -1128,40 +1165,15 @@ They can be both positive and negative.
    s - s.max()
    s - datetime(2011,1,1,3,5)
    s + timedelta(minutes=5)
+   s + Minute(5)
+   s + Minute(5) + Milli(5)
 
 Getting scalar results from a ``timedelta64[ns]`` series
-
-.. ipython:: python
-   :suppress:
-
-   from distutils.version import LooseVersion
 
 .. ipython:: python
 
    y = s - s[0]
    y
-
-.. code-block:: python
-
-   if LooseVersion(np.__version__) <= '1.6.2':
-       y.apply(lambda x: x.item().total_seconds())
-       y.apply(lambda x: x.item().days)
-   else:
-       y.apply(lambda x: x / np.timedelta64(1, 's'))
-       y.apply(lambda x: x / np.timedelta64(1, 'D'))
-
-.. note::
-
-   As you can see from the conditional statement above, these operations are
-   different in numpy 1.6.2 and in numpy >= 1.7. The ``timedelta64[ns]`` scalar
-   type in 1.6.2 is much like a ``datetime.timedelta``, while in 1.7 it is a
-   nanosecond based integer.  A future version of pandas will make this
-   transparent.
-
-.. note::
-
-   In numpy >= 1.7 dividing a ``timedelta64`` array by another ``timedelta64``
-   array will yield an array with dtype ``np.float64``.
 
 Series of timedeltas with ``NaT`` values are supported
 
@@ -1218,3 +1230,105 @@ issues). ``idxmin, idxmax`` are supported as well.
 
    df.min().idxmax()
    df.min(axis=1).idxmin()
+
+You can fillna on timedeltas. Integers will be interpreted as seconds. You can
+pass a timedelta to get a particular value.
+
+.. ipython:: python
+
+   y.fillna(0)
+   y.fillna(10)
+   y.fillna(timedelta(days=-1,seconds=5))
+
+.. _timeseries.timedeltas_reductions:
+
+Time Deltas & Reductions
+------------------------
+
+.. warning::
+
+   A numeric reduction operation for ``timedelta64[ns]`` can return a single-element ``Series`` of
+   dtype ``timedelta64[ns]``.
+
+You can do numeric reduction operations on timedeltas.
+
+.. ipython:: python
+
+   y2 = y.fillna(timedelta(days=-1,seconds=5))
+   y2
+   y2.mean()
+   y2.quantile(.1)
+
+.. _timeseries.timedeltas_convert:
+
+Time Deltas & Conversions
+-------------------------
+
+.. versionadded:: 0.13
+
+**string/integer conversion**
+
+Using the top-level ``to_timedelta``, you can convert a scalar or array from the standard
+timedelta format (produced by ``to_csv``) into a timedelta type (``np.timedelta64`` in ``nanoseconds``).
+It can also construct Series.
+
+.. warning::
+
+   This requires ``numpy >= 1.7``
+
+.. ipython:: python
+
+   to_timedelta('1 days 06:05:01.00003')
+   to_timedelta('15.5us')
+   to_timedelta(['1 days 06:05:01.00003','15.5us','nan'])
+   to_timedelta(np.arange(5),unit='s')
+   to_timedelta(np.arange(5),unit='d')
+
+**frequency conversion**
+
+Timedeltas can be converted to other 'frequencies' by dividing by another timedelta,
+or by astyping to a specific timedelta type. These operations yield ``float64`` dtyped Series.
+
+.. ipython:: python
+
+   td = Series(date_range('20130101',periods=4))-Series(date_range('20121201',periods=4))
+   td[2] += np.timedelta64(timedelta(minutes=5,seconds=3))
+   td[3] = np.nan
+   td
+
+   # to days
+   td / np.timedelta64(1,'D')
+   td.astype('timedelta64[D]')
+
+   # to seconds
+   td / np.timedelta64(1,'s')
+   td.astype('timedelta64[s]')
+
+Dividing or multiplying a ``timedelta64[ns]`` Series by an integer or integer Series
+yields another ``timedelta64[ns]`` dtypes Series.
+
+.. ipython:: python
+
+   td * -1
+   td * Series([1,2,3,4])
+
+Numpy < 1.7 Compatibility
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Numpy < 1.7 has a broken ``timedelta64`` type that does not correctly work
+for arithmetic. Pandas bypasses this, but for frequency conversion as above,
+you need to create the divisor yourself. The ``np.timetimedelta64`` type only
+has 1 argument, the number of **micro** seconds.
+
+The following are equivalent statements in the two versions of numpy.
+
+.. code-block:: python
+
+   from distutils.version import LooseVersion
+   if LooseVersion(np.__version__) <= '1.6.2':
+       y / np.timedelta(86400*int(1e6))
+       y / np.timedelta(int(1e6))
+   else:
+       y / np.timedelta64(1,'D')
+       y / np.timedelta64(1,'s')
+

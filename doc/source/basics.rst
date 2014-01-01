@@ -8,6 +8,8 @@
    from pandas import *
    randn = np.random.randn
    np.set_printoptions(precision=4, suppress=True)
+   from pandas.compat import lrange
+   options.display.max_rows=15
 
 ==============================
  Essential Basic Functionality
@@ -195,8 +197,11 @@ replace NaN with some other value using ``fillna`` if you wish).
    df + df2
    df.add(df2, fill_value=0)
 
+.. _basics.compare:
+
 Flexible Comparisons
 ~~~~~~~~~~~~~~~~~~~~
+
 Starting in v0.8, pandas introduced binary comparison methods eq, ne, lt, gt,
 le, and ge to Series and DataFrame whose behavior is analogous to the binary
 arithmetic operations described above:
@@ -204,8 +209,70 @@ arithmetic operations described above:
 .. ipython:: python
 
    df.gt(df2)
-
    df2.ne(df)
+
+These operations produce a pandas object the same type as the left-hand-side input
+that if of dtype ``bool``. These ``boolean`` objects can be used in indexing operations,
+see :ref:`here<indexing.boolean>`
+
+.. _basics.reductions:
+
+Boolean Reductions
+~~~~~~~~~~~~~~~~~~
+
+You can apply the reductions: ``empty``, ``any()``, ``all()``, and ``bool()`` to provide a
+way to summarize a boolean result.
+
+.. ipython:: python
+
+   (df>0).all()
+   (df>0).any()
+
+You can reduce to a final boolean value.
+
+.. ipython:: python
+
+   (df>0).any().any()
+
+You can test if a pandas object is empty, via the ``empty`` property.
+
+.. ipython:: python
+
+   df.empty
+   DataFrame(columns=list('ABC')).empty
+
+To evaluate single-element pandas objects in a boolean context, use the method ``.bool()``:
+
+.. ipython:: python
+
+   Series([True]).bool()
+   Series([False]).bool()
+   DataFrame([[True]]).bool()
+   DataFrame([[False]]).bool()
+
+.. warning::
+
+   You might be tempted to do the following:
+
+   .. code-block:: python
+
+       >>>if df:
+            ...
+
+   Or
+
+   .. code-block:: python
+
+       >>> df and df2
+
+   These both will raise as you are trying to compare multiple values.
+
+   .. code-block:: python
+
+       ValueError: The truth value of an array is ambiguous. Use a.empty, a.any() or a.all().
+
+See :ref:`gotchas<gotchas.truth>` for a more detailed discussion.
+
 
 Combining overlapping data sets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -312,6 +379,7 @@ optional ``level`` parameter which applies only if the object has a
     ``median``, Arithmetic median of values
     ``min``, Minimum
     ``max``, Maximum
+    ``mode``, Mode
     ``abs``, Absolute Value
     ``prod``, Product of values
     ``std``, Unbiased standard deviation
@@ -407,8 +475,8 @@ value, ``idxmin`` and ``idxmax`` return the first matching index:
 
 .. _basics.discretization:
 
-Value counts (histogramming)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Value counts (histogramming) / Mode
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The ``value_counts`` Series method and top-level function computes a histogram
 of a 1D array of values. It can also be used as a function on regular arrays:
@@ -420,6 +488,16 @@ of a 1D array of values. It can also be used as a function on regular arrays:
    s = Series(data)
    s.value_counts()
    value_counts(data)
+
+Similarly, you can get the most frequently occuring value(s) (the mode) of the values in a Series or DataFrame:
+
+.. ipython:: python
+
+    s5 = Series([1, 1, 3, 3, 3, 5, 5, 7, 7, 7])
+    s5.mode()
+    df5 = DataFrame({"A": np.random.randint(0, 7, size=50),
+                     "B": np.random.randint(-10, 15, size=50)})
+    df5.mode()
 
 
 Discretization and quantiling
@@ -447,6 +525,13 @@ normally distributed data into equal-size quartiles like so:
    factor
    value_counts(factor)
 
+We can also pass infinite values to define the bins:
+
+.. ipython:: python
+
+   arr = np.random.randn(20)
+   factor = cut(arr, [-np.inf, 0, np.inf])
+   factor
 
 .. _basics.apply:
 
@@ -472,12 +557,11 @@ will either be of lower dimension or the same dimension.
 about a data set. For example, suppose we wanted to extract the date where the
 maximum value for each column occurred:
 
-
 .. ipython:: python
 
    tsdf = DataFrame(randn(1000, 3), columns=['A', 'B', 'C'],
                     index=date_range('1/1/2000', periods=1000))
-   tsdf.apply(lambda x: x.index[x.dropna().argmax()])
+   tsdf.apply(lambda x: x.idxmax())
 
 You may also pass additional arguments and keyword arguments to the ``apply``
 method. For instance, consider the following function you would like to apply:
@@ -529,10 +613,16 @@ another array or value), the methods ``applymap`` on DataFrame and analogously
 returning a single value. For example:
 
 .. ipython:: python
+   :suppress:
 
+   df4 = df_orig.copy()
+
+.. ipython:: python
+
+   df4
    f = lambda x: len(str(x))
-   df['one'].map(f)
-   df.applymap(f)
+   df4['one'].map(f)
+   df4.applymap(f)
 
 ``Series.map`` has an additional feature which is that it can be used to easily
 "link" or "map" values defined by a secondary series. This is closely related
@@ -627,13 +717,13 @@ make this simpler:
    :suppress:
 
    df2 = df.reindex(['a', 'b', 'c'], columns=['one', 'two'])
-   df2 = df2 - df2.mean()
+   df3 = df2 - df2.mean()
 
 
 .. ipython:: python
 
-   df
    df2
+   df3
    df.reindex_like(df2)
 
 Reindexing with ``reindex_axis``
@@ -723,6 +813,8 @@ We illustrate these fill methods on a simple TimeSeries:
    ts2.reindex(ts.index, method='ffill')
    ts2.reindex(ts.index, method='bfill')
 
+Note these methods require that the indexes are **order increasing**.
+
 Note the same result could have been achieved using :ref:`fillna
 <missing_data.fillna>`:
 
@@ -730,9 +822,8 @@ Note the same result could have been achieved using :ref:`fillna
 
    ts2.reindex(ts.index).fillna(method='ffill')
 
-Note these methods generally assume that the indexes are **sorted**. They may
-be modified in the future to be a bit more flexible but as time series data is
-ordered most of the time anyway, this has not been a major priority.
+Note that ``reindex`` will raise a ValueError if the index is not
+monotonic. ``fillna`` will not make any checks on the order of the index.
 
 .. _basics.drop:
 
@@ -801,7 +892,7 @@ Thus, for example:
 .. ipython::
 
    In [0]: for col in df:
-      ...:     print col
+      ...:     print(col)
       ...:
 
 iteritems
@@ -819,8 +910,8 @@ For example:
 .. ipython::
 
    In [0]: for item, frame in wp.iteritems():
-      ...:     print item
-      ...:     print frame
+      ...:     print(item)
+      ...:     print(frame)
       ...:
 
 
@@ -836,7 +927,7 @@ containing the data in each row:
 .. ipython::
 
    In [0]: for row_index, row in df2.iterrows():
-      ...:     print '%s\n%s' % (row_index, row)
+      ...:     print('%s\n%s' % (row_index, row))
       ...:
 
 For instance, a contrived way to transpose the dataframe would be:
@@ -844,11 +935,11 @@ For instance, a contrived way to transpose the dataframe would be:
 .. ipython:: python
 
    df2 = DataFrame({'x': [1, 2, 3], 'y': [4, 5, 6]})
-   print df2
-   print df2.T
+   print(df2)
+   print(df2.T)
 
    df2_t = DataFrame(dict((idx,values) for idx, values in df2.iterrows()))
-   print df2_t
+   print(df2_t)
 
 .. note::
 
@@ -859,8 +950,8 @@ For instance, a contrived way to transpose the dataframe would be:
 
       df_iter = DataFrame([[1, 1.0]], columns=['x', 'y'])
       row = next(df_iter.iterrows())[1]
-      print row['x'].dtype
-      print df_iter['x'].dtype
+      print(row['x'].dtype)
+      print(df_iter['x'].dtype)
 
 itertuples
 ~~~~~~~~~~
@@ -873,7 +964,8 @@ For instance,
 
 .. ipython:: python
 
-   for r in df2.itertuples(): print r
+   for r in df2.itertuples():
+       print(r)
 
 .. _basics.string_methods:
 
@@ -885,6 +977,9 @@ that make it easy to operate on each element of the array. Perhaps most
 importantly, these methods exclude missing/NA values automatically. These are
 accessed via the Series's ``str`` attribute and generally have names matching
 the equivalent (scalar) build-in string methods:
+
+Splitting and Replacing Strings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. ipython:: python
 
@@ -916,8 +1011,61 @@ Methods like ``replace`` and ``findall`` take regular expressions, too:
    s3
    s3.str.replace('^.a|dog', 'XX-XX ', case=False)
 
-Methods like ``contains``, ``startswith``, and ``endswith`` takes an extra
-``na`` arguement so missing values can be considered True or False:
+Extracting Substrings
+~~~~~~~~~~~~~~~~~~~~~
+
+The method ``extract`` (introduced in version 0.13) accepts regular expressions
+with match groups. Extracting a regular expression with one group returns
+a Series of strings.
+
+.. ipython:: python
+
+   Series(['a1', 'b2', 'c3']).str.extract('[ab](\d)')
+
+Elements that do not match return ``NaN``. Extracting a regular expression
+with more than one group returns a DataFrame with one column per group.
+
+.. ipython:: python
+
+   Series(['a1', 'b2', 'c3']).str.extract('([ab])(\d)')
+
+Elements that do not match return a row of ``NaN``s.
+Thus, a Series of messy strings can be "converted" into a
+like-indexed Series or DataFrame of cleaned-up or more useful strings,
+without necessitating ``get()`` to access tuples or ``re.match`` objects.
+
+Named groups like
+
+.. ipython:: python
+
+   Series(['a1', 'b2', 'c3']).str.extract('(?P<letter>[ab])(?P<digit>\d)')
+
+and optional groups like
+
+.. ipython:: python
+
+   Series(['a1', 'b2', '3']).str.extract('(?P<letter>[ab])?(?P<digit>\d)')
+
+can also be used.
+
+Testing for Strings that Match or Contain a Pattern
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In previous versions, *extracting* match groups was accomplished by ``match``,
+which returned a not-so-convenient Series of tuples. Starting in version 0.14,
+the default behavior of match will change. It will return a boolean
+indexer, analagous to the method ``contains``.
+
+The distinction between
+``match`` and ``contains`` is strictness: ``match`` relies on
+strict ``re.match`` while ``contains`` relies on ``re.search``.
+
+In version 0.13, ``match`` performs its old, deprecated behavior by default,
+but the new behavior is availabe through the keyword argument
+``as_indexer=True``.
+
+Methods like ``match``, ``contains``, ``startswith``, and ``endswith`` take
+ an extra ``na`` arguement so missing values can be considered True or False:
 
 .. ipython:: python
 
@@ -944,6 +1092,7 @@ Methods like ``contains``, ``startswith``, and ``endswith`` takes an extra
     ``endswidth``,Equivalent to ``str.endswith(pat)`` for each element
     ``findall``,Compute list of all occurrences of pattern/regex for each string
     ``match``,"Call ``re.match`` on each element, returning matched groups as list"
+    ``extract``,"Call ``re.match`` on each element, as ``match`` does, but return matched groups as strings for convenience."
     ``len``,Compute string lengths
     ``strip``,Equivalent to ``str.strip``
     ``rstrip``,Equivalent to ``str.rstrip``
@@ -974,13 +1123,13 @@ determine the sort order:
 
 .. ipython:: python
 
-   df.sort_index(by='two')
+   df1 = DataFrame({'one':[2,1,1,1],'two':[1,3,2,4],'three':[5,4,3,2]})
+   df1.sort_index(by='two')
 
 The ``by`` argument can take a list of column names, e.g.:
 
 .. ipython:: python
 
-   df1 = DataFrame({'one':[2,1,1,1],'two':[1,3,2,4],'three':[5,4,3,2]})
    df1[['one', 'two', 'three']].sort_index(by=['one','two'])
 
 Series has the method ``order`` (analogous to `R's order function
@@ -1090,16 +1239,16 @@ By default integer types are ``int64`` and float types are ``float64``,
 
 .. ipython:: python
 
-    DataFrame([1,2],columns=['a']).dtypes
-    DataFrame({'a' : [1,2] }).dtypes
-    DataFrame({'a' : 1 }, index=range(2)).dtypes
+   DataFrame([1, 2], columns=['a']).dtypes
+   DataFrame({'a': [1, 2]}).dtypes
+   DataFrame({'a': 1 }, index=list(range(2))).dtypes
 
 Numpy, however will choose *platform-dependent* types when creating arrays.
 The following **WILL** result in ``int32`` on 32-bit platform.
 
 .. ipython:: python
 
-    frame = DataFrame(np.array([1,2]))
+   frame = DataFrame(np.array([1, 2]))
 
 
 upcasting
@@ -1249,7 +1398,7 @@ and so passing in a substring will work - as long as it is unambiguous :
    get_option("display.max_rows")
 
 
-The following will **not work** because it matches multiple option names, e.g.``display.max_colwidth``, ``display.max_rows``, ``display.max_columns``:
+The following will **not work** because it matches multiple option names, e.g. ``display.max_colwidth``, ``display.max_rows``, ``display.max_columns``:
 
 .. ipython:: python
    :okexcept:
@@ -1260,11 +1409,17 @@ The following will **not work** because it matches multiple option names, e.g.``
        print(e)
 
 
-**Note:** Using this form of convenient shorthand may make your code break if new options with similar names are added in future versions.
+**Note:** Using this form of shorthand may cause your code to break if new options with similar names are added in future versions.
 
 
 You can get a list of available options and their descriptions with ``describe_option``. When called
 with no argument ``describe_option`` will print out the descriptions for all available options.
+
+.. ipython:: python
+   :suppress:
+
+   reset_option("all")
+
 
 .. ipython:: python
 
@@ -1295,11 +1450,11 @@ All options also have a default value, and you can use the ``reset_option`` to d
    get_option("display.max_rows")
 
 
-It's also possible to reset multiple options at once:
+It's also possible to reset multiple options at once (using a regex):
 
 .. ipython:: python
 
-   reset_option("^display\.")
+   reset_option("^display")
 
 
 
@@ -1307,11 +1462,6 @@ Console Output Formatting
 -------------------------
 
 .. _basics.console_output:
-
-**Note:** ``set_printoptions``/ ``reset_printoptions``  are now deprecated (but functioning),
-and both, as well as ``set_eng_float_format``, use the options API behind the scenes.
-The corresponding options now live under "print.XYZ", and you can set them directly with
-``get/set_option``.
 
 Use the ``set_eng_float_format`` function in the ``pandas.core.common`` module
 to alter the floating-point formatting of pandas objects to produce a particular

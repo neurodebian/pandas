@@ -1,15 +1,15 @@
-import unittest
+from pandas.compat import range
 
 import numpy as np
 
-from pandas.core.api import Series
+from pandas.core.api import Series, Categorical
 import pandas as pd
 
 import pandas.core.algorithms as algos
 import pandas.util.testing as tm
 
 
-class TestMatch(unittest.TestCase):
+class TestMatch(tm.TestCase):
     _multiprocess_can_split_ = True
 
     def test_ints(self):
@@ -29,24 +29,24 @@ class TestMatch(unittest.TestCase):
         self.assert_(np.array_equal(result, expected))
 
 
-class TestUnique(unittest.TestCase):
+class TestUnique(tm.TestCase):
     _multiprocess_can_split_ = True
 
     def test_ints(self):
         arr = np.random.randint(0, 100, size=50)
 
         result = algos.unique(arr)
-        self.assert_(isinstance(result, np.ndarray))
+        tm.assert_isinstance(result, np.ndarray)
 
     def test_objects(self):
         arr = np.random.randint(0, 100, size=50).astype('O')
 
         result = algos.unique(arr)
-        self.assert_(isinstance(result, np.ndarray))
+        tm.assert_isinstance(result, np.ndarray)
 
     def test_object_refcount_bug(self):
         lst = ['A', 'B', 'C', 'D', 'E']
-        for i in xrange(1000):
+        for i in range(1000):
             len(algos.unique(lst))
 
     def test_on_index_object(self):
@@ -61,6 +61,44 @@ class TestUnique(unittest.TestCase):
         expected.sort()
 
         tm.assert_almost_equal(result, expected)
+
+class TestValueCounts(tm.TestCase):
+    _multiprocess_can_split_ = True
+
+    def test_value_counts(self):
+        from pandas.tools.tile import cut
+
+        arr = np.random.randn(4)
+        factor = cut(arr, 4)
+
+        tm.assert_isinstance(factor, Categorical)
+
+        result = algos.value_counts(factor)
+        expected = algos.value_counts(np.asarray(factor))
+        tm.assert_series_equal(result, expected)
+
+    def test_value_counts_bins(self):
+        s = [1, 2, 3, 4]
+        result = algos.value_counts(s, bins=1)
+        self.assertEqual(result.tolist(), [4])
+        self.assertEqual(result.index[0], 0.997)
+
+        result = algos.value_counts(s, bins=2, sort=False)
+        self.assertEqual(result.tolist(), [2, 2])
+        self.assertEqual(result.index[0], 0.997)
+        self.assertEqual(result.index[1], 2.5)
+
+    def test_value_counts_dtypes(self):
+        result = algos.value_counts([1, 1.])
+        self.assertEqual(len(result), 1)
+
+        result = algos.value_counts([1, 1.], bins=1)
+        self.assertEqual(len(result), 1)
+
+        result = algos.value_counts(Series([1, 1., '1']))  # object
+        self.assertEqual(len(result), 2)
+
+        self.assertRaises(TypeError, lambda s: algos.value_counts(s, bins=1), ['1', 1])
 
 
 def test_quantile():
