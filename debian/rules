@@ -32,6 +32,10 @@ EXCLUDE_TESTS3.3 :=
 # MPLVER := $(shell dpkg -l python-matplotlib | awk '/^ii/{print $$3;}' || echo 0)
 # $(shell dpkg --compare-versions $(MPLVER) lt 1.0 && echo '|test_hist|test_plot|test_boxplot|test_corr_rank' || echo '')
 
+# try to prevent unsunctioned downloads
+export  http_proxy=http://127.0.0.1:9/
+export  https_proxy=http://127.0.0.1:9/
+
 # Mega rule
 %:
 	: # Explicit build system to avoid use of all-in-1 Makefile
