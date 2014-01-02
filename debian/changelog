@@ -6,6 +6,7 @@ pandas (0.13.0-1) unstable; urgency=low
     - use xvfb (added to build-depends together with xauth, and xclip)
       for tests
     - define http*_proxy to prevent downloads
+    - install .md files not .rst for docs -- were renamed upstream
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 01 Jan 2014 18:08:22 -0500
 
