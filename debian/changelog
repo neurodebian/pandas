@@ -7,6 +7,7 @@ pandas (0.13.0-1) unstable; urgency=low
       for tests
     - define http*_proxy to prevent downloads
     - install .md files not .rst for docs -- were renamed upstream
+    - include .cpp Cython generated files into debian/cythonized-files*
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 01 Jan 2014 18:08:22 -0500
 
