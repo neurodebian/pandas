@@ -8,6 +8,8 @@ pandas (0.13.0-2) unstable; urgency=low
       0002-remove-explicit-truediv-kwarg.patch
       to resolve compatibility issues with elderly Numexpr
     - 0001-BUG-Yahoo-finance-changed-ichart-url.-Fixed-here.patch
+    - deb_skip_sequencelike_on_armel to prevent FTBFS on armel due to failing
+      test: https://github.com/pydata/pandas/issues/4473
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 03 Jan 2014 23:13:48 -0500
 
