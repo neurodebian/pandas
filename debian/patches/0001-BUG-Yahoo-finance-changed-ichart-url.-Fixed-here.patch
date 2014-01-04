@@ -1,0 +1,25 @@
+From a929de935ba292d6f9d23a7afda0e537fe5223c2 Mon Sep 17 00:00:00 2001
+From: Spencer Lyon <spencerlyon2@gmail.com>
+Date: Tue, 31 Dec 2013 14:48:21 -0700
+Subject: [PATCH] BUG: Yahoo finance changed ichart url. Fixed here
+
+---
+ pandas/io/data.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/pandas/io/data.py b/pandas/io/data.py
+index a396844..98ac860 100644
+--- a/pandas/io/data.py
++++ b/pandas/io/data.py
+@@ -183,7 +183,7 @@ def _get_hist_yahoo(sym, start, end, retry_count, pause):
+     Returns a DataFrame.
+     """
+     start, end = _sanitize_dates(start, end)
+-    yahoo_url = 'http://ichart.yahoo.com/table.csv?'
++    yahoo_url = 'http://ichart.finance.yahoo.com/table.csv?'
+     url = (yahoo_url + 's=%s' % sym +
+            '&a=%s' % (start.month - 1) +
+            '&b=%s' % start.day +
+-- 
+1.8.4.3
+

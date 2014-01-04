@@ -1,1 +1,5 @@
 0001-BLD-fix-cythonized-msgpack-extension-in-setup.py-GH5.patch
+0001-Add-division-future-import-everywhere.patch
+0002-remove-explicit-truediv-kwarg.patch
+
+0001-BUG-Yahoo-finance-changed-ichart-url.-Fixed-here.patch

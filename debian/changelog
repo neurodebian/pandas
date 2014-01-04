@@ -1,9 +1,13 @@
-pandas (0.13.0-2) neurodebian; urgency=low
+pandas (0.13.0-2) unstable; urgency=low
 
   * debian/patches
     - 0001-BLD-fix-cythonized-msgpack-extension-in-setup.py-GH5.patch
       to resolve issue with building C++ Cython extension using
       pre-generated sources
+    - 0001-Add-division-future-import-everywhere.patch
+      0002-remove-explicit-truediv-kwarg.patch
+      to resolve compatibility issues with elderly Numexpr
+    - 0001-BUG-Yahoo-finance-changed-ichart-url.-Fixed-here.patch
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 03 Jan 2014 23:13:48 -0500
 
