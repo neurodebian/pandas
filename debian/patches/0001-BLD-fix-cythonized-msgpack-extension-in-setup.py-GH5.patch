@@ -1,0 +1,34 @@
+From 31d8ff857698dc69d005cc836f44ca4d72d22f54 Mon Sep 17 00:00:00 2001
+From: y-p <yoval@gmx.com>
+Date: Sat, 4 Jan 2014 05:27:08 +0200
+Subject: [PATCH] BLD: fix cythonized msgpack extension in setup.py GH5831
+
+---
+ setup.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/setup.py b/setup.py
+index 497c6a5..374fd97 100755
+--- a/setup.py
++++ b/setup.py
+@@ -486,7 +486,7 @@ else:
+ 
+ msgpack_ext = Extension('pandas.msgpack',
+                         sources = [srcpath('msgpack',
+-                                           suffix=suffix, subdir='')],
++                                           suffix='.cpp', subdir='')],
+                         language='c++',
+                         include_dirs=common_include,
+                         define_macros=macros)
+@@ -499,7 +499,7 @@ extensions.append(msgpack_ext)
+ if suffix == '.pyx' and 'setuptools' in sys.modules:
+     # undo dumb setuptools bug clobbering .pyx sources back to .c
+     for ext in extensions:
+-        if ext.sources[0].endswith('.c'):
++        if ext.sources[0].endswith(('.c','.cpp')):
+             root, _ = os.path.splitext(ext.sources[0])
+             ext.sources[0] = root + suffix
+ 
+-- 
+1.8.4.3
+
