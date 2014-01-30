@@ -1,3 +1,9 @@
+pandas (0.13.0+git464-g15a8ff7-1) experimental; urgency=low
+
+  * Fresh pre-release snapshot
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 29 Jan 2014 21:27:45 -0500
+
 pandas (0.13.0-2) unstable; urgency=low
 
   * debian/patches
