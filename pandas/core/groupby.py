@@ -75,7 +75,7 @@ _common_apply_whitelist = frozenset([
 
 _series_apply_whitelist = \
     (_common_apply_whitelist - set(['boxplot'])) | \
-    frozenset(['dtype', 'value_counts'])
+    frozenset(['dtype', 'value_counts', 'unique', 'nunique'])
 
 _dataframe_apply_whitelist = \
     _common_apply_whitelist | frozenset(['dtypes', 'corrwith'])
@@ -2994,7 +2994,9 @@ _cython_table = {
     np.prod: 'prod',
     np.std: 'std',
     np.var: 'var',
-    np.median: 'median'
+    np.median: 'median',
+    np.max: 'max',
+    np.min: 'min'
 }
 
 

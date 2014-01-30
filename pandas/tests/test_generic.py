@@ -285,7 +285,6 @@ class Generic(object):
         except (AttributeError):
             pass
 
-
         # ---------------------------
         # non-preserving (by default)
         # ---------------------------
@@ -338,7 +337,7 @@ class Generic(object):
             self._compare(o.tail(), o.iloc[-5:])
 
             # 0-len
-            self._compare(o.head(0), o.iloc[:0])
+            self._compare(o.head(0), o.iloc[:])
             self._compare(o.tail(0), o.iloc[0:])
 
             # bounded
@@ -428,6 +427,19 @@ class TestSeries(tm.TestCase, Generic):
         result = o.T
         self.check_metadata(o,result)
 
+        # resample
+        ts = Series(np.random.rand(1000),
+                    index=date_range('20130101',periods=1000,freq='s'),
+                    name='foo')
+        result = ts.resample('1T')
+        self.check_metadata(ts,result)
+
+        result = ts.resample('1T',how='min')
+        self.check_metadata(ts,result)
+
+        result = ts.resample('1T',how=lambda x: x.sum())
+        self.check_metadata(ts,result)
+
     def test_interpolate(self):
         ts = Series(np.arange(len(self.ts), dtype=float), self.ts.index)
 
@@ -448,6 +460,18 @@ class TestSeries(tm.TestCase, Generic):
 
         # try time interpolation on a non-TimeSeries
         self.assertRaises(ValueError, self.series.interpolate, method='time')
+
+    def test_interp_regression(self):
+        _skip_if_no_scipy()
+        _skip_if_no_pchip()
+
+        ser = Series(np.sort(np.random.uniform(size=100)))
+
+        # interpolate at new_index
+        new_index = ser.index + Index([49.25, 49.5, 49.75, 50.25, 50.5, 50.75])
+        interp_s = ser.reindex(new_index).interpolate(method='pchip')
+        # does not blow up, GH5977
+        interp_s[49:51]
 
     def test_interpolate_corners(self):
         s = Series([np.nan, np.nan])
@@ -574,6 +598,13 @@ class TestSeries(tm.TestCase, Generic):
         s = pd.Series([1, 2, 3], index=[0, 2, 1])
         with tm.assertRaises(ValueError):
             s.interpolate(method='krogh')
+
+    def test_interp_datetime64(self):
+        _skip_if_no_scipy()
+        df = Series([1, np.nan, 3], index=date_range('1/1/2000', periods=3))
+        result = df.interpolate(method='nearest')
+        expected = Series([1, 1, 3], index=date_range('1/1/2000', periods=3))
+        assert_series_equal(result, expected)
 
 class TestDataFrame(tm.TestCase, Generic):
     _typ = DataFrame
@@ -768,6 +799,24 @@ class TestDataFrame(tm.TestCase, Generic):
         expected = Series([1, 2, 3, 4, 5, 6, 7])
         assert_series_equal(result, expected)
 
+    def test_metadata_propagation_indiv(self):
+
+        # groupby
+        df = DataFrame({'A': ['foo', 'bar', 'foo', 'bar',
+                              'foo', 'bar', 'foo', 'foo'],
+                        'B': ['one', 'one', 'two', 'three',
+                              'two', 'two', 'one', 'three'],
+                        'C': np.random.randn(8),
+                        'D': np.random.randn(8)})
+        result = df.groupby('A').sum()
+        self.check_metadata(df,result)
+
+        # resample
+        df = DataFrame(np.random.randn(1000,2),
+                       index=date_range('20130101',periods=1000,freq='s'))
+        result = df.resample('1T')
+        self.check_metadata(df,result)
+
 class TestPanel(tm.TestCase, Generic):
     _typ = Panel
     _comparator = lambda self, x, y: assert_panel_equal(x, y)
@@ -802,6 +851,80 @@ class TestNDFrame(tm.TestCase):
 
         p4d = tm.makePanel4D().reindex(labels=['label1'],items=['ItemA'])
         tm.assert_frame_equal(p4d.squeeze(),p4d.ix['label1','ItemA'])
+
+    def test_equals(self):
+        s1 = pd.Series([1, 2, 3], index=[0, 2, 1])
+        s2 = s1.copy()
+        self.assert_(s1.equals(s2))
+
+        s1[1] = 99
+        self.assert_(not s1.equals(s2))
+
+        # NaNs compare as equal
+        s1 = pd.Series([1, np.nan, 3, np.nan], index=[0, 2, 1, 3])
+        s2 = s1.copy()
+        self.assert_(s1.equals(s2))
+
+        s2[0] = 9.9
+        self.assert_(not s1.equals(s2))
+        
+        idx = MultiIndex.from_tuples([(0, 'a'), (1, 'b'), (2, 'c')])
+        s1 = Series([1, 2, np.nan], index=idx)
+        s2 = s1.copy()
+        self.assert_(s1.equals(s2))
+
+        # Add object dtype column with nans
+        index = np.random.random(10)
+        df1 = DataFrame(np.random.random(10,), index=index, columns=['floats'])
+        df1['text'] = 'the sky is so blue. we could use more chocolate.'.split()
+        df1['start'] = date_range('2000-1-1', periods=10, freq='T')
+        df1['end'] = date_range('2000-1-1', periods=10, freq='D')
+        df1['diff'] = df1['end'] - df1['start']
+        df1['bool'] = (np.arange(10) % 3 == 0)
+        df1.ix[::2] = nan
+        df2 = df1.copy()
+        self.assert_(df1['text'].equals(df2['text']))
+        self.assert_(df1['start'].equals(df2['start']))
+        self.assert_(df1['end'].equals(df2['end']))
+        self.assert_(df1['diff'].equals(df2['diff']))
+        self.assert_(df1['bool'].equals(df2['bool']))
+        self.assert_(df1.equals(df2))
+        self.assert_(not df1.equals(object))
+
+        # different dtype
+        different = df1.copy()
+        different['floats'] = different['floats'].astype('float32')
+        self.assert_(not df1.equals(different)) 
+
+        # different index
+        different_index = -index
+        different = df2.set_index(different_index)
+        self.assert_(not df1.equals(different))        
+
+        # different columns
+        different = df2.copy()
+        different.columns = df2.columns[::-1]
+        self.assert_(not df1.equals(different))        
+
+        # DatetimeIndex
+        index = pd.date_range('2000-1-1', periods=10, freq='T')
+        df1 = df1.set_index(index)
+        df2 = df1.copy()
+        self.assert_(df1.equals(df2))
+
+        # MultiIndex
+        df3 = df1.set_index(['text'], append=True)
+        df2 = df1.set_index(['text'], append=True)
+        self.assert_(df3.equals(df2))
+
+        df2 = df1.set_index(['floats'], append=True)
+        self.assert_(not df3.equals(df2))
+
+        # NaN in index
+        df3 = df1.set_index(['floats'], append=True)
+        df2 = df1.set_index(['floats'], append=True)
+        self.assert_(df3.equals(df2))
+
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],

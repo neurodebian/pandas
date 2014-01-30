@@ -47,6 +47,7 @@ As of 0.13, these are the relevant options, all under the `display` namespace,
   truncated table or, with this set to 'info', as a short summary view.
 - max_columns (default 20): max dataframe columns to display.
 - max_rows (default 60): max dataframe rows display.
+- show_dimensions (default True): controls the display of the row/col counts footer.
 
 Two additional options only apply to displaying DataFrames in terminals,
 not to the HTML view:
@@ -81,7 +82,7 @@ life easier is missing. In that case you have several options:
    For example, here is an example of adding an ``just_foo_cols()``
    method to the dataframe class:
 
-.. ipython:: python
+::
 
    import pandas as pd
    def just_foo_cols(self):
@@ -181,17 +182,7 @@ Frequency conversion
 
 Frequency conversion is implemented using the ``resample`` method on TimeSeries
 and DataFrame objects (multiple time series). ``resample`` also works on panels
-(3D). Here is some code that resamples daily data to montly with
-scikits.timeseries:
-
-.. ipython:: python
-
-   import scikits.timeseries as ts
-   data = ts.time_series(np.random.randn(50), start_date='Jan-2000', freq='M')
-   data
-   data.convert('A', func=np.mean)
-
-Here is the equivalent pandas code:
+(3D). Here is some code that resamples daily data to montly:
 
 .. ipython:: python
 

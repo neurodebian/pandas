@@ -11,7 +11,6 @@ import pandas.algos as algos
 import pandas.hashtable as htable
 import pandas.compat as compat
 
-
 def match(to_match, values, na_sentinel=-1):
     """
     Compute locations of to_match into values
@@ -37,7 +36,16 @@ def match(to_match, values, na_sentinel=-1):
         values = np.array(values, dtype='O')
 
     f = lambda htype, caster: _match_generic(to_match, values, htype, caster)
-    return _hashtable_algo(f, values.dtype)
+    result = _hashtable_algo(f, values.dtype)
+
+    if na_sentinel != -1:
+
+        # replace but return a numpy array
+        # use a Series because it handles dtype conversions properly
+        from pandas.core.series import Series
+        result = Series(result.ravel()).replace(-1,na_sentinel).values.reshape(result.shape)
+
+    return result
 
 
 def unique(values):
@@ -146,7 +154,7 @@ def factorize(values, sort=False, order=None, na_sentinel=-1):
         uniques = uniques.take(sorter)
 
     if is_datetime:
-        uniques = uniques.view('M8[ns]')
+        uniques = uniques.astype('M8[ns]')
     if isinstance(values, PeriodIndex):
         uniques = PeriodIndex(ordinal=uniques, freq=values.freq)
 
@@ -271,6 +279,7 @@ def rank(values, axis=0, method='average', na_option='keep',
         f, values = _get_data_algo(values, _rank2d_functions)
         ranks = f(values, axis=axis, ties_method=method,
                   ascending=ascending, na_option=na_option)
+
     return ranks
 
 
@@ -356,12 +365,22 @@ def _interpolate(a, b, fraction):
 
 
 def _get_data_algo(values, func_map):
+    mask = None
     if com.is_float_dtype(values):
         f = func_map['float64']
         values = com._ensure_float64(values)
     elif com.is_datetime64_dtype(values):
-        f = func_map['int64']
-        values = values.view('i8')
+
+        # if we have NaT, punt to object dtype
+        mask = com.isnull(values)
+        if mask.ravel().any():
+            f = func_map['generic']
+            values = com._ensure_object(values)
+            values[mask] = np.nan
+        else:
+            f = func_map['int64']
+            values = values.view('i8')
+
     elif com.is_integer_dtype(values):
         f = func_map['int64']
         values = com._ensure_int64(values)

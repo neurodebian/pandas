@@ -1539,8 +1539,9 @@ The ``MultiIndex`` object is the hierarchical analogue of the standard
 ``Index`` object which typically stores the axis labels in pandas objects. You
 can think of ``MultiIndex`` an array of tuples where each tuple is unique. A
 ``MultiIndex`` can be created from a list of arrays (using
-``MultiIndex.from_arrays``) or an array of tuples (using
-``MultiIndex.from_tuples``).
+``MultiIndex.from_arrays``), an array of tuples (using
+``MultiIndex.from_tuples``), or a crossed set of iterables (using
+``MultiIndex.from_product``).
 
 .. ipython:: python
 
@@ -1551,6 +1552,14 @@ can think of ``MultiIndex`` an array of tuples where each tuple is unique. A
    index = MultiIndex.from_tuples(tuples, names=['first', 'second'])
    s = Series(randn(8), index=index)
    s
+
+When you want every pairing of the elements in two iterables, it can be easier
+to use the ``MultiIndex.from_product`` function:
+
+.. ipython:: python
+
+   iterables = [['bar', 'baz', 'foo', 'qux'], ['one', 'two']]
+   MultiIndex.from_product(iterables, names=['first', 'second'])
 
 As a convenience, you can pass a list of arrays directly into Series or
 DataFrame to construct a MultiIndex automatically:
@@ -1638,6 +1647,10 @@ completely analogous way to selecting a column in a regular DataFrame:
    df['bar']['one']
    s['qux']
 
+See :ref:`Cross-section with hierarchical index <indexing.xs>` for how to select
+on a deeper level.
+
+
 Data alignment and using ``reindex``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1674,11 +1687,17 @@ following works as you would expect:
    df.ix['bar']
    df.ix['bar', 'two']
 
-"Partial" slicing also works quite nicely:
+"Partial" slicing also works quite nicely for the topmost level:
 
 .. ipython:: python
 
    df.ix['baz':'foo']
+
+But lower levels cannot be sliced in this way, because the MultiIndex uses
+its multiple index dimensions to slice along one dimension of your object:
+
+.. ipython:: python
+
    df.ix[('baz', 'two'):('qux', 'one')]
    df.ix[('baz', 'two'):'foo']
 

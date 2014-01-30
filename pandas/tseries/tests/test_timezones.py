@@ -10,7 +10,7 @@ import pytz
 from pandas import (Index, Series, TimeSeries, DataFrame, isnull,
                     date_range, Timestamp)
 
-from pandas import DatetimeIndex, Int64Index, to_datetime
+from pandas import DatetimeIndex, Int64Index, to_datetime, NaT
 
 from pandas.core.daterange import DateRange
 import pandas.core.datetools as datetools
@@ -105,10 +105,8 @@ class TestTimeZoneSupport(tm.TestCase):
         self.assertEquals(result, expected)
 
     def test_timestamp_constructed_by_date_and_tz(self):
-        """
-        Fix Issue 2993, Timestamp cannot be constructed by datetime.date
-        and tz correctly
-        """
+        # Fix Issue 2993, Timestamp cannot be constructed by datetime.date
+        # and tz correctly
 
         result = Timestamp(date(2012, 3, 11), tz='US/Eastern')
 
@@ -427,7 +425,7 @@ class TestTimeZoneSupport(tm.TestCase):
 
         rng_eastern = rng.tz_localize('US/Eastern')
 
-        rng_repr = repr(rng)
+        rng_repr = repr(rng_eastern)
         self.assert_('2010-04-13 00:00:00' in rng_repr)
 
     def test_index_astype_asobject_tzinfos(self):
@@ -670,6 +668,12 @@ class TestTimeZoneSupport(tm.TestCase):
 
         for other in [idx2, idx3, idx4]:
             self.assert_(idx1.equals(other))
+
+    def test_datetimeindex_tz_nat(self):
+        idx = to_datetime([Timestamp("2013-1-1", tz='US/Eastern'), NaT])
+
+        self.assertTrue(isnull(idx[1]))
+        self.assertTrue(idx[0].tzinfo is not None)
 
 
 class TestTimeZones(tm.TestCase):

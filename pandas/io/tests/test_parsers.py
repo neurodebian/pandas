@@ -33,6 +33,7 @@ from pandas.tseries.index import date_range
 import pandas.tseries.tools as tools
 
 from numpy.testing.decorators import slow
+from numpy.testing import assert_array_equal
 
 from pandas.parser import OverflowError
 
@@ -685,8 +686,8 @@ Klosterdruckerei\tKlosterdruckerei <Kempten> (1609-1805)\tHochfurstliche Buchhan
     def test_default_na_values(self):
         _NA_VALUES = set(['-1.#IND', '1.#QNAN', '1.#IND', '-1.#QNAN',
                           '#N/A','N/A', 'NA', '#NA', 'NULL', 'NaN',
-                          'nan', ''])
-
+                          'nan', '-NaN', '-nan', ''])
+        assert_array_equal (_NA_VALUES, parsers._NA_VALUES)
         nv = len(_NA_VALUES)
         def f(i, v):
             if i == 0:
@@ -967,6 +968,22 @@ c,4,5
         self.assert_(np.array_equal(df.columns, lrange(5)))
 
         self.assert_(np.array_equal(df2.columns, names))
+
+    def test_no_header_prefix(self):
+        data = """1,2,3,4,5
+6,7,8,9,10
+11,12,13,14,15
+"""
+        df_pref = self.read_table(StringIO(data), sep=',', prefix='Field',
+                                  header=None)
+
+        expected = [[1, 2, 3, 4, 5.],
+                    [6, 7, 8, 9, 10],
+                    [11, 12, 13, 14, 15]]
+        tm.assert_almost_equal(df_pref.values, expected)
+
+        self.assert_(np.array_equal(df_pref.columns,
+                                    ['Field0', 'Field1', 'Field2', 'Field3', 'Field4']))
 
     def test_header_with_index_col(self):
         data = """foo,1,2,3

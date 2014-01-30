@@ -30,6 +30,115 @@ R packages.
 Base R
 ------
 
+|aggregate|_
+~~~~~~~~~~~~
+
+In R you may want to split data into subsets and compute the mean for each.
+Using a data.frame called ``df`` and splitting it into groups ``by1`` and
+``by2``:
+
+.. code-block:: r
+
+   df <- data.frame(
+     v1 = c(1,3,5,7,8,3,5,NA,4,5,7,9),
+     v2 = c(11,33,55,77,88,33,55,NA,44,55,77,99),
+     by1 = c("red", "blue", 1, 2, NA, "big", 1, 2, "red", 1, NA, 12),
+     by2 = c("wet", "dry", 99, 95, NA, "damp", 95, 99, "red", 99, NA, NA))
+   aggregate(x=df[, c("v1", "v2")], by=list(mydf2$by1, mydf2$by2), FUN = mean)
+
+The :meth:`~pandas.DataFrame.groupby` method is similar to base R ``aggregate``
+function.
+
+.. ipython:: python
+
+   from pandas import DataFrame
+   df = DataFrame({
+     'v1': [1,3,5,7,8,3,5,np.nan,4,5,7,9],
+     'v2': [11,33,55,77,88,33,55,np.nan,44,55,77,99],
+     'by1': ["red", "blue", 1, 2, np.nan, "big", 1, 2, "red", 1, np.nan, 12],
+     'by2': ["wet", "dry", 99, 95, np.nan, "damp", 95, 99, "red", 99, np.nan,
+             np.nan]
+   })
+
+   g = df.groupby(['by1','by2'])
+   g[['v1','v2']].mean()
+
+For more details and examples see :ref:`the groupby documentation
+<groupby.split>`.
+
+|match|_
+~~~~~~~~~~~~
+
+A common way to select data in R is using ``%in%`` which is defined using the
+function ``match``. The operator ``%in%`` is used to return a logical vector
+indicating if there is a match or not:
+
+.. code-block:: r
+
+   s <- 0:4
+   s %in% c(2,4)
+
+The :meth:`~pandas.DataFrame.isin` method is similar to R ``%in%`` operator:
+
+.. ipython:: python
+
+   s = pd.Series(np.arange(5),dtype=np.float32)
+   s.isin([2, 4])
+
+The ``match`` function returns a vector of the positions of matches
+of its first argument in its second:
+
+.. code-block:: r
+
+   s <- 0:4
+   match(s, c(2,4))
+
+The :meth:`~pandas.core.groupby.GroupBy.apply` method can be used to replicate
+this:
+
+.. ipython:: python
+
+   s = pd.Series(np.arange(5),dtype=np.float32)
+   Series(pd.match(s,[2,4],np.nan))
+
+For more details and examples see :ref:`the reshaping documentation
+<indexing.basics.indexing_isin>`.
+
+|tapply|_
+~~~~~~~~~
+
+``tapply`` is similar to ``aggregate``, but data can be in a ragged array,
+since the subclass sizes are possibly irregular. Using a data.frame called
+``baseball``, and retrieving information based on the array ``team``:
+
+.. code-block:: r
+
+   baseball <-
+     data.frame(team = gl(5, 5,
+                labels = paste("Team", LETTERS[1:5])),
+                player = sample(letters, 25),
+                batting.average = runif(25, .200, .400))
+
+   tapply(baseball$batting.average, baseball.example$team,
+          max)
+
+In ``pandas`` we may use :meth:`~pandas.pivot_table` method to handle this:
+
+.. ipython:: python
+
+   import random
+   import string
+
+   baseball = DataFrame({
+      'team': ["team %d" % (x+1) for x in range(5)]*5,
+      'player': random.sample(list(string.ascii_lowercase),25),
+      'batting avg': np.random.uniform(.200, .400, 25)
+      })
+   baseball.pivot_table(values='batting avg', cols='team', aggfunc=np.max)
+
+For more details and examples see :ref:`the reshaping documentation
+<reshaping.pivot>`.
+
 |subset|_
 ~~~~~~~~~~
 
@@ -51,10 +160,7 @@ index/slice as well as standard boolean indexing:
 
 .. ipython:: python
 
-   from pandas import DataFrame
-   from numpy import random
-
-   df = DataFrame({'a': random.randn(10), 'b': random.randn(10)})
+   df = DataFrame({'a': np.random.randn(10), 'b': np.random.randn(10)})
    df.query('a <= b')
    df[df.a <= df.b]
    df.loc[df.a <= df.b]
@@ -82,7 +188,7 @@ In ``pandas`` the equivalent expression, using the
 
 .. ipython:: python
 
-   df = DataFrame({'a': random.randn(10), 'b': random.randn(10)})
+   df = DataFrame({'a': np.random.randn(10), 'b': np.random.randn(10)})
    df.eval('a + b')
    df.a + df.b  # same as the previous expression
 
@@ -120,8 +226,6 @@ table below shows how these data structures could be mapped in Python.
 An expression using a data.frame called ``df`` in R where you want to
 summarize ``x`` by ``month``:
 
-
-
 .. code-block:: r
 
    require(plyr)
@@ -140,16 +244,14 @@ summarize ``x`` by ``month``:
 In ``pandas`` the equivalent expression, using the
 :meth:`~pandas.DataFrame.groupby` method, would be:
 
-
-
 .. ipython:: python
 
    df = DataFrame({
-       'x': random.uniform(1., 168., 120),
-       'y': random.uniform(7., 334., 120),
-       'z': random.uniform(1.7, 20.7, 120),
+       'x': np.random.uniform(1., 168., 120),
+       'y': np.random.uniform(7., 334., 120),
+       'z': np.random.uniform(1.7, 20.7, 120),
        'month': [5,6,7,8]*30,
-       'week': random.randint(1,4, 120)
+       'week': np.random.randint(1,4, 120)
    })
 
    grouped = df.groupby(['month','week'])
@@ -235,8 +337,8 @@ For more details and examples see :ref:`the reshaping documentation
 |cast|_
 ~~~~~~~
 
-An expression using a data.frame called ``df`` in R to cast into a higher
-dimensional array:
+In R ``acast`` is an expression using a data.frame called ``df`` in R to cast
+into a higher dimensional array:
 
 .. code-block:: r
 
@@ -256,9 +358,9 @@ In Python the best way is to make use of :meth:`~pandas.pivot_table`:
 .. ipython:: python
 
    df = DataFrame({
-        'x': random.uniform(1., 168., 12),
-        'y': random.uniform(7., 334., 12),
-        'z': random.uniform(1.7, 20.7, 12),
+        'x': np.random.uniform(1., 168., 12),
+        'y': np.random.uniform(7., 334., 12),
+        'z': np.random.uniform(1.7, 20.7, 12),
         'month': [5,6,7]*4,
         'week': [1,2]*6
    })
@@ -266,8 +368,53 @@ In Python the best way is to make use of :meth:`~pandas.pivot_table`:
    pd.pivot_table(mdf, values='value', rows=['variable','week'],
                     cols=['month'], aggfunc=np.mean)
 
+Similarly for ``dcast`` which uses a data.frame called ``df`` in R to
+aggregate information based on ``Animal`` and ``FeedType``:
+
+.. code-block:: r
+
+   df <- data.frame(
+     Animal = c('Animal1', 'Animal2', 'Animal3', 'Animal2', 'Animal1',
+                'Animal2', 'Animal3'),
+     FeedType = c('A', 'B', 'A', 'A', 'B', 'B', 'A'),
+     Amount = c(10, 7, 4, 2, 5, 6, 2)
+   )
+
+   dcast(df, Animal ~ FeedType, sum, fill=NaN)
+   # Alternative method using base R
+   with(df, tapply(Amount, list(Animal, FeedType), sum))
+
+Python can approach this in two different ways. Firstly, similar to above
+using :meth:`~pandas.pivot_table`:
+
+.. ipython:: python
+
+   df = DataFrame({
+       'Animal': ['Animal1', 'Animal2', 'Animal3', 'Animal2', 'Animal1',
+                  'Animal2', 'Animal3'],
+       'FeedType': ['A', 'B', 'A', 'A', 'B', 'B', 'A'],
+       'Amount': [10, 7, 4, 2, 5, 6, 2],
+   })
+
+   df.pivot_table(values='Amount', rows='Animal', cols='FeedType', aggfunc='sum')
+
+The second approach is to use the :meth:`~pandas.DataFrame.groupby` method:
+
+.. ipython:: python
+
+   df.groupby(['Animal','FeedType'])['Amount'].sum()
+
 For more details and examples see :ref:`the reshaping documentation
-<reshaping.pivot>`.
+<reshaping.pivot>` or :ref:`the groupby documentation<groupby.split>`.
+
+.. |aggregate| replace:: ``aggregate``
+.. _aggregate: http://finzi.psych.upenn.edu/R/library/stats/html/aggregate.html
+
+.. |match| replace:: ``match`` / ``%in%``
+.. _match: http://finzi.psych.upenn.edu/R/library/base/html/match.html
+
+.. |tapply| replace:: ``tapply``
+.. _tapply: http://finzi.psych.upenn.edu/R/library/base/html/tapply.html
 
 .. |with| replace:: ``with``
 .. _with: http://finzi.psych.upenn.edu/R/library/base/html/with.html

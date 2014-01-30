@@ -18,8 +18,19 @@ looking for a quick way to help out.
 
         ```
 
-  - Specify the pandas version used and those of it's dependencies. You can simply include   the output of
-    [`ci/print_versions.py`](https://github.com/pydata/pandas/blob/master/ci/print_versions.py).
+  - Include the full version string of pandas and it's dependencies. In recent (>0.12) versions
+    of pandas you can use a built in function:
+
+    ```python
+    >>> from pandas.util.print_versions import show_versions
+    >>> show_versions()
+    ```
+
+    and in 0.13.1 onwards:
+    ```python
+    >>> pd.show_versions()
+    ```
+
   - Explain what the expected behavior was, and what you saw instead.
 
 #### Pull Requests
@@ -30,7 +41,7 @@ looking for a quick way to help out.
     - One blank line.
     - Optionally, a commit message body.
   - Please reference relevant Github issues in your commit message using `GH1234`
-    or `#1234`. Either style is fine but the '#' style generates nose when your rebase your PR.
+    or `#1234`. Either style is fine but the '#' style generates noise when your rebase your PR.
   - `doc/source/release.rst` and `doc/source/vx.y.z.txt` contain an ongoing
     changelog for each release. Add entries to these files
     as needed in a separate commit in your PR: document the fix, enhancement,
@@ -52,8 +63,10 @@ looking for a quick way to help out.
     - Add deprecation warnings where needed.
   - Performance matters. Make sure your PR hasn't introduced perf regressions by using `test_perf.sh`.
   - Docstrings follow the [numpydoc](https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt) format.
+  - Write tests.
   - When writing tests, use 2.6 compatible `self.assertFoo` methods. Some polyfills such as `assertRaises`
     can be found in `pandas.util.testing`.
+  - Do not attach doctrings to tests. Make the test itself readable and use comments if needed.
   - Generally, pandas source files should not contain attributions. You can include a "thanks to..."
     in the release changelog. The rest is `git blame`/`git log`.
   - When you start working on a PR, start by creating a new branch pointing at the latest

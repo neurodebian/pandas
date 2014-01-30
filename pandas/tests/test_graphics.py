@@ -299,6 +299,10 @@ class TestSeriesPlots(tm.TestCase):
         _check_plot_works(autocorrelation_plot, self.ts)
         _check_plot_works(autocorrelation_plot, self.ts.values)
 
+        ax = autocorrelation_plot(self.ts, label='Test')
+        t = ax.get_legend().get_texts()[0].get_text()
+        self.assertEqual(t, 'Test')
+
     @slow
     def test_lag_plot(self):
         from pandas.tools.plotting import lag_plot
@@ -751,6 +755,7 @@ class TestDataFramePlots(tm.TestCase):
         _check_plot_works(scat, diagonal='kde')
         _check_plot_works(scat, diagonal='density')
         _check_plot_works(scat, diagonal='hist')
+        _check_plot_works(scat, range_padding=.1)
 
         def scat2(x, y, by=None, ax=None, figsize=None):
             return plt.scatter_plot(df, x, y, by, ax, figsize=None)

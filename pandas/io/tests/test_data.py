@@ -150,12 +150,16 @@ class TestYahoo(tm.TestCase):
 
     @network
     def test_get_components_dow_jones(self):
+        raise nose.SkipTest('unreliable test, receive partial components back for dow_jones')
+
         df = web.get_components_yahoo('^DJI') #Dow Jones
         assert isinstance(df, pd.DataFrame)
         self.assertEqual(len(df), 30)
 
     @network
     def test_get_components_dax(self):
+        raise nose.SkipTest('unreliable test, receive partial components back for dax')
+
         df = web.get_components_yahoo('^GDAXI') #DAX
         assert isinstance(df, pd.DataFrame)
         self.assertEqual(len(df), 30)
@@ -164,8 +168,9 @@ class TestYahoo(tm.TestCase):
 
     @network
     def test_get_components_nasdaq_100(self):
-        """as of 7/12/13 the conditional will test false because the link is
-        invalid"""
+        # as of 7/12/13 the conditional will test false because the link is invalid
+        raise nose.SkipTest('unreliable test, receive partial components back for nasdaq_100')
+
         df = web.get_components_yahoo('^NDX') #NASDAQ-100
         assert isinstance(df, pd.DataFrame)
 
@@ -260,6 +265,12 @@ class TestYahooOptions(tm.TestCase):
         else:
             assert len(calls)>1
             assert len(puts)>1
+
+    def test_get_options_data(self):
+
+        # regression test GH6105
+        self.assertRaises(ValueError,self.aapl.get_options_data,month=3)
+        self.assertRaises(ValueError,self.aapl.get_options_data,year=1992)
 
     @network
     def test_get_near_stock_price(self):
@@ -385,10 +396,9 @@ class TestDataReader(tm.TestCase):
 class TestFred(tm.TestCase):
     @network
     def test_fred(self):
-        """
-        Throws an exception when DataReader can't get a 200 response from
-        FRED.
-        """
+
+        # Throws an exception when DataReader can't get a 200 response from
+        # FRED.
 
         start = datetime(2010, 1, 1)
         end = datetime(2013, 1, 27)

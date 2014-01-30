@@ -12,6 +12,7 @@
 
 import sys
 import os
+from pandas.compat import u
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -51,20 +52,20 @@ extensions = ['sphinx.ext.autodoc',
               ]
 
 # Add any paths that contain templates here, relative to this directory.
-templates_path = ['_templates']
+templates_path = ['../_templates']
 
 # The suffix of source filenames.
 source_suffix = '.rst'
 
 # The encoding of source files.
-# source_encoding = 'utf-8'
+source_encoding = 'utf-8'
 
 # The master toctree document.
 master_doc = 'index'
 
 # General information about the project.
-project = u'pandas'
-copyright = u'2008-2012, the pandas development team'
+project = u('pandas')
+copyright = u('2008-2014, the pandas development team')
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -211,8 +212,8 @@ htmlhelp_basename = 'pandas'
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
     ('index', 'pandas.tex',
-     u'pandas: powerful Python data analysis toolkit',
-     u'Wes McKinney\n\& PyData Development Team', 'manual'),
+     u('pandas: powerful Python data analysis toolkit'),
+     u('Wes McKinney\n\& PyData Development Team'), 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of

@@ -326,7 +326,7 @@ result in byte strings being decoded to unicode in the result:
 
 .. ipython:: python
 
-   data = 'word,length\nTr\xe4umen,7\nGr\xfc\xdfe,5'
+   data = b'word,length\nTr\xc3\xa4umen,7\nGr\xc3\xbc\xc3\x9fe,5'.decode('utf8').encode('latin-1')
    df = pd.read_csv(StringIO(data), encoding='latin-1')
    df
    df['word'][1]
@@ -386,11 +386,6 @@ The simplest case is to just pass in ``parse_dates=True``:
 
    # These are python datetime objects
    df.index
-
-.. ipython:: python
-   :suppress:
-
-   os.remove('foo.csv')
 
 It is often the case that we may want to store date and time data separately,
 or store various date fields separately. the ``parse_dates`` keyword can be
@@ -456,12 +451,22 @@ data columns:
                     index_col=0) #index is the nominal column
    df
 
-**Note**: When passing a dict as the `parse_dates` argument, the order of
-the columns prepended is not guaranteed, because `dict` objects do not impose
-an ordering on their keys. On Python 2.7+ you may use `collections.OrderedDict`
-instead of a regular `dict` if this matters to you. Because of this, when using a
-dict for 'parse_dates' in conjunction with the `index_col` argument, it's best to
-specify `index_col` as a column label rather then as an index on the resulting frame.
+.. note::
+   read_csv has a fast_path for parsing datetime strings in iso8601 format,
+   e.g "2000-01-01T00:01:02+00:00" and similar variations. If you can arrange
+   for your data to store datetimes in this format, load times will be
+   significantly faster, ~20x has been observed.
+
+
+.. note::
+
+   When passing a dict as the `parse_dates` argument, the order of
+   the columns prepended is not guaranteed, because `dict` objects do not impose
+   an ordering on their keys. On Python 2.7+ you may use `collections.OrderedDict`
+   instead of a regular `dict` if this matters to you. Because of this, when using a
+   dict for 'parse_dates' in conjunction with the `index_col` argument, it's best to
+   specify `index_col` as a column label rather then as an index on the resulting frame.
+
 
 Date Parsing Functions
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -489,6 +494,45 @@ a single date rather than the entire array.
    os.remove('tmp.csv')
 
 .. _io.dayfirst:
+
+
+Inferring Datetime Format
+~~~~~~~~~~~~~~~~~~~~~~~~~
+If you have ``parse_dates`` enabled for some or all of your columns, and your
+datetime strings are all formatted the same way, you may get a large speed
+up by setting ``infer_datetime_format=True``.  If set, pandas will attempt
+to guess the format of your datetime strings, and then use a faster means
+of parsing the strings.  5-10x parsing speeds have been observed.  Pandas
+will fallback to the usual parsing if either the format cannot be guessed
+or the format that was guessed cannot properly parse the entire column
+of strings.  So in general, ``infer_datetime_format`` should not have any
+negative consequences if enabled.
+
+Here are some examples of datetime strings that can be guessed (All
+representing December 30th, 2011 at 00:00:00)
+
+- "20111230"
+- "2011/12/30"
+- "20111230 00:00:00"
+- "12/30/2011 00:00:00"
+- "30/Dec/2011 00:00:00"
+- "30/December/2011 00:00:00"
+
+``infer_datetime_format`` is sensitive to ``dayfirst``.  With
+``dayfirst=True``, it will guess "01/12/2011" to be December 1st. With
+``dayfirst=False`` (default) it will guess "01/12/2011" to be January 12th.
+
+.. ipython:: python
+
+   # Try to infer the format for the index column
+   df = pd.read_csv('foo.csv', index_col=0, parse_dates=True,
+                    infer_datetime_format=True)
+   df
+
+.. ipython:: python
+   :suppress:
+
+   os.remove('foo.csv')
 
 International Date Formats
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -565,7 +609,7 @@ the corresponding equivalent values will also imply a missing value (in this cas
 
 To completely override the default values that are recognized as missing, specify ``keep_default_na=False``.
 The default ``NaN`` recognized values are ``['-1.#IND', '1.#QNAN', '1.#IND', '-1.#QNAN', '#N/A','N/A', 'NA',
-'#NA', 'NULL', 'NaN', 'nan']``.
+'#NA', 'NULL', 'NaN', '-NaN', 'nan', '-nan']``.
 
 .. code-block:: python
 
@@ -1758,28 +1802,32 @@ Not escaped:
 Excel files
 -----------
 
-The ``read_excel`` method can read Excel 2003 (``.xls``) and
+The :func:`~pandas.read_excel` method can read Excel 2003 (``.xls``) and
 Excel 2007 (``.xlsx``) files using the ``xlrd`` Python
 module and use the same parsing code as the above to convert tabular data into
 a DataFrame. See the :ref:`cookbook<cookbook.excel>` for some
 advanced strategies
 
+Besides ``read_excel`` you can also read Excel files using the ``ExcelFile``
+class. The following two command are equivalent:
+
+.. code-block:: python
+
+    # using the ExcelFile class
+    xls = pd.ExcelFile('path_to_file.xls')
+    xls.parse('Sheet1', index_col=None, na_values=['NA'])
+
+    # using the read_excel function
+    read_excel('path_to_file.xls', 'Sheet1', index_col=None, na_values=['NA'])
+
+The class based approach can be used to read multiple sheets or to introspect
+the sheet names using the ``sheet_names`` attribute. 
+
 .. note::
 
-   The prior method of accessing Excel is now deprecated as of 0.12.0,
-   this will work but will be removed in a future version.
-
-      .. code-block:: python
-
-         from pandas.io.parsers import ExcelFile
-         xls = ExcelFile('path_to_file.xls')
-         xls.parse('Sheet1', index_col=None, na_values=['NA'])
-
-   Replaced by
-
-     .. code-block:: python
-
-        read_excel('path_to_file.xls', 'Sheet1', index_col=None, na_values=['NA'])
+   The prior method of accessing ``ExcelFile`` has been moved from
+   ``pandas.io.parsers`` to the top level namespace starting from pandas
+   0.12.0.
 
 .. versionadded:: 0.13
 
@@ -2564,10 +2612,27 @@ The default is 50,000 rows returned in a chunk.
       for df in read_hdf('store.h5','df', chunsize=3):
           print(df)
 
-Note, that the chunksize keyword applies to the **returned** rows. So if you
-are doing a query, then that set will be subdivided and returned in the
-iterator. Keep in mind that if you do not pass a ``where`` selection criteria
-then the ``nrows`` of the table are considered.
+Note, that the chunksize keyword applies to the **source** rows. So if you
+are doing a query, then the chunksize will subdivide the total rows in the table
+and the query applied, returning an iterator on potentially unequal sized chunks.
+
+Here is a recipe for generating a query and using it to create equal sized return
+chunks.
+
+.. ipython:: python
+
+   dfeq = DataFrame({'number': np.arange(1,11)})
+   dfeq
+
+   store.append('dfeq', dfeq, data_columns=['number'])
+
+   def chunks(l, n):
+        return [l[i:i+n] for i in xrange(0, len(l), n)]
+
+   evens = [2,4,6,8,10]
+   coordinates = store.select_as_coordinates('dfeq','number=evens')
+   for c in chunks(coordinates, 2):
+        print store.select('dfeq',where=c)
 
 Advanced Queries
 ~~~~~~~~~~~~~~~~
@@ -3181,9 +3246,9 @@ To add more rows to this, simply:
    To use this module, you will need a BigQuery account. See
    <https://cloud.google.com/products/big-query> for details.
 
-   As of 10/10/13, there is a bug in Google's API preventing result sets
-   from being larger than 100,000 rows. A patch is scheduled for the week of
-   10/14/13.
+   As of 1/28/14, a known bug is present that could possibly cause data duplication in the resultant dataframe. A fix is imminent,
+   but any client changes will not make it into 0.13.1. See:
+   http://stackoverflow.com/questions/20984592/bigquery-results-not-including-page-token/21009144?noredirect=1#comment32090677_21009144
 
 .. _io.stata:
 

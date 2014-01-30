@@ -148,7 +148,7 @@ def str_count(arr, pat, flags=0):
     return _na_map(f, arr)
 
 
-def str_contains(arr, pat, case=True, flags=0, na=np.nan):
+def str_contains(arr, pat, case=True, flags=0, na=np.nan, regex=True):
     """
     Check whether given pattern is contained in each string in the array
 
@@ -161,21 +161,31 @@ def str_contains(arr, pat, case=True, flags=0, na=np.nan):
     flags : int, default 0 (no flags)
         re module flags, e.g. re.IGNORECASE
     na : default NaN, fill value for missing values.
-
+    regex : bool, default True
+        If True use re.search, otherwise use Python in operator
+        
     Returns
     -------
+    Series of boolean values
+        
+    See Also
+    --------
+    match : analagous, but stricter, relying on re.match instead of re.search
 
     """
-    if not case:
-        flags |= re.IGNORECASE
+    if regex:
+        if not case:
+            flags |= re.IGNORECASE
 
-    regex = re.compile(pat, flags=flags)
+        regex = re.compile(pat, flags=flags)
 
-    if regex.groups > 0:
-        warnings.warn("This pattern has match groups. To actually get the"
-                      " groups, use str.extract.", UserWarning)
+        if regex.groups > 0:
+            warnings.warn("This pattern has match groups. To actually get the"
+                          " groups, use str.extract.", UserWarning)
 
-    f = lambda x: bool(regex.search(x))
+        f = lambda x: bool(regex.search(x))
+    else:
+        f = lambda x: pat in x
     return _na_map(f, arr, na)
 
 
@@ -326,11 +336,18 @@ def str_match(arr, pat, case=True, flags=0, na=np.nan, as_indexer=False):
     as_indexer : False, by default, gives deprecated behavior better achieved
         using str_extract. True return boolean indexer.
 
-
     Returns
     -------
-    matches : boolean array (if as_indexer=True)
-    matches : array of tuples (if as_indexer=False, default but deprecated)
+    Series of boolean values
+        if as_indexer=True
+    Series of tuples
+        if as_indexer=False, default but deprecated
+
+    See Also
+    --------
+    contains : analagous, but less strict, relying on re.search instead of 
+        re.match
+    extract : now preferred to the deprecated usage of match (as_indexer=False)
 
     Notes
     -----
@@ -385,45 +402,102 @@ def str_extract(arr, pat, flags=0):
     -------
     extracted groups : Series (one group) or DataFrame (multiple groups)
 
+    Examples
+    --------
+    A pattern with one group will return a Series. Non-matches will be NaN.
 
-    Notes
-    -----
-    Compare to the string method match, which returns re.match objects.
+    >>> Series(['a1', 'b2', 'c3']).str.extract('[ab](\d)')
+    0      1
+    1      2
+    2    NaN
+    dtype: object
+
+    A pattern with more than one group will return a DataFrame.
+    
+    >>> Series(['a1', 'b2', 'c3']).str.extract('([ab])(\d)')
+         0    1
+    0    a    1
+    1    b    2
+    2  NaN  NaN
+
+    A pattern may contain optional groups.
+    
+    >>> Series(['a1', 'b2', 'c3']).str.extract('([ab])?(\d)')
+         0  1
+    0    a  1
+    1    b  2
+    2  NaN  3
+
+    Named groups will become column names in the result.
+    
+    >>> Series(['a1', 'b2', 'c3']).str.extract('(?P<letter>[ab])(?P<digit>\d)')
+      letter digit
+    0      a     1
+    1      b     2
+    2    NaN   NaN
+
     """
     regex = re.compile(pat, flags=flags)
-
     # just to be safe, check this
     if regex.groups == 0:
         raise ValueError("This pattern contains no groups to capture.")
-    elif regex.groups == 1:
-        def f(x):
-            if not isinstance(x, compat.string_types):
-                return None
-            m = regex.search(x)
-            if m:
-                return m.groups()[0]  # may be None
-            else:
-                return None
+    empty_row = [np.nan]*regex.groups
+    def f(x):
+        if not isinstance(x, compat.string_types):
+            return empty_row
+        m = regex.search(x)
+        if m:
+            return [np.nan if item is None else item for item in m.groups()]
+        else:
+            return empty_row
+    if regex.groups == 1:
+        result = Series([f(val)[0] for val in arr], name=regex.groupindex.get(1))
     else:
-        empty_row = Series(regex.groups * [None])
-
-        def f(x):
-            if not isinstance(x, compat.string_types):
-                return empty_row
-            m = regex.search(x)
-            if m:
-                return Series(list(m.groups()))  # may contain None
-            else:
-                return empty_row
-    result = arr.apply(f)
-    result.replace({None: np.nan}, inplace=True)
-    if regex.groups > 1:
-        result = DataFrame(result)  # Don't rely on the wrapper; name columns.
         names = dict(zip(regex.groupindex.values(), regex.groupindex.keys()))
-        result.columns = [names.get(1 + i, i) for i in range(regex.groups)]
-    else:
-        result.name = regex.groupindex.get(0)
+        columns = [names.get(1 + i, i) for i in range(regex.groups)]
+        result = DataFrame([f(val) for val in arr], columns=columns)
     return result
+
+
+def str_get_dummies(arr, sep='|'):
+    """
+    Split each string by sep and return a frame of dummy/indicator variables.
+
+    Examples
+    --------
+    >>> Series(['a|b', 'a', 'a|c']).str.get_dummies()
+       a  b  c
+    0  1  1  0
+    1  1  0  0
+    2  1  0  1
+
+    >>> pd.Series(['a|b', np.nan, 'a|c']).str.get_dummies()
+       a  b  c
+    0  1  1  0
+    1  0  0  0
+    2  1  0  1
+
+    See also ``pd.get_dummies``.
+
+    """
+    # TODO remove this hack?
+    arr = arr.fillna('')
+    try:
+        arr = sep + arr + sep
+    except TypeError:
+        arr = sep + arr.astype(str) + sep
+
+    tags = set()
+    for ts in arr.str.split(sep):
+        tags.update(ts)
+    tags = sorted(tags - set([""]))
+
+    dummies = np.empty((len(arr), len(tags)), dtype=np.int64)
+
+    for i, t in enumerate(tags):
+        pat = sep + t + sep
+        dummies[:, i] = lib.map_infer(arr.values, lambda x: pat in x)
+    return DataFrame(dummies, arr.index, tags)
 
 
 def str_join(arr, sep):
@@ -774,11 +848,13 @@ class StringMethods(object):
             g = self.get(i)
 
     def _wrap_result(self, result):
-        assert result.ndim < 3
-        if result.ndim == 1:
+        if not hasattr(result, 'ndim'):
+            return result
+        elif result.ndim == 1:
             return Series(result, index=self.series.index,
                           name=self.series.name)
         else:
+            assert result.ndim < 3
             return DataFrame(result, index=self.series.index)
 
     @copy(str_cat)
@@ -802,9 +878,9 @@ class StringMethods(object):
         return self._wrap_result(result)
 
     @copy(str_contains)
-    def contains(self, pat, case=True, flags=0, na=np.nan):
+    def contains(self, pat, case=True, flags=0, na=np.nan, regex=True):
         result = str_contains(self.series, pat, case=case, flags=flags,
-                              na=na)
+                              na=na, regex=regex)
         return self._wrap_result(result)
 
     @copy(str_replace)
@@ -860,6 +936,11 @@ class StringMethods(object):
     @copy(str_rstrip)
     def rstrip(self, to_strip=None):
         result = str_rstrip(self.series, to_strip)
+        return self._wrap_result(result)
+
+    @copy(str_get_dummies)
+    def get_dummies(self, sep='|'):
+        result = str_get_dummies(self.series, sep)
         return self._wrap_result(result)
 
     count = _pat_wrapper(str_count, flags=True)

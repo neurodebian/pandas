@@ -15,7 +15,7 @@ from pandas.core.base import FrozenList, FrozenNDArray
 from pandas.util.decorators import cache_readonly, deprecate
 from pandas.core.common import isnull
 import pandas.core.common as com
-from pandas.core.common import _values_from_object, is_float, is_integer
+from pandas.core.common import _values_from_object, is_float, is_integer, ABCSeries
 from pandas.core.config import get_option
 
 # simplify
@@ -105,7 +105,7 @@ class Index(FrozenNDArray):
             return subarr
 
         from pandas.tseries.period import PeriodIndex
-        if isinstance(data, np.ndarray):
+        if isinstance(data, (np.ndarray, ABCSeries)):
             if issubclass(data.dtype.type, np.datetime64):
                 from pandas.tseries.index import DatetimeIndex
                 result = DatetimeIndex(data, copy=copy, name=name, **kwargs)
@@ -212,7 +212,7 @@ class Index(FrozenNDArray):
                 cls._scalar_data_error(data)
 
             # other iterable of some kind
-            if not isinstance(data, (list, tuple)):
+            if not isinstance(data, (ABCSeries, list, tuple)):
                 data = list(data)
             data = np.asarray(data)
         return data
@@ -767,7 +767,7 @@ class Index(FrozenNDArray):
         For a sorted index, return the most recent label up to and including
         the passed label. Return NaN if not found
         """
-        if isinstance(label, (Index, np.ndarray)):
+        if isinstance(label, (Index, ABCSeries, np.ndarray)):
             raise TypeError('%s' % type(label))
 
         if label not in self:
@@ -1535,7 +1535,7 @@ class Index(FrozenNDArray):
 
                     # get_loc will return a boolean array for non_uniques
                     # if we are not monotonic
-                    if isinstance(start_slice, np.ndarray):
+                    if isinstance(start_slice, (ABCSeries, np.ndarray)):
                         raise KeyError("cannot peform a slice operation "
                                        "on a non-unique non-monotonic index")
 
@@ -2396,6 +2396,44 @@ class MultiIndex(Index):
         else:
             return result_levels
 
+    def to_hierarchical(self, n_repeat, n_shuffle=1):
+        """
+        Return a MultiIndex reshaped to conform to the
+        shapes given by n_repeat and n_shuffle.
+
+        Useful to replicate and rearrange a MultiIndex for combination
+        with another Index with n_repeat items.
+
+        Parameters
+        ----------
+        n_repeat : int
+            Number of times to repeat the labels on self
+        n_shuffle : int
+            Controls the reordering of the labels. If the result is going
+            to be an inner level in a MultiIndex, n_shuffle will need to be
+            greater than one. The size of each label must divisible by
+            n_shuffle.
+
+        Returns
+        -------
+        MultiIndex
+
+        Examples
+        --------
+        >>> idx = MultiIndex.from_tuples([(1, u'one'), (1, u'two'),
+                                          (2, u'one'), (2, u'two')])
+        >>> idx.to_hierarchical(3)
+        MultiIndex(levels=[[1, 2], [u'one', u'two']],
+                   labels=[[0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
+                           [0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1]])
+        """
+        levels = self.levels
+        labels = [np.repeat(x, n_repeat) for x in self.labels]
+        # Assumes that each label is divisible by n_shuffle
+        labels = [x.reshape(n_shuffle, -1).ravel(1) for x in labels]
+        names = self.names
+        return MultiIndex(levels=levels, labels=labels, names=names)
+
     @property
     def is_all_dates(self):
         return False
@@ -2434,7 +2472,9 @@ class MultiIndex(Index):
 
         Parameters
         ----------
-        arrays : list / sequence
+        arrays : list / sequence of array-likes
+            Each array-like gives one level's value for each data point.
+            len(arrays) is the number of levels.
         sortorder : int or None
             Level of sortedness (must be lexicographically sorted by that
             level)
@@ -2442,6 +2482,17 @@ class MultiIndex(Index):
         Returns
         -------
         index : MultiIndex
+
+        Examples
+        --------
+        >>> arrays = [[1, 1, 2, 2], ['red', 'blue', 'red', 'blue']]
+        >>> MultiIndex.from_arrays(arrays, names=('number', 'color'))
+
+        See Also
+        --------
+        MultiIndex.from_tuples : Convert list of tuples to MultiIndex
+        MultiIndex.from_product : Make a MultiIndex from cartesian product
+                                  of iterables
         """
         from pandas.core.categorical import Categorical
 
@@ -2466,7 +2517,8 @@ class MultiIndex(Index):
 
         Parameters
         ----------
-        tuples : array-like
+        tuples : list / sequence of tuple-likes
+            Each tuple is the index of one row/column.
         sortorder : int or None
             Level of sortedness (must be lexicographically sorted by that
             level)
@@ -2474,6 +2526,18 @@ class MultiIndex(Index):
         Returns
         -------
         index : MultiIndex
+
+        Examples
+        --------
+        >>> tuples = [(1, u'red'), (1, u'blue'),
+                      (2, u'red'), (2, u'blue')]
+        >>> MultiIndex.from_tuples(tuples, names=('number', 'color'))
+
+        See Also
+        --------
+        MultiIndex.from_arrays : Convert list of arrays to MultiIndex
+        MultiIndex.from_product : Make a MultiIndex from cartesian product
+                                  of iterables
         """
         if len(tuples) == 0:
             # I think this is right? Not quite sure...
@@ -2490,6 +2554,45 @@ class MultiIndex(Index):
             arrays = lzip(*tuples)
 
         return MultiIndex.from_arrays(arrays, sortorder=sortorder,
+                                      names=names)
+
+    @classmethod
+    def from_product(cls, iterables, sortorder=None, names=None):
+        """
+        Make a MultiIndex from the cartesian product of multiple iterables
+
+        Parameters
+        ----------
+        iterables : list / sequence of iterables
+            Each iterable has unique labels for each level of the index.
+        sortorder : int or None
+            Level of sortedness (must be lexicographically sorted by that
+            level).
+        names : list / sequence of strings or None
+            Names for the levels in the index.
+
+        Returns
+        -------
+        index : MultiIndex
+
+        Examples
+        --------
+        >>> numbers = [0, 1, 2]
+        >>> colors = [u'green', u'purple']
+        >>> MultiIndex.from_product([numbers, colors],
+                                     names=['number', 'color'])
+        MultiIndex(levels=[[0, 1, 2], [u'green', u'purple']],
+                   labels=[[0, 0, 1, 1, 2, 2], [0, 1, 0, 1, 0, 1]],
+                   names=[u'number', u'color'])
+
+        See Also
+        --------
+        MultiIndex.from_arrays : Convert list of arrays to MultiIndex
+        MultiIndex.from_tuples : Convert list of tuples to MultiIndex
+        """
+        from pandas.tools.util import cartesian_product
+        product = cartesian_product(iterables)
+        return MultiIndex.from_arrays(product, sortorder=sortorder,
                                       names=names)
 
     @property

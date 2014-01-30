@@ -8,6 +8,7 @@ import numbers
 import codecs
 import csv
 import types
+from datetime import datetime, timedelta
 
 from numpy.lib.format import read_array, write_array
 import numpy as np
@@ -39,10 +40,8 @@ class AmbiguousIndexError(PandasError, KeyError):
     pass
 
 
-_POSSIBLY_CAST_DTYPES = set([np.dtype(t)
-                             for t in ['M8[ns]', '>M8[ns]', '<M8[ns]',
-                                       'm8[ns]', '>m8[ns]', '<m8[ns]',
-                                       'O', 'int8',
+_POSSIBLY_CAST_DTYPES = set([np.dtype(t).name
+                             for t in ['O', 'int8',
                                        'uint8', 'int16', 'uint16', 'int32',
                                        'uint32', 'int64', 'uint64']])
 
@@ -276,6 +275,40 @@ def notnull(obj):
         return not res
     return -res
 
+def _is_null_datelike_scalar(other):
+    """ test whether the object is a null datelike, e.g. Nat
+    but guard against passing a non-scalar """
+    return (np.isscalar(other) and (isnull(other) or other == tslib.iNaT)) or other is pd.NaT or other is None
+
+def array_equivalent(left, right):
+    """
+    True if two arrays, left and right, have equal non-NaN elements, and NaNs in
+    corresponding locations.  False otherwise. It is assumed that left and right
+    are NumPy arrays of the same dtype. The behavior of this function
+    (particularly with respect to NaNs) is not defined if the dtypes are
+    different.
+
+    Parameters
+    ----------
+    left, right : ndarrays
+
+    Returns
+    -------
+    b : bool
+        Returns True if the arrays are equivalent.
+
+    Examples
+    --------
+    >>> array_equivalent(np.array([1, 2, nan]), np.array([1, 2, nan]))
+    True
+    >>> array_equivalent(np.array([1, nan, 2]), np.array([1, 2, nan]))
+    False
+    """
+    if left.shape != right.shape: return False
+    # NaNs occur only in object arrays, float or complex arrays.
+    if not issubclass(left.dtype.type, (np.floating, np.complexfloating)):
+        return np.array_equal(left, right)
+    return  ((left == right) | (np.isnan(left) & np.isnan(right))).all()
 
 def _iterable_not_string(x):
     return (isinstance(x, collections.Iterable) and
@@ -837,10 +870,13 @@ def _infer_dtype_from_scalar(val):
 
         dtype = np.object_
 
-    elif isinstance(val, np.datetime64):
-        # ugly hacklet
+    elif isinstance(val, (np.datetime64, datetime)) and getattr(val,'tz',None) is None:
         val = lib.Timestamp(val).value
         dtype = np.dtype('M8[ns]')
+
+    elif isinstance(val, (np.timedelta64, timedelta)):
+        val = tslib.convert_to_timedelta(val,'ns')
+        dtype = np.dtype('m8[ns]')
 
     elif is_bool(val):
         dtype = np.bool_
@@ -1102,6 +1138,14 @@ def _possibly_downcast_to_dtype(result, dtype):
                     # hit here
                     if (new_result == result).all():
                         return new_result
+
+        # a datetimelike
+        elif dtype.kind in ['M','m'] and result.dtype.kind in ['i']:
+            try:
+                result = result.astype(dtype)
+            except:
+                pass
+
     except:
         pass
 
@@ -1393,6 +1437,7 @@ def _interpolate_scipy_wrapper(x, y, new_x, method, fill_value=None,
     """
     try:
         from scipy import interpolate
+        from pandas import DatetimeIndex
     except ImportError:
         raise ImportError('{0} interpolation requires Scipy'.format(method))
 
@@ -1404,6 +1449,10 @@ def _interpolate_scipy_wrapper(x, y, new_x, method, fill_value=None,
         'krogh': interpolate.krogh_interpolate,
         'piecewise_polynomial': interpolate.piecewise_polynomial_interpolate,
     }
+
+    if getattr(x, 'is_all_dates', False):
+        # GH 5975, scipy.interp1d can't hande datetime64s
+        x, new_x = x.values.astype('i8'), new_x.astype('i8')
 
     try:
         alt_methods['pchip'] = interpolate.pchip_interpolate
@@ -1501,7 +1550,8 @@ def _values_from_object(o):
 
 
 def _possibly_convert_objects(values, convert_dates=True,
-                              convert_numeric=True):
+                              convert_numeric=True,
+                              convert_timedeltas=True):
     """ if we have an object dtype, try to coerce dates and/or numbers """
 
     # if we have passed in a list or scalar
@@ -1526,6 +1576,22 @@ def _possibly_convert_objects(values, convert_dates=True,
             values = lib.maybe_convert_objects(
                 values, convert_datetime=convert_dates)
 
+    # convert timedeltas
+    if convert_timedeltas and values.dtype == np.object_:
+
+        if convert_timedeltas == 'coerce':
+            from pandas.tseries.timedeltas import \
+                 _possibly_cast_to_timedelta
+            values = _possibly_cast_to_timedelta(values, coerce=True)
+
+            # if we are all nans then leave me alone
+            if not isnull(new_values).all():
+                values = new_values
+
+        else:
+            values = lib.maybe_convert_objects(
+                values, convert_timedelta=convert_timedeltas)
+
     # convert to numeric
     if values.dtype == np.object_:
         if convert_numeric:
@@ -1548,7 +1614,15 @@ def _possibly_convert_objects(values, convert_dates=True,
 
 
 def _possibly_castable(arr):
-    return arr.dtype not in _POSSIBLY_CAST_DTYPES
+    # return False to force a non-fastpath
+
+    # check datetime64[ns]/timedelta64[ns] are valid
+    # otherwise try to coerce
+    kind = arr.dtype.kind
+    if kind == 'M' or kind == 'm':
+        return arr.dtype in _DATELIKE_DTYPES
+
+    return arr.dtype.name not in _POSSIBLY_CAST_DTYPES
 
 
 def _possibly_convert_platform(values):
@@ -1611,18 +1685,36 @@ def _possibly_cast_to_datetime(value, dtype, coerce=False):
                         elif is_timedelta64:
                             from pandas.tseries.timedeltas import \
                                 _possibly_cast_to_timedelta
-                            value = _possibly_cast_to_timedelta(value)
+                            value = _possibly_cast_to_timedelta(value, coerce='compat')
                     except:
                         pass
 
     else:
 
+        is_array = isinstance(value, np.ndarray)
+
+        # catch a datetime/timedelta that is not of ns variety
+        # and no coercion specified
+        if (is_array and value.dtype.kind in ['M','m']):
+            dtype = value.dtype
+
+            if dtype.kind == 'M' and dtype != _NS_DTYPE:
+                try:
+                    value = tslib.array_to_datetime(value)
+                except:
+                    raise
+
+            elif dtype.kind == 'm' and dtype != _TD_DTYPE:
+                from pandas.tseries.timedeltas import \
+                     _possibly_cast_to_timedelta
+                value = _possibly_cast_to_timedelta(value, coerce='compat')
+
         # only do this if we have an array and the dtype of the array is not
         # setup already we are not an integer/object, so don't bother with this
         # conversion
-        if (isinstance(value, np.ndarray) and not
-                (issubclass(value.dtype.type, np.integer) or
-                 value.dtype == np.object_)):
+        elif (is_array and not (
+            issubclass(value.dtype.type, np.integer) or
+            value.dtype == np.object_)):
             pass
 
         else:
@@ -1642,7 +1734,7 @@ def _possibly_cast_to_datetime(value, dtype, coerce=False):
                 elif inferred_type in ['timedelta', 'timedelta64']:
                     from pandas.tseries.timedeltas import \
                         _possibly_cast_to_timedelta
-                    value = _possibly_cast_to_timedelta(value)
+                    value = _possibly_cast_to_timedelta(value, coerce='compat')
 
     return value
 
@@ -1652,7 +1744,7 @@ def _is_bool_indexer(key):
         if key.dtype == np.object_:
             key = np.asarray(_values_from_object(key))
 
-            if len(key) and not lib.is_bool_array(key):
+            if not lib.is_bool_array(key):
                 if isnull(key).any():
                     raise ValueError('cannot index with vector containing '
                                      'NA / NaN values')
@@ -2313,20 +2405,23 @@ else:
 
 def _concat_compat(to_concat, axis=0):
     # filter empty arrays
-    to_concat = [x for x in to_concat if x.shape[axis] > 0]
+    nonempty = [x for x in to_concat if x.shape[axis] > 0]
 
-    # return the empty np array, if nothing to concatenate, #3121
-    if not to_concat:
-        return np.array([], dtype=object)
-
-    is_datetime64 = [x.dtype == _NS_DTYPE for x in to_concat]
-    if all(is_datetime64):
-        # work around NumPy 1.6 bug
-        new_values = np.concatenate([x.view(np.int64) for x in to_concat],
-                                    axis=axis)
-        return new_values.view(_NS_DTYPE)
-    elif any(is_datetime64):
-        to_concat = [_to_pydatetime(x) for x in to_concat]
+    # If all arrays are empty, there's nothing to convert, just short-cut to
+    # the concatenation, #3121.
+    #
+    # Creating an empty array directly is tempting, but the winnings would be
+    # marginal given that it would still require shape & dtype calculation and
+    # np.concatenate which has them both implemented is compiled.
+    if nonempty:
+        is_datetime64 = [x.dtype == _NS_DTYPE for x in nonempty]
+        if all(is_datetime64):
+            # work around NumPy 1.6 bug
+            new_values = np.concatenate([x.view(np.int64) for x in nonempty],
+                                        axis=axis)
+            return new_values.view(_NS_DTYPE)
+        elif any(is_datetime64):
+            to_concat = [_to_pydatetime(x) for x in nonempty]
 
     return np.concatenate(to_concat, axis=axis)
 

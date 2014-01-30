@@ -10,7 +10,7 @@ from pandas.core.base import PandasObject
 from pandas.core.common import (_possibly_downcast_to_dtype, isnull, notnull,
                                 _NS_DTYPE, _TD_DTYPE, ABCSeries, is_list_like,
                                 ABCSparseSeries, _infer_dtype_from_scalar,
-                                _values_from_object)
+                                _values_from_object, _is_null_datelike_scalar)
 from pandas.core.index import (Index, MultiIndex, _ensure_index,
                                _handle_legacy_indexes)
 from pandas.core.indexing import (_check_slice_bounds, _maybe_convert_indices,
@@ -25,7 +25,6 @@ from pandas.tslib import Timestamp
 from pandas import compat
 from pandas.compat import range, lrange, lmap, callable, map, zip, u
 from pandas.tseries.timedeltas import _coerce_scalar_to_timedelta_type
-
 
 class Block(PandasObject):
 
@@ -84,6 +83,11 @@ class Block(PandasObject):
         return self.ndim == 1
 
     @property
+    def is_datelike(self):
+        """ return True if I am a non-datelike """
+        return self.is_datetime or self.is_timedelta
+
+    @property
     def fill_value(self):
         return np.nan
 
@@ -111,6 +115,25 @@ class Block(PandasObject):
 
             self._ref_locs = indexer
         return self._ref_locs
+
+    def take_ref_locs(self, indexer):
+        """
+        need to preserve the ref_locs and just shift them
+        return None if ref_locs is None
+
+        see GH6509
+        """
+
+        ref_locs = self._ref_locs
+        if ref_locs is None:
+            return None
+
+        tindexer = np.ones(len(ref_locs),dtype=bool)
+        tindexer[indexer] = False
+        tindexer = tindexer.astype(int).cumsum()[indexer]
+        ref_locs = ref_locs[indexer]
+        ref_locs -= tindexer
+        return ref_locs
 
     def reset_ref_locs(self):
         """ reset the block ref_locs """
@@ -274,7 +297,7 @@ class Block(PandasObject):
     def iget(self, i):
         return self.values[i]
 
-    def set(self, item, value):
+    def set(self, item, value, check=False):
         """
         Modify Block in-place with new item value
 
@@ -601,10 +624,18 @@ class Block(PandasObject):
                                      "different length than the value")
 
         try:
+            # setting a single element for each dim and with a rhs that could be say a list
+            # GH 6043
+            if arr_value.ndim == 1 and (
+                np.isscalar(indexer) or (isinstance(indexer, tuple) and all([ np.isscalar(idx) for idx in indexer ]))):
+                values[indexer] = value
+
             # if we are an exact match (ex-broadcasting),
             # then use the resultant dtype
-            if len(arr_value.shape) and arr_value.shape[0] == values.shape[0] and np.prod(arr_value.shape) == np.prod(values.shape):
+            elif len(arr_value.shape) and arr_value.shape[0] == values.shape[0] and np.prod(arr_value.shape) == np.prod(values.shape):
                 values = arr_value.reshape(values.shape)
+
+            # set
             else:
                 values[indexer] = value
 
@@ -854,13 +885,20 @@ class Block(PandasObject):
                   ndim=self.ndim, klass=self.__class__, fastpath=True)]
         return self._maybe_downcast(blocks, downcast)
 
-    def take(self, indexer, ref_items, axis=1):
+    def take(self, indexer, ref_items, new_axis, axis=1):
         if axis < 1:
             raise AssertionError('axis must be at least 1, got %d' % axis)
         new_values = com.take_nd(self.values, indexer, axis=axis,
                                  allow_fill=False)
+
+        # need to preserve the ref_locs and just shift them
+        # GH6121
+        ref_locs = None
+        if not new_axis.is_unique:
+            ref_locs = self._ref_locs
+
         return [make_block(new_values, self.items, ref_items, ndim=self.ndim,
-                           klass=self.__class__, fastpath=True)]
+                           klass=self.__class__, placement=ref_locs, fastpath=True)]
 
     def get_values(self, dtype=None):
         return self.values
@@ -1109,13 +1147,24 @@ class Block(PandasObject):
 
         return result_blocks
 
+    def equals(self, other):
+        if self.dtype != other.dtype or self.shape != other.shape: return False
+        return np.array_equal(self.values, other.values)
+
 
 class NumericBlock(Block):
     is_numeric = True
     _can_hold_na = True
 
 
-class FloatBlock(NumericBlock):
+class FloatOrComplexBlock(NumericBlock):
+    def equals(self, other):
+        if self.dtype != other.dtype or self.shape != other.shape: return False
+        left, right = self.values, other.values
+        return ((left == right) | (np.isnan(left) & np.isnan(right))).all()
+
+
+class FloatBlock(FloatOrComplexBlock):
     is_float = True
     _downcast_dtype = 'int64'
 
@@ -1154,8 +1203,7 @@ class FloatBlock(NumericBlock):
         return (issubclass(value.dtype.type, np.floating) and
                 value.dtype == self.dtype)
 
-
-class ComplexBlock(NumericBlock):
+class ComplexBlock(FloatOrComplexBlock):
     is_complex = True
 
     def _can_hold_element(self, element):
@@ -1227,7 +1275,7 @@ class TimeDeltaBlock(IntBlock):
 
         values = masker(values)
 
-        if isnull(other) or (np.isscalar(other) and other == tslib.iNaT):
+        if _is_null_datelike_scalar(other):
             other = np.nan
         elif isinstance(other, np.timedelta64):
             other = _coerce_scalar_to_timedelta_type(other, unit='s').item()
@@ -1315,8 +1363,8 @@ class ObjectBlock(Block):
         """
         return lib.is_bool_array(self.values.ravel())
 
-    def convert(self, convert_dates=True, convert_numeric=True, copy=True,
-                by_item=True):
+    def convert(self, convert_dates=True, convert_numeric=True, convert_timedeltas=True,
+                copy=True, by_item=True):
         """ attempt to coerce any object types to better types
             return a copy of the block (if copy = True)
             by definition we ARE an ObjectBlock!!!!!
@@ -1334,7 +1382,8 @@ class ObjectBlock(Block):
 
                 values = com._possibly_convert_objects(
                     values.ravel(), convert_dates=convert_dates,
-                    convert_numeric=convert_numeric
+                    convert_numeric=convert_numeric,
+                    convert_timedeltas=convert_timedeltas,
                 ).reshape(values.shape)
                 values = _block_shape(values, ndim=self.ndim)
                 items = self.items.take([i])
@@ -1353,6 +1402,37 @@ class ObjectBlock(Block):
                                      ndim=self.ndim))
 
         return blocks
+
+    def set(self, item, value, check=False):
+        """
+        Modify Block in-place with new item value
+
+        Returns
+        -------
+        None
+        """
+
+        loc = self.items.get_loc(item)
+
+        # GH6026
+        if check:
+            try:
+                if (self.values[loc] == value).all():
+                    return
+            except:
+                pass
+        try:
+            self.values[loc] = value
+        except (ValueError):
+
+            # broadcasting error
+            # see GH6171
+            new_shape = list(value.shape)
+            new_shape[0] = len(self.items)
+            self.values = np.empty(tuple(new_shape),dtype=self.dtype)
+            self.values.fill(np.nan)
+            self.values[loc] = value
+
 
     def _maybe_downcast(self, blocks, downcast=None):
 
@@ -1517,7 +1597,7 @@ class DatetimeBlock(Block):
             we are going to compare vs i8, so coerce to integer
             values is always ndarra like, other may not be """
         values = values.view('i8')
-        if isnull(other) or (np.isscalar(other) and other == tslib.iNaT):
+        if _is_null_datelike_scalar(other):
             other = tslib.iNaT
         elif isinstance(other, datetime):
             other = lib.Timestamp(other).asm8.view('i8')
@@ -1595,7 +1675,7 @@ class DatetimeBlock(Block):
         return self._astype(dtype, copy=copy, raise_on_error=raise_on_error,
                             klass=klass)
 
-    def set(self, item, value):
+    def set(self, item, value, check=False):
         """
         Modify Block in-place with new item value
 
@@ -1708,7 +1788,7 @@ class SparseBlock(Block):
     def post_merge(self, items, **kwargs):
         return self
 
-    def set(self, item, value):
+    def set(self, item, value, check=False):
         self.values = value
 
     def get(self, item):
@@ -1777,7 +1857,7 @@ class SparseBlock(Block):
             new_values[periods:] = fill_value
         return [self.make_block(new_values)]
 
-    def take(self, indexer, ref_items, axis=1):
+    def take(self, indexer, ref_items, new_axis, axis=1):
         """ going to take our items
             along the long dimension"""
         if axis < 1:
@@ -1889,7 +1969,10 @@ def make_block(values, items, ref_items, klass=None, ndim=None, dtype=None,
 
             if np.prod(values.shape):
                 flat = values.ravel()
-                inferred_type = lib.infer_dtype(flat)
+
+                # try with just the first element; we just need to see if
+                # this is a datetime or not
+                inferred_type = lib.infer_dtype(flat[0:1])
                 if inferred_type in ['datetime', 'datetime64']:
 
                     # we have an object array that has been inferred as
@@ -1961,8 +2044,11 @@ class BlockManager(PandasObject):
             ]
 
         # preserve dtype if possible
-        dtype = self.dtype if self.ndim == 1 else object
-        return self.__class__(np.array([], dtype=dtype), axes)
+        if self.ndim == 1:
+            blocks = np.array([], dtype=self.dtype)
+        else:
+            blocks = []
+        return self.__class__(blocks, axes)
 
     def __nonzero__(self):
         return True
@@ -2154,21 +2240,43 @@ class BlockManager(PandasObject):
         return self.axes[0]
     items = property(fget=_get_items)
 
-    def get_dtype_counts(self):
-        """ return a dict of the counts of dtypes in BlockManager """
+    def _get_counts(self, f):
+        """ return a dict of the counts of the function in BlockManager """
         self._consolidate_inplace()
         counts = dict()
         for b in self.blocks:
-            counts[b.dtype.name] = counts.get(b.dtype.name, 0) + b.shape[0]
+            v = f(b)
+            counts[v] = counts.get(v, 0) + b.shape[0]
         return counts
 
-    def get_ftype_counts(self):
-        """ return a dict of the counts of dtypes in BlockManager """
+    def _get_types(self, f):
+        """ return a list of the f per item """
         self._consolidate_inplace()
-        counts = dict()
-        for b in self.blocks:
-            counts[b.ftype] = counts.get(b.ftype, 0) + b.shape[0]
-        return counts
+
+        # unique
+        if self.items.is_unique:
+            l = [ None ] * len(self.items)
+            for b in self.blocks:
+                v = f(b)
+                for rl in b.ref_locs:
+                    l[rl] = v
+            return l
+
+        # non-unique
+        ref_locs = self._set_ref_locs()
+        return [ f(ref_locs[i][0]) for i, item in enumerate(self.items) ]
+
+    def get_dtype_counts(self):
+        return self._get_counts(lambda b: b.dtype.name)
+
+    def get_ftype_counts(self):
+        return self._get_counts(lambda b: b.ftype)
+
+    def get_dtypes(self):
+        return self._get_types(lambda b: b.dtype)
+
+    def get_ftypes(self):
+        return self._get_types(lambda b: b.ftype)
 
     def __getstate__(self):
         block_values = [b.values for b in self.blocks]
@@ -2322,7 +2430,7 @@ class BlockManager(PandasObject):
         def comp(s):
             if isnull(s):
                 return isnull(values)
-            return values == s
+            return values == getattr(s, 'asm8', s)
         masks = [comp(s) for i, s in enumerate(src_lst)]
 
         result_blocks = []
@@ -2410,6 +2518,12 @@ class BlockManager(PandasObject):
         self._consolidate_inplace()
         return all([block.is_numeric for block in self.blocks])
 
+    @property
+    def is_datelike_mixed_type(self):
+        # Warning, consolidation needs to get checked upstairs
+        self._consolidate_inplace()
+        return any([block.is_datelike for block in self.blocks])
+
     def get_block_map(self, copy=False, typ=None, columns=None,
                       is_numeric=False, is_bool=False):
         """ return a dictionary mapping the ftype -> block list
@@ -2496,7 +2610,7 @@ class BlockManager(PandasObject):
         return self.combine(blocks)
 
     def combine(self, blocks):
-        """ reutrn a new manager with the blocks """
+        """ return a new manager with the blocks """
         indexer = np.sort(np.concatenate([b.ref_locs for b in blocks]))
         new_items = self.items.take(indexer)
 
@@ -2519,11 +2633,16 @@ class BlockManager(PandasObject):
 
         if axis == 0:
             new_items = new_axes[0]
+
+            # we want to preserver the view of a single-block
             if len(self.blocks) == 1:
+
                 blk = self.blocks[0]
+                ref_locs = blk.take_ref_locs(slobj)
                 newb = make_block(blk._slice(slobj), new_items, new_items,
                                   klass=blk.__class__, fastpath=True,
-                                  placement=blk._ref_locs)
+                                  placement=ref_locs)
+
                 new_blocks = [newb]
             else:
                 return self.reindex_items(
@@ -2839,10 +2958,11 @@ class BlockManager(PandasObject):
         if not is_unique:
             self._consolidate_inplace()
 
-    def set(self, item, value):
+    def set(self, item, value, check=False):
         """
         Set new item in-place. Does not consolidate. Adds new Block if not
         contained in the current set of items
+        if check, then validate that we are not setting the same data in-place
         """
         if not isinstance(value, SparseArray):
             if value.ndim == self.ndim - 1:
@@ -2858,7 +2978,7 @@ class BlockManager(PandasObject):
                 self._delete_from_block(i, item)
                 self._add_new_block(item, arr, loc=None)
             else:
-                block.set(item, arr)
+                block.set(item, arr, check=check)
 
         try:
 
@@ -2875,7 +2995,7 @@ class BlockManager(PandasObject):
                 # we are inserting one by one, so the index can go from unique
                 # to non-unique during the loop, need to have _ref_locs defined
                 # at all times
-                if np.isscalar(item) and com.is_list_like(loc):
+                if np.isscalar(item) and (com.is_list_like(loc) or isinstance(loc, slice)):
 
                     # first delete from all blocks
                     self.delete(item)
@@ -3119,6 +3239,9 @@ class BlockManager(PandasObject):
         if not allow_dups and not self.axes[axis].is_unique:
             raise ValueError("cannot reindex from a duplicate axis")
 
+        if not self.is_consolidated():
+            self = self.consolidate()
+
         if axis == 0:
             return self._reindex_indexer_items(new_axis, indexer, fill_value)
 
@@ -3140,38 +3263,62 @@ class BlockManager(PandasObject):
         new_blocks = []
         is_unique = new_items.is_unique
 
-        # keep track of what items aren't found anywhere
-        l = np.arange(len(item_order))
-        mask = np.zeros(len(item_order), dtype=bool)
-        for blk in self.blocks:
-            blk_indexer = blk.items.get_indexer(item_order)
-            selector = blk_indexer != -1
+        # we have duplicates in the items and what we are reindexing
+        if not is_unique and not self.items.is_unique:
 
-            # update with observed items
-            mask |= selector
+            rl = self._set_ref_locs(do_refs='force')
+            for i, idx in enumerate(indexer):
+                item = new_items.take([i])
+                if idx >= 0:
+                    blk, lidx = rl[idx]
+                    blk = make_block(_block_shape(blk.iget(lidx)), item,
+                                     new_items, ndim=self.ndim, fastpath=True,
+                                     placement=[i])
 
-            if not selector.any():
-                continue
-
-            new_block_items = new_items.take(selector.nonzero()[0])
-            new_values = com.take_nd(blk.values, blk_indexer[selector], axis=0,
-                                     allow_fill=False)
-            placement = l[selector] if not is_unique else None
-            new_blocks.append(make_block(new_values,
-                                         new_block_items,
-                                         new_items,
-                                         placement=placement,
-                                         fastpath=True))
-
-        if not mask.all():
-            na_items = new_items[-mask]
-            placement = l[-mask] if not is_unique else None
-            na_block = self._make_na_block(na_items,
-                                           new_items,
-                                           placement=placement,
-                                           fill_value=fill_value)
-            new_blocks.append(na_block)
+                # a missing value
+                else:
+                    blk = self._make_na_block(item,
+                                              new_items,
+                                              placement=[i],
+                                              fill_value=fill_value)
+                new_blocks.append(blk)
             new_blocks = _consolidate(new_blocks, new_items)
+
+
+        # keep track of what items aren't found anywhere
+        else:
+            l = np.arange(len(item_order))
+            mask = np.zeros(len(item_order), dtype=bool)
+
+            for blk in self.blocks:
+                blk_indexer = blk.items.get_indexer(item_order)
+                selector = blk_indexer != -1
+
+                # update with observed items
+                mask |= selector
+
+                if not selector.any():
+                    continue
+
+                new_block_items = new_items.take(selector.nonzero()[0])
+                new_values = com.take_nd(blk.values, blk_indexer[selector], axis=0,
+                                         allow_fill=False)
+                placement = l[selector] if not is_unique else None
+                new_blocks.append(make_block(new_values,
+                                             new_block_items,
+                                         new_items,
+                                             placement=placement,
+                                             fastpath=True))
+
+            if not mask.all():
+                na_items = new_items[-mask]
+                placement = l[-mask] if not is_unique else None
+                na_block = self._make_na_block(na_items,
+                                               new_items,
+                                               placement=placement,
+                                               fill_value=fill_value)
+                new_blocks.append(na_block)
+                new_blocks = _consolidate(new_blocks, new_items)
 
         return self.__class__(new_blocks, new_axes)
 
@@ -3250,6 +3397,7 @@ class BlockManager(PandasObject):
         if axis < 1:
             raise AssertionError('axis must be at least 1, got %d' % axis)
 
+        self._consolidate_inplace()
         if isinstance(indexer, list):
             indexer = np.array(indexer)
 
@@ -3267,8 +3415,12 @@ class BlockManager(PandasObject):
             new_index = self.axes[axis].take(indexer)
 
         new_axes[axis] = new_index
-        return self.apply('take', axes=new_axes, indexer=indexer,
-                          ref_items=new_axes[0], axis=axis)
+        return self.apply('take',
+                          axes=new_axes,
+                          indexer=indexer,
+                          ref_items=new_axes[0],
+                          new_axis=new_axes[axis],
+                          axis=axis)
 
     def merge(self, other, lsuffix=None, rsuffix=None):
         if not self._is_indexed_like(other):
@@ -3396,6 +3548,16 @@ class BlockManager(PandasObject):
             raise AssertionError('Some items were not in any block')
         return result
 
+    def equals(self, other):
+        self_axes, other_axes = self.axes, other.axes
+        if len(self_axes) != len(other_axes):
+           return False
+        if not all (ax1.equals(ax2) for ax1, ax2 in zip(self_axes, other_axes)):
+            return False
+        self._consolidate_inplace()
+        other._consolidate_inplace()
+        return all(block.equals(oblock) for block, oblock in
+                   zip(self.blocks, other.blocks))
 
 class SingleBlockManager(BlockManager):
 
@@ -3458,6 +3620,9 @@ class SingleBlockManager(BlockManager):
     def _post_setstate(self):
         self._block = self.blocks[0]
         self._values = self._block.values
+
+    def _get_counts(self, f):
+        return { f(self._block) : 1 }
 
     @property
     def shape(self):
@@ -3905,6 +4070,9 @@ def _merge_blocks(blocks, items, dtype=None, _can_consolidate=True):
             if len(set([b.dtype for b in blocks])) != 1:
                 raise AssertionError("_merge_blocks are invalid!")
             dtype = blocks[0].dtype
+
+        if not items.is_unique:
+            blocks = sorted(blocks, key=lambda b: b.ref_locs.tolist())
 
         new_values = _vstack([b.values for b in blocks], dtype)
         new_items = blocks[0].items.append([b.items for b in blocks[1:]])

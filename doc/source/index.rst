@@ -6,6 +6,8 @@ pandas: powerful Python data analysis toolkit
 
 `PDF Version <pandas.pdf>`__
 
+`Zipped HTML <pandas.zip>`__
+
 .. module:: pandas
 
 **Date**: |today| **Version**: |version|
@@ -18,7 +20,7 @@ pandas: powerful Python data analysis toolkit
 
 **Q&A Support:** http://stackoverflow.com/questions/tagged/pandas
 
-**Developer Mailing List:** http://groups.google.com/group/pystatsmodels
+**Developer Mailing List:** http://groups.google.com/group/pydata
 
 **pandas** is a `Python <http://www.python.org>`__ package providing fast,
 flexible, and expressive data structures designed to make working with
@@ -112,6 +114,7 @@ See the package overview for more detail about what's in the library.
     faq
     overview
     10min
+    tutorials
     cookbook
     dsintro
     basics
@@ -130,8 +133,9 @@ See the package overview for more detail about what's in the library.
     sparse
     gotchas
     r_interface
-    related
+    ecosystem
     comparison_with_r
     comparison_with_sql
     api
+    contributing
     release

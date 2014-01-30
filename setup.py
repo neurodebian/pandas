@@ -191,32 +191,37 @@ CLASSIFIERS = [
 MAJOR = 0
 MINOR = 13
 MICRO = 0
-ISRELEASED = True
+ISRELEASED = False
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
 QUALIFIER = ''
 
 FULLVERSION = VERSION
 if not ISRELEASED:
+    import subprocess
     FULLVERSION += '.dev'
-    try:
-        import subprocess
+
+    pipe = None
+    for cmd in ['git','git.cmd']:
         try:
-            pipe = subprocess.Popen(["git", "describe", "--always"],
-                                    stdout=subprocess.PIPE).stdout
-        except OSError:
-            # msysgit compatibility
-            pipe = subprocess.Popen(
-                ["git.cmd", "describe", "--always"],
-                stdout=subprocess.PIPE).stdout
-        rev = pipe.read().strip()
-        # makes distutils blow up on Python 2.7
-        if sys.version_info[0] >= 3:
-            rev = rev.decode('ascii')
+            pipe = subprocess.Popen([cmd, "describe", "--always", "--match", "v[0-9]*"],
+                                stdout=subprocess.PIPE)
+            (so,serr) = pipe.communicate()
+            if pipe.returncode == 0:
+                break
+        except:
+            pass
 
-        FULLVERSION = rev.lstrip('v')
+    if pipe is None or pipe.returncode != 0:
+      warnings.warn("WARNING: Couldn't get git revision, using generic version string")
+    else:
+      rev = so.strip()
+      # makes distutils blow up on Python 2.7
+      if sys.version_info[0] >= 3:
+          rev = rev.decode('ascii')
 
-    except:
-        warnings.warn("WARNING: Couldn't get git revision")
+      # use result of git describe as version string
+      FULLVERSION = rev.lstrip('v')
+
 else:
     FULLVERSION += QUALIFIER
 
@@ -482,7 +487,8 @@ else:
 
 msgpack_ext = Extension('pandas.msgpack',
                         sources = [srcpath('msgpack',
-                                           suffix=suffix, subdir='')],
+                                   suffix=suffix if suffix == '.pyx' else '.cpp',
+                                   subdir='')],
                         language='c++',
                         include_dirs=common_include,
                         define_macros=macros)
@@ -495,7 +501,7 @@ extensions.append(msgpack_ext)
 if suffix == '.pyx' and 'setuptools' in sys.modules:
     # undo dumb setuptools bug clobbering .pyx sources back to .c
     for ext in extensions:
-        if ext.sources[0].endswith('.c'):
+        if ext.sources[0].endswith(('.c','.cpp')):
             root, _ = os.path.splitext(ext.sources[0])
             ext.sources[0] = root + suffix
 
@@ -561,6 +567,7 @@ setup(name=DISTNAME,
                                   'tests/data/*.txt',
                                   'tests/data/*.xls',
                                   'tests/data/*.xlsx',
+                                  'tests/data/*.xlsm',
                                   'tests/data/*.table',
                                   'tests/data/*.html',
                                   'tests/test_json/data/*.json'],

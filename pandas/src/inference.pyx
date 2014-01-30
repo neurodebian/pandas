@@ -1,4 +1,7 @@
 cimport util
+from tslib import NaT
+from datetime import datetime, timedelta
+iNaT = util.get_nat()
 
 _TYPE_MAP = {
     np.int8: 'integer',
@@ -35,6 +38,8 @@ def infer_dtype(object _values):
 
     if isinstance(_values, np.ndarray):
         values = _values
+    elif hasattr(_values,'values'):
+        values = _values.values
     else:
         if not isinstance(_values, list):
             _values = list(_values)
@@ -51,17 +56,35 @@ def infer_dtype(object _values):
     if n == 0:
         return 'empty'
 
-    val = util.get_value_1d(values, 0)
+    # make contiguous
+    values = values.ravel()
 
-    if util.is_datetime64_object(val):
+    # try to use a valid value
+    for i in range(n):
+       val = util.get_value_1d(values, i)
+       if not is_null_datetimelike(val):
+           break
+
+    if util.is_datetime64_object(val) or val is NaT:
         if is_datetime64_array(values):
             return 'datetime64'
+        elif is_timedelta_or_timedelta64_array(values):
+            return 'timedelta'
+
     elif util.is_integer_object(val):
+        # a timedelta will show true here as well
+        if is_timedelta(val):
+            if is_timedelta_or_timedelta64_array(values):
+                return 'timedelta'
+
         if is_integer_array(values):
             return 'integer'
         elif is_integer_float_array(values):
             return 'mixed-integer-float'
+        elif is_timedelta_or_timedelta64_array(values):
+            return 'timedelta'
         return 'mixed-integer'
+
     elif is_datetime(val):
         if is_datetime_array(values):
             return 'datetime'
@@ -113,6 +136,9 @@ def infer_dtype_list(list values):
     pass
 
 
+cdef inline bint is_null_datetimelike(v):
+    return util._checknull(v) or (util.is_integer_object(v) and v == iNaT) or v is NaT
+
 cdef inline bint is_datetime(object o):
     return PyDateTime_Check(o)
 
@@ -121,6 +147,9 @@ cdef inline bint is_date(object o):
 
 cdef inline bint is_time(object o):
     return PyTime_Check(o)
+
+cdef inline bint is_timedelta(object o):
+    return PyDelta_Check(o) or util.is_timedelta64_object(o)
 
 def is_bool_array(ndarray values):
     cdef:
@@ -256,53 +285,58 @@ def is_unicode_array(ndarray values):
 
 def is_datetime_array(ndarray[object] values):
     cdef int i, n = len(values)
+    cdef object v
     if n == 0:
         return False
     for i in range(n):
-        if not is_datetime(values[i]):
+        v = values[i]
+        if not (is_datetime(v) or is_null_datetimelike(v)):
             return False
     return True
 
 
 def is_datetime64_array(ndarray values):
     cdef int i, n = len(values)
+    cdef object v
     if n == 0:
         return False
     for i in range(n):
-        if not util.is_datetime64_object(values[i]):
+        v = values[i]
+        if not (util.is_datetime64_object(v) or is_null_datetimelike(v)):
             return False
     return True
 
-def is_timedelta(object o):
-    import datetime
-    return isinstance(o,datetime.timedelta) or isinstance(o,np.timedelta64)
-
 def is_timedelta_array(ndarray values):
-    import datetime
     cdef int i, n = len(values)
+    cdef object v
     if n == 0:
         return False
     for i in range(n):
-        if not isinstance(values[i],datetime.timedelta):
+        v = values[i]
+        if not (PyDelta_Check(v) or is_null_datetimelike(v)):
             return False
     return True
 
 def is_timedelta64_array(ndarray values):
     cdef int i, n = len(values)
+    cdef object v
     if n == 0:
         return False
     for i in range(n):
-        if not isinstance(values[i],np.timedelta64):
+        v = values[i]
+        if not (util.is_timedelta64_object(v) or is_null_datetimelike(v)):
             return False
     return True
 
 def is_timedelta_or_timedelta64_array(ndarray values):
-    import datetime
+    """ infer with timedeltas and/or nat/none """
     cdef int i, n = len(values)
+    cdef object v
     if n == 0:
         return False
     for i in range(n):
-        if not (isinstance(values[i],datetime.timedelta) or isinstance(values[i],np.timedelta64)):
+        v = values[i]
+        if not (is_timedelta(v) or is_null_datetimelike(v)):
             return False
     return True
 
@@ -425,7 +459,7 @@ def maybe_convert_numeric(ndarray[object] values, set na_values,
         return ints
 
 def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
-                          bint safe=0, bint convert_datetime=0):
+                          bint safe=0, bint convert_datetime=0, bint convert_timedelta=0):
     '''
     Type inference function-- convert object array to proper dtype
     '''
@@ -436,9 +470,11 @@ def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
         ndarray[int64_t] ints
         ndarray[uint8_t] bools
         ndarray[int64_t] idatetimes
+        ndarray[int64_t] itimedeltas
         bint seen_float = 0
         bint seen_complex = 0
         bint seen_datetime = 0
+        bint seen_timedelta = 0
         bint seen_int = 0
         bint seen_bool = 0
         bint seen_object = 0
@@ -453,8 +489,14 @@ def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
     complexes = np.empty(n, dtype='c16')
     ints = np.empty(n, dtype='i8')
     bools = np.empty(n, dtype=np.uint8)
-    datetimes = np.empty(n, dtype='M8[ns]')
-    idatetimes = datetimes.view(np.int64)
+
+    if convert_datetime:
+        datetimes = np.empty(n, dtype='M8[ns]')
+        idatetimes = datetimes.view(np.int64)
+
+    if convert_timedelta:
+        timedeltas = np.empty(n, dtype='m8[ns]')
+        itimedeltas = timedeltas.view(np.int64)
 
     onan = np.nan
     fnan = np.nan
@@ -479,9 +521,13 @@ def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
                 seen_object = 1
                 # objects[i] = val.astype('O')
                 break
-        elif util.is_timedelta64_object(val):
-            seen_object = 1
-            break
+        elif is_timedelta(val):
+            if convert_timedelta:
+                itimedeltas[i] = convert_to_timedelta64(val, 'ns', False)
+                seen_timedelta = 1
+            else:
+                seen_object = 1
+                break
         elif util.is_integer_object(val):
             seen_int = 1
             floats[i] = <float64_t> val
@@ -521,7 +567,7 @@ def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
 
         if not safe:
             if seen_null:
-                if not seen_bool and not seen_datetime:
+                if not seen_bool and not seen_datetime and not seen_timedelta:
                     if seen_complex:
                         return complexes
                     elif seen_float or seen_int:
@@ -531,6 +577,9 @@ def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
                     if seen_datetime:
                         if not seen_numeric:
                             return datetimes
+                    elif seen_timedelta:
+                        if not seen_numeric:
+                            return timedeltas
                     else:
                         if seen_complex:
                             return complexes
@@ -538,13 +587,13 @@ def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
                             return floats
                         elif seen_int:
                             return ints
-                elif not seen_datetime and not seen_numeric:
+                elif not seen_datetime and not seen_numeric and not seen_timedelta:
                     return bools.view(np.bool_)
 
         else:
             # don't cast int to float, etc.
             if seen_null:
-                if not seen_bool and not seen_datetime:
+                if not seen_bool and not seen_datetime and not seen_timedelta:
                     if seen_complex:
                         if not seen_int:
                             return complexes
@@ -556,6 +605,9 @@ def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
                     if seen_datetime:
                         if not seen_numeric:
                             return datetimes
+                    elif seen_timedelta:
+                        if not seen_numeric:
+                            return timedeltas
                     else:
                         if seen_complex:
                             if not seen_int:
@@ -565,7 +617,7 @@ def maybe_convert_objects(ndarray[object] objects, bint try_float=0,
                                 return floats
                         elif seen_int:
                             return ints
-                elif not seen_datetime and not seen_numeric:
+                elif not seen_datetime and not seen_numeric and not seen_timedelta:
                     return bools.view(np.bool_)
 
     return objects
@@ -579,8 +631,6 @@ def try_parse_dates(ndarray[object] values, parser=None,
     cdef:
         Py_ssize_t i, n
         ndarray[object] result
-
-    from datetime import datetime, timedelta
 
     n = len(values)
     result = np.empty(n, dtype='O')
@@ -839,8 +889,10 @@ def map_infer_mask(ndarray arr, object f, ndarray[uint8_t] mask,
         result[i] = val
 
     if convert:
-        return maybe_convert_objects(result, try_float=0,
-                                     convert_datetime=0)
+        return maybe_convert_objects(result,
+                                     try_float=0,
+                                     convert_datetime=0,
+                                     convert_timedelta=0)
 
     return result
 
@@ -875,8 +927,10 @@ def map_infer(ndarray arr, object f, bint convert=1):
         result[i] = val
 
     if convert:
-        return maybe_convert_objects(result, try_float=0,
-                                     convert_datetime=0)
+        return maybe_convert_objects(result,
+                                     try_float=0,
+                                     convert_datetime=0,
+                                     convert_timedelta=0)
 
     return result
 

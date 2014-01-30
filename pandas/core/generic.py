@@ -2,6 +2,7 @@
 import warnings
 import operator
 import weakref
+import gc
 import numpy as np
 import pandas.lib as lib
 
@@ -77,8 +78,9 @@ class NDFrame(PandasObject):
     axes : list
     copy : boolean, default False
     """
-    _internal_names = ['_data', 'name', '_cacher', 'is_copy', '_subtyp',
-                       '_index', '_default_kind', '_default_fill_value']
+    _internal_names = ['_data', '_cacher', '_item_cache', '_cache',
+                       'is_copy', 'str', '_subtyp', '_index', '_default_kind',
+                       '_default_fill_value','__array_struct__','__array_interface__']
     _internal_names_set = set(_internal_names)
     _metadata = []
     is_copy = None
@@ -96,7 +98,7 @@ class NDFrame(PandasObject):
                 for i, ax in enumerate(axes):
                     data = data.reindex_axis(ax, axis=i)
 
-        object.__setattr__(self, 'is_copy', False)
+        object.__setattr__(self, 'is_copy', None)
         object.__setattr__(self, '_data', data)
         object.__setattr__(self, '_item_cache', {})
 
@@ -606,6 +608,15 @@ class NDFrame(PandasObject):
         arr = operator.inv(_values_from_object(self))
         return self._wrap_array(arr, self.axes, copy=False)
 
+    def equals(self, other):
+        """
+        Determines if two NDFrame objects contain the same elements. NaNs in the
+        same location are considered equal.
+        """
+        if not isinstance(other, self._constructor):
+            return False
+        return self._data.equals(other._data)
+
     #----------------------------------------------------------------------
     # Iteration
 
@@ -698,6 +709,14 @@ class NDFrame(PandasObject):
         d = self._construct_axes_dict(self._AXIS_ORDERS, copy=False)
         return self._constructor(result, **d).__finalize__(self)
 
+    # ideally we would define this to avoid the getattr checks, but
+    # is slower
+    #@property
+    #def __array_interface__(self):
+    #    """ provide numpy array interface method """
+    #    values = self.values
+    #    return dict(typestr=values.dtype.str,shape=values.shape,data=values)
+
     def to_dense(self):
         "Return dense representation of NDFrame (as opposed to sparse)"
         # compat
@@ -721,13 +740,14 @@ class NDFrame(PandasObject):
                 # to avoid definitional recursion
                 # e.g. say fill_value needing _data to be
                 # defined
-                for k in self._internal_names_set:
+                meta = set(self._internal_names + self._metadata)
+                for k in list(meta):
                     if k in state:
                         v = state[k]
                         object.__setattr__(self, k, v)
 
                 for k, v in state.items():
-                    if k not in self._internal_names_set:
+                    if k not in meta:
                         object.__setattr__(self, k, v)
 
             else:
@@ -970,7 +990,7 @@ class NDFrame(PandasObject):
         """
         try:
             return self[key]
-        except KeyError:
+        except (KeyError, ValueError):
             return default
 
     def __getitem__(self, item):
@@ -983,16 +1003,35 @@ class NDFrame(PandasObject):
             values = self._data.get(item)
             res = self._box_item_values(item, values)
             cache[item] = res
-            res._cacher = (item, weakref.ref(self))
+            res._set_as_cached(item, self)
+
+            # for a chain
+            res.is_copy = self.is_copy
         return res
+
+    def _set_as_cached(self, item, cacher):
+        """ set the _cacher attribute on the calling object with
+            a weakref to cacher """
+        self._cacher = (item, weakref.ref(cacher))
 
     def _box_item_values(self, key, values):
         raise NotImplementedError
 
     def _maybe_cache_changed(self, item, value):
-        """ the object has called back to us saying
-        maybe it has changed """
-        self._data.set(item, value)
+        """
+        the object has called back to us saying
+        maybe it has changed
+
+        numpy < 1.8 has an issue with object arrays and aliasing
+        GH6026
+        """
+        self._data.set(item, value, check=pd._np_version_under1p8)
+
+    @property
+    def _is_cached(self):
+        """ boolean : return if I am cached """
+        cacher = getattr(self, '_cacher', None)
+        return cacher is not None
 
     def _maybe_update_cacher(self, clear=False):
         """ see if we need to update our parent cacher
@@ -1005,16 +1044,14 @@ class NDFrame(PandasObject):
             # a copy
             if ref is None:
                 del self._cacher
-                self.is_copy = True
-                self._check_setitem_copy(stacklevel=5, t='referant')
             else:
                 try:
                     ref._maybe_cache_changed(cacher[0], self)
                 except:
                     pass
-                if ref.is_copy:
-                    self.is_copy = True
-                    self._check_setitem_copy(stacklevel=5, t='referant')
+
+        # check if we are a copy
+        self._check_setitem_copy(stacklevel=5, t='referant')
 
         if clear:
             self._clear_item_cache()
@@ -1029,13 +1066,35 @@ class NDFrame(PandasObject):
         self._data.set(key, value)
         self._clear_item_cache()
 
+    def _set_is_copy(self, ref=None, copy=True):
+        if not copy:
+            self.is_copy = None
+        else:
+            if ref is not None:
+                self.is_copy = weakref.ref(ref)
+            else:
+                self.is_copy = None
+
     def _check_setitem_copy(self, stacklevel=4, t='setting'):
         """ validate if we are doing a settitem on a chained copy.
 
         If you call this function, be sure to set the stacklevel such that the
         user will see the error *at the level of setting*"""
         if self.is_copy:
+
             value = config.get_option('mode.chained_assignment')
+            if value is None:
+                return
+
+            # see if the copy is not actually refererd; if so, then disolve
+            # the copy weakref
+            try:
+                gc.collect(2)
+                if not gc.get_referents(self.is_copy()):
+                    self.is_copy = None
+                    return
+            except:
+                pass
 
             if t == 'referant':
                 t = ("A value is trying to be set on a copy of a slice from a "
@@ -1117,9 +1176,148 @@ class NDFrame(PandasObject):
 
         # maybe set copy if we didn't actually change the index
         if is_copy and not result._get_axis(axis).equals(self._get_axis(axis)):
-            result.is_copy=is_copy
+            result._set_is_copy(self)
 
         return result
+
+    def xs(self, key, axis=0, level=None, copy=True, drop_level=True):
+        """
+        Returns a cross-section (row(s) or column(s)) from the Series/DataFrame.
+        Defaults to cross-section on the rows (axis=0).
+
+        Parameters
+        ----------
+        key : object
+            Some label contained in the index, or partially in a MultiIndex
+        axis : int, default 0
+            Axis to retrieve cross-section on
+        level : object, defaults to first n levels (n=1 or len(key))
+            In case of a key partially contained in a MultiIndex, indicate
+            which levels are used. Levels can be referred by label or position.
+        copy : boolean, default True
+            Whether to make a copy of the data
+        drop_level : boolean, default True
+            If False, returns object with same levels as self.
+
+        Examples
+        --------
+        >>> df
+           A  B  C
+        a  4  5  2
+        b  4  0  9
+        c  9  7  3
+        >>> df.xs('a')
+        A    4
+        B    5
+        C    2
+        Name: a
+        >>> df.xs('C', axis=1)
+        a    2
+        b    9
+        c    3
+        Name: C
+        >>> s = df.xs('a', copy=False)
+        >>> s['A'] = 100
+        >>> df
+             A  B  C
+        a  100  5  2
+        b    4  0  9
+        c    9  7  3
+
+
+        >>> df
+                            A  B  C  D
+        first second third
+        bar   one    1      4  1  8  9
+              two    1      7  5  5  0
+        baz   one    1      6  6  8  0
+              three  2      5  3  5  3
+        >>> df.xs(('baz', 'three'))
+               A  B  C  D
+        third
+        2      5  3  5  3
+        >>> df.xs('one', level=1)
+                     A  B  C  D
+        first third
+        bar   1      4  1  8  9
+        baz   1      6  6  8  0
+        >>> df.xs(('baz', 2), level=[0, 'third'])
+                A  B  C  D
+        second
+        three   5  3  5  3
+
+        Returns
+        -------
+        xs : Series or DataFrame
+
+        """
+        axis = self._get_axis_number(axis)
+        labels = self._get_axis(axis)
+        if level is not None:
+            loc, new_ax = labels.get_loc_level(key, level=level,
+                                               drop_level=drop_level)
+
+            if not copy and not isinstance(loc, slice):
+                raise ValueError('Cannot retrieve view (copy=False)')
+
+            # level = 0
+            loc_is_slice = isinstance(loc, slice)
+            if not loc_is_slice:
+                indexer = [slice(None)] * self.ndim
+                indexer[axis] = loc
+                indexer = tuple(indexer)
+            else:
+                indexer = loc
+                lev_num = labels._get_level_number(level)
+                if labels.levels[lev_num].inferred_type == 'integer':
+                    indexer = self.index[loc]
+
+            # select on the correct axis
+            if axis == 1 and loc_is_slice:
+                indexer = slice(None), indexer
+            result = self.ix[indexer]
+            setattr(result, result._get_axis_name(axis), new_ax)
+            return result
+
+        if axis == 1:
+            data = self[key]
+            if copy:
+                data = data.copy()
+            return data
+
+        self._consolidate_inplace()
+
+        index = self.index
+        if isinstance(index, MultiIndex):
+            loc, new_index = self.index.get_loc_level(key,
+                                                      drop_level=drop_level)
+        else:
+            loc = self.index.get_loc(key)
+
+            if isinstance(loc, np.ndarray):
+                if loc.dtype == np.bool_:
+                    inds, = loc.nonzero()
+                    return self.take(inds, axis=axis, convert=False)
+                else:
+                    return self.take(loc, axis=axis, convert=True)
+
+            if not np.isscalar(loc):
+                new_index = self.index[loc]
+
+        if np.isscalar(loc):
+            from pandas import Series
+            new_values, copy = self._data.fast_2d_xs(loc, copy=copy)
+            result = Series(new_values, index=self.columns,
+                            name=self.index[loc])
+
+        else:
+            result = self[loc]
+            result.index = new_index
+
+        result._set_is_copy(self)
+        return result
+
+    _xs = xs
 
     # TODO: Check if this was clearer in 0.12
     def select(self, crit, axis=0):
@@ -1558,8 +1756,12 @@ class NDFrame(PandasObject):
         Returns first n rows
         """
         l = len(self)
-        if abs(n) > l:
-            n = l if n > 0 else -l
+        if l == 0 or n==0:
+            return self
+        if n > l:
+            n = l
+        elif n < -l:
+            n = -l
         return self.iloc[:n]
 
     def tail(self, n=5):
@@ -1567,8 +1769,12 @@ class NDFrame(PandasObject):
         Returns last n rows
         """
         l = len(self)
-        if abs(n) > l:
-            n = l if n > 0 else -l
+        if l == 0 or n == 0:
+            return self
+        if n > l:
+            n = l
+        elif n < -l:
+            n = -l
         return self.iloc[-n:]
 
     #----------------------------------------------------------------------
@@ -1596,16 +1802,23 @@ class NDFrame(PandasObject):
 
         This allows simpler access to columns for interactive use.
         """
-        if name in self._info_axis:
-            return self[name]
-        raise AttributeError("'%s' object has no attribute '%s'" %
-                             (type(self).__name__, name))
+        if name in self._internal_names_set:
+            return object.__getattribute__(self, name)
+        elif name in self._metadata:
+            return object.__getattribute__(self, name)
+        else:
+            if name in self._info_axis:
+                return self[name]
+            raise AttributeError("'%s' object has no attribute '%s'" %
+                                 (type(self).__name__, name))
 
     def __setattr__(self, name, value):
         """After regular attribute access, try looking up the name of the info
         This allows simpler access to columns for interactive use."""
         if name in self._internal_names_set:
             object.__setattr__(self, name, value)
+        elif name in self._metadata:
+            return object.__setattr__(self, name, value)
         else:
             try:
                 existing = getattr(self, name)
@@ -1660,6 +1873,11 @@ class NDFrame(PandasObject):
     @property
     def _is_numeric_mixed_type(self):
         f = lambda: self._data.is_numeric_mixed_type
+        return self._protect_consolidate(f)
+
+    @property
+    def _is_datelike_mixed_type(self):
+        f = lambda: self._data.is_datelike_mixed_type
         return self._protect_consolidate(f)
 
     def _protect_consolidate(self, f):
@@ -1721,14 +1939,29 @@ class NDFrame(PandasObject):
         return self.as_matrix()
 
     def get_dtype_counts(self):
-        """ return the counts of dtypes in this frame """
+        """ Return the counts of dtypes in this object """
         from pandas import Series
         return Series(self._data.get_dtype_counts())
 
     def get_ftype_counts(self):
-        """ return the counts of ftypes in this frame """
+        """ Return the counts of ftypes in this object """
         from pandas import Series
         return Series(self._data.get_ftype_counts())
+
+    @property
+    def dtypes(self):
+        """ Return the dtypes in this object """
+        from pandas import Series
+        return Series(self._data.get_dtypes(),index=self._info_axis)
+
+    @property
+    def ftypes(self):
+        """
+        Return the ftypes (indication of sparse/dense and dtype)
+        in this object.
+        """
+        from pandas import Series
+        return Series(self._data.get_ftypes(),index=self._info_axis)
 
     def as_blocks(self, columns=None):
         """
@@ -1802,16 +2035,18 @@ class NDFrame(PandasObject):
         return self._constructor(data).__finalize__(self)
 
     def convert_objects(self, convert_dates=True, convert_numeric=False,
-                        copy=True):
+                        convert_timedeltas=True, copy=True):
         """
         Attempt to infer better dtype for object columns
 
         Parameters
         ----------
-        convert_dates : if True, attempt to soft convert_dates, if 'coerce',
+        convert_dates : if True, attempt to soft convert dates, if 'coerce',
             force conversion (and non-convertibles get NaT)
         convert_numeric : if True attempt to coerce to numbers (including
             strings), non-convertibles get NaN
+        convert_timedeltas : if True, attempt to soft convert timedeltas, if 'coerce',
+            force conversion (and non-convertibles get NaT)
         copy : Boolean, if True, return copy, default is True
 
         Returns
@@ -1821,6 +2056,7 @@ class NDFrame(PandasObject):
         return self._constructor(
             self._data.convert(convert_dates=convert_dates,
                                convert_numeric=convert_numeric,
+                               convert_timedeltas=convert_timedeltas,
                                copy=copy)).__finalize__(self)
 
     #----------------------------------------------------------------------
@@ -2444,7 +2680,7 @@ class NDFrame(PandasObject):
         method : {'backfill', 'bfill', 'pad', 'ffill', None}
             Method to use for filling holes in reindexed Series
             pad / ffill: propagate last valid observation forward to next valid
-            backfill / bfill: use NEXT valid observation to fill methdo
+            backfill / bfill: use NEXT valid observation to fill method
         how : {'start', 'end'}, default end
             For PeriodIndex only, see PeriodIndex.asfreq
         normalize : bool, default False
@@ -2535,7 +2771,7 @@ class NDFrame(PandasObject):
                               axis=axis, kind=kind, loffset=loffset,
                               fill_method=fill_method, convention=convention,
                               limit=limit, base=base)
-        return sampler.resample(self)
+        return sampler.resample(self).__finalize__(self)
 
     def first(self, offset):
         """
@@ -3132,23 +3368,22 @@ class NDFrame(PandasObject):
         -------
         abs: type of caller
         """
-        obj = np.abs(self)
 
         # suprimo numpy 1.6 hacking
+        # for timedeltas
         if _np_version_under1p7:
+
+            def _convert_timedeltas(x):
+                if x.dtype.kind == 'm':
+                    return np.abs(x.view('i8')).astype(x.dtype)
+                return np.abs(x)
+
             if self.ndim == 1:
-                if obj.dtype == 'm8[us]':
-                    obj = obj.astype('m8[ns]')
+                return _convert_timedeltas(self)
             elif self.ndim == 2:
-                def f(x):
-                    if x.dtype == 'm8[us]':
-                        x = x.astype('m8[ns]')
-                    return x
+                return  self.apply(_convert_timedeltas)
 
-                if 'm8[us]' in obj.dtypes.values:
-                    obj = obj.apply(f)
-
-        return obj
+        return np.abs(self)
 
     def pct_change(self, periods=1, fill_method='pad', limit=None, freq=None,
                    **kwds):

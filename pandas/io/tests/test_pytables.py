@@ -15,6 +15,7 @@ from pandas.io.pytables import (HDFStore, get_store, Term, read_hdf,
                                 IncompatibilityWarning, PerformanceWarning,
                                 AttributeConflictWarning, DuplicateWarning,
                                 PossibleDataLossError, ClosedFileError)
+from pandas.io import pytables as pytables
 import pandas.util.testing as tm
 from pandas.util.testing import (assert_panel4d_equal,
                                  assert_panel_equal,
@@ -226,24 +227,24 @@ class TestHDFStore(tm.TestCase):
             _maybe_remove(store,'df')
             store.append('df',df.iloc[:10],append=True,format='table')
             store.append('df',df.iloc[10:],append=True,format='table')
-            assert_frame_equal(read_hdf(path,'df'),df)
+            assert_frame_equal(store.select('df'),df)
 
             # append to False
             _maybe_remove(store,'df')
             store.append('df',df.iloc[:10],append=False,format='table')
             store.append('df',df.iloc[10:],append=True,format='table')
-            assert_frame_equal(read_hdf(path,'df'),df)
+            assert_frame_equal(store.select('df'),df)
 
             # formats
             _maybe_remove(store,'df')
             store.append('df',df.iloc[:10],append=False,format='table')
             store.append('df',df.iloc[10:],append=True,format='table')
-            assert_frame_equal(read_hdf(path,'df'),df)
+            assert_frame_equal(store.select('df'),df)
 
             _maybe_remove(store,'df')
             store.append('df',df.iloc[:10],append=False,format='table')
             store.append('df',df.iloc[10:],append=True,format=None)
-            assert_frame_equal(read_hdf(path,'df'),df)
+            assert_frame_equal(store.select('df'),df)
 
         with ensure_clean_path(self.path) as path:
 
@@ -844,8 +845,10 @@ class TestHDFStore(tm.TestCase):
 
     def test_encoding(self):
 
+        if LooseVersion(tables.__version__) < '3.0.0':
+            raise nose.SkipTest('tables version does not support proper encoding')
         if sys.byteorder != 'little':
-            raise nose.SkipTest('system byteorder is not little, skipping test_encoding!')
+            raise nose.SkipTest('system byteorder is not little')
 
         with ensure_clean_store(self.path) as store:
             df = DataFrame(dict(A='foo',B='bar'),index=range(5))
@@ -1293,14 +1296,14 @@ class TestHDFStore(tm.TestCase):
                         'string2=foo'), Term('A>0'), Term('B<0')])
             expected = df_new[(df_new.string == 'foo') & (
                     df_new.string2 == 'foo') & (df_new.A > 0) & (df_new.B < 0)]
-            tm.assert_frame_equal(result, expected)
+            tm.assert_frame_equal(result, expected, check_index_type=False)
 
             # yield an empty frame
             result = store.select('df', [Term('string=foo'), Term(
                         'string2=cool')])
             expected = df_new[(df_new.string == 'foo') & (
                     df_new.string2 == 'cool')]
-            tm.assert_frame_equal(result, expected)
+            tm.assert_frame_equal(result, expected, check_index_type=False)
 
         with ensure_clean_store(self.path) as store:
             # doc example
@@ -1319,13 +1322,13 @@ class TestHDFStore(tm.TestCase):
             result = store.select('df_dc', [Term('B>0')])
 
             expected = df_dc[df_dc.B > 0]
-            tm.assert_frame_equal(result, expected)
+            tm.assert_frame_equal(result, expected, check_index_type=False)
 
             result = store.select(
                 'df_dc', ['B > 0', 'C > 0', 'string == foo'])
             expected = df_dc[(df_dc.B > 0) & (df_dc.C > 0) & (
                     df_dc.string == 'foo')]
-            tm.assert_frame_equal(result, expected)
+            tm.assert_frame_equal(result, expected, check_index_type=False)
 
         with ensure_clean_store(self.path) as store:
             # doc example part 2
@@ -1609,6 +1612,13 @@ class TestHDFStore(tm.TestCase):
 
             self.assertRaises(ValueError, store.put, 'df2',df,format='table',data_columns=['A'])
             self.assertRaises(ValueError, store.put, 'df3',df,format='table',data_columns=True)
+
+        # appending multi-column on existing table (see GH 6167)
+        with ensure_clean_store(self.path) as store:
+            store.append('df2', df)
+            store.append('df2', df)
+
+            tm.assert_frame_equal(store['df2'], concat((df,df)))
 
         # non_index_axes name
         df = DataFrame(np.arange(12).reshape(3,4), columns=Index(list('ABCD'),name='foo'))
@@ -3198,7 +3208,7 @@ class TestHDFStore(tm.TestCase):
             #                  'frame', [crit1, crit2])
 
     def test_frame_select_complex(self):
-        """ select via complex criteria """
+        # select via complex criteria
 
         df = tm.makeTimeDataFrame()
         df['string'] = 'foo'
@@ -3681,53 +3691,66 @@ class TestHDFStore(tm.TestCase):
             self.assert_('CLOSED' in str(store))
             self.assert_(not store.is_open)
 
-            # multiples
-            store1 = HDFStore(path)
-            store2 = HDFStore(path)
+        with ensure_clean_path(self.path) as path:
 
-            self.assert_('CLOSED' not in str(store1))
-            self.assert_('CLOSED' not in str(store2))
-            self.assert_(store1.is_open)
-            self.assert_(store2.is_open)
+            if pytables._table_file_open_policy_is_strict:
 
-            store1.close()
-            self.assert_('CLOSED' in str(store1))
-            self.assert_(not store1.is_open)
-            self.assert_('CLOSED' not in str(store2))
-            self.assert_(store2.is_open)
+                # multiples
+                store1 = HDFStore(path)
+                def f():
+                    HDFStore(path)
+                self.assertRaises(ValueError, f)
+                store1.close()
 
-            store2.close()
-            self.assert_('CLOSED' in str(store1))
-            self.assert_('CLOSED' in str(store2))
-            self.assert_(not store1.is_open)
-            self.assert_(not store2.is_open)
+            else:
 
-            # nested close
-            store = HDFStore(path,mode='w')
-            store.append('df',df)
+                # multiples
+                store1 = HDFStore(path)
+                store2 = HDFStore(path)
 
-            store2 = HDFStore(path)
-            store2.append('df2',df)
-            store2.close()
-            self.assert_('CLOSED' in str(store2))
-            self.assert_(not store2.is_open)
+                self.assert_('CLOSED' not in str(store1))
+                self.assert_('CLOSED' not in str(store2))
+                self.assert_(store1.is_open)
+                self.assert_(store2.is_open)
 
-            store.close()
-            self.assert_('CLOSED' in str(store))
-            self.assert_(not store.is_open)
+                store1.close()
+                self.assert_('CLOSED' in str(store1))
+                self.assert_(not store1.is_open)
+                self.assert_('CLOSED' not in str(store2))
+                self.assert_(store2.is_open)
 
-            # double closing
-            store = HDFStore(path,mode='w')
-            store.append('df', df)
+                store2.close()
+                self.assert_('CLOSED' in str(store1))
+                self.assert_('CLOSED' in str(store2))
+                self.assert_(not store1.is_open)
+                self.assert_(not store2.is_open)
 
-            store2 = HDFStore(path)
-            store.close()
-            self.assert_('CLOSED' in str(store))
-            self.assert_(not store.is_open)
+                # nested close
+                store = HDFStore(path,mode='w')
+                store.append('df',df)
 
-            store2.close()
-            self.assert_('CLOSED' in str(store2))
-            self.assert_(not store2.is_open)
+                store2 = HDFStore(path)
+                store2.append('df2',df)
+                store2.close()
+                self.assert_('CLOSED' in str(store2))
+                self.assert_(not store2.is_open)
+
+                store.close()
+                self.assert_('CLOSED' in str(store))
+                self.assert_(not store.is_open)
+
+                # double closing
+                store = HDFStore(path,mode='w')
+                store.append('df', df)
+
+                store2 = HDFStore(path)
+                store.close()
+                self.assert_('CLOSED' in str(store))
+                self.assert_(not store.is_open)
+
+                store2.close()
+                self.assert_('CLOSED' in str(store2))
+                self.assert_(not store2.is_open)
 
         # ops on a closed store
         with ensure_clean_path(self.path) as path:

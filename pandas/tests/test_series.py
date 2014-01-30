@@ -16,6 +16,7 @@ import pandas as pd
 from pandas import (Index, Series, DataFrame, isnull, notnull,
                     bdate_range, date_range, _np_version_under1p7)
 from pandas.core.index import MultiIndex
+from pandas.core.indexing import IndexingError
 from pandas.tseries.index import Timestamp, DatetimeIndex
 import pandas.core.config as cf
 import pandas.lib as lib
@@ -572,6 +573,11 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         result = Series([datetime(3000,1,1)])
         self.assert_(result[0] == datetime(3000,1,1,0,0))
 
+        # don't mix types
+        result = Series([ Timestamp('20130101'), 1],index=['a','b'])
+        self.assert_(result['a'] == Timestamp('20130101'))
+        self.assert_(result['b'] == 1)
+
     def test_constructor_dict(self):
         d = {'a': 0., 'b': 1., 'c': 2.}
         result = Series(d, index=['b', 'c', 'd', 'a'])
@@ -718,6 +724,12 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         d = self.ts.index[0] - datetools.bday
         self.assertRaises(KeyError, self.ts.__getitem__, d)
 
+        # None
+        # GH 5652
+        for s in [Series(), Series(index=list('abc'))]:
+            result = s.get(None)
+            self.assert_(result is None)
+
     def test_iget(self):
         s = Series(np.random.randn(10), index=lrange(0, 20, 2))
         for i in range(len(s)):
@@ -794,6 +806,28 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         s = s[s.isnull()]
         self.assertEqual(s.index.name, 'index_name')
         self.assertEqual(s.dtype, np.int64)
+
+        # GH5877
+        # indexing with empty series
+        s = Series(['A', 'B'])
+        expected = Series(np.nan,index=['C'],dtype=object)
+        result = s[Series(['C'], dtype=object)]
+        assert_series_equal(result, expected)
+
+        s = Series(['A', 'B'])
+        expected = Series(dtype=object)
+        result = s[Series([], dtype=object)]
+        assert_series_equal(result, expected)
+
+        # invalid because of the boolean indexer
+        # that's empty or not-aligned
+        def f():
+            s[Series([], dtype=bool)]
+        self.assertRaises(IndexingError, f)
+
+        def f():
+            s[Series([True], dtype=bool)]
+        self.assertRaises(IndexingError, f)
 
     def test_getitem_generator(self):
         gen = (x > 0 for x in self.series)
@@ -1643,14 +1677,12 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         repr(s)
 
     def test_repr_should_return_str(self):
-        """
-        http://docs.python.org/py3k/reference/datamodel.html#object.__repr__
-        http://docs.python.org/reference/datamodel.html#object.__repr__
-        "...The return value must be a string object."
+        # http://docs.python.org/py3k/reference/datamodel.html#object.__repr__
+        # http://docs.python.org/reference/datamodel.html#object.__repr__
+        # ...The return value must be a string object.
 
-        (str on py2.x, str (unicode) on py3)
+        # (str on py2.x, str (unicode) on py3)
 
-        """
         data = [8, 5, 3, 5]
         index1 = [u("\u03c3"), u("\u03c4"), u("\u03c5"), u("\u03c6")]
         df = Series(data, index=index1)
@@ -2223,22 +2255,45 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
 
     def test_constructor_dtype_timedelta64(self):
 
+        # basic
         td = Series([timedelta(days=i) for i in range(3)])
         self.assert_(td.dtype == 'timedelta64[ns]')
 
+        td = Series([timedelta(days=1)])
+        self.assert_(td.dtype == 'timedelta64[ns]')
+
+        if not _np_version_under1p7:
+            td = Series([timedelta(days=1),timedelta(days=2),np.timedelta64(1,'s')])
+            self.assert_(td.dtype == 'timedelta64[ns]')
+
         # mixed with NaT
         from pandas import tslib
-        td = Series([timedelta(days=i)
-                    for i in range(3)] + [tslib.NaT ], dtype='m8[ns]' )
+        td = Series([timedelta(days=1),tslib.NaT ], dtype='m8[ns]' )
         self.assert_(td.dtype == 'timedelta64[ns]')
 
-        td = Series([timedelta(days=i)
-                    for i in range(3)] + [tslib.iNaT ], dtype='m8[ns]' )
+        td = Series([timedelta(days=1),np.nan ], dtype='m8[ns]' )
         self.assert_(td.dtype == 'timedelta64[ns]')
 
-        td = Series([timedelta(days=i)
-                    for i in range(3)] + [np.nan ], dtype='m8[ns]' )
+        td = Series([np.timedelta64(300000000), pd.NaT],dtype='m8[ns]')
         self.assert_(td.dtype == 'timedelta64[ns]')
+
+        # improved inference
+        # GH5689
+        td = Series([np.timedelta64(300000000), pd.NaT])
+        self.assert_(td.dtype == 'timedelta64[ns]')
+
+        td = Series([np.timedelta64(300000000), tslib.iNaT])
+        self.assert_(td.dtype == 'timedelta64[ns]')
+
+        td = Series([np.timedelta64(300000000), np.nan])
+        self.assert_(td.dtype == 'timedelta64[ns]')
+
+        td = Series([pd.NaT, np.timedelta64(300000000)])
+        self.assert_(td.dtype == 'timedelta64[ns]')
+
+        if not _np_version_under1p7:
+            td = Series([np.timedelta64(1,'s')])
+            self.assert_(td.dtype == 'timedelta64[ns]')
 
         # these are frequency conversion astypes
         #for t in ['s', 'D', 'us', 'ms']:
@@ -2247,10 +2302,13 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         # valid astype
         td.astype('int64')
 
-        # this is an invalid casting
-        self.assertRaises(Exception, Series, [timedelta(days=i)
-                          for i in range(3)] + ['foo' ], dtype='m8[ns]' )
+        # invalid casting
         self.assertRaises(TypeError, td.astype, 'int32')
+
+        # this is an invalid casting
+        def f():
+            Series([timedelta(days=1), 'foo'],dtype='m8[ns]')
+        self.assertRaises(Exception, f)
 
         # leave as object here
         td = Series([timedelta(days=i) for i in range(3)] + ['foo'])
@@ -2741,6 +2799,12 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         self.assertRaises(TypeError, s.fillna, [1, 2])
         self.assertRaises(TypeError, s.fillna, (1, 2))
 
+    def test_raise_on_info(self):
+        s = Series(np.random.randn(10))
+        with tm.assertRaises(AttributeError):
+            s.info()
+
+
 # TimeSeries-specific
 
     def test_fillna(self):
@@ -2825,6 +2889,9 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         assert_series_equal(ts.bfill(), ts.fillna(method='bfill'))
 
     def test_sub_of_datetime_from_TimeSeries(self):
+        if _np_version_under1p7:
+            raise nose.SkipTest("timedelta broken in np 1.6.1")
+
         from pandas.tseries.timedeltas import _possibly_cast_to_timedelta
         from datetime import datetime
         a = Timestamp(datetime(1993, 0o1, 0o7, 13, 30, 00))
@@ -3229,6 +3296,20 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         result = s.idxmax()
         self.assert_(result == 4)
 
+        # Float64Index
+        # GH 5914
+        s = pd.Series([1,2,3],[1.1,2.1,3.1])
+        result = s.idxmax()
+        self.assert_(result == 3.1)
+        result = s.idxmin()
+        self.assert_(result == 1.1)
+
+        s = pd.Series(s.index, s.index)
+        result = s.idxmax()
+        self.assert_(result == 3.1)
+        result = s.idxmin()
+        self.assert_(result == 1.1)
+
     def test_ndarray_compat(self):
 
         # test numpy compat with Series as sub-class of NDFrame
@@ -3576,6 +3657,15 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         self.ts[::2] = np.NaN
 
         self.assertEqual(self.ts.count(), np.isfinite(self.ts).sum())
+
+    def test_dtype(self):
+
+        self.assert_(self.ts.dtype == np.dtype('float64'))
+        self.assert_(self.ts.dtypes == np.dtype('float64'))
+        self.assert_(self.ts.ftype == 'float64:dense')
+        self.assert_(self.ts.ftypes == 'float64:dense')
+        assert_series_equal(self.ts.get_dtype_counts(),Series(1,['float64']))
+        assert_series_equal(self.ts.get_ftype_counts(),Series(1,['float64:dense']))
 
     def test_dot(self):
         a = Series(np.random.randn(4), index=['p', 'q', 'r', 's'])
@@ -5183,6 +5273,16 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         expected = ser.ffill()
         result = ser.replace(np.nan)
         assert_series_equal(result, expected)
+        #GH 5797
+        ser = Series(date_range('20130101', periods=5))
+        expected = ser.copy()
+        expected.loc[2] = Timestamp('20120101')
+        result = ser.replace({Timestamp('20130103'):
+                              Timestamp('20120101')})
+        assert_series_equal(result, expected)
+        result = ser.replace(Timestamp('20130103'), Timestamp('20120101'))
+        assert_series_equal(result, expected)
+
 
     def test_replace_with_single_list(self):
         ser = Series([0, 1, 2, 3, 4])
@@ -5378,6 +5478,15 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
     def test_numpy_unique(self):
         # it works!
         result = np.unique(self.ts)
+
+    def test_concat_empty_series_dtypes(self):
+        self.assertEqual(pd.concat([Series(dtype=np.float64)]).dtype, np.float64)
+        self.assertEqual(pd.concat([Series(dtype=np.int8)]).dtype, np.int8)
+        self.assertEqual(pd.concat([Series(dtype=np.bool_)]).dtype, np.bool_)
+
+        self.assertEqual(pd.concat([Series(dtype=np.bool_),
+                                    Series(dtype=np.int32)]).dtype, np.int32)
+
 
 
 class TestSeriesNonUnique(tm.TestCase):

@@ -28,7 +28,7 @@ from pandas.core.common import (isnull, notnull, _is_bool_indexer,
 from pandas.core.index import (Index, MultiIndex, InvalidIndexError,
                                _ensure_index, _handle_legacy_indexes)
 from pandas.core.indexing import (
-    _SeriesIndexer, _check_bool_indexer, _check_slice_bounds,
+    _check_bool_indexer, _check_slice_bounds,
     _is_index_slice, _maybe_convert_indices)
 from pandas.core import generic
 from pandas.core.internals import SingleBlockManager
@@ -302,7 +302,17 @@ class Series(generic.NDFrame):
         return self._data.dtype
 
     @property
+    def dtypes(self):
+        """ for compat """
+        return self._data.dtype
+
+    @property
     def ftype(self):
+        return self._data.ftype
+
+    @property
+    def ftypes(self):
+        """ for compat """
         return self._data.ftype
 
     @property
@@ -434,11 +444,6 @@ class Series(generic.NDFrame):
             return self.__class__(values)
 
         return values
-
-    def _xs(self, key, axis=0, level=None, copy=True):
-        return self.__getitem__(key)
-
-    xs = _xs
 
     def _ixs(self, i, axis=0):
         """
@@ -1339,11 +1344,7 @@ class Series(generic.NDFrame):
         -------
         desc : Series
         """
-        try:
-            from collections import Counter
-        except ImportError:  # pragma: no cover
-            # For Python < 2.7, we include a local copy of this:
-            from pandas.util.counter import Counter
+        from pandas.compat import Counter
 
         if self.dtype == object:
             names = ['count', 'unique']
@@ -1664,20 +1665,16 @@ class Series(generic.NDFrame):
         --------
         pandas.Series.order
         """
-        sortedSeries = self.order(na_last=True, kind=kind,
-                                  ascending=ascending)
 
-        true_base = self.values
-        while true_base.base is not None:
-            true_base = true_base.base
+        # GH 5856/5863
+        if self._is_cached:
+            raise ValueError("This Series is a view of some other array, to "
+                             "sort in-place you must create a copy")
 
-        if (true_base is not None and
-                (true_base.ndim != 1 or true_base.shape != self.shape)):
-            raise TypeError('This Series is a view of some other array, to '
-                            'sort in-place you must create a copy')
+        result = self.order(na_last=True, kind=kind,
+                            ascending=ascending)
 
-        self._data = sortedSeries._data.copy()
-        self.index = sortedSeries.index
+        self._update_inplace(result)
 
     def sort_index(self, ascending=True):
         """
@@ -2098,21 +2095,8 @@ class Series(generic.NDFrame):
         ----------
         values : list-like
             The sequence of values to test. Passing in a single string will
-            raise a ``TypeError``:
-
-                .. code-block:: python
-
-                   from pandas import Series
-                   s = Series(list('abc'))
-                   s.isin('a')
-
-            Instead, turn a single string into a ``list`` of one element:
-
-                .. code-block:: python
-
-                   from pandas import Series
-                   s = Series(list('abc'))
-                   s.isin(['a'])
+            raise a ``TypeError``. Instead, turn a single string into a
+            ``list`` of one element.
 
         Returns
         -------
@@ -2126,6 +2110,26 @@ class Series(generic.NDFrame):
         See Also
         --------
         pandas.DataFrame.isin
+
+        Examples
+        --------
+
+        >>> s = pd.Series(list('abc'))
+        >>> s.isin(['a', 'c', 'e'])
+        0     True
+        1    False
+        2     True
+        dtype: bool
+
+        Passing a single string as ``s.isin('a')`` will raise an error. Use
+        a list of one element instead:
+
+        >>> s.isin(['a'])
+        0     True
+        1    False
+        2    False
+        dtype: bool
+
         """
         if not com.is_list_like(values):
             raise TypeError("only list-like objects are allowed to be passed"
@@ -2174,7 +2178,7 @@ class Series(generic.NDFrame):
 
     @classmethod
     def from_csv(cls, path, sep=',', parse_dates=True, header=None,
-                 index_col=0, encoding=None):
+                 index_col=0, encoding=None, infer_datetime_format=False):
         """
         Read delimited file into Series
 
@@ -2193,6 +2197,10 @@ class Series(generic.NDFrame):
         encoding : string, optional
             a string representing the encoding to use if the contents are
             non-ascii, for python versions prior to 3
+        infer_datetime_format: boolean, default False
+            If True and `parse_dates` is True for a column, try to infer the
+            datetime format based on the first datetime string. If the format
+            can be inferred, there often will be a large parsing speed-up.
 
         Returns
         -------
@@ -2201,7 +2209,8 @@ class Series(generic.NDFrame):
         from pandas.core.frame import DataFrame
         df = DataFrame.from_csv(path, header=header, index_col=index_col,
                                 sep=sep, parse_dates=parse_dates,
-                                encoding=encoding)
+                                encoding=encoding,
+                                infer_datetime_format=infer_datetime_format)
         result = df.icol(0)
         result.index.name = result.name = None
         return result
@@ -2464,10 +2473,6 @@ Series._setup_axes(['index'], info_axis=0, stat_axis=0,
 Series._add_numeric_operations()
 _INDEX_TYPES = ndarray, Index, list, tuple
 
-# reinstall the SeriesIndexer
-# defined in indexing.py; pylint: disable=E0203
-Series._create_indexer('ix', _SeriesIndexer)
-
 #------------------------------------------------------------------------------
 # Supplementary functions
 
@@ -2531,7 +2536,10 @@ def _sanitize_array(data, index, dtype=None, copy=False,
                 else:
                     subarr = _try_cast(data, True)
         else:
-            subarr = _try_cast(data, True)
+            # don't coerce Index types
+            # e.g. indexes can have different conversions (so don't fast path them)
+            # GH 6140
+            subarr = _try_cast(data, not isinstance(data, Index))
 
         if copy:
             subarr = data.copy()

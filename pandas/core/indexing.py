@@ -57,7 +57,9 @@ class _NDFrameIndexer(object):
 
     def _get_label(self, label, axis=0):
         # ueber-hack
-        if (isinstance(label, tuple) and
+        if self.ndim == 1:
+            return self.obj[label]
+        elif (isinstance(label, tuple) and
                 isinstance(label[axis], slice)):
 
             raise IndexingError('no slices here')
@@ -209,7 +211,7 @@ class _NDFrameIndexer(object):
                     labels = _safe_append_to_index(index, key)
                     self.obj._data = self.obj.reindex_axis(labels, i)._data
                     self.obj._maybe_update_cacher(clear=True)
-                    self.obj.is_copy=False
+                    self.obj.is_copy=None
 
                     if isinstance(labels, MultiIndex):
                         self.obj.sortlevel(inplace=True)
@@ -416,12 +418,13 @@ class _NDFrameIndexer(object):
             if isinstance(value, ABCPanel):
                 value = self._align_panel(indexer, value)
 
+            # actually do the set
             self.obj._data = self.obj._data.setitem(indexer, value)
             self.obj._maybe_update_cacher(clear=True)
 
     def _align_series(self, indexer, ser):
         # indexer to assign Series can be tuple, slice, scalar
-        if isinstance(indexer, slice):
+        if isinstance(indexer, (slice, np.ndarray, list)):
             indexer = tuple([indexer])
 
         if isinstance(indexer, tuple):
@@ -453,8 +456,12 @@ class _NDFrameIndexer(object):
                     all([com._is_sequence(_) for _ in indexer])):
                 ser = ser.reindex(obj.axes[0][indexer[0].ravel()],
                                   copy=True).values
-                l = len(indexer[1].ravel())
-                ser = np.tile(ser, l).reshape(l, -1).T
+
+                # single indexer
+                if len(indexer) > 1:
+                    l = len(indexer[1].ravel())
+                    ser = np.tile(ser, l).reshape(l, -1).T
+
                 return ser
 
             for i, idx in enumerate(indexer):
@@ -903,7 +910,8 @@ class _NDFrameIndexer(object):
                     return {'key': obj}
 
                 # a positional
-                if obj >= len(self.obj) and not isinstance(labels, MultiIndex):
+                if (obj >= self.obj.shape[axis] and
+                        not isinstance(labels, MultiIndex)):
                     raise ValueError("cannot set by positional indexing with "
                                      "enlargement")
 
@@ -1359,46 +1367,6 @@ def _is_index_slice(obj):
     return not both_none and (_crit(obj.start) and _crit(obj.stop))
 
 
-class _SeriesIndexer(_IXIndexer):
-
-    """
-    Class to support fancy indexing, potentially using labels
-
-    Notes
-    -----
-    Indexing based on labels is INCLUSIVE
-    Slicing uses PYTHON SEMANTICS (endpoint is excluded)
-
-    If Index contains int labels, these will be used rather than the locations,
-    so be very careful (ambiguous).
-
-    Examples
-    --------
-    >>> ts.ix[5:10] # equivalent to ts[5:10]
-    >>> ts.ix[[date1, date2, date3]]
-    >>> ts.ix[date1:date2] = 0
-    """
-
-    def _get_label(self, key, axis=0):
-        return self.obj[key]
-
-    def _get_loc(self, key, axis=0):
-        return self.obj.values[key]
-
-    def _slice(self, indexer, axis=0, typ=None):
-        return self.obj._get_values(indexer)
-
-    def _setitem_with_indexer(self, indexer, value):
-
-        # need to delegate to the super setter
-        if isinstance(indexer, dict):
-            return super(_SeriesIndexer, self)._setitem_with_indexer(indexer,
-                                                                     value)
-
-        # fast access
-        self.obj._set_values(indexer, value)
-
-
 def _check_bool_indexer(ax, key):
     # boolean indexing, need to check that the data are aligned, otherwise
     # disallowed
@@ -1455,7 +1423,6 @@ def _safe_append_to_index(index, key):
 
         # raise here as this is basically an unsafe operation and we want
         # it to be obvious that you are doing something wrong
-
         raise ValueError("unsafe appending to index of type {0} with a key "
                          "{1}".format(index.__class__.__name__, key))
 

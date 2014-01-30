@@ -14,7 +14,7 @@ from cpython cimport (PyDict_New, PyDict_GetItem, PyDict_SetItem,
                       Py_INCREF, PyTuple_SET_ITEM,
                       PyList_Check, PyFloat_Check,
                       PyString_Check,
-		      PyBytes_Check,
+                      PyBytes_Check,
                       PyTuple_SetItem,
                       PyTuple_New,
                       PyObject_SetAttrString)
@@ -31,7 +31,7 @@ from datetime import datetime as pydatetime
 # this is our tseries.pxd
 from datetime cimport *
 
-from tslib cimport convert_to_tsobject
+from tslib cimport convert_to_tsobject, convert_to_timedelta64
 import tslib
 from tslib import NaT, Timestamp, repr_timedelta64
 
@@ -170,7 +170,6 @@ cdef inline int64_t get_timedelta64_value(val):
 cdef double INF = <double> np.inf
 cdef double NEGINF = -INF
 
-
 cpdef checknull(object val):
     if util.is_float_object(val) or util.is_complex_object(val):
         return val != val # and val != INF and val != NEGINF
@@ -183,7 +182,7 @@ cpdef checknull(object val):
     elif is_array(val):
         return False
     else:
-        return util._checknull(val)
+        return _checknull(val)
 
 cpdef checknull_old(object val):
     if util.is_float_object(val) or util.is_complex_object(val):
@@ -213,7 +212,8 @@ def isnullobj(ndarray[object] arr):
     n = len(arr)
     result = np.zeros(n, dtype=np.uint8)
     for i from 0 <= i < n:
-        result[i] = util._checknull(arr[i])
+        arobj = arr[i]
+        result[i] = arobj is NaT or _checknull(arobj)
     return result.view(np.bool_)
 
 @cython.wraparound(False)

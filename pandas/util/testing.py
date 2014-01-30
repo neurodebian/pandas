@@ -22,7 +22,7 @@ from numpy.random import randn, rand
 import numpy as np
 
 import pandas as pd
-from pandas.core.common import isnull, _is_sequence
+from pandas.core.common import _is_sequence
 import pandas.core.index as index
 import pandas.core.series as series
 import pandas.core.frame as frame
@@ -436,6 +436,7 @@ def isiterable(obj):
 def is_sorted(seq):
     return assert_almost_equal(seq, np.sort(np.array(seq)))
 
+# This could be refactored to use the NDFrame.equals method
 def assert_series_equal(left, right, check_dtype=True,
                         check_index_type=False,
                         check_series_type=False,
@@ -455,7 +456,7 @@ def assert_series_equal(left, right, check_dtype=True,
         assert_attr_equal('dtype', left.index, right.index)
         assert_attr_equal('inferred_type', left.index, right.index)
 
-
+# This could be refactored to use the NDFrame.equals method
 def assert_frame_equal(left, right, check_dtype=True,
                        check_index_type=False,
                        check_column_type=False,
@@ -966,109 +967,32 @@ def optional_args(decorator):
 
     return wrapper
 
+# skip tests on exceptions with this message
+_network_error_messages = (
+    'urlopen error timed out',
+    'timeout: timed out',
+    'socket.timeout: timed out',
+    )
 
-_network_error_classes = IOError, httplib.HTTPException
+# or this e.errno/e.reason.errno
+_network_errno_vals = (
+    101, # Network is unreachable
+    110, # Connection timed out
+    104, # Connection reset Error
+    54,  # Connection reset by peer
+    60,  # urllib.error.URLError: [Errno 60] Connection timed out
+    )
 
+# Both of the above shouldn't mask reasl issues such as 404's
+# or refused connections (changed DNS).
+# But some tests (test_data yahoo) contact incredibly flakey
+# servers.
 
-@optional_args
-def network(t, raise_on_error=_RAISE_NETWORK_ERROR_DEFAULT,
-            error_classes=_network_error_classes, num_runs=2):
-    """
-    Label a test as requiring network connection and skip test if it encounters a ``URLError``.
+# and conditionally raise on these exception types
+_network_error_classes = (IOError, httplib.HTTPException)
 
-    In some cases it is not possible to assume network presence (e.g. Debian
-    build hosts).
-
-    You can pass an optional ``raise_on_error`` argument to the decorator, in
-    which case it will always raise an error even if it's not a subclass of
-    ``error_classes``.
-
-    Parameters
-    ----------
-    t : callable
-        The test requiring network connectivity.
-    raise_on_error : bool, optional
-        If True, never catches errors.
-    error_classes : tuple, optional
-        error classes to ignore. If not in ``error_classes``, raises the error.
-        defaults to URLError. Be careful about changing the error classes here,
-        it may result in undefined behavior.
-    num_runs : int, optional
-        Number of times to run test. If fails on last try, will raise. Default
-        is 2 runs.
-
-    Returns
-    -------
-    t : callable
-        The decorated test `t`.
-
-    Examples
-    --------
-    A test can be decorated as requiring network like this::
-
-      >>> from pandas.util.testing import network
-      >>> from pandas.io.common import urlopen
-      >>> import nose
-      >>> @network
-      ... def test_network():
-      ...     with urlopen("rabbit://bonanza.com") as f:
-      ...         pass
-      ...
-      >>> try:
-      ...     test_network()
-      ... except nose.SkipTest:
-      ...     print("SKIPPING!")
-      ...
-      SKIPPING!
-
-    Alternatively, you can use set ``raise_on_error`` in order to get
-    the error to bubble up, e.g.::
-
-      >>> @network(raise_on_error=True)
-      ... def test_network():
-      ...     with urlopen("complaint://deadparrot.com") as f:
-      ...         pass
-      ...
-      >>> test_network()
-      Traceback (most recent call last):
-        ...
-      URLError: <urlopen error unknown url type: complaint>
-
-    And use ``nosetests -a '!network'`` to exclude running tests requiring
-    network connectivity. ``_RAISE_NETWORK_ERROR_DEFAULT`` in
-    ``pandas/util/testing.py`` sets the default behavior (currently False).
-    """
-    from nose import SkipTest
-
-    if num_runs < 1:
-        raise ValueError("Must set at least 1 run")
-    t.network = True
-
-    @wraps(t)
-    def network_wrapper(*args, **kwargs):
-        if raise_on_error:
-            return t(*args, **kwargs)
-        else:
-            runs = 0
-
-            for _ in range(num_runs):
-                try:
-                    try:
-                        return t(*args, **kwargs)
-                    except error_classes as e:
-                        raise SkipTest("Skipping test %s" % e)
-                except SkipTest:
-                    raise
-                except Exception as e:
-                    if runs < num_runs - 1:
-                        print("Failed: %r" % e)
-                    else:
-                        raise
-
-                runs += 1
-
-    return network_wrapper
-
+if sys.version_info[:2] >= (3,3):
+    _network_error_classes += (TimeoutError,)
 
 def can_connect(url, error_classes=_network_error_classes):
     """Try to connect to the given url. True if succeeds, False if IOError
@@ -1095,10 +1019,13 @@ def can_connect(url, error_classes=_network_error_classes):
 
 
 @optional_args
-def with_connectivity_check(t, url="http://www.google.com",
-                            raise_on_error=_RAISE_NETWORK_ERROR_DEFAULT,
-                            check_before_test=False,
-                            error_classes=_network_error_classes):
+def network(t, url="http://www.google.com",
+            raise_on_error=_RAISE_NETWORK_ERROR_DEFAULT,
+            check_before_test=False,
+            error_classes=_network_error_classes,
+            skip_errnos=_network_errno_vals,
+            _skip_on_messages=_network_error_messages,
+            ):
     """
     Label a test as requiring network connection and, if an error is
     encountered, only raise if it does not find a network connection.
@@ -1137,9 +1064,22 @@ def with_connectivity_check(t, url="http://www.google.com",
     Example
     -------
 
-    In this example, you see how it will raise the error if it can connect to
-    the url::
-        >>> @with_connectivity_check("http://www.yahoo.com")
+    Tests decorated with @network will fail if it's possible to make a network
+    connection to another URL (defaults to google.com)::
+
+      >>> from pandas.util.testing import network
+      >>> from pandas.io.common import urlopen
+      >>> @network
+      ... def test_network():
+      ...     with urlopen("rabbit://bonanza.com"):
+      ...         pass
+      Traceback
+         ...
+      URLError: <urlopen error unknown url type: rabit>
+
+      You can specify alternative URLs::
+
+        >>> @network("http://www.yahoo.com")
         ... def test_something_with_yahoo():
         ...    raise IOError("Failure Message")
         >>> test_something_with_yahoo()
@@ -1147,8 +1087,10 @@ def with_connectivity_check(t, url="http://www.google.com",
             ...
         IOError: Failure Message
 
-    I you set check_before_test, it will check the url first and not run the test on failure::
-        >>> @with_connectivity_check("failing://url.blaher", check_before_test=True)
+    If you set check_before_test, it will check the url first and not run the
+    test on failure::
+
+        >>> @network("failing://url.blaher", check_before_test=True)
         ... def test_something():
         ...     print("I ran!")
         ...     raise ValueError("Failure")
@@ -1156,6 +1098,8 @@ def with_connectivity_check(t, url="http://www.google.com",
         Traceback (most recent call last):
             ...
         SkipTest
+
+    Errors not related to networking will always be raised.
     """
     from nose import SkipTest
     t.network = True
@@ -1167,7 +1111,22 @@ def with_connectivity_check(t, url="http://www.google.com",
                 raise SkipTest
         try:
             return t(*args, **kwargs)
-        except error_classes as e:
+        except Exception as e:
+            errno = getattr(e, 'errno', None)
+            if not errno and hasattr(errno, "reason"):
+                errno = getattr(e.reason, 'errno', None)
+
+            if not isinstance(e, error_classes):
+                raise
+
+            if errno in skip_errnos:
+                raise SkipTest("Skipping test due to known errno"
+                               " and error %s" % e)
+
+            if any([m.lower() in str(e).lower() for m in _skip_on_messages]):
+                raise SkipTest("Skipping test because exception message is known"
+                               " and error %s" % e)
+
             if raise_on_error or can_connect(url, error_classes):
                 raise
             else:
@@ -1175,6 +1134,9 @@ def with_connectivity_check(t, url="http://www.google.com",
                                " and error %s" % e)
 
     return wrapper
+
+
+with_connectivity_check = network
 
 
 class SimpleMock(object):
@@ -1390,3 +1352,21 @@ def assert_produces_warning(expected_warning=Warning, filter_level="always"):
                                  % expected_warning.__name__)
         assert not extra_warnings, ("Caused unexpected warning(s): %r."
                                     % extra_warnings)
+
+
+def skip_if_no_ne(engine='numexpr'):
+    import nose
+    _USE_NUMEXPR = pd.computation.expressions._USE_NUMEXPR
+
+    if engine == 'numexpr':
+        try:
+            import numexpr as ne
+        except ImportError:
+            raise nose.SkipTest("numexpr not installed")
+
+        if not _USE_NUMEXPR:
+            raise nose.SkipTest("numexpr disabled")
+
+        if ne.__version__ < LooseVersion('2.0'):
+            raise nose.SkipTest("numexpr version too low: "
+                                "%s" % ne.__version__)

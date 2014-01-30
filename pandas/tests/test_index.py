@@ -14,6 +14,7 @@ from numpy.testing import assert_array_equal
 
 from pandas.core.index import (Index, Float64Index, Int64Index, MultiIndex,
                                InvalidIndexError)
+from pandas.tseries.index import DatetimeIndex
 from pandas.core.frame import DataFrame
 from pandas.core.series import Series
 from pandas.util.testing import (assert_almost_equal, assertRaisesRegexp,
@@ -32,6 +33,9 @@ from pandas.lib import Timestamp
 
 from pandas import _np_version_under1p7
 
+def _skip_if_need_numpy_1_7():
+    if _np_version_under1p7:
+        raise nose.SkipTest('numpy >= 1.7 required')
 
 class TestIndex(tm.TestCase):
     _multiprocess_can_split_ = True
@@ -236,12 +240,7 @@ class TestIndex(tm.TestCase):
         tm.assert_isinstance(self.dateIndex.asof(d), Timestamp)
 
     def test_nanosecond_index_access(self):
-        if _np_version_under1p7:
-            import nose
-
-            raise nose.SkipTest('numpy >= 1.7 required')
-
-        from pandas import Series, Timestamp, DatetimeIndex
+        _skip_if_need_numpy_1_7()
 
         s = Series([Timestamp('20130101')]).values.view('i8')[0]
         r = DatetimeIndex([s + 50 + i for i in range(100)])
@@ -1380,10 +1379,10 @@ class TestMultiIndex(tm.TestCase):
             columns=['one', 'two', 'three', 'four'],
             index=idx)
         df = df.sortlevel()
-        self.assert_(df.is_copy is False)
+        self.assert_(df.is_copy is None)
         self.assertEqual(df.index.names, ('Name', 'Number'))
         df = df.set_value(('grethe', '4'), 'one', 99.34)
-        self.assert_(df.is_copy is False)
+        self.assert_(df.is_copy is None)
         self.assertEqual(df.index.names, ('Name', 'Number'))
 
     def test_names(self):
@@ -1562,6 +1561,20 @@ class TestMultiIndex(tm.TestCase):
         result = MultiIndex.from_arrays(arrays)
         self.assertEquals(list(result), list(self.index))
 
+    def test_from_product(self):
+        first = ['foo', 'bar', 'buz']
+        second = ['a', 'b', 'c']
+        names = ['first', 'second']
+        result = MultiIndex.from_product([first, second], names=names)
+
+        tuples = [('foo', 'a'), ('foo', 'b'), ('foo', 'c'),
+                  ('bar', 'a'), ('bar', 'b'), ('bar', 'c'),
+                  ('buz', 'a'), ('buz', 'b'), ('buz', 'c')]
+        expected = MultiIndex.from_tuples(tuples, names=names)
+
+        assert_array_equal(result, expected)
+        self.assertEquals(result.names, names)
+
     def test_append(self):
         result = self.index[:3].append(self.index[3:])
         self.assert_(result.equals(self.index))
@@ -1607,11 +1620,12 @@ class TestMultiIndex(tm.TestCase):
         expected = ['a', np.nan, 1]
         assert_array_equal(values.values, expected)
 
-        arrays = [['a', 'b', 'b'], pd.DatetimeIndex([0, 1, pd.NaT])]
-        index = pd.MultiIndex.from_arrays(arrays)
-        values = index.get_level_values(1)
-        expected = pd.DatetimeIndex([0, 1, pd.NaT])
-        assert_array_equal(values.values, expected.values)
+        if not _np_version_under1p7:
+            arrays = [['a', 'b', 'b'], pd.DatetimeIndex([0, 1, pd.NaT])]
+            index = pd.MultiIndex.from_arrays(arrays)
+            values = index.get_level_values(1)
+            expected = pd.DatetimeIndex([0, 1, pd.NaT])
+            assert_array_equal(values.values, expected.values)
 
         arrays = [[], []]
         index = pd.MultiIndex.from_arrays(arrays)
@@ -1989,6 +2003,36 @@ class TestMultiIndex(tm.TestCase):
         pd.reset_option("^display\.")
 
         warnings.filters = warn_filters
+
+    def test_to_hierarchical(self):
+        index = MultiIndex.from_tuples([(1, 'one'), (1, 'two'),
+                                        (2, 'one'), (2, 'two')])
+        result = index.to_hierarchical(3)
+        expected = MultiIndex(levels=[[1, 2], ['one', 'two']],
+                              labels=[[0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
+                                      [0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1]])
+        tm.assert_index_equal(result, expected)
+        self.assertEqual(result.names, index.names)
+
+        # K > 1
+        result = index.to_hierarchical(3, 2)
+        expected = MultiIndex(levels=[[1, 2], ['one', 'two']],
+                              labels=[[0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+                                      [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1]])
+        tm.assert_index_equal(result, expected)
+        self.assertEqual(result.names, index.names)
+
+        # non-sorted
+        index = MultiIndex.from_tuples([(2, 'c'), (1, 'b'),
+                                        (2, 'a'), (2, 'b')],
+                                       names=['N1', 'N2'])
+
+        result = index.to_hierarchical(2)
+        expected = MultiIndex.from_tuples([(2, 'c'), (2, 'c'), (1, 'b'), (1, 'b'),
+                                           (2, 'a'), (2, 'a'), (2, 'b'), (2, 'b')],
+                                          names=['N1', 'N2'])
+        tm.assert_index_equal(result, expected)
+        self.assertEqual(result.names, index.names)
 
     def test_bounds(self):
         self.index._bounds

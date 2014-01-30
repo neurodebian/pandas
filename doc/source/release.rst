@@ -45,10 +45,141 @@ analysis / manipulation tool available in any language.
 * Binary installers on PyPI: http://pypi.python.org/pypi/pandas
 * Documentation: http://pandas.pydata.org
 
-pandas 0.13.0
+pandas 0.13.1
 -------------
 
 **Release date:** not-yet-released
+
+New features
+~~~~~~~~~~~~
+
+  - Added ``date_format`` and ``datetime_format`` attribute to ``ExcelWriter``.
+    (:issue:`4133`)
+
+API Changes
+~~~~~~~~~~~
+
+  - ``Series.sort`` will raise a ``ValueError`` (rather than a ``TypeError``) on sorting an
+    object that is a view of another (:issue:`5856`, :issue:`5853`)
+  - Raise/Warn ``SettingWithCopyError`` (according to the option ``chained_assignment`` in more cases,
+    when detecting chained assignment, related (:issue:`5938`, :issue:`6025`)
+  - DataFrame.head(0) returns self instead of empty frame (:issue:`5846`)
+  - ``autocorrelation_plot`` now accepts ``**kwargs``. (:issue:`5623`)
+  - ``convert_objects`` now accepts a ``convert_timedeltas='coerce'`` argument to allow forced dtype conversion of
+    timedeltas (:issue:`5458`,:issue:`5689`)
+  - Add ``-NaN`` and ``-nan`` to the default set of NA values
+    (:issue:`5952`).  See :ref:`NA Values <io.na_values>`.
+  - ``NDFrame`` now has an ``equals`` method. (:issue:`5283`)
+  - ``DataFrame.apply`` will use the ``reduce`` argument to determine whether a
+    ``Series`` or a ``DataFrame`` should be returned when the ``DataFrame`` is
+    empty (:issue:`6007`).
+
+Experimental Features
+~~~~~~~~~~~~~~~~~~~~~
+
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  - perf improvements in Series datetime/timedelta binary operations (:issue:`5801`)
+  - `option_context` context manager now available as top-level API (:issue:`5752`)
+  - df.info() view now display dtype info per column (:issue:`5682`)
+  - df.info() now honors option max_info_rows, disable null counts for large frames (:issue:`5974`)
+  - perf improvements in DataFrame ``count/dropna`` for ``axis=1``
+  - Series.str.contains now has a `regex=False` keyword which can be faster for plain (non-regex) string patterns. (:issue:`5879`)
+  - support ``dtypes`` property on ``Series/Panel/Panel4D``
+  - extend ``Panel.apply`` to allow arbitrary functions (rather than only ufuncs) (:issue:`1148`)
+    allow multiple axes to be used to operate on slabs of a ``Panel``
+  - The ``ArrayFormatter`` for ``datetime`` and ``timedelta64`` now intelligently
+    limit precision based on the values in the array (:issue:`3401`)
+  - ``pd.show_versions()`` is now available for convenience when reporting issues.
+  - perf improvements to Series.str.extract (:issue:`5944`)
+  - perf improvments in ``dtypes/ftypes`` methods (:issue:`5968`)
+  - perf improvments in indexing with object dtypes (:issue:`5968`)
+  - improved dtype inference for ``timedelta`` like passed to constructors (:issue:`5458`, :issue:`5689`)
+  - escape special characters when writing to latex (:issue: `5374`)
+  - perf improvements in ``DataFrame.apply`` (:issue:`6013`)
+  - ``pd.read_csv`` and ``pd.to_datetime`` learned a new ``infer_datetime_format`` keyword which greatly
+    improves parsing perf in many cases. Thanks to @lexual for suggesting and @danbirken
+    for rapidly implementing. (:issue:`5490`,:issue:`6021`)
+  - add ability to recognize '%p' format code (am/pm) to date parsers when the specific format
+    is supplied (:issue:`5361`)
+  - Fix performance regression in JSON IO (:issue:`5765`)
+  - performance regression in Index construction from Series (:issue:`6150`)
+
+.. _release.bug_fixes-0.13.1:
+
+Bug Fixes
+~~~~~~~~~
+  - Bug in ``io.wb.get_countries`` not including all countries (:issue:`6008`)
+  - Bug in Series replace with timestamp dict (:issue:`5797`)
+  - read_csv/read_table now respects the `prefix` kwarg (:issue:`5732`).
+  - Bug in selection with missing values via ``.ix`` from a duplicate indexed DataFrame failing (:issue:`5835`)
+  - Fix issue of boolean comparison on empty DataFrames (:issue:`5808`)
+  - Bug in isnull handling ``NaT`` in an object array (:issue:`5443`)
+  - Bug in ``to_datetime`` when passed a ``np.nan`` or integer datelike and a format string (:issue:`5863`)
+  - Bug in groupby dtype conversion with datetimelike (:issue:`5869`)
+  - Regresssion in handling of empty Series as indexers to Series  (:issue:`5877`)
+  - Bug in internal caching, related to (:issue:`5727`)
+  - Testing bug in reading json/msgpack from a non-filepath on windows under py3 (:issue:`5874`)
+  - Bug when assigning to .ix[tuple(...)] (:issue:`5896`)
+  - Bug in fully reindexing a Panel (:issue:`5905`)
+  - Bug in idxmin/max with object dtypes (:issue:`5914`)
+  - Bug in ``BusinessDay`` when adding n days to a date not on offset when n>5 and n%5==0 (:issue:`5890`)
+  - Bug in assigning to chained series with a series via ix (:issue:`5928`)
+  - Bug in creating an empty DataFrame, copying, then assigning (:issue:`5932`)
+  - Bug in DataFrame.tail with empty frame (:issue:`5846`)
+  - Bug in propogating metadata on ``resample`` (:issue:`5862`)
+  - Fixed string-representation of ``NaT`` to be "NaT" (:issue:`5708`)
+  - Fixed string-representation for Timestamp to show nanoseconds if present (:issue:`5912`)
+  - ``pd.match`` not returning passed sentinel
+  - ``Panel.to_frame()`` no longer fails when ``major_axis`` is a
+    ``MultiIndex`` (:issue:`5402`).
+  - Bug in ``pd.read_msgpack`` with inferring a ``DateTimeIndex`` frequency
+    incorrectly (:issue:`5947`)
+  - Fixed ``to_datetime`` for array with both Tz-aware datetimes and ``NaT``'s  (:issue:`5961`)
+  - Bug in rolling skew/kurtosis when passed a Series with bad data (:issue:`5749`)
+  - Bug in scipy ``interpolate`` methods with a datetime index (:issue:`5975`)
+  - Bug in NaT comparison if a mixed datetime/np.datetime64 with NaT were passed (:issue:`5968`)
+  - Fixed bug with ``pd.concat`` losing dtype information if all inputs are empty (:issue:`5742`)
+  - Recent changes in IPython cause warnings to be emitted when using previous versions
+    of pandas in QTConsole, now fixed. If you're using an older version and
+    need to supress the warnings, see (:issue:`5922`).
+  - Bug in merging ``timedelta`` dtypes (:issue:`5695`)
+  - Bug in plotting.scatter_matrix function. Wrong alignment among diagonal
+    and off-diagonal plots, see (:issue:`5497`).
+  - Regression in Series with a multi-index via ix (:issue:`6018`)
+  - Bug in Series.xs with a multi-index (:issue:`6018`)
+  - Bug in Series construction of mixed type with datelike and an integer (which should result in
+    object type and not automatic conversion) (:issue:`6028`)
+  - Possible segfault when chained indexing with an object array under numpy 1.7.1 (:issue:`6026`, :issue:`6056`)
+  - Bug in setting using fancy indexing a single element with a non-scalar (e.g. a list),
+    (:issue:`6043`)
+  - ``to_sql`` did not respect ``if_exists`` (:issue:`4110` :issue:`4304`)
+  - Regression in ``.get(None)`` indexing from 0.12 (:issue:`5652`)
+  - Subtle ``iloc`` indexing bug, surfaced in (:issue:`6059`)
+  - Bug with insert of strings into DatetimeIndex (:issue:`5818`)
+  - Fixed unicode bug in to_html/HTML repr (:issue:`6098`)
+  - Fixed missing arg validation in get_options_data (:issue:`6105`)
+  - Bug in assignment with duplicate columns in a frame where the locations
+    are a slice (e.g. next to each other) (:issue:`6120`)
+  - Bug in propogating _ref_locs during construction of a DataFrame with dups
+    index/columns (:issue:`6121`)
+  - Bug in ``DataFrame.apply`` when using mixed datelike reductions (:issue:`6125`)
+  - Bug in ``DataFrame.append`` when appending a row with different columns (:issue:`6129`)
+  - Bug in DataFrame construction with recarray and non-ns datetime dtype (:issue:`6140`)
+  - Bug in ``.loc`` setitem indexing with a datafrme on rhs, multiple item setting, and
+    a datetimelike (:issue:`6152`)
+  - Fixed a bug in ``query``/``eval`` during lexicographic string comparisons (:issue:`6155`).
+  - Fixed a bug in ``query`` where the index of a single-element ``Series`` was
+    being thrown away (:issue:`6148`).
+  - Bug in ``HDFStore`` on appending a dataframe with multi-indexed columns to
+    an existing table (:issue:`6167`)
+  - Consistency with dtypes in setting an empty DataFrame (:issue:`6171`)
+
+pandas 0.13.0
+-------------
+
+**Release date:** January 3, 2014
 
 New features
 ~~~~~~~~~~~~
@@ -833,7 +964,7 @@ Bug Fixes
   - Bug in fillna with Series and a passed series/dict (:issue:`5703`)
   - Bug in groupby transform with a datetime-like grouper (:issue:`5712`)
   - Bug in multi-index selection in PY3 when using certain keys (:issue:`5725`)
-  - Row-wise concat of differeing dtypes failing in certain cases (:issue:`5754`)
+  - Row-wise concat of differing dtypes failing in certain cases (:issue:`5754`)
 
 pandas 0.12.0
 -------------
@@ -1521,6 +1652,9 @@ Improvements to existing features
   - Add methods ``neg`` and ``inv`` to Series
   - Implement ``kind`` option in ``ExcelFile`` to indicate whether it's an XLS
     or XLSX file (:issue:`2613`)
+  - Documented a fast-path in pd.read_Csv when parsing iso8601 datetime strings
+    yielding as much as a 20x speedup.  (:issue:`5993`)
+
 
 Bug Fixes
 ~~~~~~~~~

@@ -249,8 +249,7 @@ Attributes and underlying data
 
    Series.values
    Series.dtype
-   Series.isnull
-   Series.notnull
+   Series.ftype
 
 Conversion
 ~~~~~~~~~~
@@ -468,6 +467,7 @@ details the methods show up here as methods of the
    StringMethods.strip
    StringMethods.title
    StringMethods.upper
+   StringMethods.get_dummies
 
 Plotting
 ~~~~~~~~
@@ -519,7 +519,9 @@ Attributes and underlying data
 
    DataFrame.as_matrix
    DataFrame.dtypes
+   DataFrame.ftypes
    DataFrame.get_dtype_counts
+   DataFrame.get_ftype_counts
    DataFrame.values
    DataFrame.axes
    DataFrame.ndim
@@ -785,6 +787,10 @@ Attributes and underlying data
    Panel.axes
    Panel.ndim
    Panel.shape
+   Panel.dtypes
+   Panel.ftypes
+   Panel.get_dtype_counts
+   Panel.get_ftype_counts
 
 Conversion
 ~~~~~~~~~~
@@ -958,6 +964,49 @@ Serialization / IO / Conversion
    Panel.to_frame
    Panel.to_clipboard
 
+.. _api.panel4d:
+
+Panel4D
+-------
+
+Constructor
+~~~~~~~~~~~
+.. autosummary::
+   :toctree: generated/
+
+   Panel4D
+
+Attributes and underlying data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**Axes**
+
+  * **labels**: axis 1; each label corresponds to a Panel contained inside
+  * **items**: axis 2; each item corresponds to a DataFrame contained inside
+  * **major_axis**: axis 3; the index (rows) of each of the DataFrames
+  * **minor_axis**: axis 4; the columns of each of the DataFrames
+
+.. autosummary::
+   :toctree: generated/
+
+   Panel4D.values
+   Panel4D.axes
+   Panel4D.ndim
+   Panel4D.shape
+   Panel4D.dtypes
+   Panel4D.ftypes
+   Panel4D.get_dtype_counts
+   Panel4D.get_ftype_counts
+
+Conversion
+~~~~~~~~~~
+.. autosummary::
+   :toctree: generated/
+
+   Panel4D.astype
+   Panel4D.copy
+   Panel4D.isnull
+   Panel4D.notnull
+
 .. _api.index:
 
 Index
@@ -1122,7 +1171,7 @@ Indexing, iteration
 ~~~~~~~~~~~~~~~~~~~
 .. autosummary::
    :toctree: generated/
-   
+
    GroupBy.__iter__
    GroupBy.groups
    GroupBy.indices
@@ -1141,7 +1190,7 @@ Computations / Descriptive Stats
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
    :toctree: generated/
-   
+
    GroupBy.mean
    GroupBy.median
    GroupBy.std
@@ -1155,7 +1204,7 @@ Computations / Descriptive Stats
 
 .. toctree::
    :hidden:
-   
+
    generated/pandas.core.common.isnull
    generated/pandas.core.common.notnull
    generated/pandas.core.reshape.get_dummies

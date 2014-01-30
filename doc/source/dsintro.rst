@@ -11,6 +11,7 @@
    np.set_printoptions(precision=4, suppress=True)
    set_option('display.precision', 4, 'display.max_columns', 8)
    options.display.max_rows=15
+   import pandas as pd
 
 
 ************************
@@ -489,6 +490,7 @@ objects), and the DataFrame index also contains dates, the broadcasting will be
 column-wise:
 
 .. ipython:: python
+   :okwarning:
 
    index = date_range('1/1/2000', periods=8)
    df = DataFrame(randn(8, 3), index=index, columns=list('ABC'))
