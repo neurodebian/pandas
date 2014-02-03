@@ -1,6 +1,6 @@
 .. _whatsnew_0131:
 
-v0.13.1 (February ???)
+v0.13.1 (February 3, 2014)
 ----------------------
 
 This is a minor release from 0.13.0 and includes a small number of API changes, several new features,
@@ -38,6 +38,66 @@ Highlights include:
       df = DataFrame(dict(A = np.array(['foo','bar','bah','foo','bar'])))
       df.ix[0,'A'] = np.nan
       df
+
+Output Formatting Enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- df.info() view now display dtype info per column (:issue:`5682`)
+
+- df.info() now honors the option ``max_info_rows``, to disable null counts for large frames (:issue:`5974`)
+
+  .. ipython:: python
+
+     max_info_rows = pd.get_option('max_info_rows')
+
+     df = DataFrame(dict(A = np.random.randn(10),
+                         B = np.random.randn(10),
+                         C = date_range('20130101',periods=10)))
+     df.iloc[3:6,[0,2]] = np.nan
+
+  .. ipython:: python
+
+     # set to not display the null counts
+     pd.set_option('max_info_rows',0)
+     df.info()
+
+  .. ipython:: python
+
+     # this is the default (same as in 0.13.0)
+     pd.set_option('max_info_rows',max_info_rows)
+     df.info()
+
+- Add ``show_dimensions`` display option for the new DataFrame repr to control whether the dimensions print.
+
+  .. ipython:: python
+
+      df = DataFrame([[1, 2], [3, 4]])
+      pd.set_option('show_dimensions', False)
+      df
+
+      pd.set_option('show_dimensions', True)
+      df
+
+- The ``ArrayFormatter`` for ``datetime`` and ``timedelta64`` now intelligently
+  limit precision based on the values in the array (:issue:`3401`)
+
+  Previously output might look like:
+
+  .. code-block:: python
+
+        age                 today               diff
+      0 2001-01-01 00:00:00 2013-04-19 00:00:00 4491 days, 00:00:00
+      1 2004-06-01 00:00:00 2013-04-19 00:00:00 3244 days, 00:00:00
+
+  Now the output looks like:
+
+  .. ipython:: python
+
+     df = DataFrame([ Timestamp('20010101'),
+                      Timestamp('20040601') ], columns=['age'])
+     df['today'] = Timestamp('20130419')
+     df['diff'] = df['today']-df['age']
+     df
 
 API changes
 ~~~~~~~~~~~
@@ -139,37 +199,6 @@ Enhancements
 
       MultiIndex.from_product([shades, colors], names=['shade', 'color'])
 
-- The ``ArrayFormatter`` for ``datetime`` and ``timedelta64`` now intelligently
-  limit precision based on the values in the array (:issue:`3401`)
-
-  Previously output might look like:
-
-  .. code-block:: python
-
-        age                 today               diff
-      0 2001-01-01 00:00:00 2013-04-19 00:00:00 4491 days, 00:00:00
-      1 2004-06-01 00:00:00 2013-04-19 00:00:00 3244 days, 00:00:00
-
-  Now the output looks like:
-
-  .. ipython:: python
-
-     df = DataFrame([ Timestamp('20010101'),
-                      Timestamp('20040601') ], columns=['age'])
-     df['today'] = Timestamp('20130419')
-     df['diff'] = df['today']-df['age']
-     df
-
-- Add ``show_dimensions`` display option for the new DataFrame repr to control whether the dimensions print.
-
-   .. ipython:: python
-
-      df = DataFrame([[1, 2], [3, 4]])
-      pd.set_option('show_dimensions', False)
-      df
-
-      pd.set_option('show_dimensions', True)
-
 - Panel :meth:`~pandas.Panel.apply` will work on non-ufuncs. See :ref:`the docs<basics.apply_panel>`.
 
   .. ipython:: python
@@ -226,9 +255,6 @@ Enhancements
                              for ax in panel.minor_axis ]))
      result
      result.loc[:,:,'ItemA']
-
-- df.info() view now display dtype info per column (:issue:`5682`)
-- df.info() now honors option max_info_rows, disable null counts for large frames (:issue:`5974`)
 
 Performance
 ~~~~~~~~~~~

@@ -12,6 +12,7 @@ import os
 import subprocess
 import locale
 import unittest
+import traceback
 
 from datetime import datetime
 from functools import wraps, partial
@@ -201,14 +202,23 @@ def get_locales(prefix=None, normalize=True,
         return None
 
     try:
-        raw_locales = str(raw_locales, encoding=pd.options.display.encoding)
+        # raw_locales is "\n" seperated list of locales
+        # it may contain non-decodable parts, so split
+        # extract what we can and then rejoin.
+        locales = raw_locales.split(b'\n')
+        raw_locales = []
+        for x in raw_locales:
+            try:
+                raw_locales.append(str(x, encoding=pd.options.display.encoding))
+            except:
+                pass
     except TypeError:
         pass
 
     if prefix is None:
-        return _valid_locales(raw_locales.splitlines(), normalize)
+        return _valid_locales(raw_locales, normalize)
 
-    found = re.compile('%s.*' % prefix).findall(raw_locales)
+    found = re.compile('%s.*' % prefix).findall('\n'.join(raw_locales))
     return _valid_locales(found, normalize)
 
 
@@ -969,9 +979,13 @@ def optional_args(decorator):
 
 # skip tests on exceptions with this message
 _network_error_messages = (
-    'urlopen error timed out',
-    'timeout: timed out',
-    'socket.timeout: timed out',
+    # 'urlopen error timed out',
+    # 'timeout: timed out',
+    # 'socket.timeout: timed out',
+    'timed out',
+    'Server Hangup',
+    'HTTP Error 503: Service Unavailable',
+    '502: Proxy Error',
     )
 
 # or this e.errno/e.reason.errno
@@ -1051,6 +1065,14 @@ def network(t, url="http://www.google.com",
     error_classes : tuple or Exception
         error classes to ignore. If not in ``error_classes``, raises the error.
         defaults to IOError. Be careful about changing the error classes here.
+    skip_errnos : iterable of int
+        Any exception that has .errno or .reason.erno set to one
+        of these values will be skipped with an appropriate
+        message.
+    _skip_on_messages: iterable of string
+        any exception e for which one of the strings is
+        a substring of str(e) will be skipped with an appropriate
+        message. Intended to supress errors where an errno isn't available.
 
     Notes
     -----
@@ -1116,16 +1138,21 @@ def network(t, url="http://www.google.com",
             if not errno and hasattr(errno, "reason"):
                 errno = getattr(e.reason, 'errno', None)
 
-            if not isinstance(e, error_classes):
-                raise
-
             if errno in skip_errnos:
                 raise SkipTest("Skipping test due to known errno"
                                " and error %s" % e)
 
-            if any([m.lower() in str(e).lower() for m in _skip_on_messages]):
+            try:
+                e_str = traceback.format_exc(e)
+            except:
+                e_str = str(e)
+
+            if any([m.lower() in e_str.lower() for m in _skip_on_messages]):
                 raise SkipTest("Skipping test because exception message is known"
                                " and error %s" % e)
+
+            if not isinstance(e, error_classes):
+                raise
 
             if raise_on_error or can_connect(url, error_classes):
                 raise
