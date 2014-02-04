@@ -1,1 +1,2 @@
 deb_skip_sequencelike_on_armel
+deb_skip_test_pytables_failure

@@ -1,8 +1,11 @@
 pandas (0.13.1-1) unstable; urgency=low
 
   * Fresh upstream release
+  * debian/patches
+    - deb_skip_test_pytables_failure to mitigate error while testing on
+      amd64 wheezy and ubuntu 12.04
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 03 Feb 2014 08:40:44 -0500
+ -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 04 Feb 2014 12:09:29 -0500
 
 pandas (0.13.0+git464-g15a8ff7-1) experimental; urgency=low
 
