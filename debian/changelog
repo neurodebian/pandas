@@ -1,3 +1,10 @@
+pandas (0.13.1-2) unstable; urgency=low
+
+  * debian/patches/changeset_6d56e7300d66d3ba76684334bbb44b6cd0ea9f61.diff
+    to fix FTBFS of statsmodels due to failing tests (Closes: #735804)
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Sat, 08 Feb 2014 12:46:42 -0500
+
 pandas (0.13.1-1) unstable; urgency=low
 
   * Fresh upstream release
