@@ -91,7 +91,7 @@ class TestExpressions(tm.TestCase):
                         assert expected.dtype.kind == 'f'
                 assert_func(expected, result)
             except Exception:
-                print("Failed test with operator %r" % op.__name__)
+                com.pprint_thing("Failed test with operator %r" % op.__name__)
                 raise
 
     def test_integer_arithmetic(self):
@@ -131,8 +131,8 @@ class TestExpressions(tm.TestCase):
                     assert not used_numexpr, "Used numexpr unexpectedly."
                 assert_func(expected, result)
             except Exception:
-                print("Failed test with operation %r" % arith)
-                print("test_flex was %r" % test_flex)
+                com.pprint_thing("Failed test with operation %r" % arith)
+                com.pprint_thing("test_flex was %r" % test_flex)
                 raise
 
     def run_frame(self, df, other, binary_comp=None, run_binary=True,
@@ -343,8 +343,8 @@ class TestExpressions(tm.TestCase):
     def test_bool_ops_raise_on_arithmetic(self):
         df = DataFrame({'a': np.random.rand(10) > 0.5,
                         'b': np.random.rand(10) > 0.5})
-        names = 'add', 'mul', 'sub', 'div', 'truediv', 'floordiv', 'pow'
-        ops = '+', '*', '-', '/', '/', '//', '**'
+        names = 'div', 'truediv', 'floordiv', 'pow'
+        ops = '/', '/', '//', '**'
         msg = 'operator %r not implemented for bool dtypes'
         for op, name in zip(ops, names):
             if not compat.PY3 or name != 'div':
@@ -368,6 +368,49 @@ class TestExpressions(tm.TestCase):
 
                 with tm.assertRaisesRegexp(TypeError, err_msg):
                     f(df, True)
+
+    def test_bool_ops_warn_on_arithmetic(self):
+        n = 10
+        df = DataFrame({'a': np.random.rand(n) > 0.5,
+                        'b': np.random.rand(n) > 0.5})
+        names = 'add', 'mul', 'sub'
+        ops = '+', '*', '-'
+        subs = {'+': '|', '*': '&', '-': '^'}
+        sub_funcs = {'|': 'or_', '&': 'and_', '^': 'xor'}
+        for op, name in zip(ops, names):
+            f = getattr(operator, name)
+            fe = getattr(operator, sub_funcs[subs[op]])
+
+            with tm.use_numexpr(True, min_elements=5):
+                with tm.assert_produces_warning():
+                    r = f(df, df)
+                    e = fe(df, df)
+                    tm.assert_frame_equal(r, e)
+
+                with tm.assert_produces_warning():
+                    r = f(df.a, df.b)
+                    e = fe(df.a, df.b)
+                    tm.assert_series_equal(r, e)
+
+                with tm.assert_produces_warning():
+                    r = f(df.a, True)
+                    e = fe(df.a, True)
+                    tm.assert_series_equal(r, e)
+
+                with tm.assert_produces_warning():
+                    r = f(False, df.a)
+                    e = fe(False, df.a)
+                    tm.assert_series_equal(r, e)
+
+                with tm.assert_produces_warning():
+                    r = f(False, df)
+                    e = fe(False, df)
+                    tm.assert_frame_equal(r, e)
+
+                with tm.assert_produces_warning():
+                    r = f(df, True)
+                    e = fe(df, True)
+                    tm.assert_frame_equal(r, e)
 
 
 if __name__ == '__main__':
