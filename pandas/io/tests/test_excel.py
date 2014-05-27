@@ -1,8 +1,9 @@
 # pylint: disable=E1101
 
-from pandas.compat import u, range, map
-from datetime import datetime, date
+from pandas.compat import u, range, map, openpyxl_compat
+from datetime import datetime, date, time
 import os
+from distutils.version import LooseVersion
 
 import nose
 
@@ -43,6 +44,10 @@ def _skip_if_no_openpyxl():
         import openpyxl  # NOQA
     except ImportError:
         raise nose.SkipTest('openpyxl not installed, skipping')
+
+    if not openpyxl_compat.is_compat():
+        raise nose.SkipTest('need %s <= openpyxl < %s, skipping' %
+                (openpyxl_compat.start_ver, openpyxl_compat.stop_ver))
 
 
 def _skip_if_no_xlsxwriter():
@@ -360,6 +365,49 @@ class ExcelReaderTests(SharedItems, tm.TestCase):
                            convert_float=False)
         tm.assert_frame_equal(actual, no_convert_float)
 
+    def test_reader_seconds(self):
+        # Test reading times with and without milliseconds. GH5945.
+        _skip_if_no_xlrd()
+        import xlrd
+
+        if LooseVersion(xlrd.__VERSION__) >= LooseVersion("0.9.3"):
+            # Xlrd >= 0.9.3 can handle Excel milliseconds.
+            expected = DataFrame.from_items([("Time",
+                                              [time(1, 2, 3),
+                                               time(2, 45, 56, 100000),
+                                               time(4, 29, 49, 200000),
+                                               time(6, 13, 42, 300000),
+                                               time(7, 57, 35, 400000),
+                                               time(9, 41, 28, 500000),
+                                               time(11, 25, 21, 600000),
+                                               time(13, 9, 14, 700000),
+                                               time(14, 53, 7, 800000),
+                                               time(16, 37, 0, 900000),
+                                               time(18, 20, 54)])])
+        else:
+            # Xlrd < 0.9.3 rounds Excel milliseconds.
+            expected = DataFrame.from_items([("Time",
+                                              [time(1, 2, 3),
+                                               time(2, 45, 56),
+                                               time(4, 29, 49),
+                                               time(6, 13, 42),
+                                               time(7, 57, 35),
+                                               time(9, 41, 29),
+                                               time(11, 25, 22),
+                                               time(13, 9, 15),
+                                               time(14, 53, 8),
+                                               time(16, 37, 1),
+                                               time(18, 20, 54)])])
+
+        epoch_1900 = os.path.join(self.dirpath, 'times_1900.xls')
+        epoch_1904 = os.path.join(self.dirpath, 'times_1904.xls')
+
+        actual = read_excel(epoch_1900, 'Sheet1')
+        tm.assert_frame_equal(actual, expected)
+
+        actual = read_excel(epoch_1904, 'Sheet1')
+        tm.assert_frame_equal(actual, expected)
+
 
 class ExcelWriterBase(SharedItems):
     # Base class for test cases to run with different Excel writers.
@@ -396,6 +444,14 @@ class ExcelWriterBase(SharedItems):
 
             self.assertRaises(xlrd.XLRDError, xl.parse, '0')
 
+    def test_excel_deprecated_options(self):
+        with ensure_clean(self.ext) as path:
+            with tm.assert_produces_warning(FutureWarning):
+                self.frame.to_excel(path, 'test1', cols=['A', 'B'])
+
+            with tm.assert_produces_warning(False):
+                self.frame.to_excel(path, 'test1', columns=['A', 'B'])
+
     def test_excelwriter_contextmanager(self):
         _skip_if_no_xlrd()
 
@@ -417,7 +473,7 @@ class ExcelWriterBase(SharedItems):
             self.frame['A'][:5] = nan
 
             self.frame.to_excel(path, 'test1')
-            self.frame.to_excel(path, 'test1', cols=['A', 'B'])
+            self.frame.to_excel(path, 'test1', columns=['A', 'B'])
             self.frame.to_excel(path, 'test1', header=False)
             self.frame.to_excel(path, 'test1', index=False)
 
@@ -445,6 +501,15 @@ class ExcelWriterBase(SharedItems):
                                 na_values=[88, 88.0])
             tm.assert_frame_equal(self.frame, recons)
 
+            # GH 6573
+            self.frame.to_excel(path, 'Sheet1')
+            recons = read_excel(path, index_col=0)
+            tm.assert_frame_equal(self.frame, recons)
+
+            self.frame.to_excel(path, '0')
+            recons = read_excel(path, index_col=0)
+            tm.assert_frame_equal(self.frame, recons)
+
     def test_mixed(self):
         _skip_if_no_xlrd()
 
@@ -470,7 +535,7 @@ class ExcelWriterBase(SharedItems):
         with ensure_clean(self.ext) as path:
             self.frame['A'][:5] = nan
             self.frame.to_excel(path, 'test1')
-            self.frame.to_excel(path, 'test1', cols=['A', 'B'])
+            self.frame.to_excel(path, 'test1', columns=['A', 'B'])
             self.frame.to_excel(path, 'test1', header=False)
             self.frame.to_excel(path, 'test1', index=False)
 
@@ -521,6 +586,16 @@ class ExcelWriterBase(SharedItems):
                 recons = reader.parse('test1').astype(np_type)
                 tm.assert_frame_equal(frame, recons)
 
+    def test_inf_roundtrip(self):
+        _skip_if_no_xlrd()
+
+        frame = DataFrame([(1, np.inf), (2, 3), (5, -np.inf)])
+        with ensure_clean(self.ext) as path:
+            frame.to_excel(path, 'test1')
+            reader = ExcelFile(path)
+            recons = reader.parse('test1')
+            tm.assert_frame_equal(frame, recons)
+
     def test_sheets(self):
         _skip_if_no_xlrd()
 
@@ -528,7 +603,7 @@ class ExcelWriterBase(SharedItems):
             self.frame['A'][:5] = nan
 
             self.frame.to_excel(path, 'test1')
-            self.frame.to_excel(path, 'test1', cols=['A', 'B'])
+            self.frame.to_excel(path, 'test1', columns=['A', 'B'])
             self.frame.to_excel(path, 'test1', header=False)
             self.frame.to_excel(path, 'test1', index=False)
 
@@ -553,7 +628,7 @@ class ExcelWriterBase(SharedItems):
             self.frame['A'][:5] = nan
 
             self.frame.to_excel(path, 'test1')
-            self.frame.to_excel(path, 'test1', cols=['A', 'B'])
+            self.frame.to_excel(path, 'test1', columns=['A', 'B'])
             self.frame.to_excel(path, 'test1', header=False)
             self.frame.to_excel(path, 'test1', index=False)
 
@@ -574,7 +649,7 @@ class ExcelWriterBase(SharedItems):
             self.frame['A'][:5] = nan
 
             self.frame.to_excel(path, 'test1')
-            self.frame.to_excel(path, 'test1', cols=['A', 'B'])
+            self.frame.to_excel(path, 'test1', columns=['A', 'B'])
             self.frame.to_excel(path, 'test1', header=False)
             self.frame.to_excel(path, 'test1', index=False)
 
@@ -621,7 +696,7 @@ class ExcelWriterBase(SharedItems):
 
             self.frame.to_excel(path,
                                 'test1',
-                                cols=['A', 'B', 'C', 'D'],
+                                columns=['A', 'B', 'C', 'D'],
                                 index=False, merge_cells=self.merge_cells)
             # take 'A' and 'B' as indexes (same row as cols 'C', 'D')
             df = self.frame.copy()
@@ -724,7 +799,7 @@ class ExcelWriterBase(SharedItems):
 
         with ensure_clean(self.ext) as path:
             frame.to_excel(path, 'test1', header=False)
-            frame.to_excel(path, 'test1', cols=['A', 'B'])
+            frame.to_excel(path, 'test1', columns=['A', 'B'])
 
             # round trip
             frame.to_excel(path, 'test1', merge_cells=self.merge_cells)
@@ -752,7 +827,7 @@ class ExcelWriterBase(SharedItems):
                                   has_index_names=self.merge_cells)
 
             tm.assert_frame_equal(tsframe, recons)
-            self.assertEquals(recons.index.names, ('time', 'foo'))
+            self.assertEqual(recons.index.names, ('time', 'foo'))
 
     def test_to_excel_multiindex_no_write_index(self):
         _skip_if_no_xlrd()
@@ -795,6 +870,20 @@ class ExcelWriterBase(SharedItems):
                             [12.32, 123123.20, 321321.20]],
                             index=['A', 'B'], columns=['X', 'Y', 'Z'])
             tm.assert_frame_equal(rs, xp)
+
+    def test_to_excel_output_encoding(self):
+        _skip_if_no_xlrd()
+        ext = self.ext
+        filename = '__tmp_to_excel_float_format__.' + ext
+        df = DataFrame([[u('\u0192'), u('\u0193'), u('\u0194')],
+                        [u('\u0195'), u('\u0196'), u('\u0197')]],
+                        index=[u('A\u0192'), 'B'], columns=[u('X\u0193'), 'Y', 'Z'])
+
+        with ensure_clean(filename) as filename:
+            df.to_excel(filename, sheet_name='TestSheet', encoding='utf8')
+            result = read_excel(filename, 'TestSheet', encoding='utf8')
+            tm.assert_frame_equal(result, df)
+
 
     def test_to_excel_unicode_filename(self):
         _skip_if_no_xlrd()
@@ -851,21 +940,21 @@ class ExcelWriterBase(SharedItems):
 
     #     wbk = xlrd.open_workbook(filename,
     #                              formatting_info=True)
-    #     self.assertEquals(["test1"], wbk.sheet_names())
+    #     self.assertEqual(["test1"], wbk.sheet_names())
     #     ws = wbk.sheet_by_name('test1')
-    #     self.assertEquals([(0, 1, 5, 7), (0, 1, 3, 5), (0, 1, 1, 3)],
+    #     self.assertEqual([(0, 1, 5, 7), (0, 1, 3, 5), (0, 1, 1, 3)],
     #                       ws.merged_cells)
     #     for i in range(0, 2):
     #         for j in range(0, 7):
     #             xfx = ws.cell_xf_index(0, 0)
     #             cell_xf = wbk.xf_list[xfx]
     #             font = wbk.font_list
-    #             self.assertEquals(1, font[cell_xf.font_index].bold)
-    #             self.assertEquals(1, cell_xf.border.top_line_style)
-    #             self.assertEquals(1, cell_xf.border.right_line_style)
-    #             self.assertEquals(1, cell_xf.border.bottom_line_style)
-    #             self.assertEquals(1, cell_xf.border.left_line_style)
-    #             self.assertEquals(2, cell_xf.alignment.hor_align)
+    #             self.assertEqual(1, font[cell_xf.font_index].bold)
+    #             self.assertEqual(1, cell_xf.border.top_line_style)
+    #             self.assertEqual(1, cell_xf.border.right_line_style)
+    #             self.assertEqual(1, cell_xf.border.bottom_line_style)
+    #             self.assertEqual(1, cell_xf.border.left_line_style)
+    #             self.assertEqual(2, cell_xf.alignment.hor_align)
     #     os.remove(filename)
     # def test_to_excel_header_styling_xlsx(self):
     #     import StringIO
@@ -897,7 +986,7 @@ class ExcelWriterBase(SharedItems):
     #     filename = '__tmp_to_excel_header_styling_xlsx__.xlsx'
     #     pdf.to_excel(filename, 'test1')
     #     wbk = openpyxl.load_workbook(filename)
-    #     self.assertEquals(["test1"], wbk.get_sheet_names())
+    #     self.assertEqual(["test1"], wbk.get_sheet_names())
     #     ws = wbk.get_sheet_by_name('test1')
     #     xlsaddrs = ["%s2" % chr(i) for i in range(ord('A'), ord('H'))]
     #     xlsaddrs += ["A%s" % i for i in range(1, 6)]
@@ -905,15 +994,15 @@ class ExcelWriterBase(SharedItems):
     #     for xlsaddr in xlsaddrs:
     #         cell = ws.cell(xlsaddr)
     #         self.assertTrue(cell.style.font.bold)
-    #         self.assertEquals(openpyxl.style.Border.BORDER_THIN,
+    #         self.assertEqual(openpyxl.style.Border.BORDER_THIN,
     #                           cell.style.borders.top.border_style)
-    #         self.assertEquals(openpyxl.style.Border.BORDER_THIN,
+    #         self.assertEqual(openpyxl.style.Border.BORDER_THIN,
     #                           cell.style.borders.right.border_style)
-    #         self.assertEquals(openpyxl.style.Border.BORDER_THIN,
+    #         self.assertEqual(openpyxl.style.Border.BORDER_THIN,
     #                           cell.style.borders.bottom.border_style)
-    #         self.assertEquals(openpyxl.style.Border.BORDER_THIN,
+    #         self.assertEqual(openpyxl.style.Border.BORDER_THIN,
     #                           cell.style.borders.left.border_style)
-    #         self.assertEquals(openpyxl.style.Alignment.HORIZONTAL_CENTER,
+    #         self.assertEqual(openpyxl.style.Alignment.HORIZONTAL_CENTER,
     #                           cell.style.alignment.horizontal)
     #     mergedcells_addrs = ["C1", "E1", "G1"]
     #     for maddr in mergedcells_addrs:
@@ -997,7 +1086,7 @@ class ExcelWriterBase(SharedItems):
         with ensure_clean(self.ext) as path:
             write_frame = DataFrame({'A': [1, 1, 1],
                                      'B': [2, 2, 2]})
-            write_frame.to_excel(path, 'test1', cols=['B', 'A'])
+            write_frame.to_excel(path, 'test1', columns=['B', 'A'])
 
             read_frame = read_excel(path, 'test1', header=0)
 
@@ -1024,17 +1113,17 @@ class OpenpyxlTests(ExcelWriterBase, tm.TestCase):
 
         xlsx_style = _OpenpyxlWriter._convert_to_style(hstyle)
         self.assertTrue(xlsx_style.font.bold)
-        self.assertEquals(openpyxl.style.Border.BORDER_THIN,
+        self.assertEqual(openpyxl.style.Border.BORDER_THIN,
                           xlsx_style.borders.top.border_style)
-        self.assertEquals(openpyxl.style.Border.BORDER_THIN,
+        self.assertEqual(openpyxl.style.Border.BORDER_THIN,
                           xlsx_style.borders.right.border_style)
-        self.assertEquals(openpyxl.style.Border.BORDER_THIN,
+        self.assertEqual(openpyxl.style.Border.BORDER_THIN,
                           xlsx_style.borders.bottom.border_style)
-        self.assertEquals(openpyxl.style.Border.BORDER_THIN,
+        self.assertEqual(openpyxl.style.Border.BORDER_THIN,
                           xlsx_style.borders.left.border_style)
-        self.assertEquals(openpyxl.style.Alignment.HORIZONTAL_CENTER,
+        self.assertEqual(openpyxl.style.Alignment.HORIZONTAL_CENTER,
                           xlsx_style.alignment.horizontal)
-        self.assertEquals(openpyxl.style.Alignment.VERTICAL_TOP,
+        self.assertEqual(openpyxl.style.Alignment.VERTICAL_TOP,
                           xlsx_style.alignment.vertical)
 
 
@@ -1057,12 +1146,12 @@ class XlwtTests(ExcelWriterBase, tm.TestCase):
 
         xls_style = _XlwtWriter._convert_to_style(hstyle)
         self.assertTrue(xls_style.font.bold)
-        self.assertEquals(xlwt.Borders.THIN, xls_style.borders.top)
-        self.assertEquals(xlwt.Borders.THIN, xls_style.borders.right)
-        self.assertEquals(xlwt.Borders.THIN, xls_style.borders.bottom)
-        self.assertEquals(xlwt.Borders.THIN, xls_style.borders.left)
-        self.assertEquals(xlwt.Alignment.HORZ_CENTER, xls_style.alignment.horz)
-        self.assertEquals(xlwt.Alignment.VERT_TOP, xls_style.alignment.vert)
+        self.assertEqual(xlwt.Borders.THIN, xls_style.borders.top)
+        self.assertEqual(xlwt.Borders.THIN, xls_style.borders.right)
+        self.assertEqual(xlwt.Borders.THIN, xls_style.borders.bottom)
+        self.assertEqual(xlwt.Borders.THIN, xls_style.borders.left)
+        self.assertEqual(xlwt.Alignment.HORZ_CENTER, xls_style.alignment.horz)
+        self.assertEqual(xlwt.Alignment.VERT_TOP, xls_style.alignment.vert)
 
 
 class XlsxWriterTests(ExcelWriterBase, tm.TestCase):
@@ -1138,8 +1227,8 @@ class ExcelWriterEngineTests(tm.TestCase):
 
         def check_called(func):
             func()
-            self.assert_(len(called_save) >= 1)
-            self.assert_(len(called_write_cells) >= 1)
+            self.assertTrue(len(called_save) >= 1)
+            self.assertTrue(len(called_write_cells) >= 1)
             del called_save[:]
             del called_write_cells[:]
 

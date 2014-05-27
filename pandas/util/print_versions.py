@@ -60,6 +60,7 @@ def show_versions(as_json=False):
     deps = [
         # (MODULE_NAME, f(mod) -> mod version)
         ("pandas", lambda mod: mod.__version__),
+        ("nose", lambda mod: mod.__version__),
         ("Cython", lambda mod: mod.__version__),
         ("numpy", lambda mod: mod.version.version),
         ("scipy", lambda mod: mod.version.version),
@@ -78,18 +79,25 @@ def show_versions(as_json=False):
         ("xlrd", lambda mod: mod.__VERSION__),
         ("xlwt", lambda mod: mod.__VERSION__),
         ("xlsxwriter", lambda mod: mod.__version__),
-        ("sqlalchemy", lambda mod: mod.__version__),
         ("lxml", lambda mod: mod.etree.__version__),
         ("bs4", lambda mod: mod.__version__),
         ("html5lib", lambda mod: mod.__version__),
         ("bq", lambda mod: mod._VersionNumber()),
         ("apiclient", lambda mod: mod.__version__),
+        ("rpy2", lambda mod: mod.__version__),
+        ("sqlalchemy", lambda mod: mod.__version__),
+        ("pymysql", lambda mod: mod.__version__),
+        ("psycopg2", lambda mod: mod.__version__),
     ]
 
     deps_blob = list()
     for (modname, ver_f) in deps:
         try:
-            mod = imp.load_module(modname, *imp.find_module(modname))
+            try:
+                mod = imp.load_module(modname, *imp.find_module(modname))
+            except (ImportError):
+                import importlib
+                mod = importlib.import_module(modname)
             ver = ver_f(mod)
             deps_blob.append((modname, ver))
         except:

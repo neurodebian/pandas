@@ -1,7 +1,7 @@
 .. _whatsnew_0131:
 
 v0.13.1 (February 3, 2014)
-----------------------
+--------------------------
 
 This is a minor release from 0.13.0 and includes a small number of API changes, several new features,
 enhancements, and performance improvements along with a large number of bug fixes. We recommend that all
@@ -141,7 +141,7 @@ API changes
   .. ipython:: python
 
      def applied_func(col):
-        print "Apply function being called with:", col
+        print("Apply function being called with: ", col)
         return col.sum()
 
      empty = DataFrame(columns=['a', 'b'])

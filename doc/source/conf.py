@@ -13,7 +13,7 @@
 import sys
 import os
 import re
-from pandas.compat import u
+from pandas.compat import u, PY3
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -36,12 +36,13 @@ sys.path.extend([
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.  sphinxext.
 
 extensions = ['sphinx.ext.autodoc',
+              'sphinx.ext.autosummary',
               'sphinx.ext.doctest',
               'sphinx.ext.extlinks',
               'sphinx.ext.todo',
               'numpydoc', # used to parse numpy-style docstrings for autodoc
-              'ipython_directive',
-              'ipython_console_highlighting',
+              'ipython_sphinxext.ipython_directive',
+              'ipython_sphinxext.ipython_console_highlighting',
               'sphinx.ext.intersphinx',
               'sphinx.ext.todo',
               'sphinx.ext.coverage',
@@ -63,7 +64,6 @@ with open("index.rst") as f:
 autosummary_generate = False
 
 if any([re.match("\s*api\s*",l) for l in lines]):
-    extensions.append('sphinx.ext.autosummary')
     autosummary_generate = True
 
 ds = []
@@ -78,7 +78,10 @@ for f in os.listdir(os.path.dirname(__file__)):
 if ds:
     print("I'm about to DELETE the following:\n%s\n" % list(sorted(ds)))
     sys.stdout.write("WARNING: I'd like to delete those to speed up processing (yes/no)? ")
-    answer = raw_input()
+    if PY3:
+        answer = input()
+    else:
+        answer = raw_input()
 
     if answer.lower().strip() in ('y','yes'):
         for f in ds:
@@ -274,6 +277,7 @@ latex_documents = [
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
     'statsmodels': ('http://statsmodels.sourceforge.net/devel/', None),
+    'matplotlib': ('http://matplotlib.org/', None),
     'python': ('http://docs.python.org/', None)
 }
 import glob

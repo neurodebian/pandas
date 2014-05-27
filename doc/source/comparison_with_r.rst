@@ -30,6 +30,43 @@ R packages.
 Base R
 ------
 
+Slicing with R's |c|_
+~~~~~~~~~~~~~~~~~~~~~
+
+R makes it easy to access ``data.frame`` columns by name
+
+.. code-block:: r
+
+   df <- data.frame(a=rnorm(5), b=rnorm(5), c=rnorm(5), d=rnorm(5), e=rnorm(5))
+   df[, c("a", "c", "e")]
+
+or by integer location
+
+.. code-block:: r
+
+   df <- data.frame(matrix(rnorm(1000), ncol=100))
+   df[, c(1:10, 25:30, 40, 50:100)]
+
+Selecting multiple columns by name in ``pandas`` is straightforward
+
+.. ipython:: python
+
+   df = DataFrame(np.random.randn(10, 3), columns=list('abc'))
+   df[['a', 'c']]
+   df.loc[:, ['a', 'c']]
+
+Selecting multiple noncontiguous columns by integer location can be achieved
+with a combination of the ``iloc`` indexer attribute and ``numpy.r_``.
+
+.. ipython:: python
+
+   named = list('abcdefg')
+   n = 30
+   columns = named + np.arange(len(named), n).tolist()
+   df = DataFrame(np.random.randn(n, n), columns=columns)
+
+   df.iloc[:, np.r_[:10, 24:30]]
+
 |aggregate|_
 ~~~~~~~~~~~~
 
@@ -99,7 +136,7 @@ this:
 .. ipython:: python
 
    s = pd.Series(np.arange(5),dtype=np.float32)
-   Series(pd.match(s,[2,4],np.nan))
+   pd.Series(pd.match(s,[2,4],np.nan))
 
 For more details and examples see :ref:`the reshaping documentation
 <indexing.basics.indexing_isin>`.
@@ -134,7 +171,7 @@ In ``pandas`` we may use :meth:`~pandas.pivot_table` method to handle this:
       'player': random.sample(list(string.ascii_lowercase),25),
       'batting avg': np.random.uniform(.200, .400, 25)
       })
-   baseball.pivot_table(values='batting avg', cols='team', aggfunc=np.max)
+   baseball.pivot_table(values='batting avg', columns='team', aggfunc=np.max)
 
 For more details and examples see :ref:`the reshaping documentation
 <reshaping.pivot>`.
@@ -279,7 +316,7 @@ In Python, since ``a`` is a list, you can simply use list comprehension.
 
 .. ipython:: python
 
-   a = np.array(range(1,24)+[np.NAN]).reshape(2,3,4)
+   a = np.array(list(range(1,24))+[np.NAN]).reshape(2,3,4)
    DataFrame([tuple(list(x)+[val]) for x, val in np.ndenumerate(a)])
 
 |meltlist|_
@@ -298,7 +335,7 @@ In Python, this list would be a list of tuples, so
 
 .. ipython:: python
 
-   a = list(enumerate(range(1,5)+[np.NAN]))
+   a = list(enumerate(list(range(1,5))+[np.NAN]))
    DataFrame(a)
 
 For more details and examples see :ref:`the Into to Data Structures
@@ -365,8 +402,8 @@ In Python the best way is to make use of :meth:`~pandas.pivot_table`:
         'week': [1,2]*6
    })
    mdf = pd.melt(df, id_vars=['month', 'week'])
-   pd.pivot_table(mdf, values='value', rows=['variable','week'],
-                    cols=['month'], aggfunc=np.mean)
+   pd.pivot_table(mdf, values='value', index=['variable','week'],
+                    columns=['month'], aggfunc=np.mean)
 
 Similarly for ``dcast`` which uses a data.frame called ``df`` in R to
 aggregate information based on ``Animal`` and ``FeedType``:
@@ -396,7 +433,7 @@ using :meth:`~pandas.pivot_table`:
        'Amount': [10, 7, 4, 2, 5, 6, 2],
    })
 
-   df.pivot_table(values='Amount', rows='Animal', cols='FeedType', aggfunc='sum')
+   df.pivot_table(values='Amount', index='Animal', columns='FeedType', aggfunc='sum')
 
 The second approach is to use the :meth:`~pandas.DataFrame.groupby` method:
 
@@ -406,6 +443,9 @@ The second approach is to use the :meth:`~pandas.DataFrame.groupby` method:
 
 For more details and examples see :ref:`the reshaping documentation
 <reshaping.pivot>` or :ref:`the groupby documentation<groupby.split>`.
+
+.. |c| replace:: ``c``
+.. _c: http://stat.ethz.ch/R-manual/R-patched/library/base/html/c.html
 
 .. |aggregate| replace:: ``aggregate``
 .. _aggregate: http://finzi.psych.upenn.edu/R/library/stats/html/aggregate.html

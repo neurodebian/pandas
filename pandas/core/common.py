@@ -121,6 +121,10 @@ def isnull(obj):
     isnulled : array-like of bool or bool
         Array or bool indicating whether an object is null or if an array is
         given which of the element is null.
+
+    See also
+    --------
+    pandas.notnull: boolean inverse of pandas.isnull
     """
     return _isnull(obj)
 
@@ -134,7 +138,7 @@ def _isnull_new(obj):
     elif isinstance(obj, (ABCSeries, np.ndarray)):
         return _isnull_ndarraylike(obj)
     elif isinstance(obj, ABCGeneric):
-        return obj._constructor(obj._data.apply(lambda x: isnull(x.values)))
+        return obj._constructor(obj._data.isnull(func=isnull))
     elif isinstance(obj, list) or hasattr(obj, '__array__'):
         return _isnull_ndarraylike(np.asarray(obj))
     else:
@@ -160,8 +164,7 @@ def _isnull_old(obj):
     elif isinstance(obj, (ABCSeries, np.ndarray)):
         return _isnull_ndarraylike_old(obj)
     elif isinstance(obj, ABCGeneric):
-        return obj._constructor(obj._data.apply(
-            lambda x: _isnull_old(x.values)))
+        return obj._constructor(obj._data.isnull(func=_isnull_old))
     elif isinstance(obj, list) or hasattr(obj, '__array__'):
         return _isnull_ndarraylike_old(np.asarray(obj))
     else:
@@ -210,7 +213,7 @@ def _isnull_ndarraylike(obj):
         else:
             result = np.empty(shape, dtype=bool)
             vec = lib.isnullobj(values.ravel())
-            result[:] = vec.reshape(shape)
+            result[...] = vec.reshape(shape)
 
     elif dtype in _DATELIKE_DTYPES:
         # this is the NaT pattern
@@ -245,7 +248,7 @@ def _isnull_ndarraylike_old(obj):
         # this is the NaT pattern
         result = values.view('i8') == tslib.iNaT
     else:
-        result = -np.isfinite(values)
+        result = ~np.isfinite(values)
 
     # box
     if isinstance(obj, ABCSeries):
@@ -269,16 +272,30 @@ def notnull(obj):
     isnulled : array-like of bool or bool
         Array or bool indicating whether an object is *not* null or if an array
         is given which of the element is *not* null.
+
+    See also
+    --------
+    pandas.isnull : boolean inverse of pandas.notnull
     """
     res = isnull(obj)
     if np.isscalar(res):
         return not res
-    return -res
+    return ~res
 
 def _is_null_datelike_scalar(other):
     """ test whether the object is a null datelike, e.g. Nat
     but guard against passing a non-scalar """
-    return (np.isscalar(other) and (isnull(other) or other == tslib.iNaT)) or other is pd.NaT or other is None
+    if other is pd.NaT or other is None:
+        return True
+    elif np.isscalar(other):
+
+        # a timedelta
+        if hasattr(other,'dtype'):
+            return other.view('i8') == tslib.iNaT
+        elif is_integer(other) and other == tslib.iNaT:
+            return True
+        return isnull(other)
+    return False
 
 def array_equivalent(left, right):
     """
@@ -304,11 +321,14 @@ def array_equivalent(left, right):
     >>> array_equivalent(np.array([1, nan, 2]), np.array([1, 2, nan]))
     False
     """
+    left, right = np.asarray(left), np.asarray(right)
     if left.shape != right.shape: return False
     # NaNs occur only in object arrays, float or complex arrays.
-    if not issubclass(left.dtype.type, (np.floating, np.complexfloating)):
-        return np.array_equal(left, right)
-    return  ((left == right) | (np.isnan(left) & np.isnan(right))).all()
+    if issubclass(left.dtype.type, np.object_):
+        return ((left == right) | (pd.isnull(left) & pd.isnull(right))).all()
+    if issubclass(left.dtype.type, (np.floating, np.complexfloating)):
+        return ((left == right) | (np.isnan(left) & np.isnan(right))).all()
+    return np.array_equal(left, right)
 
 def _iterable_not_string(x):
     return (isinstance(x, collections.Iterable) and
@@ -353,27 +373,25 @@ def mask_missing(arr, values_to_mask):
         values_to_mask = np.array(values_to_mask, dtype=object)
 
     na_mask = isnull(values_to_mask)
-    nonna = values_to_mask[-na_mask]
+    nonna = values_to_mask[~na_mask]
 
     mask = None
     for x in nonna:
         if mask is None:
             mask = arr == x
 
-            # if x is a string and mask is not, then we get a scalar
-            # return value, which is not good
-            if not isinstance(mask, np.ndarray):
-                m = mask
-                mask = np.empty(arr.shape, dtype=np.bool)
-                mask.fill(m)
+            # if x is a string and arr is not, then we get False and we must
+            # expand the mask to size arr.shape
+            if np.isscalar(mask):
+                mask = np.zeros(arr.shape, dtype=bool)
         else:
-            mask = mask | (arr == x)
+            mask |= arr == x
 
     if na_mask.any():
         if mask is None:
             mask = isnull(arr)
         else:
-            mask = mask | isnull(arr)
+            mask |= isnull(arr)
 
     return mask
 
@@ -657,6 +675,17 @@ def take_nd(arr, indexer, axis=0, out=None, fill_value=np.nan,
                     # to crash when trying to cast it to dtype)
                     dtype, fill_value = arr.dtype, arr.dtype.type()
 
+    flip_order = False
+    if arr.ndim == 2:
+        if arr.flags.f_contiguous:
+            flip_order = True
+
+    if flip_order:
+        arr = arr.T
+        axis = arr.ndim - axis - 1
+        if out is not None:
+            out = out.T
+
     # at this point, it's guaranteed that dtype can hold both the arr values
     # and the fill_value
     if out is None:
@@ -674,7 +703,11 @@ def take_nd(arr, indexer, axis=0, out=None, fill_value=np.nan,
 
     func = _get_take_nd_function(arr.ndim, arr.dtype, out.dtype,
                                  axis=axis, mask_info=mask_info)
+
     func(arr, indexer, out, fill_value)
+
+    if flip_order:
+        out = out.T
     return out
 
 
@@ -832,6 +865,9 @@ def _coerce_to_dtypes(result, dtypes):
             elif dtype == _TD_DTYPE:
                 r = _coerce_scalar_to_timedelta_type(r)
             elif dtype == np.bool_:
+                # messy. non 0/1 integers do not get converted.
+                if is_integer(r) and r not in [0,1]:
+                    return int(r)
                 r = bool(r)
             elif dtype.kind == 'f':
                 r = float(r)
@@ -842,7 +878,7 @@ def _coerce_to_dtypes(result, dtypes):
 
         return r
 
-    return np.array([conv(r, dtype) for r, dtype in zip(result, dtypes)])
+    return [conv(r, dtype) for r, dtype in zip(result, dtypes)]
 
 
 def _infer_dtype_from_scalar(val):
@@ -1076,7 +1112,7 @@ def _possibly_downcast_to_dtype(result, dtype):
     or could be an astype of float64->float32
     """
 
-    if np.isscalar(result) or not len(result):
+    if np.isscalar(result):
         return result
 
     trans = lambda x: x
@@ -1106,14 +1142,18 @@ def _possibly_downcast_to_dtype(result, dtype):
 
     try:
 
-        # don't allow upcasts here
+        # don't allow upcasts here (except if empty)
         if dtype.kind == result.dtype.kind:
-            if result.dtype.itemsize <= dtype.itemsize:
+            if result.dtype.itemsize <= dtype.itemsize and np.prod(result.shape):
                 return result
 
         if issubclass(dtype.type, np.floating):
             return result.astype(dtype)
         elif dtype == np.bool_ or issubclass(dtype.type, np.integer):
+
+            # if we don't have any elements, just astype it
+            if not np.prod(result.shape):
+                return trans(result).astype(dtype)
 
             # do a test on the first element, if it fails then we are done
             r = result.ravel()
@@ -1180,13 +1220,23 @@ def _lcd_dtypes(a_dtype, b_dtype):
     return np.object
 
 
-def _fill_zeros(result, y, fill):
-    """ if we have an integer value (or array in y)
+def _fill_zeros(result, x, y, name, fill):
+    """
+    if this is a reversed op, then flip x,y
+
+    if we have an integer value (or array in y)
     and we have 0's, fill them with the fill,
     return the result
+
+    mask the nan's from x
     """
 
     if fill is not None:
+
+        if name.startswith('r'):
+            x,y = y,x
+
+
         if not isinstance(y, np.ndarray):
             dtype, value = _infer_dtype_from_scalar(y)
             y = pa.empty(result.shape, dtype=dtype)
@@ -1197,8 +1247,18 @@ def _fill_zeros(result, y, fill):
             mask = y.ravel() == 0
             if mask.any():
                 shape = result.shape
-                result, changed = _maybe_upcast_putmask(
-                    result.ravel(), mask, fill)
+                result = result.ravel().astype('float64')
+
+                signs = np.sign(result)
+                nans = np.isnan(x.ravel())
+                np.putmask(result, mask & ~nans, fill)
+
+                # if we have a fill of inf, then sign it
+                # correctly
+                # GH 6178
+                if np.isinf(fill):
+                    np.putmask(result,signs<0 & mask & ~nans,-fill)
+
                 result = result.reshape(shape)
 
     return result
@@ -1219,13 +1279,14 @@ _backfill_2d_datetime = _interp_wrapper(algos.backfill_2d_inplace_int64,
                                         np.int64)
 
 
-def pad_1d(values, limit=None, mask=None):
+def pad_1d(values, limit=None, mask=None, dtype=None):
 
-    dtype = values.dtype.name
+    if dtype is None:
+        dtype = values.dtype
     _method = None
     if is_float_dtype(values):
-        _method = getattr(algos, 'pad_inplace_%s' % dtype, None)
-    elif is_datetime64_dtype(values):
+        _method = getattr(algos, 'pad_inplace_%s' % dtype.name, None)
+    elif dtype in _DATELIKE_DTYPES or is_datetime64_dtype(values):
         _method = _pad_1d_datetime
     elif is_integer_dtype(values):
         values = _ensure_float64(values)
@@ -1234,7 +1295,7 @@ def pad_1d(values, limit=None, mask=None):
         _method = algos.pad_inplace_object
 
     if _method is None:
-        raise ValueError('Invalid dtype for pad_1d [%s]' % dtype)
+        raise ValueError('Invalid dtype for pad_1d [%s]' % dtype.name)
 
     if mask is None:
         mask = isnull(values)
@@ -1243,13 +1304,14 @@ def pad_1d(values, limit=None, mask=None):
     return values
 
 
-def backfill_1d(values, limit=None, mask=None):
+def backfill_1d(values, limit=None, mask=None, dtype=None):
 
-    dtype = values.dtype.name
+    if dtype is None:
+        dtype = values.dtype
     _method = None
     if is_float_dtype(values):
-        _method = getattr(algos, 'backfill_inplace_%s' % dtype, None)
-    elif is_datetime64_dtype(values):
+        _method = getattr(algos, 'backfill_inplace_%s' % dtype.name, None)
+    elif dtype in _DATELIKE_DTYPES or is_datetime64_dtype(values):
         _method = _backfill_1d_datetime
     elif is_integer_dtype(values):
         values = _ensure_float64(values)
@@ -1258,7 +1320,7 @@ def backfill_1d(values, limit=None, mask=None):
         _method = algos.backfill_inplace_object
 
     if _method is None:
-        raise ValueError('Invalid dtype for backfill_1d [%s]' % dtype)
+        raise ValueError('Invalid dtype for backfill_1d [%s]' % dtype.name)
 
     if mask is None:
         mask = isnull(values)
@@ -1268,13 +1330,14 @@ def backfill_1d(values, limit=None, mask=None):
     return values
 
 
-def pad_2d(values, limit=None, mask=None):
+def pad_2d(values, limit=None, mask=None, dtype=None):
 
-    dtype = values.dtype.name
+    if dtype is None:
+        dtype = values.dtype
     _method = None
     if is_float_dtype(values):
-        _method = getattr(algos, 'pad_2d_inplace_%s' % dtype, None)
-    elif is_datetime64_dtype(values):
+        _method = getattr(algos, 'pad_2d_inplace_%s' % dtype.name, None)
+    elif dtype in _DATELIKE_DTYPES or is_datetime64_dtype(values):
         _method = _pad_2d_datetime
     elif is_integer_dtype(values):
         values = _ensure_float64(values)
@@ -1283,7 +1346,7 @@ def pad_2d(values, limit=None, mask=None):
         _method = algos.pad_2d_inplace_object
 
     if _method is None:
-        raise ValueError('Invalid dtype for pad_2d [%s]' % dtype)
+        raise ValueError('Invalid dtype for pad_2d [%s]' % dtype.name)
 
     if mask is None:
         mask = isnull(values)
@@ -1297,13 +1360,14 @@ def pad_2d(values, limit=None, mask=None):
     return values
 
 
-def backfill_2d(values, limit=None, mask=None):
+def backfill_2d(values, limit=None, mask=None, dtype=None):
 
-    dtype = values.dtype.name
+    if dtype is None:
+        dtype = values.dtype
     _method = None
     if is_float_dtype(values):
-        _method = getattr(algos, 'backfill_2d_inplace_%s' % dtype, None)
-    elif is_datetime64_dtype(values):
+        _method = getattr(algos, 'backfill_2d_inplace_%s' % dtype.name, None)
+    elif dtype in _DATELIKE_DTYPES or is_datetime64_dtype(values):
         _method = _backfill_2d_datetime
     elif is_integer_dtype(values):
         values = _ensure_float64(values)
@@ -1312,7 +1376,7 @@ def backfill_2d(values, limit=None, mask=None):
         _method = algos.backfill_2d_inplace_object
 
     if _method is None:
-        raise ValueError('Invalid dtype for backfill_2d [%s]' % dtype)
+        raise ValueError('Invalid dtype for backfill_2d [%s]' % dtype.name)
 
     if mask is None:
         mask = isnull(values)
@@ -1478,7 +1542,7 @@ def _interpolate_scipy_wrapper(x, y, new_x, method, fill_value=None,
     return new_y
 
 
-def interpolate_2d(values, method='pad', axis=0, limit=None, fill_value=None):
+def interpolate_2d(values, method='pad', axis=0, limit=None, fill_value=None, dtype=None):
     """ perform an actual interpolation of values, values will be make 2-d if
     needed fills inplace, returns the result
     """
@@ -1500,9 +1564,9 @@ def interpolate_2d(values, method='pad', axis=0, limit=None, fill_value=None):
 
     method = _clean_fill_method(method)
     if method == 'pad':
-        values = transf(pad_2d(transf(values), limit=limit, mask=mask))
+        values = transf(pad_2d(transf(values), limit=limit, mask=mask, dtype=dtype))
     else:
-        values = transf(backfill_2d(transf(values), limit=limit, mask=mask))
+        values = transf(backfill_2d(transf(values), limit=limit, mask=mask, dtype=dtype))
 
     # reshape back
     if ndim == 1:
@@ -1540,14 +1604,17 @@ def _maybe_box(indexer, values, obj, key):
     # return the value
     return values
 
+def _maybe_box_datetimelike(value):
+    # turn a datetime like into a Timestamp/timedelta as needed
 
-def _values_from_object(o):
-    """ return my values or the object if we are say an ndarray """
-    f = getattr(o, 'get_values', None)
-    if f is not None:
-        o = f()
-    return o
+    if isinstance(value, np.datetime64):
+        value = tslib.Timestamp(value)
+    elif isinstance(value, np.timedelta64):
+        pass
 
+    return value
+
+_values_from_object = lib.values_from_object
 
 def _possibly_convert_objects(values, convert_dates=True,
                               convert_numeric=True,
@@ -1699,10 +1766,7 @@ def _possibly_cast_to_datetime(value, dtype, coerce=False):
             dtype = value.dtype
 
             if dtype.kind == 'M' and dtype != _NS_DTYPE:
-                try:
-                    value = tslib.array_to_datetime(value)
-                except:
-                    raise
+                value = value.astype(_NS_DTYPE)
 
             elif dtype.kind == 'm' and dtype != _TD_DTYPE:
                 from pandas.tseries.timedeltas import \
@@ -1971,18 +2035,6 @@ def intersection(*seqs):
     return type(seqs[0])(list(result))
 
 
-def _shift_indexer(N, periods):
-    # small reusable utility
-    indexer = np.zeros(N, dtype=int)
-
-    if periods > 0:
-        indexer[periods:] = np.arange(N - periods)
-    else:
-        indexer[:periods] = np.arange(-periods, N)
-
-    return indexer
-
-
 def _asarray_tuplesafe(values, dtype=None):
     from pandas.core.index import Index
 
@@ -2036,20 +2088,16 @@ def _maybe_make_list(obj):
     return obj
 
 
-def is_bool(obj):
-    return isinstance(obj, (bool, np.bool_))
+is_bool = lib.is_bool
 
 
-def is_integer(obj):
-    return isinstance(obj, (numbers.Integral, np.integer))
+is_integer = lib.is_integer
 
 
-def is_float(obj):
-    return isinstance(obj, (float, np.floating))
+is_float = lib.is_float
 
 
-def is_complex(obj):
-    return isinstance(obj, (numbers.Complex, np.complexfloating))
+is_complex = lib.is_complex
 
 
 def is_iterator(obj):
@@ -2108,6 +2156,16 @@ def is_timedelta64_dtype(arr_or_dtype):
     else:
         tipo = arr_or_dtype.dtype.type
     return issubclass(tipo, np.timedelta64)
+
+
+def is_timedelta64_ns_dtype(arr_or_dtype):
+    if isinstance(arr_or_dtype, np.dtype):
+        tipo = arr_or_dtype.type
+    elif isinstance(arr_or_dtype, type):
+        tipo = np.dtype(arr_or_dtype).type
+    else:
+        tipo = arr_or_dtype.dtype.type
+    return tipo == _TD_DTYPE
 
 
 def needs_i8_conversion(arr_or_dtype):

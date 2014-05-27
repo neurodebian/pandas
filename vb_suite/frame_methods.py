@@ -386,7 +386,7 @@ def test_equal(name):
 def test_unequal(name):
     df, df2 = pairs[name]
     return df.equals(df2)
-    
+
 float_df = DataFrame(np.random.randn(1000, 1000))
 object_df = DataFrame([['foo']*1000]*1000)
 nonunique_cols = object_df.copy()
@@ -403,3 +403,61 @@ frame_float_unequal = Benchmark('test_unequal("float_df")', setup)
 frame_object_unequal = Benchmark('test_unequal("object_df")', setup)
 frame_nonunique_unequal = Benchmark('test_unequal("nonunique_cols")', setup)
 
+#-----------------------------------------------------------------------------
+# interpolate
+# this is the worst case, where every column has NaNs.
+setup = common_setup + """
+df = DataFrame(randn(10000, 100))
+df.values[::2] = np.nan
+"""
+
+frame_interpolate = Benchmark('df.interpolate()', setup,
+                               start_date=datetime(2014, 2, 7))
+
+setup = common_setup + """
+df = DataFrame({'A': np.arange(0, 10000),
+                'B': np.random.randint(0, 100, 10000),
+                'C': randn(10000),
+                'D': randn(10000)})
+df.loc[1::5, 'A'] = np.nan
+df.loc[1::5, 'C'] = np.nan
+"""
+
+frame_interpolate_some_good = Benchmark('df.interpolate()', setup,
+                                        start_date=datetime(2014, 2, 7))
+frame_interpolate_some_good_infer = Benchmark('df.interpolate(downcast="infer")',
+                                              setup,
+                                              start_date=datetime(2014, 2, 7))
+
+
+#-------------------------------------------------------------------------
+# frame shift speedup issue-5609
+
+setup = common_setup + """
+df = DataFrame(np.random.rand(10000,500))
+# note: df._data.blocks are f_contigous
+"""
+frame_shift_axis0 = Benchmark('df.shift(1,axis=0)', setup,
+                    start_date=datetime(2014,1,1))
+frame_shift_axis1 = Benchmark('df.shift(1,axis=1)', setup,
+                    name = 'frame_shift_axis_1',
+                    start_date=datetime(2014,1,1))
+
+
+#-----------------------------------------------------------------------------
+# from_records issue-6700
+
+setup = common_setup + """
+def get_data(n=100000):
+    return ((x, x*20, x*100) for x in xrange(n))
+"""
+
+frame_from_records_generator = Benchmark('df = DataFrame.from_records(get_data())',
+                                setup,
+                                name='frame_from_records_generator',
+                                start_date=datetime(2013,10,04))  # issue-4911
+
+frame_from_records_generator_nrows = Benchmark('df = DataFrame.from_records(get_data(), nrows=1000)',
+                                setup,
+                                name='frame_from_records_generator_nrows',
+                                start_date=datetime(2013,10,04))  # issue-4911

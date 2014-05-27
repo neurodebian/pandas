@@ -18,6 +18,7 @@ modules = ['attrs_caching',
            'panel_ctor',
            'packers',
            'parser_vb',
+           'panel_methods',
            'plotting',
            'reindex',
            'replace',
@@ -26,6 +27,7 @@ modules = ['attrs_caching',
            'reshape',
            'stat_ops',
            'timeseries',
+           'timedelta',
            'eval']
 
 by_module = {}

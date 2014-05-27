@@ -32,7 +32,7 @@ class TestStringMethods(tm.TestCase):
     def test_api(self):
 
         # GH 6106
-        self.assert_(Series.str is None)
+        self.assertIsNone(Series.str)
 
     def test_iter(self):
         # GH3638
@@ -49,7 +49,7 @@ class TestStringMethods(tm.TestCase):
 
             for el in s:
                 # each element of the series is either a basestring/str or nan
-                self.assert_(isinstance(el, compat.string_types) or isnull(el))
+                self.assertTrue(isinstance(el, compat.string_types) or isnull(el))
 
         # desired behavior is to iterate until everything would be nan on the
         # next iter so make sure the last element of the iterator was 'l' in
@@ -116,24 +116,24 @@ class TestStringMethods(tm.TestCase):
 
         # single array
         result = strings.str_cat(one)
-        self.assert_(isnull(result))
+        self.assertTrue(isnull(result))
 
         result = strings.str_cat(one, na_rep='NA')
         exp = 'aabbcNA'
-        self.assertEquals(result, exp)
+        self.assertEqual(result, exp)
 
         result = strings.str_cat(one, na_rep='-')
         exp = 'aabbc-'
-        self.assertEquals(result, exp)
+        self.assertEqual(result, exp)
 
         result = strings.str_cat(one, sep='_', na_rep='NA')
         exp = 'a_a_b_b_c_NA'
-        self.assertEquals(result, exp)
+        self.assertEqual(result, exp)
 
         # Multiple arrays
         result = strings.str_cat(one, [two], na_rep='NA')
         exp = ['aa', 'aNA', 'bb', 'bd', 'cfoo', 'NANA']
-        self.assert_(np.array_equal(result, exp))
+        self.assert_numpy_array_equal(result, exp)
 
         result = strings.str_cat(one, two)
         exp = ['aa', NA, 'bb', 'bd', 'cfoo', NA]
@@ -186,7 +186,7 @@ class TestStringMethods(tm.TestCase):
         values = ['foo', 'xyz', 'fooommm__foo', 'mmm_']
         result = strings.str_contains(values, pat)
         expected = [False, False, True, True]
-        self.assert_(result.dtype == np.bool_)
+        self.assertEqual(result.dtype, np.bool_)
         tm.assert_almost_equal(result, expected)
 
         # mixed
@@ -214,13 +214,13 @@ class TestStringMethods(tm.TestCase):
         values = ['foo', 'xyz', 'fooommm__foo', 'mmm_']
         result = strings.str_contains(values, pat)
         expected = [False, False, True, True]
-        self.assert_(result.dtype == np.bool_)
+        self.assertEqual(result.dtype, np.bool_)
         tm.assert_almost_equal(result, expected)
 
         # na
         values = Series(['om', 'foo',np.nan])
         res = values.str.contains('foo', na="foo")
-        self.assertEqual (res.ix[2], "foo"        )
+        self.assertEqual (res.ix[2], "foo")
 
     def test_startswith(self):
         values = Series(['om', NA, 'foo_nom', 'nom', 'bar_foo', NA, 'foo'])
@@ -460,6 +460,14 @@ class TestStringMethods(tm.TestCase):
         exp = Series([True, NA, False])
         tm.assert_series_equal(result, exp)
 
+        # na GH #6609
+        res = Series(['a', 0, np.nan]).str.match('a', na=False)
+        exp = Series([True, False, False])
+        assert_series_equal(exp, res)
+        res = Series(['a', 0, np.nan]).str.match('a')
+        exp = Series([True, np.nan, np.nan])
+        assert_series_equal(exp, res)
+
     def test_extract(self):
         # Contains tests like those in test_match and some others.
 
@@ -547,6 +555,28 @@ class TestStringMethods(tm.TestCase):
         result = Series(['A1', 'B2', 'C']).str.extract('(?P<letter>[ABC])(?P<number>[123])?')
         exp = DataFrame([['A', '1'], ['B', '2'], ['C', NA]], columns=['letter', 'number'])
         tm.assert_frame_equal(result, exp)
+
+        # single group renames series properly
+        s = Series(['A1', 'A2'])
+        result = s.str.extract(r'(?P<uno>A)\d')
+        tm.assert_equal(result.name, 'uno')
+
+        # GH6348
+        # not passing index to the extractor
+        def check_index(index):
+            data = ['A1', 'B2', 'C']
+            index = index[:len(data)]
+            result = Series(data, index=index).str.extract('(\d)')
+            exp = Series(['1', '2', NA], index=index)
+            tm.assert_series_equal(result, exp)
+
+            result = Series(data, index=index).str.extract('(?P<letter>\D)(?P<number>\d)?')
+            exp = DataFrame([['A', '1'], ['B', '2'], ['C', NA]], columns=['letter', 'number'], index=index)
+            tm.assert_frame_equal(result, exp)
+
+        for index in [ tm.makeStringIndex, tm.makeUnicodeIndex, tm.makeIntIndex,
+                       tm.makeDateIndex, tm.makePeriodIndex ]:
+            check_index(index())
 
     def test_get_dummies(self):
         s = Series(['a|b', 'a|c', np.nan])
@@ -758,7 +788,7 @@ class TestStringMethods(tm.TestCase):
         s = Series(['Wes McKinney', 'Travis  Oliphant'])
 
         result = s.str.split()
-        self.assertEquals(result[1], ['Travis', 'Oliphant'])
+        self.assertEqual(result[1], ['Travis', 'Oliphant'])
 
     def test_split_maxsplit(self):
         # re.split 0, str.split -1
@@ -777,6 +807,12 @@ class TestStringMethods(tm.TestCase):
 
         result = s.str.split('asdf', n=-1)
         tm.assert_series_equal(result, xp)
+
+    def test_split_no_pat_with_nonzero_n(self):
+        s = Series(['split once', 'split once too!'])
+        result = s.str.split(n=1)
+        expected = Series({0: ['split', 'once'], 1: ['split', 'once too!']})
+        tm.assert_series_equal(expected, result)
 
     def test_pipe_failures(self):
         # #2119
@@ -911,7 +947,31 @@ class TestStringMethods(tm.TestCase):
         assert_series_equal(rs, xp)
 
     def test_wrap(self):
-        pass
+        # test values are: two words less than width, two words equal to width,
+        # two words greater than width, one word less than width, one word
+        # equal to width, one word greater than width, multiple tokens with trailing
+        # whitespace equal to width
+        values = Series([u('hello world'), u('hello world!'),
+                         u('hello world!!'), u('abcdefabcde'),
+                         u('abcdefabcdef'), u('abcdefabcdefa'),
+                         u('ab ab ab ab '), u('ab ab ab ab a'),
+                         u('\t')])
+
+        # expected values
+        xp = Series([u('hello world'), u('hello world!'),
+                     u('hello\nworld!!'), u('abcdefabcde'),
+                     u('abcdefabcdef'), u('abcdefabcdef\na'),
+                     u('ab ab ab ab'), u('ab ab ab ab\na'),
+                     u('')])
+
+        rs = values.str.wrap(12, break_long_words=True)
+        assert_series_equal(rs, xp)
+
+        # test with pre and post whitespace (non-unicode), NaN, and non-ascii Unicode
+        values = Series(['  pre  ', np.nan, u('\xac\u20ac\U00008000 abadcafe')])
+        xp = Series(['  pre', NA, u('\xac\u20ac\U00008000 ab\nadcafe')])
+        rs = values.str.wrap(6)
+        assert_series_equal(rs, xp)
 
     def test_get(self):
         values = Series(['a_b_c', 'c_d_e', np.nan, 'f_g_h'])
@@ -1028,19 +1088,19 @@ class TestStringMethods(tm.TestCase):
             warnings.simplefilter('always')
             result = data.str.match(pat, flags=re.IGNORECASE)
             assert issubclass(w[-1].category, UserWarning)
-        self.assertEquals(result[0], ('dave', 'google', 'com'))
+        self.assertEqual(result[0], ('dave', 'google', 'com'))
 
         result = data.str.findall(pat, flags=re.IGNORECASE)
-        self.assertEquals(result[0][0], ('dave', 'google', 'com'))
+        self.assertEqual(result[0][0], ('dave', 'google', 'com'))
 
         result = data.str.count(pat, flags=re.IGNORECASE)
-        self.assertEquals(result[0], 1)
+        self.assertEqual(result[0], 1)
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter('always')
             result = data.str.contains(pat, flags=re.IGNORECASE)
             assert issubclass(w[-1].category, UserWarning)
-        self.assertEquals(result[0], True)
+        self.assertEqual(result[0], True)
 
     def test_encode_decode(self):
         base = Series([u('a'), u('b'), u('a\xe4')])
@@ -1073,6 +1133,7 @@ class TestStringMethods(tm.TestCase):
         exp = decodeBase.map(f)
 
         tm.assert_series_equal(result, exp)
+
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],

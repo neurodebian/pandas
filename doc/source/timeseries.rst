@@ -299,8 +299,10 @@ intelligent functionality like selection, slicing, etc.
    ts[:5].index
    ts[::2].index
 
-Partial String Indexing
-~~~~~~~~~~~~~~~~~~~~~~~
+.. _timeseries.partialindexing:
+
+DatetimeIndex Partial String Indexing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can pass in dates and strings that parse to dates as indexing parameters:
 
@@ -408,6 +410,39 @@ regularity will result in a ``DatetimeIndex`` (but frequency is lost):
 
 .. _timeseries.offsets:
 
+Time/Date Components
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+There are several time/date properties that one can access from ``Timestamp`` or a collection of timestamps like a ``DateTimeIndex``.
+
+.. csv-table::
+    :header: "Property", "Description"
+    :widths: 15, 65
+
+    year, "The year of the datetime"
+    month,"The month of the datetime"
+    day,"The days of the datetime"
+    hour,"The hour of the datetime"
+    minute,"The minutes of the datetime"
+    second,"The seconds of the datetime"
+    microsecond,"The microseconds of the datetime"
+    nanosecond,"The nanoseconds of the datetime"
+    date,"Returns datetime.date"
+    time,"Returns datetime.time"
+    dayofyear,"The ordinal day of year"
+    weekofyear,"The week ordinal of the year"
+    week,"The week ordinal of the year"
+    dayofweek,"The day of the week with Monday=0, Sunday=6"
+    weekday,"The day of the week with Monday=0, Sunday=6"
+    quarter,"Quarter of the date: Jan=Mar = 1, Apr-Jun = 2, etc."
+    is_month_start,"Logical indicating if first day of month (defined by frequency)"
+    is_month_end,"Logical indicating if last day of month (defined by frequency)"
+    is_quarter_start,"Logical indicating if first day of quarter (defined by frequency)"
+    is_quarter_end,"Logical indicating if last day of quarter (defined by frequency)"
+    is_year_start,"Logical indicating if first day of year (defined by frequency)"
+    is_year_end,"Logical indicating if last day of year (defined by frequency)"
+
+
 DateOffset objects
 ------------------
 
@@ -432,6 +467,8 @@ frequency increment. Specific offset logic like "month", "business day", or
     MonthBegin, "calendar month begin"
     BMonthEnd, "business month end"
     BMonthBegin, "business month begin"
+    CBMonthEnd, "custom business month end"
+    CBMonthBegin, "custom business month begin"
     QuarterEnd, "calendar quarter end"
     QuarterBegin, "calendar quarter begin"
     BQuarterEnd, "business quarter end"
@@ -541,10 +578,36 @@ calendars which account for local holidays and local weekend conventions.
     holidays = ['2012-05-01', datetime(2013, 5, 1), np.datetime64('2014-05-01')]
     bday_egypt = CustomBusinessDay(holidays=holidays, weekmask=weekmask_egypt)
     dt = datetime(2013, 4, 30)
-    print(dt + 2 * bday_egypt)
-    dts = date_range(dt, periods=5, freq=bday_egypt).to_series()
-    print(dts)
-    print(Series(dts.weekday, dts).map(Series('Mon Tue Wed Thu Fri Sat Sun'.split())))
+    dt + 2 * bday_egypt
+    dts = date_range(dt, periods=5, freq=bday_egypt)
+    Series(dts.weekday, dts).map(Series('Mon Tue Wed Thu Fri Sat Sun'.split()))
+
+As of v0.14 holiday calendars can be used to provide the list of holidays.  See the
+:ref:`holiday calendar<timeseries.holiday>` section for more information.
+
+.. ipython:: python
+
+    from pandas.tseries.holiday import USFederalHolidayCalendar
+    bday_us = CustomBusinessDay(calendar=USFederalHolidayCalendar())
+    # Friday before MLK Day
+    dt = datetime(2014, 1, 17)
+    # Tuesday after MLK Day (Monday is skipped because it's a holiday)
+    dt + bday_us
+
+Monthly offsets that respect a certain holiday calendar can be defined
+in the usual way.
+
+.. ipython:: python
+
+    from pandas.tseries.offsets import CustomBusinessMonthBegin
+    bmth_us = CustomBusinessMonthBegin(calendar=USFederalHolidayCalendar())
+    # Skip new years
+    dt = datetime(2013, 12, 17)
+    dt + bmth_us
+
+    # Define date index with custom offset
+    from pandas import DatetimeIndex
+    DatetimeIndex(start='20100101',end='20120101',freq=bmth_us)
 
 .. note::
 
@@ -588,8 +651,10 @@ frequencies. We will refer to these aliases as *offset aliases*
     "W", "weekly frequency"
     "M", "month end frequency"
     "BM", "business month end frequency"
+    "CBM", "custom business month end frequency"
     "MS", "month start frequency"
     "BMS", "business month start frequency"
+    "CBMS", "custom business month start frequency"
     "Q", "quarter end frequency"
     "BQ", "business quarter endfrequency"
     "QS", "quarter start frequency"
@@ -711,6 +776,97 @@ As you can see, legacy quarterly and annual frequencies are business quarter
 and business year ends. Please also note the legacy time rule for milliseconds
 ``ms`` versus the new offset alias for month start ``MS``. This means that
 offset alias parsing is case sensitive.
+
+.. _timeseries.holiday:
+
+Holidays / Holiday Calendars
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Holidays and calendars provide a simple way to define holiday rules to be used
+with ``CustomBusinessDay`` or in other analysis that requires a predefined
+set of holidays.  The ``AbstractHolidayCalendar`` class provides all the necessary
+methods to return a list of holidays and only ``rules`` need to be defined
+in a specific holiday calendar class.  Further, ``start_date`` and ``end_date``
+class attributes determine over what date range holidays are generated.  These
+should be overwritten on the ``AbstractHolidayCalendar`` class to have the range
+apply to all calendar subclasses.  ``USFederalHolidayCalendar`` is the
+only calendar that exists and primarily serves as an example for developing
+other calendars.
+
+For holidays that occur on fixed dates (e.g., US Memorial Day or July 4th) an
+observance rule determines when that holiday is observed if it falls on a weekend
+or some other non-observed day.  Defined observance rules are:
+
+.. csv-table::
+    :header: "Rule", "Description"
+    :widths: 15, 70
+
+    "nearest_workday", "move Saturday to Friday and Sunday to Monday"
+    "sunday_to_monday", "move Sunday to following Monday"
+    "next_monday_or_tuesday", "move Saturday to Monday and Sunday/Monday to Tuesday"
+    "previous_friday", move Saturday and Sunday to previous Friday"
+    "next_monday", "move Saturday and Sunday to following Monday"
+
+An example of how holidays and holiday calendars are defined:
+
+.. ipython:: python
+
+    from pandas.tseries.holiday import Holiday, USMemorialDay,\
+        AbstractHolidayCalendar, nearest_workday, MO
+    class ExampleCalendar(AbstractHolidayCalendar):
+        rules = [
+            USMemorialDay,
+            Holiday('July 4th', month=7, day=4, observance=nearest_workday),
+            Holiday('Columbus Day', month=10, day=1,
+                offset=DateOffset(weekday=MO(2))), #same as 2*Week(weekday=2)
+            ]
+    cal = ExampleCalendar()
+    cal.holidays(datetime(2012, 1, 1), datetime(2012, 12, 31))
+
+Using this calendar, creating an index or doing offset arithmetic skips weekends
+and holidays (i.e., Memorial Day/July 4th).
+
+.. ipython:: python
+
+    DatetimeIndex(start='7/1/2012', end='7/10/2012',
+        freq=CDay(calendar=cal)).to_pydatetime()
+    offset = CustomBusinessDay(calendar=cal)
+    datetime(2012, 5, 25) + offset
+    datetime(2012, 7, 3) + offset
+    datetime(2012, 7, 3) + 2 * offset
+    datetime(2012, 7, 6) + offset
+
+Ranges are defined by the ``start_date`` and ``end_date`` class attributes
+of ``AbstractHolidayCalendar``.  The defaults are below.
+
+.. ipython:: python
+
+    AbstractHolidayCalendar.start_date
+    AbstractHolidayCalendar.end_date
+
+These dates can be overwritten by setting the attributes as
+datetime/Timestamp/string.
+
+.. ipython:: python
+
+    AbstractHolidayCalendar.start_date = datetime(2012, 1, 1)
+    AbstractHolidayCalendar.end_date = datetime(2012, 12, 31)
+    cal.holidays()
+
+Every calendar class is accessible by name using the ``get_calendar`` function
+which returns a holiday class instance.  Any imported calendar class will
+automatically be available by this function.  Also, ``HolidayCalendarFactory``
+provides an easy interface to create calendars that are combinations of calendars
+or calendars with additional rules.
+
+.. ipython:: python
+
+    from pandas.tseries.holiday import get_calendar, HolidayCalendarFactory,\
+        USLaborDay
+    cal = get_calendar('ExampleCalendar')
+    cal.rules
+    new_cal = HolidayCalendarFactory('NewExampleCalendar', cal, USLaborDay)
+    new_cal.rules
 
 .. _timeseries.advanced_datetime:
 
@@ -937,7 +1093,38 @@ objects:
 
 .. ipython:: python
 
-   Series(randn(len(prng)), prng)
+   ps = Series(randn(len(prng)), prng)
+   ps
+
+PeriodIndex Partial String Indexing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can pass in dates and strings to `Series` and `DataFrame` with `PeriodIndex`, as the same manner as `DatetimeIndex`. For details, refer to :ref:`DatetimeIndex Partial String Indexing <timeseries.partialindexing>`.
+
+.. ipython:: python
+
+   ps['2011-01']
+
+   ps[datetime(2011, 12, 25):]
+
+   ps['10/31/2011':'12/31/2011']
+
+Passing string represents lower frequency than `PeriodIndex` returns partial sliced data.
+
+.. ipython:: python
+
+   ps['2011']
+
+   dfp = DataFrame(randn(600,1), columns=['A'],
+                   index=period_range('2013-01-01 9:00', periods=600, freq='T'))
+   dfp
+   dfp['2013-01-01 10H']
+
+As the same as `DatetimeIndex`, the endpoints will be included in the result. Below example slices data starting from 10:00 to 11:59.
+
+.. ipython:: python
+
+   dfp['2013-01-01 10H':'2013-01-01 11H']
 
 Frequency Conversion and Resampling with PeriodIndex
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

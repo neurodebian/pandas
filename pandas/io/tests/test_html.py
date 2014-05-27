@@ -22,6 +22,7 @@ from pandas import (DataFrame, MultiIndex, read_csv, Timestamp, Index,
 from pandas.compat import map, zip, StringIO, string_types
 from pandas.io.common import URLError, urlopen, file_path_to_url
 from pandas.io.html import read_html
+from pandas.parser import CParserError
 
 import pandas.util.testing as tm
 from pandas.util.testing import makeCustomDataframe as mkdf, network
@@ -143,7 +144,7 @@ class TestReadHtml(tm.TestCase):
     def test_spam_no_types(self):
         with tm.assert_produces_warning(FutureWarning):
             df1 = self.read_html(self.spam_data, '.*Water.*',
-                                     infer_types=False)
+                                 infer_types=False)
         with tm.assert_produces_warning(FutureWarning):
             df2 = self.read_html(self.spam_data, 'Unit', infer_types=False)
 
@@ -305,8 +306,11 @@ class TestReadHtml(tm.TestCase):
 
     @network
     def test_invalid_url(self):
-        with tm.assertRaises(URLError):
-            self.read_html('http://www.a23950sdfa908sd.com', match='.*Water.*')
+        try:
+            with tm.assertRaises(URLError):
+                self.read_html('http://www.a23950sdfa908sd.com', match='.*Water.*')
+        except ValueError as e:
+            tm.assert_equal(str(e), 'No tables found')
 
     @slow
     def test_file_url(self):
@@ -379,7 +383,7 @@ class TestReadHtml(tm.TestCase):
         url = 'http://code.google.com/p/pythonxy/wiki/StandardPlugins'
         dfs = self.read_html(url, match='Python',
                                  attrs={'class': 'wikitable'})
-        self.assert_(len(dfs) > 1)
+        self.assertTrue(len(dfs) > 1)
 
     @network
     def test_pythonxy_plugins_table(self):
@@ -499,10 +503,10 @@ class TestReadHtml(tm.TestCase):
         with open(self.banklist_data, 'r') as f:
             raw_text = f.read()
 
-        self.assert_(gc in raw_text)
+        self.assertIn(gc, raw_text)
         df = self.read_html(self.banklist_data, 'Gold Canyon',
                                 attrs={'id': 'table'})[0]
-        self.assert_(gc in df.to_string())
+        self.assertIn(gc, df.to_string())
 
     def test_different_number_of_rows(self):
         expected = """<table border="1" class="dataframe">
@@ -581,6 +585,14 @@ class TestReadHtml(tm.TestCase):
         newdf = DataFrame({'datetime': raw_dates})
         tm.assert_frame_equal(newdf, res[0])
 
+    def test_computer_sales_page(self):
+        data = os.path.join(DATA_PATH, 'computer_sales_page.html')
+        with tm.assertRaisesRegexp(CParserError, r"Passed header=\[0,1\] are "
+                                   "too many rows for this multi_index "
+                                   "of columns"):
+            with tm.assert_produces_warning(FutureWarning):
+                self.read_html(data, infer_types=False, header=[0, 1])
+
 
 class TestReadHtmlLxml(tm.TestCase):
     @classmethod
@@ -630,6 +642,12 @@ class TestReadHtmlLxml(tm.TestCase):
                              index_col=1)
         newdf = DataFrame({'datetime': raw_dates})
         tm.assert_frame_equal(newdf, res[0])
+
+    def test_computer_sales_page(self):
+        import pandas as pd
+        data = os.path.join(DATA_PATH, 'computer_sales_page.html')
+        with tm.assert_produces_warning(FutureWarning):
+            self.read_html(data, infer_types=False, header=[0, 1])
 
 
 def test_invalid_flavor():

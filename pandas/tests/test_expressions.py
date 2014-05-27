@@ -2,6 +2,7 @@ from __future__ import print_function
 # pylint: disable-msg=W0612,E1101
 
 import nose
+import re
 
 from numpy.random import randn
 
@@ -238,19 +239,19 @@ class TestExpressions(tm.TestCase):
 
         # no op
         result   = expr._can_use_numexpr(operator.add, None, self.frame, self.frame, 'evaluate')
-        self.assert_(result == False)
+        self.assertFalse(result)
 
         # mixed
         result   = expr._can_use_numexpr(operator.add, '+', self.mixed, self.frame, 'evaluate')
-        self.assert_(result == False)
+        self.assertFalse(result)
 
         # min elements
         result   = expr._can_use_numexpr(operator.add, '+', self.frame2, self.frame2, 'evaluate')
-        self.assert_(result == False)
+        self.assertFalse(result)
 
         # ok, we only check on first part of expression
         result   = expr._can_use_numexpr(operator.add, '+', self.frame, self.frame2, 'evaluate')
-        self.assert_(result == True)
+        self.assertTrue(result)
 
     def test_binary_ops(self):
 
@@ -265,14 +266,14 @@ class TestExpressions(tm.TestCase):
                         op = getattr(operator, op, None)
                     if op is not None:
                         result   = expr._can_use_numexpr(op, op_str, f, f, 'evaluate')
-                        self.assert_(result == (not f._is_mixed_type))
+                        self.assertNotEqual(result, f._is_mixed_type)
 
                         result   = expr.evaluate(op, op_str, f, f, use_numexpr=True)
                         expected = expr.evaluate(op, op_str, f, f, use_numexpr=False)
                         assert_array_equal(result,expected.values)
 
                         result   = expr._can_use_numexpr(op, op_str, f2, f2, 'evaluate')
-                        self.assert_(result == False)
+                        self.assertFalse(result)
 
 
         expr.set_use_numexpr(False)
@@ -300,14 +301,14 @@ class TestExpressions(tm.TestCase):
                     op = getattr(operator,op)
 
                     result   = expr._can_use_numexpr(op, op_str, f11, f12, 'evaluate')
-                    self.assert_(result == (not f11._is_mixed_type))
+                    self.assertNotEqual(result, f11._is_mixed_type)
 
                     result   = expr.evaluate(op, op_str, f11, f12, use_numexpr=True)
                     expected = expr.evaluate(op, op_str, f11, f12, use_numexpr=False)
                     assert_array_equal(result,expected.values)
 
                     result   = expr._can_use_numexpr(op, op_str, f21, f22, 'evaluate')
-                    self.assert_(result == False)
+                    self.assertFalse(result)
 
         expr.set_use_numexpr(False)
         testit()
@@ -338,6 +339,36 @@ class TestExpressions(tm.TestCase):
         testit()
         expr.set_numexpr_threads()
         testit()
+
+    def test_bool_ops_raise_on_arithmetic(self):
+        df = DataFrame({'a': np.random.rand(10) > 0.5,
+                        'b': np.random.rand(10) > 0.5})
+        names = 'add', 'mul', 'sub', 'div', 'truediv', 'floordiv', 'pow'
+        ops = '+', '*', '-', '/', '/', '//', '**'
+        msg = 'operator %r not implemented for bool dtypes'
+        for op, name in zip(ops, names):
+            if not compat.PY3 or name != 'div':
+                f = getattr(operator, name)
+                err_msg = re.escape(msg % op)
+
+                with tm.assertRaisesRegexp(NotImplementedError, err_msg):
+                    f(df, df)
+
+                with tm.assertRaisesRegexp(NotImplementedError, err_msg):
+                    f(df.a, df.b)
+
+                with tm.assertRaisesRegexp(NotImplementedError, err_msg):
+                    f(df.a, True)
+
+                with tm.assertRaisesRegexp(NotImplementedError, err_msg):
+                    f(False, df.a)
+
+                with tm.assertRaisesRegexp(TypeError, err_msg):
+                    f(False, df)
+
+                with tm.assertRaisesRegexp(TypeError, err_msg):
+                    f(df, True)
+
 
 if __name__ == '__main__':
     import nose

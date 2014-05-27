@@ -54,17 +54,83 @@ N = 30
 K = 4
 _RAISE_NETWORK_ERROR_DEFAULT = False
 
+# set testing_mode
+def set_testing_mode():
+    # set the testing mode filters
+    testing_mode = os.environ.get('PANDAS_TESTING_MODE','None')
+    if 'deprecate' in testing_mode:
+        warnings.simplefilter('always', DeprecationWarning)
+
+def reset_testing_mode():
+    # reset the testing mode filters
+    testing_mode = os.environ.get('PANDAS_TESTING_MODE','None')
+    if 'deprecate' in testing_mode:
+        warnings.simplefilter('ignore', DeprecationWarning)
+
+set_testing_mode()
+
 class TestCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         pd.set_option('chained_assignment','raise')
-        #print("setting up: {0}".format(cls))
 
     @classmethod
     def tearDownClass(cls):
-        #print("tearing down up: {0}".format(cls))
         pass
+
+    def reset_display_options(self):
+        # reset the display options
+        pd.reset_option('^display.',silent=True)
+
+    def assert_numpy_array_equal(self, np_array, assert_equal):
+        if np.array_equal(np_array, assert_equal):
+	        return
+        raise AssertionError('{0} is not equal to {1}.'.format(np_array, assert_equal))
+
+    def assertIs(self, first, second, msg=''):
+        """Checks that 'first' is 'second'"""
+        a, b = first, second
+        assert a is b, "%s: %r is not %r" % (msg.format(a,b), a, b)
+
+    def assertIsNot(self, first, second, msg=''):
+        """Checks that 'first' is not 'second'"""
+        a, b = first, second
+        assert a is not b, "%s: %r is %r" % (msg.format(a,b), a, b)
+
+    def assertIsNone(self, expr, msg=''):
+        """Checks that 'expr' is None"""
+        self.assertIs(expr, None, msg)
+
+    def assertIsNotNone(self, expr, msg=''):
+        """Checks that 'expr' is not None"""
+        self.assertIsNot(expr, None, msg)
+
+    def assertIn(self, first, second, msg=''):
+        """Checks that 'first' is in 'second'"""
+        a, b = first, second
+        assert a in b, "%s: %r is not in %r" % (msg.format(a,b), a, b)
+
+    def assertNotIn(self, first, second, msg=''):
+        """Checks that 'first' is not in 'second'"""
+        a, b = first, second
+        assert a not in b, "%s: %r is in %r" % (msg.format(a,b), a, b)
+
+    def assertIsInstance(self, obj, cls, msg=''):
+        """Test that obj is an instance of cls
+        (which can be a class or a tuple of classes,
+        as supported by isinstance())."""
+        assert isinstance(obj, cls), (
+            "%sExpected object to be of type %r, found %r instead" % (
+                msg, cls, type(obj)))
+
+    def assertNotIsInstance(self, obj, cls, msg=''):
+        """Test that obj is not an instance of cls
+        (which can be a class or a tuple of classes,
+        as supported by isinstance())."""
+        assert not isinstance(obj, cls), (
+            "%sExpected object to be of type %r, found %r instead" % (
+                msg, cls, type(obj)))
 
 # NOTE: don't pass an NDFrame or index to this function - may not handle it
 # well.
@@ -450,12 +516,18 @@ def is_sorted(seq):
 def assert_series_equal(left, right, check_dtype=True,
                         check_index_type=False,
                         check_series_type=False,
-                        check_less_precise=False):
+                        check_less_precise=False,
+                        check_exact=False):
     if check_series_type:
         assert_isinstance(left, type(right))
     if check_dtype:
         assert_attr_equal('dtype', left, right)
-    assert_almost_equal(left.values, right.values, check_less_precise)
+    if check_exact:
+        if not np.array_equal(left.values, right.values):
+            raise AssertionError('{0} is not equal to {1}.'.format(left.values,
+                                                                   right.values))
+    else:
+        assert_almost_equal(left.values, right.values, check_less_precise)
     if check_less_precise:
         assert_almost_equal(
             left.index.values, right.index.values, check_less_precise)
@@ -473,7 +545,8 @@ def assert_frame_equal(left, right, check_dtype=True,
                        check_frame_type=False,
                        check_less_precise=False,
                        check_names=True,
-                       by_blocks=False):
+                       by_blocks=False,
+                       check_exact=False):
     if check_frame_type:
         assert_isinstance(left, type(right))
     assert_isinstance(left, DataFrame)
@@ -506,7 +579,8 @@ def assert_frame_equal(left, right, check_dtype=True,
             assert_series_equal(lcol, rcol,
                                 check_dtype=check_dtype,
                                 check_index_type=check_index_type,
-                                check_less_precise=check_less_precise)
+                                check_less_precise=check_less_precise,
+                                check_exact=check_exact)
 
     if check_index_type:
         assert_isinstance(left.index, type(right.index))
@@ -593,9 +667,9 @@ def makeFloatIndex(k=10):
     return Index(values * (10 ** np.random.randint(0, 9)))
 
 
-def makeDateIndex(k=10):
+def makeDateIndex(k=10, freq='B'):
     dt = datetime(2000, 1, 1)
-    dr = bdate_range(dt, periods=k)
+    dr = bdate_range(dt, periods=k, freq=freq)
     return DatetimeIndex(dr)
 
 
@@ -628,10 +702,10 @@ def getSeriesData():
     return dict((c, Series(randn(N), index=index)) for c in getCols(K))
 
 
-def makeTimeSeries(nper=None):
+def makeTimeSeries(nper=None, freq='B'):
     if nper is None:
         nper = N
-    return Series(randn(nper), index=makeDateIndex(nper))
+    return Series(randn(nper), index=makeDateIndex(nper, freq=freq))
 
 
 def makePeriodSeries(nper=None):
@@ -640,16 +714,16 @@ def makePeriodSeries(nper=None):
     return Series(randn(nper), index=makePeriodIndex(nper))
 
 
-def getTimeSeriesData(nper=None):
-    return dict((c, makeTimeSeries(nper)) for c in getCols(K))
+def getTimeSeriesData(nper=None, freq='B'):
+    return dict((c, makeTimeSeries(nper, freq)) for c in getCols(K))
 
 
 def getPeriodData(nper=None):
     return dict((c, makePeriodSeries(nper)) for c in getCols(K))
 
 # make frame
-def makeTimeDataFrame(nper=None):
-    data = getTimeSeriesData(nper)
+def makeTimeDataFrame(nper=None, freq='B'):
+    data = getTimeSeriesData(nper, freq)
     return DataFrame(data)
 
 
@@ -862,6 +936,72 @@ def makeCustomDataframe(nrows, ncols, c_idx_names=True, r_idx_names=True,
     return DataFrame(data, index, columns, dtype=dtype)
 
 
+def _create_missing_idx(nrows, ncols, density, random_state=None):
+    if random_state is None:
+        random_state = np.random
+    else:
+        random_state = np.random.RandomState(random_state)
+
+    # below is cribbed from scipy.sparse
+    size = int(np.round((1 - density) * nrows * ncols))
+    # generate a few more to ensure unique values
+    min_rows = 5
+    fac = 1.02
+    extra_size = min(size + min_rows, fac * size)
+
+    def _gen_unique_rand(rng, _extra_size):
+        ind = rng.rand(int(_extra_size))
+        return np.unique(np.floor(ind * nrows * ncols))[:size]
+
+    ind = _gen_unique_rand(random_state, extra_size)
+    while ind.size < size:
+        extra_size *= 1.05
+        ind = _gen_unique_rand(random_state, extra_size)
+
+    j = np.floor(ind * 1. / nrows).astype(int)
+    i = (ind - j * nrows).astype(int)
+    return i.tolist(), j.tolist()
+
+
+def makeMissingCustomDataframe(nrows, ncols, density=.9, random_state=None,
+                               c_idx_names=True, r_idx_names=True,
+                               c_idx_nlevels=1, r_idx_nlevels=1,
+                               data_gen_f=None,
+                               c_ndupe_l=None, r_ndupe_l=None, dtype=None,
+                               c_idx_type=None, r_idx_type=None):
+    """
+    Parameters
+    ----------
+    Density : float, optional
+        Float in (0, 1) that gives the percentage of non-missing numbers in
+        the DataFrame.
+    random_state : {np.random.RandomState, int}, optional
+        Random number generator or random seed.
+
+    See makeCustomDataframe for descriptions of the rest of the parameters.
+    """
+    df = makeCustomDataframe(nrows, ncols, c_idx_names=c_idx_names,
+                             r_idx_names=r_idx_names,
+                             c_idx_nlevels=c_idx_nlevels,
+                             r_idx_nlevels=r_idx_nlevels,
+                             data_gen_f=data_gen_f,
+                             c_ndupe_l=c_ndupe_l, r_ndupe_l=r_ndupe_l,
+                             dtype=dtype, c_idx_type=c_idx_type,
+                             r_idx_type=r_idx_type)
+
+    i, j = _create_missing_idx(nrows, ncols, density, random_state)
+    df.values[i, j] = np.nan
+    return df
+
+
+def makeMissingDataframe(density=.9, random_state=None):
+    df = makeDataFrame()
+    i, j = _create_missing_idx(*df.shape, density=density,
+                               random_state=random_state)
+    df.values[i, j] = np.nan
+    return df
+
+
 def add_nans(panel):
     I, J, N = panel.shape
     for i, item in enumerate(panel.items):
@@ -986,6 +1126,10 @@ _network_error_messages = (
     'Server Hangup',
     'HTTP Error 503: Service Unavailable',
     '502: Proxy Error',
+    'HTTP Error 502: internal error',
+    'HTTP Error 502',
+    'HTTP Error 503',
+    'HTTP Error 403',
     )
 
 # or this e.errno/e.reason.errno
@@ -997,7 +1141,7 @@ _network_errno_vals = (
     60,  # urllib.error.URLError: [Errno 60] Connection timed out
     )
 
-# Both of the above shouldn't mask reasl issues such as 404's
+# Both of the above shouldn't mask real issues such as 404's
 # or refused connections (changed DNS).
 # But some tests (test_data yahoo) contact incredibly flakey
 # servers.
@@ -1397,3 +1541,38 @@ def skip_if_no_ne(engine='numexpr'):
         if ne.__version__ < LooseVersion('2.0'):
             raise nose.SkipTest("numexpr version too low: "
                                 "%s" % ne.__version__)
+
+
+def disabled(t):
+    t.disabled = True
+    return t
+
+
+class RNGContext(object):
+    """
+    Context manager to set the numpy random number generator speed. Returns
+    to the original value upon exiting the context manager.
+
+    Parameters
+    ----------
+    seed : int
+        Seed for numpy.random.seed
+
+    Examples
+    --------
+
+    with RNGContext(42):
+        np.random.randn()
+    """
+
+    def __init__(self, seed):
+        self.seed = seed
+
+    def __enter__(self):
+
+        self.start_state = np.random.get_state()
+        np.random.seed(self.seed)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+
+        np.random.set_state(self.start_state)

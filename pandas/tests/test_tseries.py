@@ -34,7 +34,7 @@ class TestTseriesUtil(tm.TestCase):
         filler = algos.backfill_int64(old, new)
 
         expect_filler = [0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, -1]
-        self.assert_(np.array_equal(filler, expect_filler))
+        self.assert_numpy_array_equal(filler, expect_filler)
 
         # corner case
         old = Index([1, 4])
@@ -42,7 +42,7 @@ class TestTseriesUtil(tm.TestCase):
         filler = algos.backfill_int64(old, new)
 
         expect_filler = [-1, -1, -1, -1, -1]
-        self.assert_(np.array_equal(filler, expect_filler))
+        self.assert_numpy_array_equal(filler, expect_filler)
 
     def test_pad(self):
         old = Index([1, 5, 10])
@@ -51,14 +51,14 @@ class TestTseriesUtil(tm.TestCase):
         filler = algos.pad_int64(old, new)
 
         expect_filler = [-1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2]
-        self.assert_(np.array_equal(filler, expect_filler))
+        self.assert_numpy_array_equal(filler, expect_filler)
 
         # corner case
         old = Index([5, 10])
         new = Index(lrange(5))
         filler = algos.pad_int64(old, new)
         expect_filler = [-1, -1, -1, -1, -1]
-        self.assert_(np.array_equal(filler, expect_filler))
+        self.assert_numpy_array_equal(filler, expect_filler)
 
 
 def test_left_join_indexer_unique():
@@ -338,7 +338,7 @@ def test_rank():
     from pandas.compat.scipy import rankdata
 
     def _check(arr):
-        mask = -np.isfinite(arr)
+        mask = ~np.isfinite(arr)
         arr = arr.copy()
         result = algos.rank_1d_float64(arr)
         arr[mask] = np.inf
@@ -627,13 +627,13 @@ class TestTypeInference(tm.TestCase):
         import datetime
         dates = [datetime.datetime(2012, 1, x) for x in range(1, 20)]
         index = Index(dates)
-        self.assert_(index.inferred_type == 'datetime64')
+        self.assertEqual(index.inferred_type, 'datetime64')
 
     def test_date(self):
         import datetime
         dates = [datetime.date(2012, 1, x) for x in range(1, 20)]
         index = Index(dates)
-        self.assert_(index.inferred_type == 'date')
+        self.assertEqual(index.inferred_type, 'date')
 
     def test_to_object_array_tuples(self):
         r = (5, 6)

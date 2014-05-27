@@ -89,12 +89,18 @@ def _can_use_numexpr(op, op_str, a, b, dtype_check):
     return False
 
 
-def _evaluate_numexpr(op, op_str, a, b, raise_on_error=False, truediv=True,
+def _evaluate_numexpr(op, op_str, a, b, raise_on_error=False, truediv=True, reversed=False,
                       **eval_kwargs):
     result = None
 
     if _can_use_numexpr(op, op_str, a, b, 'evaluate'):
         try:
+
+            # we were originally called by a reversed op
+            # method
+            if reversed:
+                a,b = b,a
+
             a_value = getattr(a, "values", a)
             b_value = getattr(b, "values", b)
             result = ne.evaluate('a_value %s b_value' % op_str,
@@ -154,6 +160,23 @@ def _where_numexpr(cond, a, b, raise_on_error=False):
 set_use_numexpr(True)
 
 
+def _has_bool_dtype(x):
+    try:
+        return x.dtype == bool
+    except AttributeError:
+        try:
+            return 'bool' in x.blocks
+        except AttributeError:
+            return isinstance(x, (bool, np.bool_))
+
+
+def _bool_arith_check(op_str, a, b, not_allowed=frozenset(('+', '*', '-', '/',
+                                                           '//', '**'))):
+    if op_str in not_allowed and _has_bool_dtype(a) and _has_bool_dtype(b):
+        raise NotImplementedError("operator %r not implemented for bool "
+                                  "dtypes" % op_str)
+
+
 def evaluate(op, op_str, a, b, raise_on_error=False, use_numexpr=True,
              **eval_kwargs):
     """ evaluate and return the expression of the op on a and b
@@ -170,7 +193,7 @@ def evaluate(op, op_str, a, b, raise_on_error=False, use_numexpr=True,
                          return the results
         use_numexpr : whether to try to use numexpr (default True)
         """
-
+    _bool_arith_check(op_str, a, b)
     if use_numexpr:
         return _evaluate(op, op_str, a, b, raise_on_error=raise_on_error,
                          **eval_kwargs)

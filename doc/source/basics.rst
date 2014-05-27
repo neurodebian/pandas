@@ -140,10 +140,9 @@ either match on the *index* or *columns* via the **axis** keyword:
 
 .. ipython:: python
 
-   d = {'one' : Series(randn(3), index=['a', 'b', 'c']),
-        'two' : Series(randn(4), index=['a', 'b', 'c', 'd']),
-        'three' : Series(randn(3), index=['b', 'c', 'd'])}
-   df = df_orig = DataFrame(d)
+   df = DataFrame({'one' : Series(randn(3), index=['a', 'b', 'c']),
+                   'two' : Series(randn(4), index=['a', 'b', 'c', 'd']),
+                   'three' : Series(randn(3), index=['b', 'c', 'd'])})
    df
    row = df.ix[1]
    column = df['two']
@@ -153,6 +152,20 @@ either match on the *index* or *columns* via the **axis** keyword:
 
    df.sub(column, axis='index')
    df.sub(column, axis=0)
+
+.. ipython:: python
+   :suppress:
+
+   df_orig = df
+
+Furthermore you can align a level of a multi-indexed DataFrame with a Series.
+
+.. ipython:: python
+
+   dfmi = df.copy()
+   dfmi.index = MultiIndex.from_tuples([(1,'a'),(1,'b'),(1,'c'),(2,'a')],
+                                       names=['first','second'])
+   dfmi.sub(column, axis=0, level='second')
 
 With Panel, describing the matching behavior is a bit more difficult, so
 the arithmetic methods instead (and perhaps confusingly?) give you the option
@@ -441,6 +454,7 @@ non-null values:
    series[10:20]  = 5
    series.nunique()
 
+.. _basics.describe:
 
 Summarizing data: describe
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -458,7 +472,13 @@ course):
     frame.ix[::2] = np.nan
     frame.describe()
 
-.. _basics.describe:
+You can select specific percentiles to include in the output:
+
+.. ipython:: python
+
+    series.describe(percentiles=[.05, .25, .75, .95])
+
+By default, the median is always included.
 
 For a non-numerical Series object, `describe` will give a simple summary of the
 number of unique values and most frequently occurring values:
@@ -468,6 +488,7 @@ number of unique values and most frequently occurring values:
 
    s = Series(['a', 'a', 'b', 'b', 'a', 'a', np.nan, 'c', 'd', 'a'])
    s.describe()
+
 
 There also is a utility function, ``value_range`` which takes a DataFrame and
 returns a series with the minimum/maximum values in the DataFrame.
@@ -747,6 +768,7 @@ This is equivalent to the following
    result.loc[:,:,'ItemA']
 
 .. _basics.reindexing:
+
 
 Reindexing and altering labels
 ------------------------------
@@ -1210,6 +1232,7 @@ Methods like ``match``, ``contains``, ``startswith``, and ``endswith`` take
     ``repeat``,Duplicate values (``s.str.repeat(3)`` equivalent to ``x * 3``)
     ``pad``,"Add whitespace to left, right, or both sides of strings"
     ``center``,Equivalent to ``pad(side='both')``
+    ``wrap``,Split long strings into lines with length less than a given width
     ``slice``,Slice each string in the Series
     ``slice_replace``,Replace slice in each string with passed value
     ``count``,Count occurrences of pattern
@@ -1273,23 +1296,54 @@ The ``by`` argument can take a list of column names, e.g.:
 
 Series has the method ``order`` (analogous to `R's order function
 <http://stat.ethz.ch/R-manual/R-patched/library/base/html/order.html>`__) which
-sorts by value, with special treatment of NA values via the ``na_last``
+sorts by value, with special treatment of NA values via the ``na_position``
 argument:
 
 .. ipython:: python
 
    s[2] = np.nan
    s.order()
-   s.order(na_last=False)
+   s.order(na_position='first')
 
-Some other sorting notes / nuances:
+.. note::
 
-  * ``Series.sort`` sorts a Series by value in-place. This is to provide
-    compatibility with NumPy methods which expect the ``ndarray.sort``
-    behavior.
-  * ``DataFrame.sort`` takes a ``column`` argument instead of ``by``. This
-    method will likely be deprecated in a future release in favor of just using
-    ``sort_index``.
+   ``Series.sort`` sorts a Series by value in-place. This is to provide
+   compatibility with NumPy methods which expect the ``ndarray.sort``
+   behavior. ``Series.order`` returns a copy of the sorted data.
+
+.. _basics.nsorted:
+
+smallest / largest values
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. versionadded:: 0.14.0
+
+``Series`` has the ``nsmallest`` and ``nlargest`` methods which return the
+smallest or largest :math:`n` values. For a large ``Series`` this can be much
+faster than sorting the entire Series and calling ``head(n)`` on the result.
+
+.. ipython:: python
+
+   s = Series(np.random.permutation(10))
+   s
+   s.order()
+   s.nsmallest(3)
+   s.nlargest(3)
+
+
+.. _basics.multi-index_sorting:
+
+Sorting by a multi-index column
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You must be explicit about sorting when the column is a multi-index, and fully specify
+all levels to ``by``.
+
+.. ipython:: python
+
+   df1.columns = MultiIndex.from_tuples([('a','one'),('a','two'),('b','three')])
+   df1.sort_index(by=('a','two'))
+
 
 Copying
 -------

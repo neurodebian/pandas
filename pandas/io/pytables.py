@@ -30,7 +30,7 @@ from pandas.tseries.timedeltas import _coerce_scalar_to_timedelta_type
 import pandas.core.common as com
 from pandas.tools.merge import concat
 from pandas import compat
-from pandas.compat import u_safe as u, PY3, range, lrange
+from pandas.compat import u_safe as u, PY3, range, lrange, string_types, filter
 from pandas.io.common import PerformanceWarning
 from pandas.core.config import get_option
 from pandas.computation.pytables import Expr, maybe_expression
@@ -40,13 +40,13 @@ import pandas.algos as algos
 import pandas.tslib as tslib
 
 from contextlib import contextmanager
+from distutils.version import LooseVersion
 
 # versioning attribute
 _version = '0.10.1'
 
 # PY3 encoding if we don't specify
 _default_encoding = 'UTF-8'
-
 
 def _ensure_decoded(s):
     """ if we have bytes, decode them to unicde """
@@ -66,7 +66,7 @@ def _ensure_encoding(encoding):
 Term = Expr
 
 
-def _ensure_term(where):
+def _ensure_term(where, scope_level):
     """
     ensure that the where is a Term or a list of Term
     this makes sure that we are capturing the scope of variables
@@ -76,11 +76,17 @@ def _ensure_term(where):
 
     # only consider list/tuple here as an ndarray is automaticaly a coordinate
     # list
+    level = scope_level + 1
     if isinstance(where, (list, tuple)):
-        where = [w if not maybe_expression(w) else Term(w, scope_level=2)
-                 for w in where if w is not None]
+        wlist = []
+        for w in filter(lambda x: x is not None, where):
+            if not maybe_expression(w):
+                wlist.append(w)
+            else:
+                wlist.append(Term(w, scope_level=level))
+        where = wlist
     elif maybe_expression(where):
-        where = Term(where, scope_level=2)
+        where = Term(where, scope_level=level)
     return where
 
 
@@ -219,7 +225,6 @@ def _tables():
     global _table_file_open_policy_is_strict
     if _table_mod is None:
         import tables
-        from distutils.version import LooseVersion
         _table_mod = tables
 
         # version requirements
@@ -273,7 +278,7 @@ def to_hdf(path_or_buf, key, value, mode=None, complevel=None, complib=None,
     else:
         f = lambda store: store.put(key, value, **kwargs)
 
-    if isinstance(path_or_buf, compat.string_types):
+    if isinstance(path_or_buf, string_types):
         with get_store(path_or_buf, mode=mode, complevel=complevel,
                        complib=complib) as store:
             f(store)
@@ -311,12 +316,12 @@ def read_hdf(path_or_buf, key, **kwargs):
 
     # grab the scope
     if 'where' in kwargs:
-        kwargs['where'] = _ensure_term(kwargs['where'])
+        kwargs['where'] = _ensure_term(kwargs['where'], scope_level=1)
 
     f = lambda store, auto_close: store.select(
         key, auto_close=auto_close, **kwargs)
 
-    if isinstance(path_or_buf, compat.string_types):
+    if isinstance(path_or_buf, string_types):
 
         # can't auto open/close if we are using an iterator
         # so delegate to the iterator
@@ -643,7 +648,7 @@ class HDFStore(StringMixin):
             raise KeyError('No object named %s in the file' % key)
 
         # create the storer and axes
-        where = _ensure_term(where)
+        where = _ensure_term(where, scope_level=1)
         s = self._create_storer(group)
         s.infer_axes()
 
@@ -675,16 +680,9 @@ class HDFStore(StringMixin):
         start : integer (defaults to None), row number to start selection
         stop  : integer (defaults to None), row number to stop selection
         """
-        where = _ensure_term(where)
+        where = _ensure_term(where, scope_level=1)
         return self.get_storer(key).read_coordinates(where=where, start=start,
                                                      stop=stop, **kwargs)
-
-    def unique(self, key, column, **kwargs):
-        warnings.warn("unique(key,column) is deprecated\n"
-                      "use select_column(key,column).unique() instead",
-                      FutureWarning)
-        return self.get_storer(key).read_column(column=column,
-                                                **kwargs).unique()
 
     def select_column(self, key, column, **kwargs):
         """
@@ -724,15 +722,16 @@ class HDFStore(StringMixin):
 
         Exceptions
         ----------
-        raise if any of the keys don't refer to tables or if they are not ALL
-        THE SAME DIMENSIONS
+        raises KeyError if keys or selector is not found or keys is empty
+        raises TypeError if keys is not a list or tuple
+        raises ValueError if the tables are not ALL THE SAME DIMENSIONS
         """
 
         # default to single select
-        where = _ensure_term(where)
+        where = _ensure_term(where, scope_level=1)
         if isinstance(keys, (list, tuple)) and len(keys) == 1:
             keys = keys[0]
-        if isinstance(keys, compat.string_types):
+        if isinstance(keys, string_types):
             return self.select(key=keys, where=where, columns=columns,
                                start=start, stop=stop, iterator=iterator,
                                chunksize=chunksize, **kwargs)
@@ -748,12 +747,13 @@ class HDFStore(StringMixin):
 
         # collect the tables
         tbls = [self.get_storer(k) for k in keys]
+        s = self.get_storer(selector)
 
         # validate rows
         nrows = None
-        for t, k in zip(tbls, keys):
+        for t, k in itertools.chain([(s,selector)], zip(tbls, keys)):
             if t is None:
-                raise TypeError("Invalid table [%s]" % k)
+                raise KeyError("Invalid table [%s]" % k)
             if not t.is_table:
                 raise TypeError(
                     "object [%s] is not a table, and cannot be used in all "
@@ -766,22 +766,17 @@ class HDFStore(StringMixin):
                 raise ValueError(
                     "all tables must have exactly the same nrows!")
 
-        # select coordinates from the selector table
-        try:
-            c = self.select_as_coordinates(
-                selector, where, start=start, stop=stop)
-            nrows = len(c)
-        except Exception:
-            raise ValueError("invalid selector [%s]" % selector)
+        # axis is the concentation axes
+        axis = list(set([t.non_index_axes[0][0] for t in tbls]))[0]
 
         def func(_start, _stop):
+            if where is not None:
+                c = s.read_coordinates(where=where, start=_start, stop=_stop, **kwargs)
+            else:
+                c = None
 
-            # collect the returns objs
-            objs = [t.read(where=c[_start:_stop], columns=columns)
-                    for t in tbls]
-
-            # axis is the concentation axes
-            axis = list(set([t.non_index_axes[0][0] for t in tbls]))[0]
+            objs = [t.read(where=c, start=_start, stop=_stop,
+                           columns=columns, **kwargs) for t in tbls]
 
             # concat and return
             return concat(objs, axis=axis,
@@ -814,6 +809,8 @@ class HDFStore(StringMixin):
             This will force Table format, append the input data to the
             existing.
         encoding : default None, provide an encoding for strings
+        dropna   : boolean, default True, do not write an ALL nan row to
+            the store settable by the option 'io.hdf.dropna_table'
         """
         if format is None:
             format = get_option("io.hdf.default_format") or 'fixed'
@@ -841,7 +838,7 @@ class HDFStore(StringMixin):
         raises KeyError if key is not a valid store
 
         """
-        where = _ensure_term(where)
+        where = _ensure_term(where, scope_level=1)
         try:
             s = self.get_storer(key)
         except:
@@ -860,7 +857,7 @@ class HDFStore(StringMixin):
             raise KeyError('No object named %s in the file' % key)
 
         # remove the node
-        if where is None:
+        if where is None and start is None and stop is None:
             s.group._f_remove(recursive=True)
 
         # delete from the table
@@ -1709,11 +1706,11 @@ class DataCol(IndexCol):
             if self.typ is None:
                 self.typ = getattr(self.description, self.cname, None)
 
-    def set_atom(self, block, existing_col, min_itemsize,
+    def set_atom(self, block, block_items, existing_col, min_itemsize,
                  nan_rep, info, encoding=None, **kwargs):
         """ create and setup my atom from the block b """
 
-        self.values = list(block.items)
+        self.values = list(block_items)
         dtype = block.dtype.name
         rvalues = block.values.ravel()
         inferred_type = lib.infer_dtype(rvalues)
@@ -1768,7 +1765,7 @@ class DataCol(IndexCol):
         # end up here ###
         elif inferred_type == 'string' or dtype == 'object':
             self.set_atom_string(
-                block,
+                block, block_items,
                 existing_col,
                 min_itemsize,
                 nan_rep,
@@ -1781,8 +1778,8 @@ class DataCol(IndexCol):
     def get_atom_string(self, block, itemsize):
         return _tables().StringCol(itemsize=itemsize, shape=block.shape[0])
 
-    def set_atom_string(
-            self, block, existing_col, min_itemsize, nan_rep, encoding):
+    def set_atom_string(self, block, block_items, existing_col, min_itemsize,
+                        nan_rep, encoding):
         # fill nan items with myself, don't disturb the blocks by
         # trying to downcast
         block = block.fillna(nan_rep, downcast=False)[0]
@@ -1794,9 +1791,9 @@ class DataCol(IndexCol):
 
             # we cannot serialize this data, so report an exception on a column
             # by column basis
-            for item in block.items:
+            for i, item in enumerate(block_items):
 
-                col = block.get(item)
+                col = block.iget(i)
                 inferred_type = lib.infer_dtype(col.ravel())
                 if inferred_type != 'string':
                     raise TypeError(
@@ -2139,11 +2136,9 @@ class Fixed(StringMixin):
         raise NotImplementedError(
             "cannot write on an abstract storer: sublcasses should implement")
 
-    def delete(self, where=None, **kwargs):
-        """support fully deleting the node in its entirety (only) - where
-        specification must be None
-        """
-        if where is None:
+    def delete(self, where=None, start=None, stop=None, **kwargs):
+        """ support fully deleting the node in its entirety (only) - where specification must be None """
+        if where is None and start is None and stop is None:
             self._handle.removeNode(self.group, recursive=True)
             return None
 
@@ -2656,7 +2651,8 @@ class BlockManagerFixed(GenericFixed):
         for i in range(self.nblocks):
             blk_items = self.read_index('block%d_items' % i)
             values = self.read_array('block%d_values' % i)
-            blk = make_block(values, blk_items, items)
+            blk = make_block(values,
+                             placement=items.get_indexer(blk_items))
             blocks.append(blk)
 
         return self.obj_type(BlockManager(blocks, axes))
@@ -2672,12 +2668,12 @@ class BlockManagerFixed(GenericFixed):
             self.write_index('axis%d' % i, ax)
 
         # Supporting mixed-type DataFrame objects...nontrivial
-        self.attrs.nblocks = nblocks = len(data.blocks)
-        for i in range(nblocks):
-            blk = data.blocks[i]
+        self.attrs.nblocks = len(data.blocks)
+        for i, blk in enumerate(data.blocks):
             # I have no idea why, but writing values before items fixed #2299
-            self.write_array('block%d_values' % i, blk.values, items=blk.items)
-            self.write_index('block%d_items' % i, blk.items)
+            blk_items = data.items.take(blk.mgr_locs)
+            self.write_array('block%d_values' % i, blk.values, items=blk_items)
+            self.write_index('block%d_items' % i, blk_items)
 
 
 class FrameFixed(BlockManagerFixed):
@@ -3197,51 +3193,63 @@ class Table(Fixed):
         for a in self.non_index_axes:
             obj = _reindex_axis(obj, a[0], a[1])
 
+        def get_blk_items(mgr, blocks):
+            return [mgr.items.take(blk.mgr_locs) for blk in blocks]
+
         # figure out data_columns and get out blocks
         block_obj = self.get_object(obj).consolidate()
         blocks = block_obj._data.blocks
+        blk_items = get_blk_items(block_obj._data, blocks)
         if len(self.non_index_axes):
             axis, axis_labels = self.non_index_axes[0]
             data_columns = self.validate_data_columns(
                 data_columns, min_itemsize)
             if len(data_columns):
-                blocks = block_obj.reindex_axis(
+                mgr = block_obj.reindex_axis(
                     Index(axis_labels) - Index(data_columns),
                     axis=axis
-                )._data.blocks
+                )._data
+
+                blocks = list(mgr.blocks)
+                blk_items = get_blk_items(mgr, blocks)
                 for c in data_columns:
-                    blocks.extend(
-                        block_obj.reindex_axis([c], axis=axis)._data.blocks)
+                    mgr = block_obj.reindex_axis([c], axis=axis)._data
+                    blocks.extend(mgr.blocks)
+                    blk_items.extend(get_blk_items(mgr, mgr.blocks))
 
         # reorder the blocks in the same order as the existing_table if we can
         if existing_table is not None:
-            by_items = dict([(tuple(b.items.tolist()), b) for b in blocks])
+            by_items = dict([(tuple(b_items.tolist()), (b, b_items))
+                             for b, b_items in zip(blocks, blk_items)])
             new_blocks = []
+            new_blk_items = []
             for ea in existing_table.values_axes:
                 items = tuple(ea.values)
                 try:
-                    b = by_items.pop(items)
+                    b, b_items = by_items.pop(items)
                     new_blocks.append(b)
+                    new_blk_items.append(b_items)
                 except:
                     raise ValueError(
                         "cannot match existing table structure for [%s] on "
                         "appending data" % ','.join(com.pprint_thing(item) for
                                                     item in items))
             blocks = new_blocks
+            blk_items = new_blk_items
 
         # add my values
         self.values_axes = []
-        for i, b in enumerate(blocks):
+        for i, (b, b_items) in enumerate(zip(blocks, blk_items)):
 
             # shape of the data column are the indexable axes
             klass = DataCol
             name = None
 
             # we have a data_column
-            if (data_columns and len(b.items) == 1 and
-                    b.items[0] in data_columns):
+            if (data_columns and len(b_items) == 1 and
+                    b_items[0] in data_columns):
                 klass = DataIndexableCol
-                name = b.items[0]
+                name = b_items[0]
                 self.data_columns.append(name)
 
             # make sure that we match up the existing columns
@@ -3259,7 +3267,7 @@ class Table(Fixed):
             try:
                 col = klass.create_for_block(
                     i=i, name=name, version=self.version)
-                col.set_atom(block=b,
+                col.set_atom(block=b, block_items=b_items,
                              existing_col=existing_col,
                              min_itemsize=min_itemsize,
                              nan_rep=nan_rep,
@@ -3275,7 +3283,7 @@ class Table(Fixed):
                 raise Exception(
                     "cannot find the correct atom type -> "
                     "[dtype->%s,items->%s] %s"
-                    % (b.dtype.name, b.items, str(detail))
+                    % (b.dtype.name, b_items, str(detail))
                 )
             j += 1
 
@@ -3381,9 +3389,15 @@ class Table(Fixed):
         # create the selection
         self.selection = Selection(
             self, where=where, start=start, stop=stop, **kwargs)
-        return Index(self.selection.select_coords())
+        coords = self.selection.select_coords()
+        if self.selection.filter is not None:
+            for field, op, filt in self.selection.filter.format():
+                data = self.read_column(field, start=coords.min(), stop=coords.max()+1)
+                coords = coords[op(data.iloc[coords-coords.min()], filt).values]
 
-    def read_column(self, column, where=None, **kwargs):
+        return Index(coords)
+
+    def read_column(self, column, where=None, start=None, stop=None, **kwargs):
         """return a single column from the table, generally only indexables
         are interesting
         """
@@ -3411,7 +3425,7 @@ class Table(Fixed):
                 # column must be an indexable or a data column
                 c = getattr(self.table.cols, column)
                 a.set_info(self.info)
-                return Series(a.convert(c[:], nan_rep=self.nan_rep,
+                return Series(a.convert(c[start:stop], nan_rep=self.nan_rep,
                                         encoding=self.encoding).take_data())
 
         raise KeyError("column [%s] not found in the table" % column)
@@ -3491,7 +3505,8 @@ class LegacyTable(Table):
                 take_labels = [l.take(sorter) for l in labels]
                 items = Index(c.values)
                 block = block2d_to_blocknd(
-                    sorted_values, items, tuple(N), take_labels)
+                    values=sorted_values, placement=np.arange(len(items)),
+                    shape=tuple(N), labels=take_labels, ref_items=items)
 
                 # create the object
                 mgr = BlockManager([block], [items] + levels)
@@ -3712,12 +3727,19 @@ class AppendableTable(LegacyTable):
         except Exception as detail:
             raise TypeError("tables cannot write this data -> %s" % detail)
 
-    def delete(self, where=None, **kwargs):
+    def delete(self, where=None, start=None, stop=None, **kwargs):
 
         # delete all rows (and return the nrows)
         if where is None or not len(where):
-            nrows = self.nrows
-            self._handle.removeNode(self.group, recursive=True)
+            if start is None and stop is None:
+                nrows = self.nrows
+                self._handle.removeNode(self.group, recursive=True)
+            else:
+                # pytables<3.0 would remove a single row with stop=None
+                if stop is None:
+                    stop = self.nrows
+                nrows = self.table.removeRows(start=start, stop=stop)
+                self.table.flush()
             return nrows
 
         # infer the data kind
@@ -3726,7 +3748,7 @@ class AppendableTable(LegacyTable):
 
         # create the selection
         table = self.table
-        self.selection = Selection(self, where, **kwargs)
+        self.selection = Selection(self, where, start=start, stop=stop, **kwargs)
         values = self.selection.select_coords()
 
         # delete the rows in reverse order
@@ -3817,7 +3839,7 @@ class AppendableFrameTable(AppendableTable):
             if values.ndim == 1:
                 values = values.reshape(1, values.shape[0])
 
-            block = make_block(values, cols_, cols_)
+            block = make_block(values, placement=np.arange(len(cols_)))
             mgr = BlockManager([block], [cols_, index_])
             frames.append(DataFrame(mgr))
 
@@ -4157,7 +4179,6 @@ def _convert_string_array(data, encoding, itemsize=None):
     data = np.array(data, dtype="S%d" % itemsize)
     return data
 
-
 def _unconvert_string_array(data, nan_rep=None, encoding=None):
     """ deserialize a string array, possibly decoding """
     shape = data.shape
@@ -4167,9 +4188,15 @@ def _unconvert_string_array(data, nan_rep=None, encoding=None):
     # where the passed encoding is actually None)
     encoding = _ensure_encoding(encoding)
     if encoding is not None and len(data):
+
         try:
-            data = data.astype(str).astype(object)
-        except:
+            itemsize = lib.max_len_string_array(com._ensure_object(data.ravel()))
+            if compat.PY3:
+                dtype = "U{0}".format(itemsize)
+            else:
+                dtype = "S{0}".format(itemsize)
+            data = data.astype(dtype).astype(object)
+        except (Exception) as e:
             f = np.vectorize(lambda x: x.decode(encoding), otypes=[np.object])
             data = f(data)
 
@@ -4303,13 +4330,25 @@ class Selection(object):
         """
         generate the selection
         """
-        if self.condition is None:
-            return np.arange(self.table.nrows)
+        start, stop = self.start, self.stop
+        nrows = self.table.nrows
+        if start is None:
+            start = 0
+        elif start < 0:
+            start += nrows
+        if self.stop is None:
+            stop = nrows
+        elif stop < 0:
+            stop += nrows
 
-        return self.table.table.getWhereList(self.condition.format(),
-                                             start=self.start, stop=self.stop,
-                                             sort=True)
+        if self.condition is not None:
+            return self.table.table.getWhereList(self.condition.format(),
+                                                 start=start, stop=stop,
+                                                 sort=True)
+        elif self.coordinates is not None:
+            return self.coordinates
 
+        return np.arange(start, stop)
 
 # utilities ###
 

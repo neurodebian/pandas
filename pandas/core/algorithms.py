@@ -9,8 +9,7 @@ import numpy as np
 import pandas.core.common as com
 import pandas.algos as algos
 import pandas.hashtable as htable
-import pandas.compat as compat
-from pandas.compat import filter, string_types
+from pandas.compat import string_types
 
 def match(to_match, values, na_sentinel=-1):
     """
@@ -67,15 +66,6 @@ def unique(values):
     return _hashtable_algo(f, values.dtype)
 
 
-# def count(values, uniques=None):
-#     f = lambda htype, caster: _count_generic(values, htype, caster)
-
-#     if uniques is not None:
-#         raise NotImplementedError
-#     else:
-#         return _hashtable_algo(f, values.dtype)
-
-
 def _hashtable_algo(f, dtype):
     """
     f(HashTable, type_caster) -> result
@@ -86,16 +76,6 @@ def _hashtable_algo(f, dtype):
         return f(htable.Int64HashTable, com._ensure_int64)
     else:
         return f(htable.PyObjectHashTable, com._ensure_object)
-
-
-def _count_generic(values, table_type, type_caster):
-    from pandas.core.series import Series
-
-    values = type_caster(values)
-    table = table_type(min(len(values), 1000000))
-    uniques, labels = table.factorize(values)
-
-    return Series(counts, index=uniques)
 
 
 def _match_generic(values, index, table_type, type_caster):
@@ -123,18 +103,24 @@ def factorize(values, sort=False, order=None, na_sentinel=-1):
         Sequence
     sort : boolean, default False
         Sort by values
-    order :
+    order : deprecated
     na_sentinel: int, default -1
         Value to mark "not found"
 
     Returns
     -------
     labels : the indexer to the original array
-    uniques : the unique values
+    uniques : ndarray (1-d) or Index
+        the unique values. Index is returned when passed values is Index or Series
 
     note: an array of Periods will ignore sort as it returns an always sorted PeriodIndex
     """
-    from pandas.tseries.period import PeriodIndex
+    if order is not None:
+        warn("order is deprecated."
+             "See https://github.com/pydata/pandas/issues/6926", FutureWarning)
+
+    from pandas.core.index import Index
+    from pandas.core.series import Series
     vals = np.asarray(values)
     is_datetime = com.is_datetime64_dtype(vals)
     (hash_klass, vec_klass), vals = _get_data_algo(vals, _hashtables)
@@ -173,9 +159,11 @@ def factorize(values, sort=False, order=None, na_sentinel=-1):
 
     if is_datetime:
         uniques = uniques.astype('M8[ns]')
-    if isinstance(values, PeriodIndex):
-        uniques = PeriodIndex(ordinal=uniques, freq=values.freq)
-
+    if isinstance(values, Index):
+        uniques = values._simple_new(uniques, None, freq=getattr(values, 'freq', None), 
+                                     tz=getattr(values, 'tz', None))
+    elif isinstance(values, Series):
+        uniques = Index(uniques)
     return labels, uniques
 
 
@@ -285,18 +273,18 @@ def mode(values):
 
 
 def rank(values, axis=0, method='average', na_option='keep',
-         ascending=True):
+         ascending=True, pct=False):
     """
 
     """
     if values.ndim == 1:
         f, values = _get_data_algo(values, _rank1d_functions)
         ranks = f(values, ties_method=method, ascending=ascending,
-                  na_option=na_option)
+                  na_option=na_option, pct=pct)
     elif values.ndim == 2:
         f, values = _get_data_algo(values, _rank2d_functions)
         ranks = f(values, axis=axis, ties_method=method,
-                  ascending=ascending, na_option=na_option)
+                  ascending=ascending, na_option=na_option, pct=pct)
 
     return ranks
 
@@ -343,7 +331,7 @@ def quantile(x, q, interpolation_method='fraction'):
     x = np.asarray(x)
     mask = com.isnull(x)
 
-    x = x[-mask]
+    x = x[~mask]
 
     values = np.sort(x)
 
@@ -353,7 +341,7 @@ def quantile(x, q, interpolation_method='fraction'):
 
         idx = at * (len(values) - 1)
         if idx % 1 == 0:
-            score = values[idx]
+            score = values[int(idx)]
         else:
             if interpolation_method == 'fraction':
                 score = _interpolate(values[int(idx)], values[int(idx) + 1],
@@ -421,6 +409,90 @@ def group_position(*args):
         table[tup] += 1
 
     return result
+
+
+_dtype_map = {'datetime64[ns]': 'int64', 'timedelta64[ns]': 'int64'}
+
+
+def _finalize_nsmallest(arr, kth_val, n, take_last, narr):
+    ns, = np.nonzero(arr <= kth_val)
+    inds = ns[arr[ns].argsort(kind='mergesort')][:n]
+
+    if take_last:
+        # reverse indices
+        return narr - 1 - inds
+    return inds
+
+
+def nsmallest(arr, n, take_last=False):
+    '''
+    Find the indices of the n smallest values of a numpy array.
+
+    Note: Fails silently with NaN.
+
+    '''
+    if take_last:
+        arr = arr[::-1]
+
+    narr = len(arr)
+    n = min(n, narr)
+
+    sdtype = str(arr.dtype)
+    arr = arr.view(_dtype_map.get(sdtype, sdtype))
+
+    kth_val = algos.kth_smallest(arr.copy(), n - 1)
+    return _finalize_nsmallest(arr, kth_val, n, take_last, narr)
+
+
+def nlargest(arr, n, take_last=False):
+    """
+    Find the indices of the n largest values of a numpy array.
+
+    Note: Fails silently with NaN.
+    """
+    sdtype = str(arr.dtype)
+    arr = arr.view(_dtype_map.get(sdtype, sdtype))
+    return nsmallest(-arr, n, take_last=take_last)
+
+
+def select_n_slow(dropped, n, take_last, method):
+    reverse_it = take_last or method == 'nlargest'
+    ascending = method == 'nsmallest'
+    slc = np.s_[::-1] if reverse_it else np.s_[:]
+    return dropped[slc].order(ascending=ascending).head(n)
+
+
+_select_methods = {'nsmallest': nsmallest, 'nlargest': nlargest}
+
+
+def select_n(series, n, take_last, method):
+    """Implement n largest/smallest.
+
+    Parameters
+    ----------
+    n : int
+    take_last : bool
+    method : str, {'nlargest', 'nsmallest'}
+
+    Returns
+    -------
+    nordered : Series
+    """
+    dtype = series.dtype
+    if not issubclass(dtype.type, (np.integer, np.floating, np.datetime64,
+                                   np.timedelta64)):
+        raise TypeError("Cannot use method %r with dtype %s" % (method, dtype))
+
+    if n <= 0:
+        return series[[]]
+
+    dropped = series.dropna()
+
+    if n >= len(series):
+        return select_n_slow(dropped, n, take_last, method)
+
+    inds = _select_methods[method](dropped.values, n, take_last)
+    return dropped.iloc[inds]
 
 
 _rank1d_functions = {

@@ -3,6 +3,19 @@ from tslib import NaT
 from datetime import datetime, timedelta
 iNaT = util.get_nat()
 
+# core.common import for fast inference checks
+def is_float(object obj):
+    return util.is_float_object(obj)
+
+def is_integer(object obj):
+    return util.is_integer_object(obj)
+
+def is_bool(object obj):
+    return util.is_bool_object(obj)
+
+def is_complex(object obj):
+    return util.is_complex_object(obj)
+
 _TYPE_MAP = {
     np.int8: 'integer',
     np.int16: 'integer',
@@ -44,6 +57,8 @@ def infer_dtype(object _values):
         if not isinstance(_values, list):
             _values = list(_values)
         values = list_to_object_array(_values)
+
+    values = getattr(values, 'values', values)
 
     val_kind = values.dtype.type
     if val_kind in _TYPE_MAP:
@@ -137,7 +152,18 @@ def infer_dtype_list(list values):
 
 
 cdef inline bint is_null_datetimelike(v):
-    return util._checknull(v) or (util.is_integer_object(v) and v == iNaT) or v is NaT
+    # determine if we have a null for a timedelta/datetime (or integer versions)x
+    if util._checknull(v):
+        return True
+    elif util.is_timedelta64_object(v):
+        return v.view('int64') == iNaT
+    elif util.is_datetime64_object(v):
+        return v.view('int64') == iNaT
+    elif util.is_integer_object(v):
+        return v == iNaT
+    elif v is NaT:
+        return True
+    return False
 
 cdef inline bint is_datetime(object o):
     return PyDateTime_Check(o)
@@ -1015,6 +1041,8 @@ def fast_multiget(dict mapping, ndarray keys, default=np.nan):
     if n == 0:
         # kludge, for Series
         return np.empty(0, dtype='f8')
+
+    keys = getattr(keys, 'values', keys)
 
     for i in range(n):
         val = util.get_value_1d(keys, i)

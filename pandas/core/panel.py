@@ -22,7 +22,8 @@ from pandas.core.frame import DataFrame
 from pandas.core.generic import NDFrame, _shared_docs
 from pandas.tools.util import cartesian_product
 from pandas import compat
-from pandas.util.decorators import deprecate, Appender, Substitution
+from pandas.util.decorators import (deprecate, Appender, Substitution,
+                                    deprecate_kwarg)
 import pandas.core.common as com
 import pandas.core.ops as ops
 import pandas.core.nanops as nanops
@@ -444,7 +445,7 @@ class Panel(NDFrame):
     #----------------------------------------------------------------------
     # Getting and setting elements
 
-    def get_value(self, *args):
+    def get_value(self, *args, **kwargs):
         """
         Quickly retrieve single value at (item, major, minor) location
 
@@ -453,6 +454,7 @@ class Panel(NDFrame):
         item : item label (panel item)
         major : major axis label (panel item row)
         minor : minor axis label (panel item column)
+        takeable : interpret the passed labels as indexers, default False
 
         Returns
         -------
@@ -466,12 +468,16 @@ class Panel(NDFrame):
             raise TypeError('There must be an argument for each axis, you gave'
                             ' {0} args, but {1} are required'.format(nargs,
                                                                      nreq))
+        takeable = kwargs.get('takeable')
 
-        # hm, two layers to the onion
-        frame = self._get_item_cache(args[0])
-        return frame.get_value(*args[1:])
+        if takeable is True:
+            lower = self._iget_item_cache(args[0])
+        else:
+            lower = self._get_item_cache(args[0])
 
-    def set_value(self, *args):
+        return lower.get_value(*args[1:], takeable=takeable)
+
+    def set_value(self, *args, **kwargs):
         """
         Quickly set single value at (item, major, minor) location
 
@@ -481,6 +487,7 @@ class Panel(NDFrame):
         major : major axis label (panel item row)
         minor : minor axis label (panel item column)
         value : scalar
+        takeable : interpret the passed labels as indexers, default False
 
         Returns
         -------
@@ -496,10 +503,15 @@ class Panel(NDFrame):
             raise TypeError('There must be an argument for each axis plus the '
                             'value provided, you gave {0} args, but {1} are '
                             'required'.format(nargs, nreq))
+        takeable = kwargs.get('takeable')
 
         try:
-            frame = self._get_item_cache(args[0])
-            frame.set_value(*args[1:])
+            if takeable is True:
+                lower = self._iget_item_cache(args[0])
+            else:
+                lower = self._get_item_cache(args[0])
+
+            lower.set_value(*args[1:], takeable=takeable)
             return self
         except KeyError:
             axes = self._expand_axes(args)
@@ -527,12 +539,6 @@ class Panel(NDFrame):
 
         d = self._construct_axes_dict_for_slice(self._AXIS_ORDERS[1:])
         return self._constructor_sliced(values, **d)
-
-    def _slice(self, slobj, axis=0, raise_on_error=False, typ=None):
-        new_data = self._data.get_slice(slobj,
-                                        axis=axis,
-                                        raise_on_error=raise_on_error)
-        return self._constructor(new_data)
 
     def __setitem__(self, key, value):
         shape = tuple(self.shape)
@@ -683,7 +689,7 @@ class Panel(NDFrame):
 
         return self._constructor(result_values, items, major, minor)
 
-    def major_xs(self, key, copy=True):
+    def major_xs(self, key, copy=None):
         """
         Return slice of panel along major axis
 
@@ -691,17 +697,29 @@ class Panel(NDFrame):
         ----------
         key : object
             Major axis label
-        copy : boolean, default True
-            Copy data
+        copy : boolean [deprecated]
+            Whether to make a copy of the data
 
         Returns
         -------
         y : DataFrame
             index -> minor axis, columns -> items
-        """
-        return self.xs(key, axis=self._AXIS_LEN - 2, copy=copy)
 
-    def minor_xs(self, key, copy=True):
+        Notes
+        -----
+        major_xs is only for getting, not setting values.
+
+        MultiIndex Slicers is a generic way to get/set values on any level or levels
+        it is a superset of major_xs functionality, see :ref:`MultiIndex Slicers <indexing.mi_slicers>`
+
+        """
+        if copy is not None:
+            warnings.warn("copy keyword is deprecated, "
+                          "default is to return a copy or a view if possible")
+
+        return self.xs(key, axis=self._AXIS_LEN - 2)
+
+    def minor_xs(self, key, copy=None):
         """
         Return slice of panel along minor axis
 
@@ -709,17 +727,29 @@ class Panel(NDFrame):
         ----------
         key : object
             Minor axis label
-        copy : boolean, default True
-            Copy data
+        copy : boolean [deprecated]
+            Whether to make a copy of the data
 
         Returns
         -------
         y : DataFrame
             index -> major axis, columns -> items
-        """
-        return self.xs(key, axis=self._AXIS_LEN - 1, copy=copy)
 
-    def xs(self, key, axis=1, copy=True):
+        Notes
+        -----
+        minor_xs is only for getting, not setting values.
+
+        MultiIndex Slicers is a generic way to get/set values on any level or levels
+        it is a superset of minor_xs functionality, see :ref:`MultiIndex Slicers <indexing.mi_slicers>`
+
+        """
+        if copy is not None:
+            warnings.warn("copy keyword is deprecated, "
+                          "default is to return a copy or a view if possible")
+
+        return self.xs(key, axis=self._AXIS_LEN - 1)
+
+    def xs(self, key, axis=1, copy=None):
         """
         Return slice of panel along selected axis
 
@@ -728,24 +758,36 @@ class Panel(NDFrame):
         key : object
             Label
         axis : {'items', 'major', 'minor}, default 1/'major'
-        copy : boolean, default True
-            Copy data
+        copy : boolean [deprecated]
+            Whether to make a copy of the data
 
         Returns
         -------
         y : ndim(self)-1
+
+        Notes
+        -----
+        xs is only for getting, not setting values.
+
+        MultiIndex Slicers is a generic way to get/set values on any level or levels
+        it is a superset of xs functionality, see :ref:`MultiIndex Slicers <indexing.mi_slicers>`
+
         """
+        if copy is not None:
+            warnings.warn("copy keyword is deprecated, "
+                          "default is to return a copy or a view if possible")
+
         axis = self._get_axis_number(axis)
         if axis == 0:
-            data = self[key]
-            if copy:
-                data = data.copy()
-            return data
+            return self[key]
 
         self._consolidate_inplace()
         axis_number = self._get_axis_number(axis)
-        new_data = self._data.xs(key, axis=axis_number, copy=copy)
-        return self._construct_return_type(new_data)
+        new_data = self._data.xs(key, axis=axis_number, copy=False)
+        result = self._construct_return_type(new_data)
+        copy = new_data.is_mixed_type
+        result._set_is_copy(self, copy=copy)
+        return result
 
     _xs = xs
 
@@ -1105,11 +1147,12 @@ class Panel(NDFrame):
 
         values = self.values
         mask = np.isfinite(values)
-        result = mask.sum(axis=i)
+        result = mask.sum(axis=i,dtype='int64')
 
         return self._wrap_result(result, axis)
 
-    def shift(self, lags, freq=None, axis='major'):
+    @deprecate_kwarg(old_arg_name='lags', new_arg_name='periods')
+    def shift(self, periods=1, freq=None, axis='major'):
         """
         Shift major or minor axis by specified number of leads/lags. Drops
         periods right now compared with DataFrame.shift
@@ -1123,35 +1166,13 @@ class Panel(NDFrame):
         -------
         shifted : Panel
         """
-        values = self.values
-        items = self.items
-        major_axis = self.major_axis
-        minor_axis = self.minor_axis
-
         if freq:
-            return self.tshift(lags, freq, axis=axis)
+            return self.tshift(periods, freq, axis=axis)
 
-        if lags > 0:
-            vslicer = slice(None, -lags)
-            islicer = slice(lags, None)
-        elif lags == 0:
-            vslicer = islicer = slice(None)
-        else:
-            vslicer = slice(-lags, None)
-            islicer = slice(None, lags)
-
-        axis = self._get_axis_name(axis)
-        if axis == 'major_axis':
-            values = values[:, vslicer, :]
-            major_axis = major_axis[islicer]
-        elif axis == 'minor_axis':
-            values = values[:, :, vslicer]
-            minor_axis = minor_axis[islicer]
-        else:
+        if axis == 'items':
             raise ValueError('Invalid axis')
 
-        return self._constructor(values, items=items, major_axis=major_axis,
-                                 minor_axis=minor_axis)
+        return super(Panel, self).slice_shift(periods, axis=axis)
 
     def tshift(self, periods=1, freq=None, axis='major', **kwds):
         return super(Panel, self).tshift(periods, freq, axis, **kwds)
@@ -1396,7 +1417,7 @@ Returns
                 # handles discrepancy between numpy and numexpr on division/mod
                 # by 0 though, given that these are generally (always?)
                 # non-scalars, I'm not sure whether it's worth it at the moment
-                result = com._fill_zeros(result, y, fill_zeros)
+                result = com._fill_zeros(result, x, y, name, fill_zeros)
                 return result
 
             @Substitution(name)

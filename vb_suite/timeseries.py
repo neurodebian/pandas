@@ -8,9 +8,9 @@ N = 100000
 try:
     rng = date_range('1/1/2000', periods=N, freq='min')
 except NameError:
-    rng = DateRange('1/1/2000', periods=N, offset=datetools.Minute())
+    rng = DatetimeIndex('1/1/2000', periods=N, offset=datetools.Minute())
     def date_range(start=None, end=None, periods=None, freq=None):
-        return DateRange(start, end, periods=periods, offset=freq)
+        return DatetimeIndex(start, end, periods=periods, offset=freq)
 
 if hasattr(Series, 'convert'):
     Series.resample = Series.convert
@@ -269,3 +269,48 @@ dataframe_resample_max_string = \
 dataframe_resample_max_numpy = \
     Benchmark("df.resample('1s', how=np.max)", setup)
 
+
+#----------------------------------------------------------------------
+# DatetimeConverter
+
+setup = common_setup + """
+from pandas.tseries.converter import DatetimeConverter
+"""
+
+datetimeindex_converter = \
+    Benchmark('DatetimeConverter.convert(rng, None, None)',
+              setup, start_date=datetime(2013, 1, 1))
+
+# Adding custom business day
+setup = common_setup + """
+import datetime as dt
+import pandas as pd
+
+date = dt.datetime(2011,1,1)
+cday = pd.offsets.CustomBusinessDay()
+cme = pd.offsets.CustomBusinessMonthEnd()
+"""
+timeseries_custom_bday_incr = \
+    Benchmark("date + cday",setup)
+
+# Increment by n
+timeseries_custom_bday_incr_n = \
+    Benchmark("date + 10 * cday",setup)
+
+# Increment custom business month
+timeseries_custom_bmonthend_incr = \
+    Benchmark("date + cme",setup)
+
+timeseries_custom_bmonthend_incr_n = \
+    Benchmark("date + 10 * cme",setup)
+
+#----------------------------------------------------------------------
+# month/quarter/year start/end accessors
+
+setup = common_setup + """
+N = 10000
+rng = date_range('1/1/1', periods=N, freq='B')
+"""
+
+timeseries_is_month_start = Benchmark('rng.is_month_start', setup,
+                                  start_date=datetime(2014, 4, 1))

@@ -83,7 +83,6 @@ will be completed:
 
    @verbatim
    In [1]: df2.<TAB>
-
    df2.A                  df2.boxplot
    df2.abs                df2.C
    df2.add                df2.clip
@@ -272,25 +271,6 @@ For getting fast access to a scalar (equiv to the prior method)
 .. ipython:: python
 
    df.iat[1,1]
-
-There is one signficant departure from standard python/numpy slicing semantics.
-python/numpy allow slicing past the end of an array without an associated
-error.
-
-.. ipython:: python
-
-    # these are allowed in python/numpy.
-    x = list('abcdef')
-    x[4:10]
-    x[8:10]
-
-Pandas will detect this and raise ``IndexError``, rather than return an empty
-structure.
-
-::
-
-    >>> df.iloc[:,8:10]
-    IndexError: out-of-bounds on slice (end)
 
 Boolean Indexing
 ~~~~~~~~~~~~~~~~
@@ -590,7 +570,7 @@ We can produce pivot tables from this data very easily:
 
 .. ipython:: python
 
-   pd.pivot_table(df, values='D', rows=['A', 'B'], cols=['C'])
+   pd.pivot_table(df, values='D', index=['A', 'B'], columns=['C'])
 
 
 Time Series

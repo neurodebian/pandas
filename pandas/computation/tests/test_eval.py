@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 
-import functools
 from itertools import product
 from distutils.version import LooseVersion
 
 import nose
-from nose.tools import assert_raises, assert_true, assert_false, assert_equal
+from nose.tools import assert_raises
 
 from numpy.random import randn, rand, randint
 import numpy as np
@@ -18,12 +17,11 @@ from pandas import DataFrame, Series, Panel, date_range
 from pandas.util.testing import makeCustomDataframe as mkdf
 
 from pandas.computation import pytables
-from pandas.computation.engines import _engines
+from pandas.computation.engines import _engines, NumExprClobberingError
 from pandas.computation.expr import PythonExprVisitor, PandasExprVisitor
 from pandas.computation.ops import (_binary_ops_dict,
                                     _special_case_arith_ops_syms,
                                     _arith_ops_syms, _bool_ops_syms)
-from pandas.computation.common import NameResolutionError
 
 import pandas.computation.expr as expr
 import pandas.util.testing as tm
@@ -72,23 +70,6 @@ def _series_and_frame(lhs, rhs):
 
 def _bool_and_frame(lhs, rhs):
     return isinstance(lhs, bool) and isinstance(rhs, pd.core.generic.NDFrame)
-
-
-def skip_incompatible_operand(f):
-    @functools.wraps(f)
-    def wrapper(self, lhs, arith1, rhs, *args, **kwargs):
-        if _series_and_2d_ndarray(lhs, rhs):
-            self.assertRaises(Exception, pd.eval, 'lhs {0} rhs'.format(arith1),
-                              local_dict={'lhs': lhs, 'rhs': rhs},
-                              engine=self.engine, parser=self.parser)
-        elif (np.isscalar(lhs) and np.isscalar(rhs) and arith1 in
-                _bool_ops_syms):
-            with tm.assertRaises(NotImplementedError):
-                pd.eval('lhs {0} rhs'.format(arith1), engine=self.engine,
-                        parser=self.parser)
-        else:
-            f(self, lhs, arith1, rhs, *args, **kwargs)
-    return wrapper
 
 
 def _is_py3_complex_incompat(result, expected):
@@ -200,7 +181,6 @@ class TestEvalNumexprPandas(tm.TestCase):
     @slow
     def test_chained_cmp_op(self):
         mids = self.lhses
-        # tuple(set(self.cmp_ops) - set(['==', '!=', '<=', '>=']))
         cmp_ops = '<', '>'
         for lhs, cmp1, mid, cmp2, rhs in product(self.lhses, cmp_ops,
                                                  mids, cmp_ops, self.rhses):
@@ -214,26 +194,11 @@ class TestEvalNumexprPandas(tm.TestCase):
         scalar_with_in_notin = (np.isscalar(rhs) and (cmp1 in skip_these or
                                 cmp2 in skip_these))
         if scalar_with_in_notin:
+            with tm.assertRaises(TypeError):
+                pd.eval(ex, engine=self.engine, parser=self.parser)
             self.assertRaises(TypeError, pd.eval, ex, engine=self.engine,
                               parser=self.parser, local_dict={'lhs': lhs,
                                                               'rhs': rhs})
-        elif (_series_and_frame(lhs, rhs) and (cmp1 in
-              _series_frame_incompatible or
-              cmp2 in _series_frame_incompatible)):
-            self.assertRaises(TypeError, pd.eval, ex,
-                              local_dict={'lhs': lhs, 'rhs': rhs},
-                              engine=self.engine, parser=self.parser)
-        elif _bool_and_frame(lhs, rhs):
-            self.assertRaises(TypeError, _eval_single_bin, lhs, '&',
-                              rhs, self.engine)
-            self.assertRaises(TypeError, pd.eval, ex,
-                              local_dict={'lhs': lhs, 'rhs': rhs},
-                              engine=self.engine, parser=self.parser)
-        elif (np.isscalar(lhs) and np.isnan(lhs) and
-                not np.isscalar(rhs) and (cmp1 in skip_these or cmp2 in
-                                          skip_these)):
-            with tm.assertRaises(TypeError):
-                _eval_single_bin(lhs, binop, rhs, self.engine)
         else:
             lhs_new = _eval_single_bin(lhs, cmp1, rhs, self.engine)
             rhs_new = _eval_single_bin(lhs, cmp2, rhs, self.engine)
@@ -250,51 +215,17 @@ class TestEvalNumexprPandas(tm.TestCase):
                 # except AssertionError:
                     #import ipdb; ipdb.set_trace()
                     # raise
-            elif (np.isscalar(lhs_new) and np.isnan(lhs_new) and
-                    not np.isscalar(rhs_new) and binop in skip_these):
-                with tm.assertRaises(TypeError):
-                    _eval_single_bin(lhs_new, binop, rhs_new, self.engine)
             else:
                 expected = _eval_single_bin(
                     lhs_new, binop, rhs_new, self.engine)
                 result = pd.eval(ex, engine=self.engine, parser=self.parser)
                 assert_array_equal(result, expected)
 
-    @skip_incompatible_operand
     def check_chained_cmp_op(self, lhs, cmp1, mid, cmp2, rhs):
         skip_these = _scalar_skip
 
         def check_operands(left, right, cmp_op):
-            if (np.isscalar(left) and np.isnan(left) and not np.isscalar(right)
-                    and cmp_op in skip_these):
-                ex = 'left {0} right'.format(cmp_op)
-                with tm.assertRaises(ValueError):
-                    pd.eval(ex, engine=self.engine, parser=self.parser)
-                return
-            if (np.isscalar(left) and np.isscalar(right) and
-                    cmp_op in _bool_ops_syms):
-                ex1 = 'lhs {0} mid {1} rhs'.format(cmp1, cmp2)
-                ex2 = 'lhs {0} mid and mid {1} rhs'.format(cmp1, cmp2)
-                ex3 = '(lhs {0} mid) & (mid {1} rhs)'.format(cmp1, cmp2)
-                for ex in (ex1, ex2, ex3):
-                    with tm.assertRaises(NotImplementedError):
-                        pd.eval(ex, engine=self.engine, parser=self.parser)
-                return
-            if (np.isscalar(right) and not np.isscalar(left) and cmp_op in
-                    skip_these):
-                self.assertRaises(Exception, _eval_single_bin, left, cmp_op,
-                                  right, self.engine)
-            elif _series_and_2d_ndarray(right, left):
-                self.assertRaises(Exception, _eval_single_bin, right, cmp_op,
-                                  left, self.engine)
-            elif (np.isscalar(right) and np.isscalar(left) and cmp_op in
-                    skip_these):
-                self.assertRaises(Exception, _eval_single_bin, right, cmp_op,
-                                  left, self.engine)
-            else:
-                new = _eval_single_bin(left, cmp_op, right, self.engine)
-                return new
-            return
+            return _eval_single_bin(left, cmp_op, right, self.engine)
 
         lhs_new = check_operands(lhs, mid, cmp1)
         rhs_new = check_operands(mid, rhs, cmp2)
@@ -310,7 +241,6 @@ class TestEvalNumexprPandas(tm.TestCase):
                                  parser=self.parser)
                 assert_array_equal(result, expected)
 
-    @skip_incompatible_operand
     def check_simple_cmp_op(self, lhs, cmp1, rhs):
         ex = 'lhs {0} rhs'.format(cmp1)
         if cmp1 in ('in', 'not in') and not com.is_list_like(rhs):
@@ -322,7 +252,6 @@ class TestEvalNumexprPandas(tm.TestCase):
             result = pd.eval(ex, engine=self.engine, parser=self.parser)
             assert_array_equal(result, expected)
 
-    @skip_incompatible_operand
     def check_binary_arith_op(self, lhs, arith1, rhs):
         ex = 'lhs {0} rhs'.format(arith1)
         result = pd.eval(ex, engine=self.engine, parser=self.parser)
@@ -345,9 +274,8 @@ class TestEvalNumexprPandas(tm.TestCase):
             expected = self.ne.evaluate('nlhs {0} ghs'.format(op))
             assert_array_equal(result, expected)
 
-    # the following 3 tests require special casing
+    # modulus, pow, and floor division require special casing
 
-    @skip_incompatible_operand
     def check_modulus(self, lhs, arith1, rhs):
         ex = 'lhs {0} rhs'.format(arith1)
         result = pd.eval(ex, engine=self.engine, parser=self.parser)
@@ -356,7 +284,6 @@ class TestEvalNumexprPandas(tm.TestCase):
         expected = self.ne.evaluate('expected {0} rhs'.format(arith1))
         assert_allclose(result, expected)
 
-    @skip_incompatible_operand
     def check_floor_division(self, lhs, arith1, rhs):
         ex = 'lhs {0} rhs'.format(arith1)
 
@@ -390,7 +317,6 @@ class TestEvalNumexprPandas(tm.TestCase):
                 raise
         return expected
 
-    @skip_incompatible_operand
     def check_pow(self, lhs, arith1, rhs):
         ex = 'lhs {0} rhs'.format(arith1)
         expected = self.get_expected_pow_result(lhs, rhs)
@@ -409,7 +335,6 @@ class TestEvalNumexprPandas(tm.TestCase):
                 self.get_expected_pow_result(lhs, rhs), rhs)
             assert_allclose(result, expected)
 
-    @skip_incompatible_operand
     def check_single_invert_op(self, lhs, cmp1, rhs):
         # simple
         for el in (lhs, rhs):
@@ -426,7 +351,6 @@ class TestEvalNumexprPandas(tm.TestCase):
                 assert_array_equal(result, pd.eval('~elb', engine=engine,
                                                    parser=self.parser))
 
-    @skip_incompatible_operand
     def check_compound_invert_op(self, lhs, cmp1, rhs):
         skip_these = 'in', 'not in'
         ex = '~(lhs {0} rhs)'.format(cmp1)
@@ -435,10 +359,6 @@ class TestEvalNumexprPandas(tm.TestCase):
             self.assertRaises(TypeError, pd.eval, ex, engine=self.engine,
                               parser=self.parser, local_dict={'lhs': lhs,
                                                               'rhs': rhs})
-        elif (np.isscalar(lhs) and np.isnan(lhs) and not np.isscalar(rhs)
-                and cmp1 in skip_these):
-            with tm.assertRaises(ValueError):
-                pd.eval(ex, engine=self.engine, parser=self.parser)
         else:
             # compound
             if np.isscalar(lhs) and np.isscalar(rhs):
@@ -735,13 +655,14 @@ class TestEvalPythonPython(TestEvalNumexprPython):
         cls.engine = 'python'
         cls.parser = 'python'
 
-    @skip_incompatible_operand
     def check_modulus(self, lhs, arith1, rhs):
         ex = 'lhs {0} rhs'.format(arith1)
-        result = pd.eval(ex, engine=self.engine)
+        result = pd.eval(ex, engine=self.engine, parser=self.parser)
+
         expected = lhs % rhs
         assert_allclose(result, expected)
-        expected = eval('expected {0} rhs'.format(arith1))
+
+        expected = _eval_single_bin(expected, arith1, rhs, self.engine)
         assert_allclose(result, expected)
 
     def check_alignment(self, result, nlhs, ghs, op):
@@ -965,7 +886,7 @@ class TestAlignment(object):
                 expected = expected2 + df
 
             res = pd.eval('df2 + s + df', engine=engine, parser=parser)
-            assert_equal(res.shape, expected.shape)
+            tm.assert_equal(res.shape, expected.shape)
             assert_frame_equal(res, expected)
 
     @slow
@@ -1008,13 +929,13 @@ class TestAlignment(object):
             pd.eval('df + s', engine=engine, parser=parser)
 
             if not is_python_engine:
-                assert_equal(len(w), 1)
+                tm.assert_equal(len(w), 1)
                 msg = str(w[0].message)
                 expected = ("Alignment difference on axis {0} is larger"
                             " than an order of magnitude on term {1!r}, "
                             "by more than {2:.4g}; performance may suffer"
                             "".format(1, 'df', np.log10(s.size - df.shape[1])))
-                assert_equal(msg, expected)
+                tm.assert_equal(msg, expected)
 
     def test_performance_warning_for_poor_alignment(self):
         for engine, parser in ENGINES_PARSERS:
@@ -1043,6 +964,7 @@ class TestOperationsNumExprPandas(tm.TestCase):
     def eval(self, *args, **kwargs):
         kwargs['engine'] = self.engine
         kwargs['parser'] = self.parser
+        kwargs['level'] = kwargs.pop('level', 0) + 1
         return pd.eval(*args, **kwargs)
 
     def test_simple_arith_ops(self):
@@ -1059,17 +981,17 @@ class TestOperationsNumExprPandas(tm.TestCase):
             else:
                 expec = _eval_single_bin(1, op, 1, self.engine)
                 x = self.eval(ex, engine=self.engine, parser=self.parser)
-                assert_equal(x, expec)
+                tm.assert_equal(x, expec)
 
                 expec = _eval_single_bin(x, op, 1, self.engine)
                 y = self.eval(ex2, local_dict={'x': x}, engine=self.engine,
                               parser=self.parser)
-                assert_equal(y, expec)
+                tm.assert_equal(y, expec)
 
                 expec = _eval_single_bin(1, op, x + 1, self.engine)
                 y = self.eval(ex3, local_dict={'x': x},
                               engine=self.engine, parser=self.parser)
-                assert_equal(y, expec)
+                tm.assert_equal(y, expec)
 
     def test_simple_bool_ops(self):
         for op, lhs, rhs in product(expr._bool_ops_syms, (True, False),
@@ -1101,7 +1023,7 @@ class TestOperationsNumExprPandas(tm.TestCase):
 
     def test_constant(self):
         x = self.eval('1')
-        assert_equal(x, 1)
+        tm.assert_equal(x, 1)
 
     def test_single_variable(self):
         df = DataFrame(randn(10, 2))
@@ -1114,10 +1036,10 @@ class TestOperationsNumExprPandas(tm.TestCase):
         d = {'s': s}
 
         if PY3:
-            res = self.eval(ex, truediv=False, local_dict=d)
+            res = self.eval(ex, truediv=False)
             assert_array_equal(res, np.array([1.0]))
 
-            res = self.eval(ex, truediv=True, local_dict=d)
+            res = self.eval(ex, truediv=True)
             assert_array_equal(res, np.array([1.0]))
 
             res = self.eval('1 / 2', truediv=True)
@@ -1128,18 +1050,18 @@ class TestOperationsNumExprPandas(tm.TestCase):
             expec = 0.5
             self.assertEqual(res, expec)
 
-            res = self.eval('s / 2', truediv=False, local_dict={'s': s})
+            res = self.eval('s / 2', truediv=False)
             expec = 0.5
             self.assertEqual(res, expec)
 
-            res = self.eval('s / 2', truediv=True, local_dict={'s': s})
+            res = self.eval('s / 2', truediv=True)
             expec = 0.5
             self.assertEqual(res, expec)
         else:
-            res = self.eval(ex, truediv=False, local_dict=d)
+            res = self.eval(ex, truediv=False)
             assert_array_equal(res, np.array([1]))
 
-            res = self.eval(ex, truediv=True, local_dict=d)
+            res = self.eval(ex, truediv=True)
             assert_array_equal(res, np.array([1.0]))
 
             res = self.eval('1 / 2', truediv=True)
@@ -1150,18 +1072,18 @@ class TestOperationsNumExprPandas(tm.TestCase):
             expec = 0
             self.assertEqual(res, expec)
 
-            res = self.eval('s / 2', truediv=False, local_dict={'s': s})
+            res = self.eval('s / 2', truediv=False)
             expec = 0
             self.assertEqual(res, expec)
 
-            res = self.eval('s / 2', truediv=True, local_dict={'s': s})
+            res = self.eval('s / 2', truediv=True)
             expec = 0.5
             self.assertEqual(res, expec)
 
     def test_failing_subscript_with_name_error(self):
         df = DataFrame(np.random.randn(5, 3))
-        self.assertRaises(NameError, self.eval, 'df[x > 2] > 2',
-                          local_dict={'df': df})
+        with tm.assertRaises(NameError):
+            self.eval('df[x > 2] > 2')
 
     def test_lhs_expression_subscript(self):
         df = DataFrame(np.random.randn(5, 3))
@@ -1232,8 +1154,11 @@ class TestOperationsNumExprPandas(tm.TestCase):
 
         def f():
             a = 1
-            df.eval('a=a+b')
-        self.assertRaises(NameResolutionError, f)
+            old_a = df.a.copy()
+            df.eval('a = a + b')
+            assert_series_equal(old_a + df.b, df.a)
+
+        f()
 
         # multiple assignment
         df = orig_df.copy()
@@ -1348,6 +1273,13 @@ class TestOperationsNumExprPython(TestOperationsNumExprPandas):
         cls.arith_ops = filter(lambda x: x not in ('in', 'not in'),
                                cls.arith_ops)
 
+    def test_check_many_exprs(self):
+        a = 1
+        expr = ' * '.join('a' * 33)
+        expected = 1
+        res = pd.eval(expr, engine=self.engine, parser=self.parser)
+        tm.assert_equal(res, expected)
+
     def test_fails_and(self):
         df = DataFrame(np.random.randn(5, 3))
         self.assertRaises(NotImplementedError, pd.eval, 'df > 2 and df > 3',
@@ -1446,7 +1378,7 @@ class TestScope(object):
         pd.eval('x + 1', local_dict=lcls, engine=engine, parser=parser)
         lcls2 = locals().copy()
         lcls2.pop('lcls')
-        assert_equal(lcls, lcls2)
+        tm.assert_equal(lcls, lcls2)
 
     def test_no_new_locals(self):
         for engine, parser in product(_engines, expr._parsers):
@@ -1458,7 +1390,7 @@ class TestScope(object):
         gbls = globals().copy()
         pd.eval('x + 1', engine=engine, parser=parser)
         gbls2 = globals().copy()
-        assert_equal(gbls, gbls2)
+        tm.assert_equal(gbls, gbls2)
 
     def test_no_new_globals(self):
         for engine, parser in product(_engines, expr._parsers):
@@ -1477,34 +1409,6 @@ def test_invalid_parser():
     assertRaisesRegexp(KeyError, 'Invalid parser \'asdf\' passed',
                        pd.eval, 'x + y', local_dict={'x': 1, 'y': 2},
                        parser='asdf')
-
-
-def check_is_expr_syntax(engine):
-    tm.skip_if_no_ne(engine)
-    s = 1
-    valid1 = 's + 1'
-    valid2 = '__y + _xx'
-    assert_true(expr.isexpr(valid1, check_names=False))
-    assert_true(expr.isexpr(valid2, check_names=False))
-
-
-def check_is_expr_names(engine):
-    tm.skip_if_no_ne(engine)
-    r, s = 1, 2
-    valid = 's + r'
-    invalid = '__y + __x'
-    assert_true(expr.isexpr(valid, check_names=True))
-    assert_false(expr.isexpr(invalid, check_names=True))
-
-
-def test_is_expr_syntax():
-    for engine in _engines:
-        yield check_is_expr_syntax, engine
-
-
-def test_is_expr_names():
-    for engine in _engines:
-        yield check_is_expr_names, engine
 
 
 _parsers = {'python': PythonExprVisitor, 'pytables': pytables.ExprVisitor,
@@ -1540,7 +1444,8 @@ def test_syntax_error_exprs():
 def check_name_error_exprs(engine, parser):
     tm.skip_if_no_ne(engine)
     e = 's + t'
-    assert_raises(NameError, pd.eval, e, engine=engine, parser=parser)
+    with tm.assertRaises(NameError):
+        pd.eval(e, engine=engine, parser=parser)
 
 
 def test_name_error_exprs():
@@ -1573,6 +1478,102 @@ def check_invalid_numexpr_version(engine, parser):
 def test_invalid_numexpr_version():
     for engine, parser in ENGINES_PARSERS:
         yield check_invalid_numexpr_version, engine, parser
+
+
+def check_invalid_local_variable_reference(engine, parser):
+    tm.skip_if_no_ne(engine)
+
+    a, b = 1, 2
+    exprs = 'a + @b', '@a + b', '@a + @b'
+    for expr in exprs:
+        if parser != 'pandas':
+            with tm.assertRaisesRegexp(SyntaxError, "The '@' prefix is only"):
+                pd.eval(exprs, engine=engine, parser=parser)
+        else:
+            with tm.assertRaisesRegexp(SyntaxError, "The '@' prefix is not"):
+                pd.eval(exprs, engine=engine, parser=parser)
+
+
+def test_invalid_local_variable_reference():
+    for engine, parser in ENGINES_PARSERS:
+        yield check_invalid_local_variable_reference, engine, parser
+
+
+def check_numexpr_builtin_raises(engine, parser):
+    tm.skip_if_no_ne(engine)
+    sin, dotted_line = 1, 2
+    if engine == 'numexpr':
+        with tm.assertRaisesRegexp(NumExprClobberingError,
+                                'Variables in expression .+'):
+            pd.eval('sin + dotted_line', engine=engine, parser=parser)
+    else:
+        res = pd.eval('sin + dotted_line', engine=engine, parser=parser)
+        tm.assert_equal(res, sin + dotted_line)
+
+
+def test_numexpr_builtin_raises():
+    for engine, parser in ENGINES_PARSERS:
+        yield check_numexpr_builtin_raises, engine, parser
+
+
+def check_bad_resolver_raises(engine, parser):
+    tm.skip_if_no_ne(engine)
+    cannot_resolve = 42, 3.0
+    with tm.assertRaisesRegexp(TypeError, 'Resolver of type .+'):
+        pd.eval('1 + 2', resolvers=cannot_resolve, engine=engine,
+                parser=parser)
+
+
+def test_bad_resolver_raises():
+    for engine, parser in ENGINES_PARSERS:
+        yield check_bad_resolver_raises, engine, parser
+
+
+def check_more_than_one_expression_raises(engine, parser):
+    tm.skip_if_no_ne(engine)
+    with tm.assertRaisesRegexp(SyntaxError,
+                               'only a single expression is allowed'):
+        pd.eval('1 + 1; 2 + 2', engine=engine, parser=parser)
+
+
+def test_more_than_one_expression_raises():
+    for engine, parser in ENGINES_PARSERS:
+        yield check_more_than_one_expression_raises, engine, parser
+
+
+def check_bool_ops_fails_on_scalars(gen, lhs, cmp, rhs, engine, parser):
+    tm.skip_if_no_ne(engine)
+    mid = gen[type(lhs)]()
+    ex1 = 'lhs {0} mid {1} rhs'.format(cmp, cmp)
+    ex2 = 'lhs {0} mid and mid {1} rhs'.format(cmp, cmp)
+    ex3 = '(lhs {0} mid) & (mid {1} rhs)'.format(cmp, cmp)
+    for ex in (ex1, ex2, ex3):
+        with tm.assertRaises(NotImplementedError):
+            pd.eval(ex, engine=engine, parser=parser)
+
+
+def test_bool_ops_fails_on_scalars():
+    _bool_ops_syms = 'and', 'or'
+    dtypes = int, float
+    gen = {int: lambda: np.random.randint(10), float: np.random.randn}
+    for engine, parser, dtype1, cmp, dtype2 in product(_engines, expr._parsers,
+                                                       dtypes, _bool_ops_syms,
+                                                       dtypes):
+        yield (check_bool_ops_fails_on_scalars, gen, gen[dtype1](), cmp,
+               gen[dtype2](), engine, parser)
+
+
+def check_inf(engine, parser):
+    tm.skip_if_no_ne(engine)
+    s = 'inf + 1'
+    expected = np.inf
+    result = pd.eval(s, engine=engine, parser=parser)
+    tm.assert_equal(result, expected)
+
+
+def test_inf():
+    for engine, parser in ENGINES_PARSERS:
+        yield check_inf, engine, parser
 
 
 if __name__ == '__main__':
