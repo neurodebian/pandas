@@ -1,4 +1,2 @@
-changeset_6d56e7300d66d3ba76684334bbb44b6cd0ea9f61.diff
-changeset_da82915116afaeb9dc9a7c5afefa951e1339f6f1.diff
 deb_skip_sequencelike_on_armel
 deb_skip_test_pytables_failure
