@@ -1,3 +1,9 @@
+pandas (0.13.1+git73-g8793356-1) experimental; urgency=medium
+
+  * New upstream snapshot from v0.14.0rc1-73-g8793356
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 27 May 2014 08:27:19 -0400
+
 pandas (0.13.1-2) unstable; urgency=low
 
   * debian/patches/changeset_6d56e7300d66d3ba76684334bbb44b6cd0ea9f61.diff
