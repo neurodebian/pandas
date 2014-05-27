@@ -1,4 +1,4 @@
-pandas (0.13.1+git73-g8793356-1) experimental; urgency=medium
+pandas (0.14.0~rc1+git73-g8793356-1) experimental; urgency=medium
 
   * New upstream snapshot from v0.14.0rc1-73-g8793356
   * debian/patches: dropped CPed changeset_*s
