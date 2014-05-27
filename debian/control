@@ -35,7 +35,7 @@ Build-Depends: debhelper (>= 7.0.50),
 			   xvfb, xauth, xclip,
 X-Python-Version: >= 2.7
 X-Python3-Version: >= 3.2
-Standards-Version: 3.9.3
+Standards-Version: 3.9.5
 Homepage: http://pandas.sourceforge.net
 Vcs-Browser: http://github.com/neurodebian/pandas
 Vcs-Git: git://github.com/neurodebian/pandas.git
