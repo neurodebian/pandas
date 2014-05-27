@@ -1,4 +1,4 @@
-pandas (0.14.0~rc1+git73-g8793356-1) experimental; urgency=medium
+pandas (0.14.0~rc1+git79-g1fa5dd4-1) experimental; urgency=medium
 
   * New upstream snapshot from v0.14.0rc1-73-g8793356
   * debian/patches:
@@ -7,7 +7,7 @@ pandas (0.14.0~rc1+git73-g8793356-1) experimental; urgency=medium
   * debian/control:
     - boosted policy compliance to 3.9.5
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 27 May 2014 08:27:19 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 27 May 2014 16:00:00 -0400
 
 pandas (0.13.1-2) unstable; urgency=low
 
