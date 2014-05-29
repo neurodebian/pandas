@@ -1,3 +1,10 @@
+pandas (0.14.0~rc1+git90-g0f0fb94-1) experimental; urgency=medium
+
+  * New upstream snapshot which should have addressed the problems on big
+    endian and older releases of Debian/Ubuntu
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 29 May 2014 09:54:56 -0400
+
 pandas (0.14.0~rc1+git79-g1fa5dd4-1) experimental; urgency=medium
 
   * New upstream snapshot from v0.14.0rc1-73-g8793356
