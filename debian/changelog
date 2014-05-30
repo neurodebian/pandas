@@ -1,9 +1,8 @@
-pandas (0.14.0~rc1+git90-g0f0fb94-1) experimental; urgency=medium
+pandas (0.14.0-1) unstable; urgency=medium
 
-  * New upstream snapshot which should have addressed the problems on big
-    endian and older releases of Debian/Ubuntu
+  * New upstream release
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 29 May 2014 09:54:56 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 30 May 2014 08:45:35 -0400
 
 pandas (0.14.0~rc1+git79-g1fa5dd4-1) experimental; urgency=medium
 
