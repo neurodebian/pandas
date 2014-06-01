@@ -1,3 +1,11 @@
+pandas (0.14.0+git17-g3849d5d-1) unstable; urgency=medium
+
+  * New upstream snapshot from v0.14.0-17-g3849d5d -- has resolved a number
+    of bugs sneaked into 0.14.0 release, and caused FTBFS on some platforms
+    and backports
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Sun, 01 Jun 2014 00:54:34 -0400
+
 pandas (0.14.0-1) unstable; urgency=medium
 
   * New upstream release
