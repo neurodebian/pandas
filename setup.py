@@ -164,7 +164,7 @@ the ideal tool for all of these tasks.
 
 Note
 ----
-Windows binaries built against NumPy 1.7.1
+Windows binaries built against NumPy 1.8.1
 """
 
 DISTNAME = 'pandas'
@@ -193,7 +193,7 @@ CLASSIFIERS = [
 MAJOR = 0
 MINOR = 14
 MICRO = 0
-ISRELEASED = True
+ISRELEASED = False
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
 QUALIFIER = ''
 
