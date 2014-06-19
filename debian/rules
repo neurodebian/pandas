@@ -19,7 +19,7 @@ PY3VER = $(shell py3versions -vd)
 
 UVER := $(shell LC_ALL=C dpkg-parsechangelog | awk '/^Version:/{print $$2;}' | sed -e 's,-[^-]*$$,,g')
 
-MIN_CYTHONVER = 0.17.3
+MIN_CYTHONVER = 0.20.2
 
 # Some unittests might need to be excluded for different Python versions
 EXCLUDE_TESTS := --exclude test_bar_log
