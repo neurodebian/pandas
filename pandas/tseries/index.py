@@ -784,7 +784,7 @@ class DatetimeIndex(DatetimeIndexOpsMixin, Int64Index):
     def _get_object_index(self):
         boxfunc = lambda x: Timestamp(x, offset=self.offset, tz=self.tz)
         boxed_values = lib.map_infer(self.asi8, boxfunc)
-        return Index(boxed_values, dtype=object)
+        return Index(boxed_values, dtype=object, name=self.name)
 
     def to_pydatetime(self):
         """
@@ -900,9 +900,7 @@ class DatetimeIndex(DatetimeIndexOpsMixin, Int64Index):
         maybe_slice = lib.maybe_indices_to_slice(com._ensure_int64(indices))
         if isinstance(maybe_slice, slice):
             return self[maybe_slice]
-        indices = com._ensure_platform_int(indices)
-        taken = self.values.take(indices, axis=axis)
-        return self._simple_new(taken, self.name, None, self.tz)
+        return super(DatetimeIndex, self).take(indices, axis)
 
     def unique(self):
         """
@@ -1124,6 +1122,12 @@ class DatetimeIndex(DatetimeIndexOpsMixin, Int64Index):
         self.tz = getattr(obj, 'tz', None)
         self.name = getattr(obj, 'name', None)
         self._reset_identity()
+
+    def _wrap_union_result(self, other, result):
+        name = self.name if self.name == other.name else None
+        if self.tz != other.tz:
+            raise ValueError('Passed item and index have different timezone')
+        return self._simple_new(result, name=name, freq=None, tz=self.tz)
 
     def intersection(self, other):
         """
@@ -1594,13 +1598,29 @@ class DatetimeIndex(DatetimeIndexOpsMixin, Int64Index):
         -------
         new_index : Index
         """
+
+        freq = None
         if isinstance(item, datetime):
+            zone = tslib.get_timezone(self.tz)
+            izone = tslib.get_timezone(getattr(item, 'tzinfo', None))
+            if zone != izone:
+                raise ValueError('Passed item and index have different timezone')
+            # check freq can be preserved on edge cases
+            if self.freq is not None:
+                if (loc == 0 or loc == -len(self)) and item + self.freq == self[0]:
+                    freq = self.freq
+                elif (loc == len(self)) and item - self.freq == self[-1]:
+                    freq = self.freq
             item = _to_m8(item, tz=self.tz)
         try:
-            new_index = np.concatenate((self[:loc].asi8,
-                                    [item.view(np.int64)],
-                                    self[loc:].asi8))
-            return DatetimeIndex(new_index, freq='infer')
+            new_dates = np.concatenate((self[:loc].asi8, [item.view(np.int64)],
+                                        self[loc:].asi8))
+            if self.tz is not None:
+                f = lambda x: tslib.tz_convert_single(x, 'UTC', self.tz)
+                new_dates = np.vectorize(f)(new_dates)
+                # new_dates = tslib.tz_convert(new_dates, 'UTC', self.tz)
+            return DatetimeIndex(new_dates, name=self.name, freq=freq, tz=self.tz)
+
         except (AttributeError, TypeError):
 
             # fall back to object index
@@ -1611,13 +1631,30 @@ class DatetimeIndex(DatetimeIndexOpsMixin, Int64Index):
     def delete(self, loc):
         """
         Make new DatetimeIndex with passed location deleted
-
         Returns
+
+        loc: int, slice or array of ints
+            Indicate which sub-arrays to remove.
+
         -------
         new_index : DatetimeIndex
         """
-        arr = np.delete(self.values, loc)
-        return DatetimeIndex(arr, tz=self.tz)
+        new_dates = np.delete(self.asi8, loc)
+
+        freq = None
+        if lib.is_integer(loc):
+            if loc in (0, -len(self), -1, len(self) - 1):
+                freq = self.freq
+        else:
+            if com.is_list_like(loc):
+                loc = lib.maybe_indices_to_slice(com._ensure_int64(np.array(loc)))
+            if isinstance(loc, slice) and loc.step in (1, None):
+                if (loc.start in (0, None) or loc.stop in (len(self), None)):
+                    freq = self.freq
+
+        if self.tz is not None:
+            new_dates = tslib.date_normalize(new_dates, self.tz)
+        return DatetimeIndex(new_dates, name=self.name, freq=freq, tz=self.tz)
 
     def _view_like(self, ndarray):
         result = ndarray.view(type(self))
@@ -1628,7 +1665,7 @@ class DatetimeIndex(DatetimeIndexOpsMixin, Int64Index):
 
     def tz_convert(self, tz):
         """
-        Convert DatetimeIndex from one time zone to another (using pytz)
+        Convert DatetimeIndex from one time zone to another (using pytz/dateutil)
 
         Returns
         -------
@@ -1646,11 +1683,11 @@ class DatetimeIndex(DatetimeIndexOpsMixin, Int64Index):
 
     def tz_localize(self, tz, infer_dst=False):
         """
-        Localize tz-naive DatetimeIndex to given time zone (using pytz)
+        Localize tz-naive DatetimeIndex to given time zone (using pytz/dateutil)
 
         Parameters
         ----------
-        tz : string or pytz.timezone
+        tz : string or pytz.timezone or dateutil.tz.tzfile
             Time zone for time. Corresponding timestamps would be converted to
             time zone of the TimeSeries
         infer_dst : boolean, default False
@@ -1677,7 +1714,7 @@ class DatetimeIndex(DatetimeIndexOpsMixin, Int64Index):
         Parameters
         ----------
         time : datetime.time or string
-        tz : string or pytz.timezone
+        tz : string or pytz.timezone or dateutil.tz.tzfile
             Time zone for time. Corresponding timestamps would be converted to
             time zone of the TimeSeries
 
@@ -1712,7 +1749,7 @@ class DatetimeIndex(DatetimeIndexOpsMixin, Int64Index):
         end_time : datetime.time or string
         include_start : boolean, default True
         include_end : boolean, default True
-        tz : string or pytz.timezone, default None
+        tz : string or pytz.timezone or dateutil.tz.tzfile, default None
 
         Returns
         -------

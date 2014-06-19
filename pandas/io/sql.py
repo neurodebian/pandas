@@ -374,26 +374,19 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
     """
     pandas_sql = pandasSQL_builder(con)
 
-    if 'select' in sql.lower():
-        try:
-            if pandas_sql.has_table(sql):
-                return pandas_sql.read_table(
-                    sql, index_col=index_col, coerce_float=coerce_float,
-                    parse_dates=parse_dates, columns=columns)
-        except:
-            pass
-
+    if isinstance(pandas_sql, PandasSQLLegacy):
         return pandas_sql.read_sql(
             sql, index_col=index_col, params=params,
             coerce_float=coerce_float, parse_dates=parse_dates)
-    else:
-        if isinstance(pandas_sql, PandasSQLLegacy):
-            raise ValueError("Reading a table with read_sql is not supported "
-                             "for a DBAPI2 connection. Use an SQLAlchemy "
-                             "engine or specify an sql query")
+
+    if pandas_sql.has_table(sql):
         return pandas_sql.read_table(
             sql, index_col=index_col, coerce_float=coerce_float,
             parse_dates=parse_dates, columns=columns)
+    else:
+        return pandas_sql.read_sql(
+            sql, index_col=index_col, params=params,
+            coerce_float=coerce_float, parse_dates=parse_dates)
 
 
 def to_sql(frame, name, con, flavor='sqlite', if_exists='fail', index=True,
@@ -574,7 +567,7 @@ class PandasSQLTable(PandasObject):
         ins = self.insert_statement()
         data_list = []
         temp = self.insert_data()
-        keys = temp.columns
+        keys = list(map(str, temp.columns))
 
         for t in temp.itertuples():
             data = dict((k, self.maybe_asscalar(v))

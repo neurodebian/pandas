@@ -291,10 +291,10 @@ class ExcelFile(object):
                             year = (value.timetuple())[0:3]
                             if ((not epoch1904 and year == (1899, 12, 31))
                                     or (epoch1904 and year == (1904, 1, 1))):
-                                    value = datetime.time(value.hour,
-                                                          value.minute,
-                                                          value.second,
-                                                          value.microsecond)
+                                value = datetime.time(value.hour,
+                                                      value.minute,
+                                                      value.second,
+                                                      value.microsecond)
                         else:
                             # Use the xlrd <= 0.9.2 date handling.
                             dt = xldate.xldate_as_tuple(value, epoch1904)
@@ -523,6 +523,11 @@ class _OpenpyxlWriter(ExcelWriter):
     supported_extensions = ('.xlsx', '.xlsm')
 
     def __init__(self, path, engine=None, **engine_kwargs):
+        if not openpyxl_compat.is_compat():
+            raise ValueError('Installed openpyxl is not supported at this '
+                             'time. Use >={0} and '
+                             '<{1}.'.format(openpyxl_compat.start_ver,
+                                            openpyxl_compat.stop_ver))
         # Use the openpyxl module as the Excel writer.
         from openpyxl.workbook import Workbook
 
@@ -618,12 +623,7 @@ class _OpenpyxlWriter(ExcelWriter):
 
         return xls_style
 
-
-if openpyxl_compat.is_compat():
-    register_writer(_OpenpyxlWriter)
-else:
-    warn('Installed openpyxl is not supported at this time. Use >={} and <{}.'
-            .format(openpyxl_compat.start_ver, openpyxl_compat.stop_ver))
+register_writer(_OpenpyxlWriter)
 
 
 class _XlwtWriter(ExcelWriter):

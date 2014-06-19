@@ -94,7 +94,7 @@ Datetimes
 
 For datetime64[ns] types, ``NaT`` represents missing values. This is a pseudo-native
 sentinel value that can be represented by numpy in a singular dtype (datetime64[ns]).
-Pandas objects provide intercompatibility between ``NaT`` and ``NaN``.
+pandas objects provide intercompatibility between ``NaT`` and ``NaN``.
 
 .. ipython:: python
 
@@ -598,7 +598,7 @@ You can also operate on the DataFrame in place
 
 .. warning::
 
-   When replacing multiple ``bool`` or ``datetime64`` objects, the first 
+   When replacing multiple ``bool`` or ``datetime64`` objects, the first
    argument to ``replace`` (``to_replace``) must match the type of the value
    being replaced type. For example,
 
@@ -669,4 +669,3 @@ However, these can be filled in using **fillna** and it will work fine:
 
    reindexed[crit.fillna(False)]
    reindexed[crit.fillna(True)]
-

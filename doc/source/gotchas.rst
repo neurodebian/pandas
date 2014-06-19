@@ -18,10 +18,10 @@ Caveats and Gotchas
 
 .. _gotchas.truth:
 
-Using If/Truth Statements with Pandas
+Using If/Truth Statements with pandas
 -------------------------------------
 
-Pandas follows the numpy convention of raising an error when you try to convert something to a ``bool``.
+pandas follows the numpy convention of raising an error when you try to convert something to a ``bool``.
 This happens in a ``if`` or when using the boolean operations, ``and``, ``or``, or ``not``.  It is not clear
 what the result of
 
@@ -100,7 +100,7 @@ index, not membership among the values.
     2 in s
     'b' in s
 
-If this behavior is surprising, keep in mind that using ``in`` on a Python 
+If this behavior is surprising, keep in mind that using ``in`` on a Python
 dictionary tests keys, not values, and Series are dict-like.
 To test for membership in the values, use the method :func:`~pandas.Series.isin`:
 

@@ -1358,7 +1358,7 @@ class DataFrame(NDFrame):
                  bold_rows=True, longtable=False, escape=True):
         """
         Render a DataFrame to a tabular environment table. You can splice
-        this into a LaTeX document. Requires \\usepackage(booktabs}.
+        this into a LaTeX document. Requires \\usepackage{booktabs}.
 
         `to_latex`-specific options:
 
@@ -1539,7 +1539,7 @@ class DataFrame(NDFrame):
         value : scalar value
         """
 
-        if takeable is True:
+        if takeable:
             series = self._iget_item_cache(col)
             return series.values[index]
 
@@ -2022,7 +2022,13 @@ class DataFrame(NDFrame):
                 # GH 4107
                 try:
                     value = value.reindex(self.index).values
-                except:
+                except Exception as e:
+
+                    # duplicate axis
+                    if not value.index.is_unique:
+                        raise e
+
+                    # other
                     raise TypeError('incompatible index of inserted column '
                                     'with frame index')
 
@@ -4181,6 +4187,8 @@ class DataFrame(NDFrame):
                 return _quantile(values, per)
 
         data = self._get_numeric_data() if numeric_only else self
+        if axis == 1:
+            data = data.T
 
         # need to know which cols are timestamp going in so that we can
         # map timestamp over them after getting the quantile.

@@ -93,7 +93,7 @@ unlike the axis labels, cannot be assigned to.
 Accelerated operations
 ----------------------
 
-Pandas has support for accelerating certain types of binary numerical and boolean operations using
+pandas has support for accelerating certain types of binary numerical and boolean operations using
 the ``numexpr`` library (starting in 0.11.0) and the ``bottleneck`` libraries.
 
 These libraries are especially useful when dealing with large data sets, and provide large
@@ -428,6 +428,7 @@ optional ``level`` parameter which applies only if the object has a
     ``prod``, Product of values
     ``std``, Unbiased standard deviation
     ``var``, Unbiased variance
+    ``sem``, Unbiased standard error of the mean
     ``skew``, Unbiased skewness (3rd moment)
     ``kurt``, Unbiased kurtosis (4th moment)
     ``quantile``, Sample quantile (value at %)
@@ -1165,6 +1166,9 @@ Thus, a Series of messy strings can be "converted" into a
 like-indexed Series or DataFrame of cleaned-up or more useful strings,
 without necessitating ``get()`` to access tuples or ``re.match`` objects.
 
+The results dtype always is object, even if no match is found and the result
+only contains ``NaN``.
+
 Named groups like
 
 .. ipython:: python
@@ -1556,7 +1560,7 @@ Working with package options
 .. _basics.working_with_options:
 .. versionadded:: 0.10.1
 
-Pandas has an options system that let's you customize some aspects of it's behaviour,
+pandas has an options system that let's you customize some aspects of it's behaviour,
 display-related options being those the user is must likely to adjust.
 
 Options have a full "dotted-style", case-insensitive name (e.g. ``display.max_rows``),

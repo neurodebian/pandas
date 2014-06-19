@@ -1,4 +1,5 @@
 
+import nose
 from numpy import nan
 import numpy as np
 from pandas import Index, isnull, Timestamp
@@ -657,6 +658,13 @@ class TestTypeInference(tm.TestCase):
         except ImportError:
             pass
 
+    def test_object(self):
+
+        # GH 7431
+        # cannot infer more than this as only a single element
+        arr = np.array([None],dtype='O')
+        result = lib.infer_dtype(arr)
+        self.assertEqual(result, 'mixed')
 
 class TestMoments(tm.TestCase):
     pass

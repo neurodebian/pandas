@@ -9,7 +9,7 @@ import numpy as np
 import pandas.tslib as tslib
 from pandas import compat, _np_version_under1p7
 from pandas.core.common import (ABCSeries, is_integer, is_integer_dtype, is_timedelta64_dtype,
-                                _values_from_object, is_list_like, isnull)
+                                _values_from_object, is_list_like, isnull, _ensure_object)
 
 repr_timedelta = tslib.repr_timedelta64
 repr_timedelta64 = tslib.repr_timedelta64
@@ -46,7 +46,7 @@ def to_timedelta(arg, box=True, unit='ns'):
             value = arg.astype('timedelta64[{0}]'.format(unit)).astype('timedelta64[ns]')
         else:
             try:
-                value = tslib.array_to_timedelta64(_ensure_object(arg),unit=unit)
+                value = tslib.array_to_timedelta64(_ensure_object(arg), unit=unit)
             except:
                 value = np.array([ _coerce_scalar_to_timedelta_type(r, unit=unit) for r in arg ])
 
@@ -156,12 +156,13 @@ def _get_string_converter(r, unit='ns'):
     # no converter
     raise ValueError("cannot create timedelta string converter for [{0}]".format(r))
 
-def _possibly_cast_to_timedelta(value, coerce=True):
+def _possibly_cast_to_timedelta(value, coerce=True, dtype=None):
     """ try to cast to timedelta64, if already a timedeltalike, then make
         sure that we are [ns] (as numpy 1.6.2 is very buggy in this regards,
         don't force the conversion unless coerce is True
 
         if coerce='compat' force a compatibilty coercerion (to timedeltas) if needeed
+        if dtype is passed then this is the target dtype
         """
 
     # coercion compatability
@@ -201,10 +202,16 @@ def _possibly_cast_to_timedelta(value, coerce=True):
         return np.array([ convert(v,dtype) for v in value ], dtype='m8[ns]')
 
     # deal with numpy not being able to handle certain timedelta operations
-    if isinstance(value, (ABCSeries, np.ndarray)) and value.dtype.kind == 'm':
-        if value.dtype != 'timedelta64[ns]':
+    if isinstance(value, (ABCSeries, np.ndarray)):
+
+        # i8 conversions
+        if value.dtype == 'int64' and np.dtype(dtype) == 'timedelta64[ns]':
             value = value.astype('timedelta64[ns]')
-        return value
+            return value
+        elif value.dtype.kind == 'm':
+            if value.dtype != 'timedelta64[ns]':
+                value = value.astype('timedelta64[ns]')
+            return value
 
     # we don't have a timedelta, but we want to try to convert to one (but
     # don't force it)

@@ -3,18 +3,18 @@ import itertools
 import re
 import operator
 from datetime import datetime, timedelta
-from collections import defaultdict, deque
+from collections import defaultdict
 
 import numpy as np
 from pandas.core.base import PandasObject
 
-from pandas.hashtable import Factorizer
-from pandas.core.common import (_possibly_downcast_to_dtype, isnull, notnull,
+from pandas.core.common import (_possibly_downcast_to_dtype, isnull,
                                 _NS_DTYPE, _TD_DTYPE, ABCSeries, is_list_like,
                                 ABCSparseSeries, _infer_dtype_from_scalar,
                                 _is_null_datelike_scalar,
-                                is_timedelta64_dtype, is_datetime64_dtype,)
-from pandas.core.index import Index, Int64Index, MultiIndex, _ensure_index
+                                is_timedelta64_dtype, is_datetime64_dtype,
+                                _possibly_infer_to_datetimelike)
+from pandas.core.index import Index, MultiIndex, _ensure_index
 from pandas.core.indexing import (_maybe_convert_indices, _length_of_indexer)
 import pandas.core.common as com
 from pandas.sparse.array import _maybe_to_sparse, SparseArray
@@ -25,10 +25,8 @@ from pandas.util.decorators import cache_readonly
 
 from pandas.tslib import Timestamp
 from pandas import compat
-from pandas.compat import (range, lrange, lmap, callable, map, zip, u,
-                           OrderedDict)
+from pandas.compat import range, map, zip, u
 from pandas.tseries.timedeltas import _coerce_scalar_to_timedelta_type
-
 
 
 from pandas.lib import BlockPlacement
@@ -826,7 +824,7 @@ class Block(PandasObject):
         is_transposed = False
         if hasattr(other, 'ndim') and hasattr(values, 'ndim'):
             if values.ndim != other.ndim:
-                    is_transposed = True
+                is_transposed = True
             else:
                 if values.shape == other.shape[::-1]:
                     is_transposed = True
@@ -923,9 +921,13 @@ class Block(PandasObject):
         if hasattr(other, 'ndim') and hasattr(values, 'ndim'):
             if values.ndim != other.ndim or values.shape == other.shape[::-1]:
 
+                # if its symmetric are ok, no reshaping needed (GH 7506)
+                if (values.shape[0] == np.array(values.shape)).all():
+                    pass
+
                 # pseodo broadcast (its a 2d vs 1d say and where needs it in a
                 # specific direction)
-                if (other.ndim >= 1 and values.ndim - 1 == other.ndim and
+                elif (other.ndim >= 1 and values.ndim - 1 == other.ndim and
                         values.shape[0] != other.shape[0]):
                     other = _block_shape(other).T
                 else:
@@ -943,8 +945,10 @@ class Block(PandasObject):
         # may need to undo transpose of values
         if hasattr(values, 'ndim'):
             if values.ndim != cond.ndim or values.shape == cond.shape[::-1]:
+
                 values = values.T
                 is_transposed = not is_transposed
+
 
         # our where function
         def func(c, v, o):
@@ -1019,6 +1023,7 @@ class FloatOrComplexBlock(NumericBlock):
         if self.dtype != other.dtype or self.shape != other.shape: return False
         left, right = self.values, other.values
         return ((left == right) | (np.isnan(left) & np.isnan(right))).all()
+
 
 class FloatBlock(FloatOrComplexBlock):
     __slots__ = ()
@@ -1212,7 +1217,7 @@ class BoolBlock(NumericBlock):
                 regex=False):
         to_replace_values = np.atleast_1d(to_replace)
         if not np.can_cast(to_replace_values, bool):
-            to_replace = to_replace_values
+            return self
         return super(BoolBlock, self).replace(to_replace, value,
                                               inplace=inplace, filter=filter,
                                               regex=regex)
@@ -1809,26 +1814,21 @@ def make_block(values, placement, klass=None, ndim=None,
         elif issubclass(vtype, np.complexfloating):
             klass = ComplexBlock
 
-        # try to infer a DatetimeBlock, or set to an ObjectBlock
         else:
 
+            # we want to infer here if its a datetimelike if its object type
+            # this is pretty strict in that it requires a datetime/timedelta
+            # value IN addition to possible nulls/strings
+            # an array of ONLY strings will not be inferred
             if np.prod(values.shape):
-                flat = values.ravel()
-
-                # try with just the first element; we just need to see if
-                # this is a datetime or not
-                inferred_type = lib.infer_dtype(flat[0:1])
-                if inferred_type in ['datetime', 'datetime64']:
-
-                    # we have an object array that has been inferred as
-                    # datetime, so convert it
-                    try:
-                        values = tslib.array_to_datetime(
-                            flat).reshape(values.shape)
-                        if issubclass(values.dtype.type, np.datetime64):
-                            klass = DatetimeBlock
-                    except:  # it already object, so leave it
-                        pass
+                result = _possibly_infer_to_datetimelike(values)
+                vtype = result.dtype.type
+                if issubclass(vtype, np.datetime64):
+                    klass = DatetimeBlock
+                    values = result
+                elif (issubclass(vtype, np.timedelta64)):
+                    klass = TimeDeltaBlock
+                    values = result
 
             if klass is None:
                 klass = ObjectBlock
@@ -2527,7 +2527,7 @@ class BlockManager(PandasObject):
             self._known_consolidated = True
             self._rebuild_blknos_and_blklocs()
 
-    def get(self, item):
+    def get(self, item, fastpath=True):
         """
         Return values for selected item (ndarray or BlockManager).
         """
@@ -2545,7 +2545,7 @@ class BlockManager(PandasObject):
                     else:
                         raise ValueError("cannot label index with a null key")
 
-            return self.iget(loc)
+            return self.iget(loc, fastpath=fastpath)
         else:
 
             if isnull(item):
@@ -2555,8 +2555,25 @@ class BlockManager(PandasObject):
             return self.reindex_indexer(new_axis=self.items[indexer],
                                         indexer=indexer, axis=0, allow_dups=True)
 
-    def iget(self, i):
-        return self.blocks[self._blknos[i]].iget(self._blklocs[i])
+    def iget(self, i, fastpath=True):
+        """
+        Return the data as a SingleBlockManager if fastpath=True and possible
+
+        Otherwise return as a ndarray
+
+        """
+
+        block = self.blocks[self._blknos[i]]
+        values = block.iget(self._blklocs[i])
+        if not fastpath or block.is_sparse or values.ndim != 1:
+            return values
+
+        # fastpath shortcut for select a single-dim from a 2-dim BM
+        return SingleBlockManager([ block.make_block_same_class(values,
+                                                                placement=slice(0, len(values)),
+                                                                fastpath=True) ],
+                                  self.axes[1])
+
 
     def get_scalar(self, tup):
         """
@@ -2970,7 +2987,7 @@ class BlockManager(PandasObject):
     def equals(self, other):
         self_axes, other_axes = self.axes, other.axes
         if len(self_axes) != len(other_axes):
-           return False
+            return False
         if not all (ax1.equals(ax2) for ax1, ax2 in zip(self_axes, other_axes)):
             return False
         self._consolidate_inplace()

@@ -256,6 +256,9 @@ Timeseries
 `Using indexer between time
 <http://stackoverflow.com/questions/17559885/pandas-dataframe-mask-based-on-index>`__
 
+`Constructing a datetime range that excludes weekends and includes only certain times
+<http://stackoverflow.com/questions/24010830/pandas-generate-sequential-timestamp-with-jump/24014440#24014440?>`__
+
 `Vectorized Lookup
 <http://stackoverflow.com/questions/13893227/vectorized-look-up-of-values-in-pandas-dataframe>`__
 
@@ -265,6 +268,13 @@ Turn a matrix with hours in columns and days in rows into a continuous row seque
 
 `Dealing with duplicates when reindexing a timeseries to a specified frequency
 <http://stackoverflow.com/questions/22244383/pandas-df-refill-adding-two-columns-of-different-shape>`__
+
+Calculate the first day of the month for each entry in a DatetimeIndex
+
+.. ipython:: python
+
+    dates = pd.date_range('2000-01-01', periods=5)
+    dates.to_period(freq='M').to_timestamp()
 
 .. _cookbook.resample:
 
@@ -548,7 +558,7 @@ Storing Attributes to a group node
 Binary Files
 ~~~~~~~~~~~~
 
-Pandas readily accepts numpy record arrays, if you need to read in a binary
+pandas readily accepts numpy record arrays, if you need to read in a binary
 file consisting of an array of C structs. For example, given this C program
 in a file called ``main.c`` compiled with ``gcc main.c -std=gnu99`` on a
 64-bit machine,

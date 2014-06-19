@@ -806,6 +806,38 @@ class TestIndexing(tm.TestCase):
         # raise a KeyError?
         self.assertRaises(KeyError, df.loc.__getitem__, tuple([[1, 2], [1, 2]]))
 
+        # GH  7496
+        # loc should not fallback
+
+        s = Series()
+        s.loc[1] = 1
+        s.loc['a'] = 2
+
+        self.assertRaises(KeyError, lambda : s.loc[-1])
+
+        result = s.loc[[-1, -2]]
+        expected = Series(np.nan,index=[-1,-2])
+        assert_series_equal(result, expected)
+
+        result = s.loc[['4']]
+        expected = Series(np.nan,index=['4'])
+        assert_series_equal(result, expected)
+
+        s.loc[-1] = 3
+        result = s.loc[[-1,-2]]
+        expected = Series([3,np.nan],index=[-1,-2])
+        assert_series_equal(result, expected)
+
+        s['a'] = 2
+        result = s.loc[[-2]]
+        expected = Series([np.nan],index=[-2])
+        assert_series_equal(result, expected)
+
+        del s['a']
+        def f():
+            s.loc[[-2]] = 0
+        self.assertRaises(KeyError, f)
+
     def test_loc_getitem_label_slice(self):
 
         # label slices (with ints)
@@ -1317,6 +1349,38 @@ class TestIndexing(tm.TestCase):
         result = df[attributes]
         assert_frame_equal(result, df)
 
+        # GH 7349
+        # loc with a multi-index seems to be doing fallback
+        df = DataFrame(np.arange(12).reshape(-1,1),index=pd.MultiIndex.from_product([[1,2,3,4],[1,2,3]]))
+
+        expected = df.loc[([1,2],),:]
+        result = df.loc[[1,2]]
+        assert_frame_equal(result, expected)
+
+        # GH 7399
+        # incomplete indexers
+        s = pd.Series(np.arange(15,dtype='int64'),MultiIndex.from_product([range(5), ['a', 'b', 'c']]))
+        expected = s.loc[:, 'a':'c']
+
+        result = s.loc[0:4, 'a':'c']
+        assert_series_equal(result, expected)
+        assert_series_equal(result, expected)
+
+        result = s.loc[:4, 'a':'c']
+        assert_series_equal(result, expected)
+        assert_series_equal(result, expected)
+
+        result = s.loc[0:, 'a':'c']
+        assert_series_equal(result, expected)
+        assert_series_equal(result, expected)
+
+        # GH 7400
+        # multiindexer gettitem with list of indexers skips wrong element
+        s = pd.Series(np.arange(15,dtype='int64'),MultiIndex.from_product([range(5), ['a', 'b', 'c']]))
+        expected = s.iloc[[6,7,8,12,13,14]]
+        result = s.loc[2:4:2, 'a':'c']
+        assert_series_equal(result, expected)
+
     def test_series_getitem_multiindex(self):
 
         # GH 6018
@@ -1533,6 +1597,35 @@ class TestIndexing(tm.TestCase):
         self.assertFalse(result.index.is_unique)
         assert_frame_equal(result, expected)
 
+    def test_multiindex_slicers_datetimelike(self):
+
+        # GH 7429
+        # buggy/inconsistent behavior when slicing with datetime-like
+        import datetime
+        dates = [datetime.datetime(2012,1,1,12,12,12) + datetime.timedelta(days=i) for i in range(6)]
+        freq = [1,2]
+        index = MultiIndex.from_product([dates,freq], names=['date','frequency'])
+
+        df = DataFrame(np.arange(6*2*4,dtype='int64').reshape(-1,4),index=index,columns=list('ABCD'))
+
+        # multi-axis slicing
+        idx = pd.IndexSlice
+        expected = df.iloc[[0,2,4],[0,1]]
+        result = df.loc[(slice(Timestamp('2012-01-01 12:12:12'),Timestamp('2012-01-03 12:12:12')),slice(1,1)), slice('A','B')]
+        assert_frame_equal(result,expected)
+
+        result = df.loc[(idx[Timestamp('2012-01-01 12:12:12'):Timestamp('2012-01-03 12:12:12')],idx[1:1]), slice('A','B')]
+        assert_frame_equal(result,expected)
+
+        result = df.loc[(slice(Timestamp('2012-01-01 12:12:12'),Timestamp('2012-01-03 12:12:12')),1), slice('A','B')]
+        assert_frame_equal(result,expected)
+
+        # with strings
+        result = df.loc[(slice('2012-01-01 12:12:12','2012-01-03 12:12:12'),slice(1,1)), slice('A','B')]
+        assert_frame_equal(result,expected)
+
+        result = df.loc[(idx['2012-01-01 12:12:12':'2012-01-03 12:12:12'],1), idx['A','B']]
+        assert_frame_equal(result,expected)
 
     def test_per_axis_per_level_doc_examples(self):
 
@@ -3552,7 +3645,23 @@ class TestIndexing(tm.TestCase):
 
         warnings.filterwarnings(action='ignore', category=FutureWarning)
 
+    def test_float_index_to_mixed(self):
+        df = DataFrame({0.0: np.random.rand(10),
+                        1.0: np.random.rand(10)})
+        df['a'] = 10
+        tm.assert_frame_equal(DataFrame({0.0: df[0.0],
+                                         1.0: df[1.0],
+                                         'a': [10] * 10}),
+                              df)
+
+    def test_duplicate_ix_returns_series(self):
+        df = DataFrame(np.random.randn(3, 3), index=[0.1, 0.2, 0.2],
+                       columns=list('abc'))
+        r = df.ix[0.2, 'a']
+        e = df.loc[0.2, 'a']
+        tm.assert_series_equal(r, e)
+
+
 if __name__ == '__main__':
-    import nose
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
                    exit=False)

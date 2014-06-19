@@ -1747,6 +1747,41 @@ class CheckIndexing(object):
         self.assertRaises(ValueError, df.reindex, dr[::-1], method='ffill')
         self.assertRaises(ValueError, df.reindex, dr[::-1], method='bfill')
 
+    def test_getitem_ix_float_duplicates(self):
+        df = pd.DataFrame(np.random.randn(3, 3),
+                          index=[0.1, 0.2, 0.2], columns=list('abc'))
+        expect = df.iloc[1:]
+        tm.assert_frame_equal(df.loc[0.2], expect)
+        tm.assert_frame_equal(df.ix[0.2], expect)
+
+        expect = df.iloc[1:, 0]
+        tm.assert_series_equal(df.loc[0.2, 'a'], expect)
+
+        df.index = [1, 0.2, 0.2]
+        expect = df.iloc[1:]
+        tm.assert_frame_equal(df.loc[0.2], expect)
+        tm.assert_frame_equal(df.ix[0.2], expect)
+
+        expect = df.iloc[1:, 0]
+        tm.assert_series_equal(df.loc[0.2, 'a'], expect)
+
+        df = pd.DataFrame(np.random.randn(4, 3),
+                          index=[1, 0.2, 0.2, 1], columns=list('abc'))
+        expect = df.iloc[1:-1]
+        tm.assert_frame_equal(df.loc[0.2], expect)
+        tm.assert_frame_equal(df.ix[0.2], expect)
+
+        expect = df.iloc[1:-1, 0]
+        tm.assert_series_equal(df.loc[0.2, 'a'], expect)
+
+        df.index = [0.1, 0.2, 2, 0.2]
+        expect = df.iloc[[1, -1]]
+        tm.assert_frame_equal(df.loc[0.2], expect)
+        tm.assert_frame_equal(df.ix[0.2], expect)
+
+        expect = df.iloc[[1, -1], 0]
+        tm.assert_series_equal(df.loc[0.2, 'a'], expect)
+
 
 _seriesd = tm.getSeriesData()
 _tsd = tm.getTimeSeriesData()
@@ -2431,6 +2466,13 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         assert_frame_equal(result,df1+10)
 
     def test_insert_error_msmgs(self):
+
+        # GH 7432
+        df = DataFrame({'foo':['a', 'b', 'c'], 'bar':[1,2,3], 'baz':['d','e','f']}).set_index('foo')
+        s = DataFrame({'foo':['a', 'b', 'c', 'a'], 'fiz':['g','h','i','j']}).set_index('foo')
+        msg = 'cannot reindex from a duplicate axis'
+        with assertRaisesRegexp(ValueError, msg):
+            df['newcol'] = s
 
         # GH 4107, more descriptive error message
         df = DataFrame(np.random.randint(0,2,(4,4)),
@@ -5205,6 +5247,17 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         assert_frame_equal(df.div(row), df / row)
         assert_frame_equal(df.div(col, axis=0), (df.T / col).T)
 
+        # broadcasting issue in GH7325
+        df = DataFrame(np.arange(3*2).reshape((3,2)),dtype='int64')
+        expected = DataFrame([[np.inf,np.inf],[1.0,1.5],[1.0,1.25]])
+        result = df.div(df[0],axis='index')
+        assert_frame_equal(result,expected)
+
+        df = DataFrame(np.arange(3*2).reshape((3,2)),dtype='float64')
+        expected = DataFrame([[np.nan,np.inf],[1.0,1.5],[1.0,1.25]])
+        result = df.div(df[0],axis='index')
+        assert_frame_equal(result,expected)
+
     def test_arith_non_pandas_object(self):
         df = self.simple
 
@@ -5510,63 +5563,63 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         pname = '__tmp_to_csv_from_csv__'
         with ensure_clean(pname) as path:
 
-             self.frame['A'][:5] = nan
+            self.frame['A'][:5] = nan
 
-             self.frame.to_csv(path)
-             self.frame.to_csv(path, columns=['A', 'B'])
-             self.frame.to_csv(path, header=False)
-             self.frame.to_csv(path, index=False)
+            self.frame.to_csv(path)
+            self.frame.to_csv(path, columns=['A', 'B'])
+            self.frame.to_csv(path, header=False)
+            self.frame.to_csv(path, index=False)
 
-             # test roundtrip
-             self.tsframe.to_csv(path)
-             recons = DataFrame.from_csv(path)
+            # test roundtrip
+            self.tsframe.to_csv(path)
+            recons = DataFrame.from_csv(path)
 
-             assert_frame_equal(self.tsframe, recons)
+            assert_frame_equal(self.tsframe, recons)
 
-             self.tsframe.to_csv(path, index_label='index')
-             recons = DataFrame.from_csv(path, index_col=None)
-             assert(len(recons.columns) == len(self.tsframe.columns) + 1)
+            self.tsframe.to_csv(path, index_label='index')
+            recons = DataFrame.from_csv(path, index_col=None)
+            assert(len(recons.columns) == len(self.tsframe.columns) + 1)
 
-             # no index
-             self.tsframe.to_csv(path, index=False)
-             recons = DataFrame.from_csv(path, index_col=None)
-             assert_almost_equal(self.tsframe.values, recons.values)
+            # no index
+            self.tsframe.to_csv(path, index=False)
+            recons = DataFrame.from_csv(path, index_col=None)
+            assert_almost_equal(self.tsframe.values, recons.values)
 
-             # corner case
-             dm = DataFrame({'s1': Series(lrange(3), lrange(3)),
-                             's2': Series(lrange(2), lrange(2))})
-             dm.to_csv(path)
-             recons = DataFrame.from_csv(path)
-             assert_frame_equal(dm, recons)
+            # corner case
+            dm = DataFrame({'s1': Series(lrange(3), lrange(3)),
+                            's2': Series(lrange(2), lrange(2))})
+            dm.to_csv(path)
+            recons = DataFrame.from_csv(path)
+            assert_frame_equal(dm, recons)
 
         with ensure_clean(pname) as path:
 
-             # duplicate index
-             df = DataFrame(np.random.randn(3, 3), index=['a', 'a', 'b'],
-                            columns=['x', 'y', 'z'])
-             df.to_csv(path)
-             result = DataFrame.from_csv(path)
-             assert_frame_equal(result, df)
+            # duplicate index
+            df = DataFrame(np.random.randn(3, 3), index=['a', 'a', 'b'],
+                           columns=['x', 'y', 'z'])
+            df.to_csv(path)
+            result = DataFrame.from_csv(path)
+            assert_frame_equal(result, df)
 
-             midx = MultiIndex.from_tuples([('A', 1, 2), ('A', 1, 2), ('B', 1, 2)])
-             df = DataFrame(np.random.randn(3, 3), index=midx,
-                            columns=['x', 'y', 'z'])
-             df.to_csv(path)
-             result = DataFrame.from_csv(path, index_col=[0, 1, 2],
-                                         parse_dates=False)
-             assert_frame_equal(result, df, check_names=False)  # TODO from_csv names index ['Unnamed: 1', 'Unnamed: 2'] should it ?
+            midx = MultiIndex.from_tuples([('A', 1, 2), ('A', 1, 2), ('B', 1, 2)])
+            df = DataFrame(np.random.randn(3, 3), index=midx,
+                           columns=['x', 'y', 'z'])
+            df.to_csv(path)
+            result = DataFrame.from_csv(path, index_col=[0, 1, 2],
+                                        parse_dates=False)
+            assert_frame_equal(result, df, check_names=False)  # TODO from_csv names index ['Unnamed: 1', 'Unnamed: 2'] should it ?
 
-             # column aliases
-             col_aliases = Index(['AA', 'X', 'Y', 'Z'])
-             self.frame2.to_csv(path, header=col_aliases)
-             rs = DataFrame.from_csv(path)
-             xp = self.frame2.copy()
-             xp.columns = col_aliases
+            # column aliases
+            col_aliases = Index(['AA', 'X', 'Y', 'Z'])
+            self.frame2.to_csv(path, header=col_aliases)
+            rs = DataFrame.from_csv(path)
+            xp = self.frame2.copy()
+            xp.columns = col_aliases
 
-             assert_frame_equal(xp, rs)
+            assert_frame_equal(xp, rs)
 
-             self.assertRaises(ValueError, self.frame2.to_csv, path,
-                               header=['AA', 'X'])
+            self.assertRaises(ValueError, self.frame2.to_csv, path,
+                              header=['AA', 'X'])
 
         with ensure_clean(pname) as path:
             import pandas as pd
@@ -5629,12 +5682,12 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
                         rs_c.columns = df.columns.take(indexer)
 
                     for c in cols:
-                       obj_df = df[c]
-                       obj_rs = rs_c[c]
-                       if isinstance(obj_df,Series):
-                           assert_series_equal(obj_df,obj_rs)
-                       else:
-                           assert_frame_equal(obj_df,obj_rs,check_names=False)
+                        obj_df = df[c]
+                        obj_rs = rs_c[c]
+                        if isinstance(obj_df,Series):
+                            assert_series_equal(obj_df,obj_rs)
+                        else:
+                            assert_frame_equal(obj_df,obj_rs,check_names=False)
 
                 # wrote in the same order
                 else:
@@ -5660,80 +5713,80 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         def _do_test(df,path,r_dtype=None,c_dtype=None,rnlvl=None,cnlvl=None,
                      dupe_col=False):
 
-               kwargs = dict(parse_dates=False)
-               if cnlvl:
-                   if rnlvl is not None:
-                       kwargs['index_col'] = lrange(rnlvl)
-                   kwargs['header'] = lrange(cnlvl)
-                   with ensure_clean(path) as path:
-                        df.to_csv(path,encoding='utf8',chunksize=chunksize,tupleize_cols=False)
-                        recons = DataFrame.from_csv(path,tupleize_cols=False,**kwargs)
-               else:
-                   kwargs['header'] = 0
-                   with ensure_clean(path) as path:
-                       df.to_csv(path,encoding='utf8',chunksize=chunksize)
-                       recons = DataFrame.from_csv(path,**kwargs)
+            kwargs = dict(parse_dates=False)
+            if cnlvl:
+                if rnlvl is not None:
+                    kwargs['index_col'] = lrange(rnlvl)
+                kwargs['header'] = lrange(cnlvl)
+                with ensure_clean(path) as path:
+                    df.to_csv(path,encoding='utf8',chunksize=chunksize,tupleize_cols=False)
+                    recons = DataFrame.from_csv(path,tupleize_cols=False,**kwargs)
+            else:
+                kwargs['header'] = 0
+                with ensure_clean(path) as path:
+                    df.to_csv(path,encoding='utf8',chunksize=chunksize)
+                    recons = DataFrame.from_csv(path,**kwargs)
 
-               def _to_uni(x):
-                   if not isinstance(x, compat.text_type):
-                       return x.decode('utf8')
-                   return x
-               if dupe_col:
-                   # read_Csv disambiguates the columns by
-                   # labeling them dupe.1,dupe.2, etc'. monkey patch columns
-                   recons.columns = df.columns
-               if rnlvl and not cnlvl:
-                   delta_lvl = [recons.icol(i).values for i in range(rnlvl-1)]
-                   ix=MultiIndex.from_arrays([list(recons.index)]+delta_lvl)
-                   recons.index = ix
-                   recons = recons.iloc[:,rnlvl-1:]
+            def _to_uni(x):
+                if not isinstance(x, compat.text_type):
+                    return x.decode('utf8')
+                return x
+            if dupe_col:
+                # read_Csv disambiguates the columns by
+                # labeling them dupe.1,dupe.2, etc'. monkey patch columns
+                recons.columns = df.columns
+            if rnlvl and not cnlvl:
+                delta_lvl = [recons.icol(i).values for i in range(rnlvl-1)]
+                ix=MultiIndex.from_arrays([list(recons.index)]+delta_lvl)
+                recons.index = ix
+                recons = recons.iloc[:,rnlvl-1:]
 
-               type_map = dict(i='i',f='f',s='O',u='O',dt='O',p='O')
-               if r_dtype:
-                    if r_dtype == 'u': # unicode
-                        r_dtype='O'
-                        recons.index = np.array(lmap(_to_uni,recons.index),
-                                                dtype=r_dtype)
-                        df.index = np.array(lmap(_to_uni,df.index),dtype=r_dtype)
-                    if r_dtype == 'dt': # unicode
-                        r_dtype='O'
-                        recons.index = np.array(lmap(Timestamp,recons.index),
-                                                dtype=r_dtype)
-                        df.index = np.array(lmap(Timestamp,df.index),dtype=r_dtype)
-                    elif r_dtype == 'p':
-                        r_dtype='O'
-                        recons.index = np.array(list(map(Timestamp,
-                                                         recons.index.to_datetime())),
-                                                dtype=r_dtype)
-                        df.index = np.array(list(map(Timestamp,
-                                                     df.index.to_datetime())),
+            type_map = dict(i='i',f='f',s='O',u='O',dt='O',p='O')
+            if r_dtype:
+                if r_dtype == 'u': # unicode
+                    r_dtype='O'
+                    recons.index = np.array(lmap(_to_uni,recons.index),
                                             dtype=r_dtype)
-                    else:
-                        r_dtype= type_map.get(r_dtype)
-                        recons.index = np.array(recons.index,dtype=r_dtype )
-                        df.index = np.array(df.index,dtype=r_dtype )
-               if c_dtype:
-                    if c_dtype == 'u':
-                        c_dtype='O'
-                        recons.columns = np.array(lmap(_to_uni,recons.columns),
-                                                dtype=c_dtype)
-                        df.columns = np.array(lmap(_to_uni,df.columns),dtype=c_dtype )
-                    elif c_dtype == 'dt':
-                        c_dtype='O'
-                        recons.columns = np.array(lmap(Timestamp,recons.columns),
+                    df.index = np.array(lmap(_to_uni,df.index),dtype=r_dtype)
+                elif r_dtype == 'dt': # unicode
+                    r_dtype='O'
+                    recons.index = np.array(lmap(Timestamp,recons.index),
+                                            dtype=r_dtype)
+                    df.index = np.array(lmap(Timestamp,df.index),dtype=r_dtype)
+                elif r_dtype == 'p':
+                    r_dtype='O'
+                    recons.index = np.array(list(map(Timestamp,
+                                                     recons.index.to_datetime())),
+                                            dtype=r_dtype)
+                    df.index = np.array(list(map(Timestamp,
+                                                 df.index.to_datetime())),
+                                        dtype=r_dtype)
+                else:
+                    r_dtype= type_map.get(r_dtype)
+                    recons.index = np.array(recons.index,dtype=r_dtype )
+                    df.index = np.array(df.index,dtype=r_dtype )
+            if c_dtype:
+                if c_dtype == 'u':
+                    c_dtype='O'
+                    recons.columns = np.array(lmap(_to_uni,recons.columns),
+                                              dtype=c_dtype)
+                    df.columns = np.array(lmap(_to_uni,df.columns),dtype=c_dtype )
+                elif c_dtype == 'dt':
+                    c_dtype='O'
+                    recons.columns = np.array(lmap(Timestamp,recons.columns),
                                                 dtype=c_dtype )
-                        df.columns = np.array(lmap(Timestamp,df.columns),dtype=c_dtype)
-                    elif c_dtype == 'p':
-                        c_dtype='O'
-                        recons.columns = np.array(lmap(Timestamp,recons.columns.to_datetime()),
-                                                dtype=c_dtype)
-                        df.columns = np.array(lmap(Timestamp,df.columns.to_datetime()),dtype=c_dtype )
-                    else:
-                        c_dtype= type_map.get(c_dtype)
-                        recons.columns = np.array(recons.columns,dtype=c_dtype )
-                        df.columns = np.array(df.columns,dtype=c_dtype )
+                    df.columns = np.array(lmap(Timestamp,df.columns),dtype=c_dtype)
+                elif c_dtype == 'p':
+                    c_dtype='O'
+                    recons.columns = np.array(lmap(Timestamp,recons.columns.to_datetime()),
+                                              dtype=c_dtype)
+                    df.columns = np.array(lmap(Timestamp,df.columns.to_datetime()),dtype=c_dtype )
+                else:
+                    c_dtype= type_map.get(c_dtype)
+                    recons.columns = np.array(recons.columns,dtype=c_dtype )
+                    df.columns = np.array(df.columns,dtype=c_dtype )
 
-               assert_frame_equal(df,recons,check_names=False,check_less_precise=True)
+            assert_frame_equal(df,recons,check_names=False,check_less_precise=True)
 
         N = 100
         chunksize=1000
@@ -5741,16 +5794,16 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         # GH3437
         from pandas import NaT
         def make_dtnat_arr(n,nnat=None):
-             if nnat is None:
-                 nnat= int(n*0.1) # 10%
-             s=list(date_range('2000',freq='5min',periods=n))
-             if nnat:
-                 for i in np.random.randint(0,len(s),nnat):
-                     s[i] = NaT
-                 i = np.random.randint(100)
-                 s[-i] = NaT
-                 s[i] = NaT
-             return s
+            if nnat is None:
+                nnat= int(n*0.1) # 10%
+            s=list(date_range('2000',freq='5min',periods=n))
+            if nnat:
+                for i in np.random.randint(0,len(s),nnat):
+                    s[i] = NaT
+                i = np.random.randint(100)
+                s[-i] = NaT
+                s[i] = NaT
+            return s
 
         # N=35000
         s1=make_dtnat_arr(chunksize+5)
@@ -5826,11 +5879,11 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         self.frame['H'] = self.frame.index.map(f)
 
         with ensure_clean() as path:
-             self.frame.to_csv(path)
-             recons = DataFrame.from_csv(path)
+            self.frame.to_csv(path)
+            recons = DataFrame.from_csv(path)
 
-             assert_frame_equal(self.frame, recons, check_names=False)  # TODO to_csv drops column name
-             assert_frame_equal(np.isinf(self.frame), np.isinf(recons), check_names=False)
+            assert_frame_equal(self.frame, recons, check_names=False)  # TODO to_csv drops column name
+            assert_frame_equal(np.isinf(self.frame), np.isinf(recons), check_names=False)
 
     def test_to_csv_from_csv_w_all_infs(self):
 
@@ -5885,37 +5938,37 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
 
         with ensure_clean(pname) as path:
 
-             frame.to_csv(path, header=False)
-             frame.to_csv(path, columns=['A', 'B'])
+            frame.to_csv(path, header=False)
+            frame.to_csv(path, columns=['A', 'B'])
 
-             # round trip
-             frame.to_csv(path)
-             df = DataFrame.from_csv(path, index_col=[0, 1], parse_dates=False)
+            # round trip
+            frame.to_csv(path)
+            df = DataFrame.from_csv(path, index_col=[0, 1], parse_dates=False)
 
-             assert_frame_equal(frame, df, check_names=False)  # TODO to_csv drops column name
-             self.assertEqual(frame.index.names, df.index.names)
-             self.frame.index = old_index  # needed if setUP becomes a classmethod
+            assert_frame_equal(frame, df, check_names=False)  # TODO to_csv drops column name
+            self.assertEqual(frame.index.names, df.index.names)
+            self.frame.index = old_index  # needed if setUP becomes a classmethod
 
-             # try multiindex with dates
-             tsframe = self.tsframe
-             old_index = tsframe.index
-             new_index = [old_index, np.arange(len(old_index))]
-             tsframe.index = MultiIndex.from_arrays(new_index)
+            # try multiindex with dates
+            tsframe = self.tsframe
+            old_index = tsframe.index
+            new_index = [old_index, np.arange(len(old_index))]
+            tsframe.index = MultiIndex.from_arrays(new_index)
 
-             tsframe.to_csv(path, index_label=['time', 'foo'])
-             recons = DataFrame.from_csv(path, index_col=[0, 1])
-             assert_frame_equal(tsframe, recons, check_names=False)  # TODO to_csv drops column name
+            tsframe.to_csv(path, index_label=['time', 'foo'])
+            recons = DataFrame.from_csv(path, index_col=[0, 1])
+            assert_frame_equal(tsframe, recons, check_names=False)  # TODO to_csv drops column name
 
-             # do not load index
-             tsframe.to_csv(path)
-             recons = DataFrame.from_csv(path, index_col=None)
-             np.testing.assert_equal(len(recons.columns), len(tsframe.columns) + 2)
+            # do not load index
+            tsframe.to_csv(path)
+            recons = DataFrame.from_csv(path, index_col=None)
+            np.testing.assert_equal(len(recons.columns), len(tsframe.columns) + 2)
 
-             # no index
-             tsframe.to_csv(path, index=False)
-             recons = DataFrame.from_csv(path, index_col=None)
-             assert_almost_equal(recons.values, self.tsframe.values)
-             self.tsframe.index = old_index  # needed if setUP becomes classmethod
+            # no index
+            tsframe.to_csv(path, index=False)
+            recons = DataFrame.from_csv(path, index_col=None)
+            assert_almost_equal(recons.values, self.tsframe.values)
+            self.tsframe.index = old_index  # needed if setUP becomes classmethod
 
         with ensure_clean(pname) as path:
             # GH3571, GH1651, GH3141
@@ -6024,8 +6077,8 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
             df.to_csv(path, na_rep=999)
 
             with open(path) as f:
-                 lines = f.readlines()
-                 self.assertEqual(lines[1].split(',')[2], '999')
+                lines = f.readlines()
+                self.assertEqual(lines[1].split(',')[2], '999')
 
     def test_to_csv_withcommas(self):
 
@@ -6096,7 +6149,7 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
 
             # date cols
             for i in ['0.4','1.4','2.4']:
-                 result[i] = to_datetime(result[i])
+                result[i] = to_datetime(result[i])
 
             result.columns = df.columns
             assert_frame_equal(result,df)
@@ -8316,6 +8369,12 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         with tm.assertRaisesRegexp(TypeError, 'Cannot compare types .+'):
             df.replace({'asdf': 'asdb', True: 'yes'})
 
+    def test_replace_truthy(self):
+        df = DataFrame({'a': [True, True]})
+        r = df.replace([np.inf, -np.inf], np.nan)
+        e = df
+        tm.assert_frame_equal(r, e)
+
     def test_replace_int_to_int_chain(self):
         df = DataFrame({'a': lrange(1, 5)})
         with tm.assertRaisesRegexp(ValueError, "Replacement not allowed .+"):
@@ -8339,6 +8398,52 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         res = df.replace({'a': {0: 'Y', 1: 'N'}})
         expect = pd.DataFrame({'a': ['Y', 'N', 'Y']})
         tm.assert_frame_equal(res, expect)
+
+    def test_replace_period(self):
+        d = {'fname':
+             {'out_augmented_AUG_2011.json': pd.Period(year=2011, month=8, freq='M'),
+              'out_augmented_JAN_2011.json': pd.Period(year=2011, month=1, freq='M'),
+              'out_augmented_MAY_2012.json': pd.Period(year=2012, month=5, freq='M'),
+              'out_augmented_SUBSIDY_WEEK.json': pd.Period(year=2011, month=4, freq='M'),
+              'out_augmented_AUG_2012.json': pd.Period(year=2012, month=8, freq='M'),
+              'out_augmented_MAY_2011.json': pd.Period(year=2011, month=5, freq='M'),
+              'out_augmented_SEP_2013.json': pd.Period(year=2013, month=9, freq='M')}}
+
+        df = pd.DataFrame(['out_augmented_AUG_2012.json',
+                           'out_augmented_SEP_2013.json',
+                           'out_augmented_SUBSIDY_WEEK.json',
+                           'out_augmented_MAY_2012.json',
+                           'out_augmented_MAY_2011.json',
+                           'out_augmented_AUG_2011.json',
+                           'out_augmented_JAN_2011.json'], columns=['fname'])
+        tm.assert_equal(set(df.fname.values), set(d['fname'].keys()))
+        expected = DataFrame({'fname': [d['fname'][k]
+                                        for k in df.fname.values]})
+        result = df.replace(d)
+        tm.assert_frame_equal(result, expected)
+
+    def test_replace_datetime(self):
+        d = {'fname':
+             {'out_augmented_AUG_2011.json': pd.Timestamp('2011/08'),
+              'out_augmented_JAN_2011.json': pd.Timestamp('2011/01'),
+              'out_augmented_MAY_2012.json': pd.Timestamp('2012/05'),
+              'out_augmented_SUBSIDY_WEEK.json': pd.Timestamp('2011/04'),
+              'out_augmented_AUG_2012.json': pd.Timestamp('2012/08'),
+              'out_augmented_MAY_2011.json': pd.Timestamp('2011/05'),
+              'out_augmented_SEP_2013.json': pd.Timestamp('2013/09')}}
+
+        df = pd.DataFrame(['out_augmented_AUG_2012.json',
+                           'out_augmented_SEP_2013.json',
+                           'out_augmented_SUBSIDY_WEEK.json',
+                           'out_augmented_MAY_2012.json',
+                           'out_augmented_MAY_2011.json',
+                           'out_augmented_AUG_2011.json',
+                           'out_augmented_JAN_2011.json'], columns=['fname'])
+        tm.assert_equal(set(df.fname.values), set(d['fname'].keys()))
+        expected = DataFrame({'fname': [d['fname'][k]
+                                        for k in df.fname.values]})
+        result = df.replace(d)
+        tm.assert_frame_equal(result, expected)
 
     def test_combine_multiple_frames_dtypes(self):
 
@@ -9049,6 +9154,28 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
             result = df.copy()
             result.where(result > 2, np.nan, inplace=True)
             assert_frame_equal(result, expected)
+
+        # transpositional issue
+        # GH7506
+        a = DataFrame({ 0 : [1,2], 1 : [3,4], 2 : [5,6]})
+        b = DataFrame({ 0 : [np.nan,8], 1:[9,np.nan], 2:[np.nan,np.nan]})
+        do_not_replace = b.isnull() | (a > b)
+
+        expected = a.copy()
+        expected[~do_not_replace] = b
+
+        result = a.where(do_not_replace,b)
+        assert_frame_equal(result,expected)
+
+        a = DataFrame({ 0 : [4,6], 1 : [1,0]})
+        b = DataFrame({ 0 : [np.nan,3],1:[3,np.nan]})
+        do_not_replace = b.isnull() | (a > b)
+
+        expected = a.copy()
+        expected[~do_not_replace] = b
+
+        result = a.where(do_not_replace,b)
+        assert_frame_equal(result,expected)
 
     def test_where_datetime(self):
 
@@ -10812,6 +10939,23 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
             self.assertFalse((result < 0).any())
             nanops._USE_BOTTLENECK = True
 
+    def test_sem(self):
+        alt = lambda x: np.std(x, ddof=1)/np.sqrt(len(x))
+        self._check_stat_op('sem', alt)
+
+        result = self.tsframe.sem(ddof=4)
+        expected = self.tsframe.apply(lambda x: x.std(ddof=4)/np.sqrt(len(x)))
+        assert_almost_equal(result, expected)
+
+        arr = np.repeat(np.random.random((1, 1000)), 1000, 0)
+        result = nanops.nansem(arr, axis=0)
+        self.assertFalse((result < 0).any())
+        if nanops._USE_BOTTLENECK:
+            nanops._USE_BOTTLENECK = False
+            result = nanops.nansem(arr, axis=0)
+            self.assertFalse((result < 0).any())
+            nanops._USE_BOTTLENECK = True
+
     def test_skew(self):
         _skip_if_no_scipy()
         from scipy.stats import skew
@@ -11051,6 +11195,26 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         xp = df.median()
         assert_series_equal(rs, xp)
 
+        # axis
+        df = DataFrame({"A": [1, 2, 3], "B": [2, 3, 4]}, index=[1, 2, 3])
+        result = df.quantile(.5, axis=1)
+        expected = Series([1.5, 2.5, 3.5], index=[1, 2, 3])
+        assert_series_equal(result, expected)
+
+        result = df.quantile([.5, .75], axis=1)
+        expected = DataFrame({1: [1.5, 1.75], 2: [2.5, 2.75],
+                              3: [3.5, 3.75]}, index=["0.5", "0.75"])
+        assert_frame_equal(result, expected)
+
+        # We may want to break API in the future to change this
+        # so that we exclude non-numeric along the same axis
+        # See GH #7312
+        df = DataFrame([[1, 2, 3],
+                        ['a', 'b', 4]])
+        result = df.quantile(.5, axis=1)
+        expected = Series([3., 4.], index=[0, 1])
+        assert_series_equal(result, expected)
+
     def test_quantile_multi(self):
         df = DataFrame([[1, 1, 1], [2, 2, 2], [3, 3, 3]],
                        columns=['a', 'b', 'c'])
@@ -11087,6 +11251,20 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         result = df.quantile([.5], numeric_only=False)
         expected = DataFrame([[Timestamp('2010-07-02 12:00:00'), 2.5]],
                              index=[.5], columns=['a', 'b'])
+        assert_frame_equal(result, expected)
+
+        # axis = 1
+        df['c'] = pd.to_datetime(['2011', '2012'])
+        result = df[['a', 'c']].quantile(.5, axis=1, numeric_only=False)
+        expected = Series([Timestamp('2010-07-02 12:00:00'),
+                           Timestamp('2011-07-02 12:00:00')],
+                          index=[0, 1])
+        assert_series_equal(result, expected)
+
+        result = df[['a', 'c']].quantile([.5], axis=1, numeric_only=False)
+        expected = DataFrame([[Timestamp('2010-07-02 12:00:00'),
+                               Timestamp('2011-07-02 12:00:00')]],
+                             index=[0.5], columns=[0, 1])
         assert_frame_equal(result, expected)
 
     def test_cumsum(self):
@@ -11176,7 +11354,6 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         exp = df.astype(float).rank(1)
         assert_frame_equal(result, exp)
 
-
     def test_rank2(self):
         from datetime import datetime
         df = DataFrame([[1, 3, 2], [1, 2, 3]])
@@ -11233,7 +11410,6 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         df = DataFrame({"a":[1e-20, -5, 1e-20+1e-40, 10, 1e60, 1e80, 1e-30]})
         exp = DataFrame({"a":[ 3.5,  1. ,  3.5,  5. ,  6. ,  7. ,  2. ]})
         assert_frame_equal(df.rank(), exp)
-
 
     def test_rank_na_option(self):
         _skip_if_no_scipy()
@@ -11551,6 +11727,13 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
 
         with tm.assertRaises(ValueError):
             df.T.stack('c1')
+
+    def test_repr_with_mi_nat(self):
+        df = DataFrame({'X': [1, 2]},
+                       index=[[pd.NaT, pd.Timestamp('20130101')], ['a', 'b']])
+        res = repr(df)
+        exp = '              X\nNaT        a  1\n2013-01-01 b  2'
+        nose.tools.assert_equal(res, exp)
 
     def test_reset_index(self):
         stacked = self.frame.stack()[::2]
@@ -11918,7 +12101,7 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
 
         # testing iget
         for i in range(len(df.columns)):
-             df.iloc[:,i]
+            df.iloc[:,i]
 
         # dup columns across dtype GH 2079/2194
         vals = [[1, -1, 2.], [2, -2, 3.]]
@@ -13685,6 +13868,18 @@ class TestDataFrameQueryStrings(object):
         for parser, engine in product(PARSERS, ENGINES):
             yield self.check_query_single_element_booleans, parser, engine
 
+    def check_query_string_scalar_variable(self, parser, engine):
+        tm.skip_if_no_ne(engine)
+        df = pd.DataFrame({'Symbol': ['BUD US', 'BUD US', 'IBM US', 'IBM US'],
+                           'Price': [109.70, 109.72, 183.30, 183.35]})
+        e = df[df.Symbol == 'BUD US']
+        symb = 'BUD US'
+        r = df.query('Symbol == @symb', parser=parser, engine=engine)
+        tm.assert_frame_equal(e, r)
+
+    def test_query_string_scalar_variable(self):
+        for parser, engine in product(['pandas'], ENGINES):
+            yield self.check_query_string_scalar_variable, parser, engine
 
 class TestDataFrameEvalNumExprPandas(tm.TestCase):
 

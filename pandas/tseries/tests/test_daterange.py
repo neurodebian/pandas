@@ -2,7 +2,7 @@ from datetime import datetime
 from pandas.compat import range
 import pickle
 import nose
-
+import sys
 import numpy as np
 
 from pandas.core.index import Index
@@ -24,10 +24,21 @@ def _skip_if_no_pytz():
     except ImportError:
         raise nose.SkipTest("pytz not installed")
 
+def _skip_if_no_dateutil():
+    try:
+        import dateutil
+    except ImportError:
+        raise nose.SkipTest("dateutil not installed")
+
 
 def _skip_if_no_cday():
     if datetools.cday is None:
         raise nose.SkipTest("CustomBusinessDay not available.")
+
+
+def _skip_if_windows_python_3():
+    if sys.version_info > (3,) and sys.platform == 'win32':
+        raise nose.SkipTest("not used on python 3/win32")
 
 
 def eq_gen_range(kwargs, expected):
@@ -291,6 +302,11 @@ class TestDateRange(tm.TestCase):
         import pytz
         bdate_range('1/1/2005', '1/1/2009', tz=pytz.utc).summary()
 
+    def test_summary_dateutil(self):
+        _skip_if_no_dateutil()
+        import dateutil
+        bdate_range('1/1/2005', '1/1/2009', tz=dateutil.tz.tzutc()).summary()
+
     def test_misc(self):
         end = datetime(2009, 5, 13)
         dr = bdate_range(end=end, periods=20)
@@ -354,7 +370,7 @@ class TestDateRange(tm.TestCase):
         exp_values = [start + i * offset for i in range(5)]
         self.assert_numpy_array_equal(result, DatetimeIndex(exp_values))
 
-    def test_range_tz(self):
+    def test_range_tz_pytz(self):
         # GH 2906
         _skip_if_no_pytz()
         from pytz import timezone as tz
@@ -377,9 +393,51 @@ class TestDateRange(tm.TestCase):
         self.assertEqual(dr[0], start)
         self.assertEqual(dr[2], end)
 
-    def test_month_range_union_tz(self):
+    def test_range_tz_dateutil(self):
+        # GH 2906
+        _skip_if_no_dateutil()
+        # Use maybe_get_tz to fix filename in tz under dateutil.
+        from pandas.tslib import maybe_get_tz
+        tz = lambda x: maybe_get_tz('dateutil/' + x)
+        
+        start = datetime(2011, 1, 1, tzinfo=tz('US/Eastern'))
+        end = datetime(2011, 1, 3, tzinfo=tz('US/Eastern'))
+
+        dr = date_range(start=start, periods=3)
+        self.assert_(dr.tz == tz('US/Eastern'))
+        self.assert_(dr[0] == start)
+        self.assert_(dr[2] == end)
+
+        dr = date_range(end=end, periods=3)
+        self.assert_(dr.tz == tz('US/Eastern'))
+        self.assert_(dr[0] == start)
+        self.assert_(dr[2] == end)
+
+        dr = date_range(start=start, end=end)
+        self.assert_(dr.tz == tz('US/Eastern'))
+        self.assert_(dr[0] == start)
+        self.assert_(dr[2] == end)
+
+    def test_month_range_union_tz_pytz(self):
         _skip_if_no_pytz()
         from pytz import timezone
+        tz = timezone('US/Eastern')
+
+        early_start = datetime(2011, 1, 1)
+        early_end = datetime(2011, 3, 1)
+
+        late_start = datetime(2011, 3, 1)
+        late_end = datetime(2011, 5, 1)
+
+        early_dr = date_range(start=early_start, end=early_end, tz=tz, freq=datetools.monthEnd)
+        late_dr = date_range(start=late_start, end=late_end, tz=tz, freq=datetools.monthEnd)
+
+        early_dr.union(late_dr)
+
+    def test_month_range_union_tz_dateutil(self):
+        _skip_if_windows_python_3()
+        _skip_if_no_dateutil()
+        from dateutil.tz import gettz as timezone
         tz = timezone('US/Eastern')
 
         early_start = datetime(2011, 1, 1)
@@ -579,6 +637,11 @@ class TestCustomDateRange(tm.TestCase):
         _skip_if_no_pytz()
         import pytz
         cdate_range('1/1/2005', '1/1/2009', tz=pytz.utc).summary()
+
+    def test_summary_dateutil(self):
+        _skip_if_no_dateutil()
+        import dateutil
+        cdate_range('1/1/2005', '1/1/2009', tz=dateutil.tz.tzutc()).summary()
 
     def test_misc(self):
         end = datetime(2009, 5, 13)

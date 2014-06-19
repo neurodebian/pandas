@@ -138,12 +138,10 @@ class Period(PandasObject):
                 raise ValueError("Cannot compare non-conforming periods")
             return (self.ordinal == other.ordinal
                     and _gfc(self.freq) == _gfc(other.freq))
-        else:
-            raise TypeError(other)
-        return False
+        return NotImplemented
 
     def __ne__(self, other):
-        return not self.__eq__(other)
+        return not self == other
 
     def __hash__(self):
         return hash((self.ordinal, self.freq))
@@ -1135,10 +1133,7 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
         """
         indices = com._ensure_platform_int(indices)
         taken = self.values.take(indices, axis=axis)
-        taken = taken.view(PeriodIndex)
-        taken.freq = self.freq
-        taken.name = self.name
-        return taken
+        return self._simple_new(taken, self.name, freq=self.freq)
 
     def append(self, other):
         """

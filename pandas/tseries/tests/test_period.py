@@ -83,6 +83,17 @@ class TestPeriodProperties(tm.TestCase):
         self.assertEqual(p.tz,
                          pytz.timezone('Europe/Brussels').normalize(p).tzinfo)
 
+    def test_timestamp_tz_arg_dateutil(self):
+        import dateutil
+        from pandas.tslib import maybe_get_tz
+        p = Period('1/1/2005', freq='M').to_timestamp(tz=maybe_get_tz('dateutil/Europe/Brussels'))
+        self.assertEqual(p.tz, dateutil.tz.gettz('Europe/Brussels'))
+
+    def test_timestamp_tz_arg_dateutil_from_string(self):
+        import dateutil
+        p = Period('1/1/2005', freq='M').to_timestamp(tz='dateutil/Europe/Brussels')
+        self.assertEqual(p.tz, dateutil.tz.gettz('Europe/Brussels'))
+
     def test_period_constructor(self):
         i1 = Period('1/1/2005', freq='M')
         i2 = Period('Jan 2005')
@@ -2059,14 +2070,19 @@ class TestPeriodIndex(tm.TestCase):
         self.assertEqual(result[0].freq, index.freq)
 
     def test_take(self):
-        index = PeriodIndex(start='1/1/10', end='12/31/12', freq='D')
+        index = PeriodIndex(start='1/1/10', end='12/31/12', freq='D', name='idx')
+        expected = PeriodIndex([datetime(2010, 1, 6), datetime(2010, 1, 7),
+                                datetime(2010, 1, 9), datetime(2010, 1, 13)],
+                                freq='D', name='idx')
 
-        taken = index.take([5, 6, 8, 12])
+        taken1 = index.take([5, 6, 8, 12])
         taken2 = index[[5, 6, 8, 12]]
-        tm.assert_isinstance(taken, PeriodIndex)
-        self.assertEqual(taken.freq, index.freq)
-        tm.assert_isinstance(taken2, PeriodIndex)
-        self.assertEqual(taken2.freq, index.freq)
+
+        for taken in [taken1, taken2]:
+            self.assertTrue(taken.equals(expected))
+            tm.assert_isinstance(taken, PeriodIndex)
+            self.assertEqual(taken.freq, index.freq)
+            self.assertEqual(taken.name, expected.name)
 
     def test_joins(self):
         index = period_range('1/1/2000', '1/20/2000', freq='D')
@@ -2445,10 +2461,8 @@ class TestComparisons(tm.TestCase):
     def test_equal_Raises_Value(self):
         self.assertRaises(ValueError, self.january1.__eq__, self.day)
 
-    def test_equal_Raises_Type(self):
-        self.assertRaises(TypeError, self.january1.__eq__, 1)
-
     def test_notEqual(self):
+        self.assertNotEqual(self.january1, 1)
         self.assertNotEqual(self.january1, self.february)
 
     def test_greater(self):

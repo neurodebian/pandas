@@ -1,7 +1,7 @@
 # pylint: disable=E1101,E1103,W0232
 import datetime
-from functools import partial
 import warnings
+from functools import partial
 from pandas.compat import range, zip, lrange, lzip, u, reduce
 from pandas import compat
 import numpy as np
@@ -12,7 +12,6 @@ import pandas.algos as _algos
 import pandas.index as _index
 from pandas.lib import Timestamp, is_datetime_array
 from pandas.core.base import FrozenList, FrozenNDArray, IndexOpsMixin
-
 from pandas.util.decorators import cache_readonly, deprecate
 from pandas.core.common import isnull, array_equivalent
 import pandas.core.common as com
@@ -26,6 +25,9 @@ default_pprint = lambda x: com.pprint_thing(x, escape_chars=('\t', '\r', '\n'),
 
 
 __all__ = ['Index']
+
+
+_unsortable_types = frozenset(('mixed', 'mixed-integer'))
 
 
 def _try_get_item(x):
@@ -138,6 +140,8 @@ class Index(IndexOpsMixin, FrozenNDArray):
 
             if issubclass(data.dtype.type, np.integer):
                 return Int64Index(data, copy=copy, dtype=dtype, name=name)
+            if issubclass(data.dtype.type, np.floating):
+                return Float64Index(data, copy=copy, dtype=dtype, name=name)
 
             subarr = com._asarray_tuplesafe(data, dtype=object)
 
@@ -146,6 +150,9 @@ class Index(IndexOpsMixin, FrozenNDArray):
             if copy:
                 subarr = subarr.copy()
 
+        elif hasattr(data, '__array__'):
+            return Index(np.asarray(data), dtype=dtype, copy=copy, name=name,
+                         **kwargs)
         elif np.isscalar(data):
             cls._scalar_data_error(data)
         else:
@@ -602,7 +609,7 @@ class Index(IndexOpsMixin, FrozenNDArray):
             and we have a mixed index (e.g. number/labels). figure out
             the indexer. return None if we can't help
         """
-        if com.is_integer_dtype(keyarr) and not self.is_floating():
+        if (typ is None or typ in ['iloc','ix']) and (com.is_integer_dtype(keyarr) and not self.is_floating()):
             if self.inferred_type != 'integer':
                 keyarr = np.where(keyarr < 0,
                                   len(self) + keyarr, keyarr)
@@ -775,7 +782,8 @@ class Index(IndexOpsMixin, FrozenNDArray):
         """
         indexer = com._ensure_platform_int(indexer)
         taken = self.view(np.ndarray).take(indexer)
-        return self._constructor(taken, name=self.name)
+        return self._simple_new(taken, name=self.name, freq=None,
+                                tz=getattr(self, 'tz', None))
 
     def format(self, name=False, formatter=None, **kwargs):
         """
@@ -997,29 +1005,39 @@ class Index(IndexOpsMixin, FrozenNDArray):
                 result.extend([x for x in other.values if x not in value_set])
         else:
             indexer = self.get_indexer(other)
-            indexer = (indexer == -1).nonzero()[0]
+            indexer, = (indexer == -1).nonzero()
 
             if len(indexer) > 0:
                 other_diff = com.take_nd(other.values, indexer,
                                          allow_fill=False)
                 result = com._concat_compat((self.values, other_diff))
+
                 try:
-                    result.sort()
-                except Exception:
-                    pass
+                    self.values[0] < other_diff[0]
+                except TypeError as e:
+                    warnings.warn("%s, sort order is undefined for "
+                                  "incomparable objects" % e, RuntimeWarning)
+                else:
+                    types = frozenset((self.inferred_type,
+                                       other.inferred_type))
+                    if not types & _unsortable_types:
+                        result.sort()
+
             else:
-                # contained in
+                result = self.values
+
                 try:
-                    result = np.sort(self.values)
-                except TypeError:  # pragma: no cover
-                    result = self.values
+                    result = np.sort(result)
+                except TypeError as e:
+                    warnings.warn("%s, sort order is undefined for "
+                                  "incomparable objects" % e, RuntimeWarning)
 
         # for subclasses
         return self._wrap_union_result(other, result)
 
     def _wrap_union_result(self, other, result):
         name = self.name if self.name == other.name else None
-        return type(self)(data=result, name=name)
+        return self.__class__(data=result, name=name)
 
     def intersection(self, other):
         """
@@ -1063,7 +1081,10 @@ class Index(IndexOpsMixin, FrozenNDArray):
             # duplicates
             indexer = self.get_indexer_non_unique(other.values)[0].unique()
 
-        return self.take(indexer)
+        taken = self.take(indexer)
+        if self.name != other.name:
+            taken.name = None
+        return taken
 
     def diff(self, other):
         """
@@ -1713,52 +1734,43 @@ class Index(IndexOpsMixin, FrozenNDArray):
         """
 
         is_unique = self.is_unique
-        if start is None:
-            start_slice = 0
-        else:
+
+        def _get_slice(starting_value, offset, search_side, slice_property,
+                       search_value):
+            if search_value is None:
+                return starting_value
+
             try:
-                start_slice = self.get_loc(start)
+                slc = self.get_loc(search_value)
 
                 if not is_unique:
 
                     # get_loc will return a boolean array for non_uniques
                     # if we are not monotonic
-                    if isinstance(start_slice, (ABCSeries, np.ndarray)):
+                    if isinstance(slc, np.ndarray):
                         raise KeyError("cannot peform a slice operation "
                                        "on a non-unique non-monotonic index")
 
-                if isinstance(start_slice, slice):
-                    start_slice = start_slice.start
+                if isinstance(slc, slice):
+                    slc = getattr(slc, slice_property)
+                else:
+                    slc += offset
 
             except KeyError:
                 if self.is_monotonic:
-                    start_slice = self.searchsorted(start, side='left')
+                    if not is_unique:
+                        slc = search_value
+                    else:
+                        slc = self.searchsorted(search_value,
+                                                side=search_side)
                 else:
                     raise
+            return slc
 
-        if end is None:
-            end_slice = len(self)
-        else:
-            try:
-                end_slice = self.get_loc(end)
-
-                if not is_unique:
-
-                    # get_loc will return a boolean array for non_uniques
-                    if isinstance(end_slice, np.ndarray):
-                        raise KeyError("cannot perform a slice operation "
-                                       "on a non-unique non-monotonic index")
-
-                if isinstance(end_slice, slice):
-                    end_slice = end_slice.stop
-                else:
-                    end_slice += 1
-
-            except KeyError:
-                if self.is_monotonic:
-                    end_slice = self.searchsorted(end, side='right')
-                else:
-                    raise
+        start_slice = _get_slice(0, offset=0, search_side='left',
+                                 slice_property='start', search_value=start)
+        end_slice = _get_slice(len(self), offset=1, search_side='right',
+                               slice_property='stop', search_value=end)
 
         return start_slice, end_slice
 
@@ -1979,7 +1991,8 @@ class Float64Index(Index):
     def astype(self, dtype):
         if np.dtype(dtype) not in (np.object, np.float64):
             raise TypeError('Setting %s dtype to anything other than '
-                            'float64 or object is not supported' % self.__class__)
+                            'float64 or object is not supported' %
+                            self.__class__)
         return Index(self.values, name=self.name, dtype=dtype)
 
     def _convert_scalar_indexer(self, key, typ=None):
@@ -1992,11 +2005,12 @@ class Float64Index(Index):
         """ convert a slice indexer, by definition these are labels
             unless we are iloc """
         if typ == 'iloc':
-            return super(Float64Index, self)._convert_slice_indexer(key, typ=typ)
+            return super(Float64Index, self)._convert_slice_indexer(key,
+                                                                    typ=typ)
 
         # allow floats here
-        self._validate_slicer(
-            key, lambda v: v is None or is_integer(v) or is_float(v))
+        validator = lambda v: v is None or is_integer(v) or is_float(v)
+        self._validate_slicer(key, validator)
 
         # translate to locations
         return self.slice_indexer(key.start, key.stop, key.step)
@@ -2012,7 +2026,7 @@ class Float64Index(Index):
         k = _values_from_object(key)
         loc = self.get_loc(k)
         new_values = series.values[loc]
-        if np.isscalar(new_values):
+        if np.isscalar(new_values) or new_values is None:
             return new_values
 
         new_index = self[loc]
@@ -2055,11 +2069,14 @@ class Float64Index(Index):
             return False
 
     def get_loc(self, key):
-        if np.isnan(key):
-            try:
-                return self._nan_idxs.item()
-            except ValueError:
-                return self._nan_idxs
+        try:
+            if np.isnan(key):
+                try:
+                    return self._nan_idxs.item()
+                except ValueError:
+                    return self._nan_idxs
+        except (TypeError, NotImplementedError):
+            pass
         return super(Float64Index, self).get_loc(key)
 
     @property
@@ -2602,12 +2619,14 @@ class MultiIndex(Index):
         return values
 
     def format(self, space=2, sparsify=None, adjoin=True, names=False,
-               na_rep='NaN', formatter=None):
+               na_rep=None, formatter=None):
         if len(self) == 0:
             return []
 
         stringified_levels = []
         for lev, lab in zip(self.levels, self.labels):
+            na = na_rep if na_rep is not None else _get_na_rep(lev.dtype.type)
+
             if len(lev) > 0:
 
                 formatted = lev.take(lab).format(formatter=formatter)
@@ -2616,12 +2635,12 @@ class MultiIndex(Index):
                 mask = lab == -1
                 if mask.any():
                     formatted = np.array(formatted, dtype=object)
-                    formatted[mask] = na_rep
+                    formatted[mask] = na
                     formatted = formatted.tolist()
 
             else:
                 # weird all NA case
-                formatted = [com.pprint_thing(na_rep if isnull(x) else x,
+                formatted = [com.pprint_thing(na if isnull(x) else x,
                                               escape_chars=('\t', '\r', '\n'))
                              for x in com.take_1d(lev.values, lab)]
             stringified_levels.append(formatted)
@@ -2947,6 +2966,14 @@ class MultiIndex(Index):
         """
         if not isinstance(other, (list, tuple)):
             other = [other]
+
+        if all((isinstance(o, MultiIndex) and o.nlevels >= self.nlevels) for o in other):
+            arrays = []
+            for i in range(self.nlevels):
+                label = self.get_level_values(i)
+                appended = [o.get_level_values(i) for o in other]
+                arrays.append(label.append(appended))
+            return MultiIndex.from_arrays(arrays, names=self.names)
 
         to_concat = (self.values,) + tuple(k.values for k in other)
         new_tuples = np.concatenate(to_concat)
@@ -3510,11 +3537,20 @@ class MultiIndex(Index):
             # handle a slice, returnig a slice if we can
             # otherwise a boolean indexer
 
-            start = level_index.get_loc(key.start)
-            stop  = level_index.get_loc(key.stop)
+            start = level_index.get_loc(key.start or  0)
+            stop  = level_index.get_loc(key.stop or len(level_index)-1)
             step = key.step
 
-            if level > 0 or self.lexsort_depth == 0:
+            if isinstance(start,slice) or isinstance(stop,slice):
+                # we have a slice for start and/or stop
+                # a partial date slicer on a DatetimeIndex generates a slice
+                # note that the stop ALREADY includes the stopped point (if
+                # it was a string sliced)
+                m = np.zeros(len(labels),dtype=bool)
+                m[np.in1d(labels,np.arange(start.start,stop.stop,step))] = True
+                return m
+
+            elif level > 0 or self.lexsort_depth == 0 or step is not None:
                 # need to have like semantics here to right
                 # searching as when we are using a slice
                 # so include the stop+1 (so we include stop)
@@ -3553,6 +3589,8 @@ class MultiIndex(Index):
                for passing to iloc
         """
 
+        from pandas.core.indexing import _is_null_slice
+
         # must be lexsorted to at least as many levels
         if not self.is_lexsorted_for_tuple(tup):
             raise KeyError('MultiIndex Slicing requires the index to be fully lexsorted'
@@ -3580,10 +3618,12 @@ class MultiIndex(Index):
                 ranges.append(reduce(
                     np.logical_or,[ _convert_indexer(self._get_level_indexer(x, level=i)
                                                      ) for x in k ]))
-            elif k == slice(None):
-                # include all from this level
+            elif _is_null_slice(k):
+                # empty slice
                 pass
+
             elif isinstance(k,slice):
+
                 # a slice, include BOTH of the labels
                 ranges.append(self._get_level_indexer(k,level=i))
             else:
@@ -4025,3 +4065,12 @@ def _all_indexes_same(indexes):
         if not first.equals(index):
             return False
     return True
+
+
+def _get_na_rep(dtype):
+    return {np.datetime64: 'NaT', np.timedelta64: 'NaT'}.get(dtype, 'NaN')
+
+
+def _get_na_value(dtype):
+    return {np.datetime64: tslib.NaT, np.timedelta64: tslib.NaT}.get(dtype,
+                                                                     np.nan)

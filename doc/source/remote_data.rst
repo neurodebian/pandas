@@ -52,6 +52,43 @@ Yahoo! Finance
     f=web.DataReader("F", 'yahoo', start, end)
     f.ix['2010-01-04']
 
+.. _remote_data.yahoo_Options:
+
+Yahoo! Finance Options
+----------------------
+***Experimental***
+
+The Options class allows the download of options data from Yahoo! Finance.
+
+The ``get_all_data`` method downloads and caches option data for all expiry months
+and provides a formatted ``DataFrame`` with a hierarchical index, so its easy to get
+to the specific option you want.
+
+.. ipython:: python
+
+      from pandas.io.data import Options
+      aapl = Options('aapl', 'yahoo')
+      data = aapl.get_all_data()
+      data.iloc[0:5, 0:5]
+
+      #Show the $100 strike puts at all expiry dates:
+      data.loc[(100, slice(None), 'put'),:].iloc[0:5, 0:5]
+
+      #Show the volume traded of $100 strike puts at all expiry dates:
+      data.loc[(100, slice(None), 'put'),'Vol'].head()
+
+If you don't want to download all the data, more specific requests can be made.
+
+.. ipython:: python
+
+      import datetime
+      expiry = datetime.date(2016, 1, 1)
+      data = aapl.get_call_data(expiry=expiry)
+      data.iloc[0:5:, 0:5]
+
+Note that if you call ``get_all_data`` first, this second call will happen much faster, as the data is cached.
+
+
 .. _remote_data.google:
 
 Google Finance
@@ -102,7 +139,7 @@ Dataset names are listed at `Fama/French Data Library
 World Bank
 ----------
 
-``Pandas`` users can easily access thousands of panel data series from the
+``pandas`` users can easily access thousands of panel data series from the
 `World Bank's World Development Indicators <http://data.worldbank.org>`__
 by using the ``wb`` I/O functions.
 
@@ -170,7 +207,7 @@ contracts around the world.
     4027      IT.MOB.COV.ZS  Population coverage of mobile cellular telepho...
 
 Notice that this second search was much faster than the first one because
-``Pandas`` now has a cached list of available data series.
+``pandas`` now has a cached list of available data series.
 
 .. code-block:: python
 
