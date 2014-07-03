@@ -1,3 +1,9 @@
+pandas (0.14.0+git345-g8cd3dd6-1) experimental; urgency=medium
+
+  * New upstream snapshot from v0.14.0-345-g8cd3dd6 
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 02 Jul 2014 22:01:38 -0400
+
 pandas (0.14.0+git213-g741b2fa-1) experimental; urgency=medium
 
   * New upstream snapshot from v0.14.0-213-g741b2fa.
