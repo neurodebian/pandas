@@ -470,14 +470,12 @@ class DataFrame(NDFrame):
         Return a html representation for a particular DataFrame.
         Mainly for IPython notebook.
         """
-        # ipnb in html repr mode allows scrolling
-        # users strongly prefer to h-scroll a wide HTML table in the browser
-        # then to get a summary view. GH3541, GH3573
-        ipnbh = com.in_ipnb() and get_option('display.notebook_repr_html')
-
         # qtconsole doesn't report it's line width, and also
         # behaves badly when outputting an HTML table
         # that doesn't fit the window, so disable it.
+        # XXX: In IPython 3.x and above, the Qt console will not attempt to
+        # display HTML, so this check can be removed when support for IPython 2.x
+        # is no longer needed.
         if com.in_qtconsole():
             # 'HTML output is disabled in QtConsole'
             return None
@@ -671,47 +669,43 @@ class DataFrame(NDFrame):
         else:  # pragma: no cover
             raise ValueError("outtype %s not understood" % outtype)
 
-    def to_gbq(self, destination_table, schema=None, col_order=None,
-               if_exists='fail', **kwargs):
+    def to_gbq(self, destination_table, project_id=None, chunksize=10000,
+               verbose=True, reauth=False):
         """Write a DataFrame to a Google BigQuery table.
 
-        If the table exists, the DataFrame will be appended. If not, a new
-        table will be created, in which case the schema will have to be
-        specified. By default, rows will be written in the order they appear
-        in the DataFrame, though the user may specify an alternative order.
+        THIS IS AN EXPERIMENTAL LIBRARY
+
+        If the table exists, the dataframe will be written to the table using
+        the defined table schema and column types. For simplicity, this method
+        uses the Google BigQuery streaming API. The to_gbq method chunks data
+        into a default chunk size of 10,000. Failures return the complete error
+        response which can be quite long depending on the size of the insert. 
+        There are several important limitations of the Google streaming API 
+        which are detailed at:
+        https://developers.google.com/bigquery/streaming-data-into-bigquery.
 
         Parameters
-        ---------------
+        ----------
+        dataframe : DataFrame
+            DataFrame to be written
         destination_table : string
-             name of table to be written, in the form 'dataset.tablename'
-        schema : sequence (optional)
-             list of column types in order for data to be inserted, e.g.
-             ['INTEGER', 'TIMESTAMP', 'BOOLEAN']
-        col_order : sequence (optional)
-             order which columns are to be inserted, e.g. ['primary_key',
-             'birthday', 'username']
-        if_exists : {'fail', 'replace', 'append'} (optional)
-            - fail: If table exists, do nothing.
-            - replace: If table exists, drop it, recreate it, and insert data.
-            - append: If table exists, insert data. Create if does not exist.
-        kwargs are passed to the Client constructor
+            Name of table to be written, in the form 'dataset.tablename'
+        project_id : str
+            Google BigQuery Account project ID.
+        chunksize : int (default 10000)
+            Number of rows to be inserted in each chunk from the dataframe.
+        verbose : boolean (default True)
+            Show percentage complete
+        reauth : boolean (default False)
+            Force Google BigQuery to reauthenticate the user. This is useful
+            if multiple accounts are used.
 
-        Raises
-        ------
-        SchemaMissing :
-            Raised if the 'if_exists' parameter is set to 'replace', but no
-            schema is specified
-        TableExists :
-            Raised if the specified 'destination_table' exists but the
-            'if_exists' parameter is set to 'fail' (the default)
-        InvalidSchema :
-            Raised if the 'schema' parameter does not match the provided
-            DataFrame
         """
 
         from pandas.io import gbq
-        return gbq.to_gbq(self, destination_table, schema=None, col_order=None,
-                          if_exists='fail', **kwargs)
+        return gbq.to_gbq(self, destination_table, project_id=project_id,
+                          chunksize=chunksize, verbose=verbose,
+                          reauth=reauth)
 
     @classmethod
     def from_records(cls, data, index=None, exclude=None, columns=None,
@@ -1166,7 +1160,7 @@ class DataFrame(NDFrame):
             Missing data representation
         float_format : string, default None
             Format string for floating point numbers
-        cols : sequence, optional
+        columns : sequence, optional
             Columns to write
         header : boolean or list of string, default True
             Write out column names. If a list of string is given it is
@@ -1177,7 +1171,7 @@ class DataFrame(NDFrame):
             Column label for index column(s) if desired. If None is given, and
             `header` and `index` are True, then the index names are used. A
             sequence should be given if the DataFrame uses MultiIndex.
-        startow :
+        startrow :
             upper left cell row to dump data frame
         startcol :
             upper left cell column to dump data frame
@@ -2326,19 +2320,24 @@ class DataFrame(NDFrame):
         else:
             new_obj = self.copy()
 
-        def _maybe_cast(values, labels=None):
+        def _maybe_casted_values(index, labels=None):
+            if isinstance(index, PeriodIndex):
+                values = index.asobject
+            elif (isinstance(index, DatetimeIndex) and
+                  index.tz is not None):
+                values = index.asobject
+            else:
+                values = index.values
+                if values.dtype == np.object_:
+                    values = lib.maybe_convert_objects(values)
 
-            if values.dtype == np.object_:
-                values = lib.maybe_convert_objects(values)
-
-            # if we have the labels, extract the values with a mask
-            if labels is not None:
-                mask = labels == -1
-                values = values.take(labels)
-                if mask.any():
-                    values, changed = com._maybe_upcast_putmask(
-                        values, mask, np.nan)
-
+                # if we have the labels, extract the values with a mask
+                if labels is not None:
+                    mask = labels == -1
+                    values = values.take(labels)
+                    if mask.any():
+                        values, changed = com._maybe_upcast_putmask(values,
+                                                                    mask, np.nan)
             return values
 
         new_index = np.arange(len(new_obj))
@@ -2371,7 +2370,7 @@ class DataFrame(NDFrame):
                             col_name = tuple(name_lst)
 
                     # to ndarray and maybe infer different dtype
-                    level_values = _maybe_cast(lev.values, lab)
+                    level_values = _maybe_casted_values(lev, lab)
                     if level is None or i in level:
                         new_obj.insert(0, col_name, level_values)
 
@@ -2387,13 +2386,7 @@ class DataFrame(NDFrame):
                     lev_num = self.columns._get_level_number(col_level)
                     name_lst[lev_num] = name
                     name = tuple(name_lst)
-            if isinstance(self.index, PeriodIndex):
-                values = self.index.asobject
-            elif (isinstance(self.index, DatetimeIndex) and
-                  self.index.tz is not None):
-                values = self.index.asobject
-            else:
-                values = _maybe_cast(self.index.values)
+            values = _maybe_casted_values(self.index)
             new_obj.insert(0, name, values)
 
         new_obj.index = new_index
@@ -4314,12 +4307,8 @@ class DataFrame(NDFrame):
 
         axis = self._get_axis_number(axis)
         if axis == 0:
-            if freq is None:
-                freq = self.index.freqstr or self.index.inferred_freq
             new_data.set_axis(1, self.index.to_period(freq=freq))
         elif axis == 1:
-            if freq is None:
-                freq = self.columns.freqstr or self.columns.inferred_freq
             new_data.set_axis(0, self.columns.to_period(freq=freq))
         else:  # pragma: no cover
             raise AssertionError('Axis must be 0 or 1. Got %s' % str(axis))

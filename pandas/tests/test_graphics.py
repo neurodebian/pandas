@@ -28,12 +28,6 @@ from numpy.testing.decorators import slow
 import pandas.tools.plotting as plotting
 
 
-def _skip_if_no_scipy():
-    try:
-        import scipy
-    except ImportError:
-        raise nose.SkipTest("no scipy")
-
 def _skip_if_no_scipy_gaussian_kde():
     try:
         import scipy
@@ -609,16 +603,16 @@ class TestSeriesPlots(TestPlotBase):
         df = self.hist_df
 
         axes = _check_plot_works(df.height.hist, by=df.gender, layout=(2, 1))
-        self._check_axes_shape(axes, axes_num=2, layout=(2, 1), figsize=(10, 5))
+        self._check_axes_shape(axes, axes_num=2, layout=(2, 1))
 
         axes = _check_plot_works(df.height.hist, by=df.category, layout=(4, 1))
-        self._check_axes_shape(axes, axes_num=4, layout=(4, 1), figsize=(10, 5))
+        self._check_axes_shape(axes, axes_num=4, layout=(4, 1))
 
         axes = _check_plot_works(df.height.hist, by=df.classroom, layout=(2, 2))
-        self._check_axes_shape(axes, axes_num=3, layout=(2, 2), figsize=(10, 5))
+        self._check_axes_shape(axes, axes_num=3, layout=(2, 2))
 
-        axes = _check_plot_works(df.height.hist, by=df.category, layout=(4, 2))
-        self._check_axes_shape(axes, axes_num=4, layout=(4, 2), figsize=(10, 5))
+        axes = _check_plot_works(df.height.hist, by=df.category, layout=(4, 2), figsize=(12, 7))
+        self._check_axes_shape(axes, axes_num=4, layout=(4, 2), figsize=(12, 7))
 
     @slow
     def test_hist_no_overlap(self):
@@ -655,7 +649,7 @@ class TestSeriesPlots(TestPlotBase):
 
     @slow
     def test_kde(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
         _skip_if_no_scipy_gaussian_kde()
         _check_plot_works(self.ts.plot, kind='kde')
         _check_plot_works(self.ts.plot, kind='density')
@@ -664,7 +658,7 @@ class TestSeriesPlots(TestPlotBase):
 
     @slow
     def test_kde_kwargs(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
         _skip_if_no_scipy_gaussian_kde()
         from numpy import linspace
         _check_plot_works(self.ts.plot, kind='kde', bw_method=.5, ind=linspace(-100,100,20))
@@ -674,7 +668,7 @@ class TestSeriesPlots(TestPlotBase):
 
     @slow
     def test_kde_color(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
         _skip_if_no_scipy_gaussian_kde()
         ax = self.ts.plot(kind='kde', logy=True, color='r')
         self._check_ax_scales(ax, yaxis='log')
@@ -828,6 +822,12 @@ class TestDataFramePlots(TestPlotBase):
 
         axes = _check_plot_works(df.plot, subplots=True, title='blah')
         self._check_axes_shape(axes, axes_num=3, layout=(3, 1))
+        for ax in axes[:2]:
+            self._check_visible(ax.get_xticklabels(), visible=False)
+            self._check_visible([ax.xaxis.get_label()], visible=False)
+        for ax in [axes[2]]:
+            self._check_visible(ax.get_xticklabels())
+            self._check_visible([ax.xaxis.get_label()])
 
         _check_plot_works(df.plot, title='blah')
 
@@ -1261,43 +1261,40 @@ class TestDataFramePlots(TestPlotBase):
                        align=align, width=width, position=position,
                        grid=True)
 
-        tick_pos = np.arange(len(df))
-
         axes = self._flatten_visible(axes)
 
         for ax in axes:
             if kind == 'bar':
                 axis = ax.xaxis
                 ax_min, ax_max = ax.get_xlim()
+                min_edge = min([p.get_x() for p in ax.patches])
+                max_edge = max([p.get_x() + p.get_width() for p in ax.patches])
             elif kind == 'barh':
                 axis = ax.yaxis
                 ax_min, ax_max = ax.get_ylim()
+                min_edge = min([p.get_y() for p in ax.patches])
+                max_edge = max([p.get_y() + p.get_height() for p in ax.patches])
             else:
                 raise ValueError
+
+            # GH 7498
+            # compare margins between lim and bar edges
+            self.assertAlmostEqual(ax_min, min_edge - 0.25)
+            self.assertAlmostEqual(ax_max, max_edge + 0.25)
 
             p = ax.patches[0]
             if kind == 'bar' and (stacked is True or subplots is True):
                 edge = p.get_x()
                 center = edge + p.get_width() * position
-                tickoffset = width * position
             elif kind == 'bar' and stacked is False:
                 center = p.get_x() + p.get_width() * len(df.columns) * position
                 edge = p.get_x()
-                if align == 'edge':
-                    tickoffset = width * (position - 0.5) + p.get_width() * 1.5
-                else:
-                    tickoffset = width * position + p.get_width()
             elif kind == 'barh' and (stacked is True or subplots is True):
                 center = p.get_y() + p.get_height() * position
                 edge = p.get_y()
-                tickoffset = width * position
             elif kind == 'barh' and stacked is False:
                 center = p.get_y() + p.get_height() * len(df.columns) * position
                 edge = p.get_y()
-                if align == 'edge':
-                    tickoffset = width * (position - 0.5) + p.get_height() * 1.5
-                else:
-                    tickoffset = width * position + p.get_height()
             else:
                 raise ValueError
 
@@ -1313,58 +1310,42 @@ class TestDataFramePlots(TestPlotBase):
             else:
                 raise ValueError
 
-            # Check starting point and axes limit margin
-            self.assertEqual(ax_min, tick_pos[0] - tickoffset - 0.25)
-            self.assertEqual(ax_max, tick_pos[-1] - tickoffset + 1)
-            # Check tick locations and axes limit margin
-            t_min = axis.get_ticklocs()[0] - tickoffset
-            t_max = axis.get_ticklocs()[-1] - tickoffset
-            self.assertAlmostEqual(ax_min, t_min - 0.25)
-            self.assertAlmostEqual(ax_max, t_max + 1.0)
         return axes
 
     @slow
     def test_bar_stacked_center(self):
         # GH2157
         df = DataFrame({'A': [3] * 5, 'B': lrange(5)}, index=lrange(5))
-        axes = self._check_bar_alignment(df, kind='bar', stacked=True)
-        # Check the axes has the same drawing range before fixing # GH4525
-        self.assertEqual(axes[0].get_xlim(), (-0.5, 4.75))
-
+        self._check_bar_alignment(df, kind='bar', stacked=True)
         self._check_bar_alignment(df, kind='bar', stacked=True, width=0.9)
-
-        axes = self._check_bar_alignment(df, kind='barh', stacked=True)
-        self.assertEqual(axes[0].get_ylim(), (-0.5, 4.75))
-
+        self._check_bar_alignment(df, kind='barh', stacked=True)
         self._check_bar_alignment(df, kind='barh', stacked=True, width=0.9)
 
     @slow
     def test_bar_center(self):
         df = DataFrame({'A': [3] * 5, 'B': lrange(5)}, index=lrange(5))
-        axes = self._check_bar_alignment(df, kind='bar', stacked=False)
-        self.assertEqual(axes[0].get_xlim(), (-0.75, 4.5))
-
+        self._check_bar_alignment(df, kind='bar', stacked=False)
         self._check_bar_alignment(df, kind='bar', stacked=False, width=0.9)
-
-        axes = self._check_bar_alignment(df, kind='barh', stacked=False)
-        self.assertEqual(axes[0].get_ylim(), (-0.75, 4.5))
-
+        self._check_bar_alignment(df, kind='barh', stacked=False)
         self._check_bar_alignment(df, kind='barh', stacked=False, width=0.9)
 
     @slow
     def test_bar_subplots_center(self):
         df = DataFrame({'A': [3] * 5, 'B': lrange(5)}, index=lrange(5))
-        axes = self._check_bar_alignment(df, kind='bar', subplots=True)
-        for ax in axes:
-            self.assertEqual(ax.get_xlim(), (-0.5, 4.75))
-
+        self._check_bar_alignment(df, kind='bar', subplots=True)
         self._check_bar_alignment(df, kind='bar', subplots=True, width=0.9)
-
-        axes = self._check_bar_alignment(df, kind='barh', subplots=True)
-        for ax in axes:
-            self.assertEqual(ax.get_ylim(), (-0.5, 4.75))
-
+        self._check_bar_alignment(df, kind='barh', subplots=True)
         self._check_bar_alignment(df, kind='barh', subplots=True, width=0.9)
+
+    @slow
+    def test_bar_align_single_column(self):
+        df = DataFrame(randn(5))
+        self._check_bar_alignment(df, kind='bar', stacked=False)
+        self._check_bar_alignment(df, kind='bar', stacked=True)
+        self._check_bar_alignment(df, kind='barh', stacked=False)
+        self._check_bar_alignment(df, kind='barh', stacked=True)
+        self._check_bar_alignment(df, kind='bar', subplots=True)
+        self._check_bar_alignment(df, kind='barh', subplots=True)
 
     @slow
     def test_bar_edge(self):
@@ -1486,7 +1467,7 @@ class TestDataFramePlots(TestPlotBase):
 
     @slow
     def test_kde(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
         _skip_if_no_scipy_gaussian_kde()
         df = DataFrame(randn(100, 4))
         ax = _check_plot_works(df.plot, kind='kde')
@@ -1584,7 +1565,7 @@ class TestDataFramePlots(TestPlotBase):
 
     @slow
     def test_scatter(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
 
         df = DataFrame(randn(100, 2))
         import pandas.tools.plotting as plt
@@ -2255,11 +2236,11 @@ class TestDataFrameGroupByPlots(TestPlotBase):
         df = DataFrame(randn(500, 2), columns=['A', 'B'])
         df['C'] = np.random.randint(0, 4, 500)
         axes = plotting.grouped_hist(df.A, by=df.C)
-        self._check_axes_shape(axes, axes_num=4, layout=(2, 2), figsize=(10, 5))
+        self._check_axes_shape(axes, axes_num=4, layout=(2, 2))
 
         tm.close()
         axes = df.hist(by=df.C)
-        self._check_axes_shape(axes, axes_num=4, layout=(2, 2), figsize=(10, 5))
+        self._check_axes_shape(axes, axes_num=4, layout=(2, 2))
 
         tm.close()
         # make sure kwargs to hist are handled
@@ -2280,6 +2261,9 @@ class TestDataFrameGroupByPlots(TestPlotBase):
         # propagate attr exception from matplotlib.Axes.hist
         with tm.assertRaises(AttributeError):
             plotting.grouped_hist(df.A, by=df.C, foo='bar')
+
+        with tm.assert_produces_warning(FutureWarning):
+            df.hist(by='C', figsize='default')
 
     @slow
     def test_grouped_box_return_type(self):
@@ -2337,8 +2321,16 @@ class TestDataFrameGroupByPlots(TestPlotBase):
                                 column='height', return_type='dict')
         self._check_axes_shape(self.plt.gcf().axes, axes_num=3, layout=(2, 2))
 
-        box = df.boxplot(column=['height', 'weight', 'category'], by='gender')
+        # GH 5897
+        axes = df.boxplot(column=['height', 'weight', 'category'], by='gender',
+                          return_type='axes')
         self._check_axes_shape(self.plt.gcf().axes, axes_num=3, layout=(2, 2))
+        for ax in [axes['height']]:
+            self._check_visible(ax.get_xticklabels(), visible=False)
+            self._check_visible([ax.xaxis.get_label()], visible=False)
+        for ax in [axes['weight'], axes['category']]:
+            self._check_visible(ax.get_xticklabels())
+            self._check_visible([ax.xaxis.get_label()])
 
         box = df.groupby('classroom').boxplot(
             column=['height', 'weight', 'category'], return_type='dict')
@@ -2366,29 +2358,28 @@ class TestDataFrameGroupByPlots(TestPlotBase):
                           layout=(1, 3))
 
         axes = _check_plot_works(df.hist, column='height', by=df.gender, layout=(2, 1))
-        self._check_axes_shape(axes, axes_num=2, layout=(2, 1), figsize=(10, 5))
+        self._check_axes_shape(axes, axes_num=2, layout=(2, 1))
 
         axes = _check_plot_works(df.hist, column='height', by=df.category, layout=(4, 1))
-        self._check_axes_shape(axes, axes_num=4, layout=(4, 1), figsize=(10, 5))
+        self._check_axes_shape(axes, axes_num=4, layout=(4, 1))
 
         axes = _check_plot_works(df.hist, column='height', by=df.category,
                                  layout=(4, 2), figsize=(12, 8))
-
         self._check_axes_shape(axes, axes_num=4, layout=(4, 2), figsize=(12, 8))
 
         # GH 6769
         axes = _check_plot_works(df.hist, column='height', by='classroom', layout=(2, 2))
-        self._check_axes_shape(axes, axes_num=3, layout=(2, 2), figsize=(10, 5))
+        self._check_axes_shape(axes, axes_num=3, layout=(2, 2))
 
         # without column
         axes = _check_plot_works(df.hist, by='classroom')
-        self._check_axes_shape(axes, axes_num=3, layout=(2, 2), figsize=(10, 5))
+        self._check_axes_shape(axes, axes_num=3, layout=(2, 2))
 
         axes = _check_plot_works(df.hist, by='gender', layout=(3, 5))
-        self._check_axes_shape(axes, axes_num=2, layout=(3, 5), figsize=(10, 5))
+        self._check_axes_shape(axes, axes_num=2, layout=(3, 5))
 
         axes = _check_plot_works(df.hist, column=['height', 'weight', 'category'])
-        self._check_axes_shape(axes, axes_num=3, layout=(2, 2), figsize=(10, 5))
+        self._check_axes_shape(axes, axes_num=3, layout=(2, 2))
 
     @slow
     def test_axis_share_x(self):

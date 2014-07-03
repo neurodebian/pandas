@@ -412,6 +412,11 @@ class Block(PandasObject):
         """ reverse of try_coerce_args """
         return result
 
+    def _try_coerce_and_cast_result(self, result, dtype=None):
+        result = self._try_coerce_result(result)
+        result = self._try_cast_result(result, dtype=dtype)
+        return result
+
     def _try_fill(self, value):
         return value
 
@@ -513,8 +518,7 @@ class Block(PandasObject):
                 dtype, _ = _infer_dtype_from_scalar(value)
             else:
                 dtype = 'infer'
-            values = self._try_coerce_result(values)
-            values = self._try_cast_result(values, dtype)
+            values = self._try_coerce_and_cast_result(values, dtype)
             return [make_block(transf(values),
                                ndim=self.ndim, placement=self.mgr_locs,
                                fastpath=True)]
@@ -1033,9 +1037,11 @@ class FloatBlock(FloatOrComplexBlock):
     def _can_hold_element(self, element):
         if is_list_like(element):
             element = np.array(element)
-            return issubclass(element.dtype.type, (np.floating, np.integer))
-        return (isinstance(element, (float, int, np.float_, np.int_)) and
-                not isinstance(bool, np.bool_))
+            tipo = element.dtype.type
+            return issubclass(tipo, (np.floating, np.integer)) and not issubclass(
+                tipo, (np.datetime64, np.timedelta64))
+        return isinstance(element, (float, int, np.float_, np.int_)) and not isinstance(
+            element, (bool, np.bool_, datetime, timedelta, np.datetime64, np.timedelta64))
 
     def _try_cast(self, element):
         try:
@@ -1095,7 +1101,8 @@ class IntBlock(NumericBlock):
     def _can_hold_element(self, element):
         if is_list_like(element):
             element = np.array(element)
-            return issubclass(element.dtype.type, np.integer)
+            tipo = element.dtype.type
+            return issubclass(tipo, np.integer) and not issubclass(tipo, (np.datetime64, np.timedelta64))
         return com.is_integer(element)
 
     def _try_cast(self, element):
@@ -1596,15 +1603,18 @@ class SparseBlock(Block):
     def __init__(self, values, placement,
                  ndim=None, fastpath=False,):
 
+        # Placement must be converted to BlockPlacement via property setter
+        # before ndim logic, because placement may be a slice which doesn't
+        # have a length.
+        self.mgr_locs = placement
+
         # kludgetastic
         if ndim is None:
-            if len(placement) != 1:
+            if len(self.mgr_locs) != 1:
                 ndim = 1
             else:
                 ndim = 2
         self.ndim = ndim
-
-        self.mgr_locs = placement
 
         if not isinstance(values, SparseArray):
             raise TypeError("values must be SparseArray")
@@ -2043,26 +2053,44 @@ class BlockManager(PandasObject):
         block_values = [b.values for b in self.blocks]
         block_items = [self.items[b.mgr_locs.indexer] for b in self.blocks]
         axes_array = [ax for ax in self.axes]
-        return axes_array, block_values, block_items
+
+        extra_state = {
+            '0.14.1': {
+                'axes': axes_array,
+                'blocks': [dict(values=b.values,
+                                mgr_locs=b.mgr_locs.indexer)
+                           for b in self.blocks]
+            }
+        }
+
+        # First three elements of the state are to maintain forward
+        # compatibility with 0.13.1.
+        return axes_array, block_values, block_items, extra_state
 
     def __setstate__(self, state):
-        # discard anything after 3rd, support beta pickling format for a little
-        # while longer
-        ax_arrays, bvalues, bitems = state[:3]
-
-        self.axes = [_ensure_index(ax) for ax in ax_arrays]
-
-        blocks = []
-        for values, items in zip(bvalues, bitems):
-
+        def unpickle_block(values, mgr_locs):
             # numpy < 1.7 pickle compat
             if values.dtype == 'M8[us]':
                 values = values.astype('M8[ns]')
+            return make_block(values, placement=mgr_locs)
 
-            blk = make_block(values,
-                             placement=self.axes[0].get_indexer(items))
-            blocks.append(blk)
-        self.blocks = tuple(blocks)
+        if (isinstance(state, tuple) and len(state) >= 4
+            and '0.14.1' in state[3]):
+            state = state[3]['0.14.1']
+            self.axes = [_ensure_index(ax) for ax in state['axes']]
+            self.blocks = tuple(
+                unpickle_block(b['values'], b['mgr_locs'])
+                for b in state['blocks'])
+        else:
+            # discard anything after 3rd, support beta pickling format for a
+            # little while longer
+            ax_arrays, bvalues, bitems = state[:3]
+
+            self.axes = [_ensure_index(ax) for ax in ax_arrays]
+            self.blocks = tuple(
+                unpickle_block(values,
+                               self.axes[0].get_indexer(items))
+                for values, items in zip(bvalues, bitems))
 
         self._post_setstate()
 

@@ -32,7 +32,8 @@ import pandas.core.common as com
 import pandas.core.format as fmt
 import pandas.core.datetools as datetools
 from pandas import (DataFrame, Index, Series, notnull, isnull,
-                    MultiIndex, DatetimeIndex, Timestamp, date_range, read_csv)
+                    MultiIndex, DatetimeIndex, Timestamp, date_range, read_csv,
+                    _np_version_under1p7)
 import pandas as pd
 from pandas.parser import CParserError
 from pandas.util.misc import is_little_endian
@@ -51,12 +52,6 @@ import pandas.util.testing as tm
 import pandas.lib as lib
 
 from numpy.testing.decorators import slow
-
-def _skip_if_no_scipy():
-    try:
-        import scipy.stats
-    except ImportError:
-        raise nose.SkipTest("no scipy.stats module")
 
 #---------------------------------------------------------------------
 # DataFrame test cases
@@ -2182,6 +2177,20 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         df.pop('ts')
         assert_frame_equal(df, expected)
 
+        # GH 3950
+        # reset_index with single level
+        for tz in ['UTC', 'Asia/Tokyo', 'US/Eastern']:
+            idx = pd.date_range('1/1/2011', periods=5, freq='D', tz=tz, name='idx')
+            df = pd.DataFrame({'a': range(5), 'b': ['A', 'B', 'C', 'D', 'E']}, index=idx)
+
+            expected = pd.DataFrame({'idx': [datetime(2011, 1, 1), datetime(2011, 1, 2),
+                                             datetime(2011, 1, 3), datetime(2011, 1, 4),
+                                             datetime(2011, 1, 5)],
+                                     'a': range(5), 'b': ['A', 'B', 'C', 'D', 'E']},
+                                     columns=['idx', 'a', 'b'])
+            expected['idx'] = expected['idx'].apply(lambda d: pd.Timestamp(d, tz=tz))
+            assert_frame_equal(df.reset_index(), expected)
+
     def test_set_index_multiindexcolumns(self):
         columns = MultiIndex.from_tuples([('foo', 1), ('foo', 2), ('bar', 1)])
         df = DataFrame(np.random.randn(3, 3), columns=columns)
@@ -3578,6 +3587,19 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         expected.sort_index()
         assert_series_equal(result, expected)
 
+        # GH 7594
+        # don't coerce tz-aware
+        import pytz
+        tz = pytz.timezone('US/Eastern')
+        dt = tz.localize(datetime(2012, 1, 1))
+        df = DataFrame({'End Date': dt}, index=[0])
+        self.assertEqual(df.iat[0,0],dt)
+        assert_series_equal(df.dtypes,Series({'End Date' : np.dtype('object') }))
+
+        df = DataFrame([{'End Date': dt}])
+        self.assertEqual(df.iat[0,0],dt)
+        assert_series_equal(df.dtypes,Series({'End Date' : np.dtype('object') }))
+
     def test_constructor_for_list_with_dtypes(self):
         intname = np.dtype(np.int_).name
         floatname = np.dtype(np.float_).name
@@ -3748,6 +3770,28 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         df._consolidate_inplace()
         self.assertTrue(df['off1'].dtype == 'timedelta64[ns]')
         self.assertTrue(df['off2'].dtype == 'timedelta64[ns]')
+
+    def test_datetimelike_setitem_with_inference(self):
+        if _np_version_under1p7:
+            raise nose.SkipTest("numpy < 1.7")
+
+        # GH 7592
+        # assignment of timedeltas with NaT
+
+        one_hour = timedelta(hours=1)
+        df = DataFrame(index=date_range('20130101',periods=4))
+        df['A'] = np.array([1*one_hour]*4, dtype='m8[ns]')
+        df.loc[:,'B'] = np.array([2*one_hour]*4, dtype='m8[ns]')
+        df.loc[:3,'C'] = np.array([3*one_hour]*3, dtype='m8[ns]')
+        df.ix[:,'D'] = np.array([4*one_hour]*4, dtype='m8[ns]')
+        df.ix[:3,'E'] = np.array([5*one_hour]*3, dtype='m8[ns]')
+        df['F'] = np.timedelta64('NaT')
+        df.ix[:-1,'F'] = np.array([6*one_hour]*3, dtype='m8[ns]')
+        df.ix[-3:,'G'] = date_range('20130101',periods=3)
+        df['H'] = np.datetime64('NaT')
+        result = df.dtypes
+        expected = Series([np.dtype('timedelta64[ns]')]*6+[np.dtype('datetime64[ns]')]*2,index=list('ABCDEFGH'))
+        assert_series_equal(result,expected)
 
     def test_new_empty_index(self):
         df1 = DataFrame(randn(0, 3))
@@ -6739,28 +6783,28 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
             expected.ix['A', 'B'] = expected.ix['B', 'A'] = nan
 
     def test_corr_pearson(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
         self.frame['A'][:5] = nan
         self.frame['B'][5:10] = nan
 
         self._check_method('pearson')
 
     def test_corr_kendall(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
         self.frame['A'][:5] = nan
         self.frame['B'][5:10] = nan
 
         self._check_method('kendall')
 
     def test_corr_spearman(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
         self.frame['A'][:5] = nan
         self.frame['B'][5:10] = nan
 
         self._check_method('spearman')
 
     def test_corr_non_numeric(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
         self.frame['A'][:5] = nan
         self.frame['B'][5:10] = nan
 
@@ -6770,7 +6814,7 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         assert_frame_equal(result, expected)
 
     def test_corr_nooverlap(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
 
         # nothing in common
         for meth in ['pearson', 'kendall', 'spearman']:
@@ -6783,7 +6827,7 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
             self.assertEqual(rs.ix['B', 'B'], 1)
 
     def test_corr_constant(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
 
         # constant --> all NA
 
@@ -10957,7 +11001,7 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
             nanops._USE_BOTTLENECK = True
 
     def test_skew(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
         from scipy.stats import skew
 
         def alt(x):
@@ -10968,7 +11012,7 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         self._check_stat_op('skew', alt)
 
     def test_kurt(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
 
         from scipy.stats import kurtosis
 
@@ -11320,7 +11364,7 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         df.cumprod(1)
 
     def test_rank(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
         from scipy.stats import rankdata
 
         self.frame['A'][::2] = np.nan
@@ -11412,7 +11456,7 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         assert_frame_equal(df.rank(), exp)
 
     def test_rank_na_option(self):
-        _skip_if_no_scipy()
+        tm._skip_if_no_scipy()
         from scipy.stats import rankdata
 
         self.frame['A'][::2] = np.nan

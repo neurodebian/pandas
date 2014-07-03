@@ -376,3 +376,92 @@ class DatetimeIndexOpsMixin(object):
     is_quarter_end = _field_accessor('is_quarter_end', "Logical indicating if last day of quarter (defined by frequency)")
     is_year_start = _field_accessor('is_year_start', "Logical indicating if first day of year (defined by frequency)")
     is_year_end = _field_accessor('is_year_end', "Logical indicating if last day of year (defined by frequency)")
+
+    @property
+    def _box_func(self):
+        """
+        box function to get object from internal representation
+        """
+        raise NotImplementedError
+
+    def _box_values(self, values):
+        """
+        apply box func to passed values
+        """
+        import pandas.lib as lib
+        return lib.map_infer(values, self._box_func)
+
+    @property
+    def asobject(self):
+        from pandas.core.index import Index
+        return Index(self._box_values(self.asi8), name=self.name, dtype=object)
+
+    def tolist(self):
+        """
+        See ndarray.tolist
+        """
+        return list(self.asobject)
+
+    def min(self, axis=None):
+        """
+        Overridden ndarray.min to return an object
+        """
+        import pandas.tslib as tslib
+        mask = self.asi8 == tslib.iNaT
+        masked = self[~mask]
+        if len(masked) == 0:
+            return self._na_value
+        elif self.is_monotonic:
+            return masked[0]
+        else:
+            min_stamp = masked.asi8.min()
+            return self._box_func(min_stamp)
+
+    def max(self, axis=None):
+        """
+        Overridden ndarray.max to return an object
+        """
+        import pandas.tslib as tslib
+        mask = self.asi8 == tslib.iNaT
+        masked = self[~mask]
+        if len(masked) == 0:
+            return self._na_value
+        elif self.is_monotonic:
+            return masked[-1]
+        else:
+            max_stamp = masked.asi8.max()
+            return self._box_func(max_stamp)
+
+    @property
+    def _formatter_func(self):
+        """
+        Format function to convert value to representation
+        """
+        return str
+
+    def _format_footer(self):
+        tagline = 'Length: %d, Freq: %s, Timezone: %s'
+        return tagline % (len(self), self.freqstr, self.tz)
+
+    def __unicode__(self):
+        formatter = self._formatter_func
+        summary = str(self.__class__) + '\n'
+
+        n = len(self)
+        if n == 0:
+            pass
+        elif n == 1:
+            first = formatter(self[0])
+            summary += '[%s]\n' % first
+        elif n == 2:
+            first = formatter(self[0])
+            last = formatter(self[-1])
+            summary += '[%s, %s]\n' % (first, last)
+        else:
+            first = formatter(self[0])
+            last = formatter(self[-1])
+            summary += '[%s, ..., %s]\n' % (first, last)
+
+        summary += self._format_footer()
+        return summary
+

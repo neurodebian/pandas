@@ -1563,6 +1563,8 @@ class LinePlot(MPLPlot):
                 kwds = self.kwds.copy()
                 self._maybe_add_color(colors, kwds, style, i)
 
+                lines += _get_all_lines(ax)
+
                 errors = self._get_errorbars(label=label, index=i)
                 kwds = dict(kwds, **errors)
 
@@ -1784,9 +1786,10 @@ class BarPlot(MPLPlot):
         self.stacked = kwargs.pop('stacked', False)
 
         self.bar_width = kwargs.pop('width', 0.5)
+
         pos = kwargs.pop('position', 0.5)
 
-        kwargs['align'] = kwargs.pop('align', 'center')
+        kwargs.setdefault('align', 'center')
         self.tick_pos = np.arange(len(data))
 
         self.bottom = kwargs.pop('bottom', None)
@@ -1797,14 +1800,19 @@ class BarPlot(MPLPlot):
 
         if self.stacked or self.subplots:
             self.tickoffset = self.bar_width * pos
-        elif kwargs['align'] == 'edge':
-            K = self.nseries
-            w = self.bar_width / K
-            self.tickoffset = self.bar_width * (pos - 0.5) + w * 1.5
+            if kwargs['align'] == 'edge':
+                self.lim_offset = self.bar_width / 2
+            else:
+                self.lim_offset = 0
         else:
-            K = self.nseries
-            w = self.bar_width / K
-            self.tickoffset = self.bar_width * pos + w
+            if kwargs['align'] == 'edge':
+                w = self.bar_width / self.nseries
+                self.tickoffset = self.bar_width * (pos - 0.5) + w * 0.5
+                self.lim_offset = w * 0.5
+            else:
+                self.tickoffset = self.bar_width * pos
+                self.lim_offset = 0
+
         self.ax_pos = self.tick_pos - self.tickoffset
 
     def _args_adjust(self):
@@ -1881,9 +1889,8 @@ class BarPlot(MPLPlot):
                 neg_prior = neg_prior + np.where(mask, 0, y)
             else:
                 w = self.bar_width / K
-                rect = bar_f(ax, self.ax_pos + (i + 1.5) * w, y, w,
+                rect = bar_f(ax, self.ax_pos + (i + 0.5) * w, y, w,
                              start=start, label=label, **kwds)
-
             self._add_legend_handle(rect, label, index=i)
 
     def _post_plot_logic(self):
@@ -1894,8 +1901,12 @@ class BarPlot(MPLPlot):
                 str_index = [com.pprint_thing(key) for key in
                              range(self.data.shape[0])]
             name = self._get_index_name()
+
+            s_edge = self.ax_pos[0] - 0.25 + self.lim_offset
+            e_edge = self.ax_pos[-1] + 0.25 + self.bar_width + self.lim_offset
+
             if self.kind == 'bar':
-                ax.set_xlim([self.ax_pos[0] - 0.25, self.ax_pos[-1] + 1])
+                ax.set_xlim((s_edge, e_edge))
                 ax.set_xticks(self.tick_pos)
                 ax.set_xticklabels(str_index, rotation=self.rot,
                                    fontsize=self.fontsize)
@@ -1905,7 +1916,7 @@ class BarPlot(MPLPlot):
                     ax.set_xlabel(name)
             elif self.kind == 'barh':
                 # horizontal bars
-                ax.set_ylim([self.ax_pos[0] - 0.25, self.ax_pos[-1] + 1])
+                ax.set_ylim((s_edge, e_edge))
                 ax.set_yticks(self.tick_pos)
                 ax.set_yticklabels(str_index, rotation=self.rot,
                                    fontsize=self.fontsize)
@@ -1914,9 +1925,6 @@ class BarPlot(MPLPlot):
                     ax.set_ylabel(name)
             else:
                 raise NotImplementedError(self.kind)
-
-        # if self.subplots and self.legend:
-        #    self.axes[0].legend(loc='best')
 
 
 class PiePlot(MPLPlot):
@@ -2734,9 +2742,11 @@ def _grouped_plot(plotf, data, column=None, by=None, numeric_only=True,
                   rot=0, ax=None, **kwargs):
     from pandas import DataFrame
 
-    # allow to specify mpl default with 'default'
-    if figsize is None or figsize == 'default':
-        figsize = (10, 5)               # our default
+    if figsize == 'default':
+        # allowed to specify mpl default with 'default'
+        warnings.warn("figsize='default' is deprecated. Specify figure"
+                      "size by tuple instead", FutureWarning)
+        figsize = None
 
     grouped = data.groupby(by)
     if column is not None:
@@ -2744,10 +2754,6 @@ def _grouped_plot(plotf, data, column=None, by=None, numeric_only=True,
 
     naxes = len(grouped)
     nrows, ncols = _get_layout(naxes, layout=layout)
-    if figsize is None:
-        # our favorite default beating matplotlib's idea of the
-        # default size
-        figsize = (10, 5)
     fig, axes = _subplots(nrows=nrows, ncols=ncols, naxes=naxes,
                           figsize=figsize, sharex=sharex, sharey=sharey, ax=ax)
 
@@ -3022,15 +3028,16 @@ def _subplots(nrows=1, ncols=1, naxes=None, sharex=False, sharey=False, squeeze=
 
     if nplots > 1:
         if sharex and nrows > 1:
-            for i, ax in enumerate(axarr):
-                if np.ceil(float(i + 1) / ncols) < nrows:  # only last row
-                    [label.set_visible(
-                        False) for label in ax.get_xticklabels()]
+            for ax in axarr[:naxes][:-ncols]:    # only bottom row
+                for label in ax.get_xticklabels():
+                    label.set_visible(False)
+                ax.xaxis.get_label().set_visible(False)
         if sharey and ncols > 1:
             for i, ax in enumerate(axarr):
                 if (i % ncols) != 0:  # only first column
-                    [label.set_visible(
-                        False) for label in ax.get_yticklabels()]
+                    for label in ax.get_yticklabels():
+                        label.set_visible(False)
+                    ax.yaxis.get_label().set_visible(False)
 
     if naxes != nplots:
         for ax in axarr[naxes:]:
@@ -3057,6 +3064,20 @@ def _flatten(axes):
     elif isinstance(axes, np.ndarray):
         axes = axes.ravel()
     return axes
+
+
+def _get_all_lines(ax):
+    lines = ax.get_lines()
+
+    # check for right_ax, which can oddly sometimes point back to ax
+    if hasattr(ax, 'right_ax') and ax.right_ax != ax:
+        lines += ax.right_ax.get_lines()
+
+    # no such risk with left_ax
+    if hasattr(ax, 'left_ax'):
+        lines += ax.left_ax.get_lines()
+
+    return lines
 
 
 def _get_xlim(lines):

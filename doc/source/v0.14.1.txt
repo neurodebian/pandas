@@ -1,17 +1,13 @@
 .. _whatsnew_0141:
 
-v0.14.1 (???)
--------------
+v0.14.1 (July 11, 2014)
+-----------------------
 
 This is a minor release from 0.14.0 and includes a small number of API changes, several new features,
 enhancements, and performance improvements along with a large number of bug fixes. We recommend that all
 users upgrade to this version.
 
-- Highlights include:
-
-  - Support for ``dateutil`` timezones. See :ref:`Here <whatsnew_0141.enhancements>`
-
-- :ref:`Other Enhancements <whatsnew_0141.enhancements>`
+- :ref:`Enhancements <whatsnew_0141.enhancements>`
 
 - :ref:`API Changes <whatsnew_0141.api>`
 
@@ -56,13 +52,14 @@ API changes
   containing ``NaN`` values - now also has ``dtype=object`` instead of
   ``float`` (:issue:`7242`)
 
-- `StringMethods`` now work on empty Series (:issue:`7242`)
+- ``StringMethods`` now work on empty Series (:issue:`7242`)
 - ``Period`` objects no longer raise a ``TypeError`` when compared using ``==``
-  with another object that *isn't* a ``Period``. See :issue:`7376`. Instead
+  with another object that *isn't* a ``Period``. Instead
   when comparing a ``Period`` with another object using ``==`` if the other
-  object isn't a ``Period`` ``False`` is returned.
+  object isn't a ``Period`` ``False`` is returned. (:issue:`7376`)
 
 - Bug in ``.loc`` performing fallback integer indexing with ``object`` dtype indices (:issue:`7496`)
+- Add back ``#N/A N/A`` as a default NA value in text parsing, (regresion from 0.12) (:issue:`5521`)
 
 .. _whatsnew_0141.prior_deprecations:
 
@@ -86,6 +83,10 @@ Enhancements
 
 
 - Add ``dropna`` argument to ``value_counts`` and ``nunique`` (:issue:`5569`).
+- Add ``NotImplementedError`` for simultaneous use of ``chunksize`` and ``nrows``
+  for read_csv() (:issue:`6774`).
+
+- ``PeriodIndex`` is represented as the same format as ``DatetimeIndex`` (:issue:`7601`)
 
 
 
@@ -98,25 +99,25 @@ Enhancements
 
 
 
-
-
-
-
-
-
+- The file parsers ``read_csv`` and ``read_table`` now ignore line comments provided by
+  the parameter `comment`, which accepts only a single character for the C reader.
+  In particular, they allow for comments before file data begins (:issue:`2685`)
 - Tests for basic reading of public S3 buckets now exist (:issue:`7281`).
 - ``read_html`` now sports an ``encoding`` argument that is passed to the
   underlying parser library. You can use this to read non-ascii encoded web
   pages (:issue:`7323`).
+- ``read_excel`` now supports reading from URLs in the same way
+  that ``read_csv`` does.  (:issue:`6809`)
+
 
 - Support for dateutil timezones, which can now be used in the same way as
   pytz timezones across pandas. (:issue:`4688`)
 
   .. ipython:: python
 
-   rng = date_range('3/6/2012 00:00', periods=10, freq='D',
-                    tz='dateutil/Europe/London')
-   rng.tz
+     rng = date_range('3/6/2012 00:00', periods=10, freq='D',
+                      tz='dateutil/Europe/London')
+     rng.tz
 
   See :ref:`the docs <timeseries.timezone>`.
 
@@ -130,7 +131,10 @@ Enhancements
 
 - All offsets ``apply``, ``rollforward`` and ``rollback`` can now handle ``np.datetime64``, previously results in ``ApplyTypeError`` (:issue:`7452`)
 
-
+- ``Period`` and ``PeriodIndex`` can contain ``NaT`` in its values (:issue:`7485`)
+- Support pickling ``Series``, ``DataFrame`` and ``Panel`` objects with
+  non-unique labels along *item* axis (``index``, ``columns`` and ``items``
+  respectively) (:issue:`7370`).
 
 
 .. _whatsnew_0141.performance:
@@ -140,40 +144,38 @@ Performance
 - Improvements in dtype inference for numeric operations involving yielding performance gains for dtypes: ``int64``, ``timedelta64``, ``datetime64`` (:issue:`7223`)
 - Improvements in Series.transform for significant performance gains (:issue:`6496`)
 - Improvements in DataFrame.transform with ufuncs and built-in grouper functions for signifcant performance gains (:issue:`7383`)
+- Regression in groupby aggregation of datetime64 dtypes (:issue:`7555`)
+- Improvements in `MultiIndex.from_product` for large iterables (:issue:`7627`)
 
-
-
-
+- Bug in subplots displays ``ticklabels`` and ``labels`` in different rule (:issue:`5897`)
 
 
 
 Experimental
 ~~~~~~~~~~~~
 
-``pandas.io.data.Options`` has a get_all_data method and now consistently returns a multi-indexed ``DataFrame`` (:issue:`5602`)
-    See :ref:`the docs<remote_data.yahoo_Options>` ***Experimental***
-
-      .. ipython:: python
-
-      from pandas.io.data import Options
-      aapl = Options('aapl', 'yahoo')
-      data = aapl.get_all_data()
-      data.iloc[0:5, 0:5]
-
+- ``io.gbq.read_gbq`` and ``io.gbq.to_gbq`` were refactored to remove the
+  dependency on the Google ``bq.py`` command line client. This submodule
+  now uses ``httplib2`` and the Google ``apiclient`` and ``oauth2client`` API client
+  libraries which should be more stable and, therefore, reliable than
+  ``bq.py`` (:issue:`6937`).
 
 .. _whatsnew_0141.bug_fixes:
 
 Bug Fixes
 ~~~~~~~~~
 - Bug in ``DataFrame.where`` with a symmetric shaped frame and a passed other of a DataFrame (:issue:`7506`)
-
-
+- Bug in Panel indexing with a multi-index axis (:issue:`7516`)
+- Regression in datetimelike slice indexing with a duplicated index and non-exact end-points (:issue:`7523`)
+- Bug in setitem with list-of-lists and single vs mixed types (:issue:`7551`:)
 - Bug in timeops with non-aligned Series (:issue:`7500`)
-
-
+- Bug in timedelta inference when assigning an incomplete Series (:issue:`7592`)
+- Bug in groupby ``.nth`` with a Series and integer-like column name (:issue:`7559`)
+- Bug in ``Series.get`` with a boolean accessor (:issue:`7407`)
 - Bug in ``value_counts`` where ``NaT`` did not qualify as missing (``NaN``) (:issue:`7423`)
+- Bug in ``to_timedelta`` that accepted invalid units and misinterpreted 'm/h' (:issue:`7611`, :issue: `6423`)
 
-
+- Bug in grouped ``hist`` and ``scatter`` plots use old ``figsize`` default (:issue:`7394`)
 
 - Bug in ``Panel.apply`` with a multi-index as an axis (:issue:`7469`)
 
@@ -182,12 +184,13 @@ Bug Fixes
 - Bug in ``DatetimeIndex.asobject`` doesn't preserve ``name`` (:issue:`7299`)
 - Bug in multi-index slicing with datetimelike ranges (strings and Timestamps), (:issue:`7429`)
 - Bug in ``Index.min`` and ``max`` doesn't handle ``nan`` and ``NaT`` properly (:issue:`7261`)
+- Bug in ``PeriodIndex.min/max`` results in ``int`` (:issue:`7609`)
 - Bug in ``resample`` where ``fill_method`` was ignored if you passed ``how`` (:issue:`7261`)
 - Bug in ``TimeGrouper`` doesn't exclude column specified by ``key`` (:issue:`7227`)
 - Bug in ``DataFrame`` and ``Series`` bar and barh plot raises ``TypeError`` when ``bottom``
   and ``left`` keyword is specified (:issue:`7226`)
-- BUG in ``DataFrame.hist`` raises ``TypeError`` when it contains non numeric column (:issue:`7277`)
-- BUG in ``Index.delete`` does not preserve ``name`` and ``freq`` attributes (:issue:`7302`)
+- Bug in ``DataFrame.hist`` raises ``TypeError`` when it contains non numeric column (:issue:`7277`)
+- Bug in ``Index.delete`` does not preserve ``name`` and ``freq`` attributes (:issue:`7302`)
 - Bug in ``DataFrame.query()``/``eval`` where local string variables with the @
   sign were being treated as temporaries attempting to be deleted
   (:issue:`7300`).
@@ -236,19 +239,41 @@ Bug Fixes
 - Bug in when writing Stata files where the encoding was ignored (:issue:`7286`)
 
 
+- Bug in ``DatetimeIndex`` comparison doesn't handle ``NaT`` properly (:issue:`7529`)
 
 
 - Bug in passing input with ``tzinfo`` to some offsets ``apply``, ``rollforward`` or ``rollback`` resets ``tzinfo`` or raises ``ValueError`` (:issue:`7465`)
+- Bug in ``DatetimeIndex.to_period``, ``PeriodIndex.asobject``, ``PeriodIndex.to_timestamp`` doesn't preserve ``name`` (:issue:`7485`)
+- Bug in ``DatetimeIndex.to_period`` and ``PeriodIndex.to_timestanp`` handle ``NaT`` incorrectly (:issue:`7228`)
+
+- Bug in ``offsets.apply``, ``rollforward`` and ``rollback`` may return normal ``datetime`` (:issue:`7502`)
 
 
-- BUG in ``resample`` raises ``ValueError`` when target contains ``NaT`` (:issue:`7227`)
+- Bug in ``resample`` raises ``ValueError`` when target contains ``NaT`` (:issue:`7227`)
 
-
+- Bug in ``Timestamp.tz_localize`` resets ``nanosecond`` info (:issue:`7534`)
+- Bug in ``DatetimeIndex.asobject`` raises ``ValueError`` when it contains ``NaT`` (:issue:`7539`)
+- Bug in ``Timestamp.__new__`` doesn't preserve nanosecond properly (:issue:`7610`)
 
 - Bug in ``Index.astype(float)`` where it would return an ``object`` dtype
   ``Index`` (:issue:`7464`).
+- Bug in ``DataFrame.reset_index`` loses ``tz`` (:issue:`3950`)
+- Bug in ``DatetimeIndex.freqstr`` raises ``AttributeError`` when ``freq`` is ``None`` (:issue:`7606`)
+- Bug in ``GroupBy.size`` created by ``TimeGrouper`` raises ``AttributeError`` (:issue:`7453`)
+
+- Bug in single column bar plot is misaligned (:issue:`7498`).
 
 
 
 - Bug in non-monotonic ``Index.union`` may preserve ``name`` incorrectly (:issue:`7458`)
 - Bug in ``DatetimeIndex.intersection`` doesn't preserve timezone (:issue:`4690`)
+
+- Bug in ``rolling_var`` where a window larger than the array would raise an error(:issue:`7297`)
+
+- Bug with last plotted timeseries dictating ``xlim`` (:issue:`2960`)
+- Bug with ``secondary_y`` axis not being considered for timeseries ``xlim`` (:issue:`3490`)
+
+- Bug in ``Float64Index`` assignment with a non scalar indexer (:issue:`7586`)
+- Bug in ``pandas.core.strings.str_contains`` does not properly match in a case insensitive fashion when ``regex=False`` and ``case=False`` (:issue:`7505`)
+
+- Bug in ``expanding_cov``, ``expanding_corr``, ``rolling_cov``, and ``rolling_corr`` for two arguments with mismatched index  (:issue:`7512`)

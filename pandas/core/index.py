@@ -1191,7 +1191,7 @@ class Index(IndexOpsMixin, FrozenNDArray):
         try:
             return self._engine.get_value(s, k)
         except KeyError as e1:
-            if len(self) > 0 and self.inferred_type == 'integer':
+            if len(self) > 0 and self.inferred_type in ['integer','boolean']:
                 raise
 
             try:
@@ -1758,7 +1758,11 @@ class Index(IndexOpsMixin, FrozenNDArray):
 
             except KeyError:
                 if self.is_monotonic:
-                    if not is_unique:
+
+                    # we are duplicated but non-unique
+                    # so if we have an indexer then we are done
+                    # else search for it (GH 7523)
+                    if not is_unique and is_integer(search_value):
                         slc = search_value
                     else:
                         slc = self.searchsorted(search_value,
@@ -2070,7 +2074,7 @@ class Float64Index(Index):
 
     def get_loc(self, key):
         try:
-            if np.isnan(key):
+            if np.all(np.isnan(key)):
                 try:
                     return self._nan_idxs.item()
                 except ValueError:
@@ -2871,10 +2875,14 @@ class MultiIndex(Index):
         MultiIndex.from_arrays : Convert list of arrays to MultiIndex
         MultiIndex.from_tuples : Convert list of tuples to MultiIndex
         """
+        from pandas.core.categorical import Categorical
         from pandas.tools.util import cartesian_product
-        product = cartesian_product(iterables)
-        return MultiIndex.from_arrays(product, sortorder=sortorder,
-                                      names=names)
+
+        categoricals = [Categorical.from_array(it) for it in iterables]
+        labels = cartesian_product([c.labels for c in categoricals])
+
+        return MultiIndex(levels=[c.levels for c in categoricals],
+                          labels=labels, sortorder=sortorder, names=names)
 
     @property
     def nlevels(self):

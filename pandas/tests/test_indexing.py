@@ -1179,6 +1179,16 @@ class TestIndexing(tm.TestCase):
         result2 = wd2.iloc[0,[0],[0,1,2]]
         assert_frame_equal(result2,expected2)
 
+        # GH 7516
+        mi = MultiIndex.from_tuples([(0,'x'), (1,'y'), (2,'z')])
+        p = Panel(np.arange(3*3*3,dtype='int64').reshape(3,3,3), items=['a','b','c'], major_axis=mi, minor_axis=['u','v','w'])
+        result = p.iloc[:, 1, 0]
+        expected = Series([3,12,21],index=['a','b','c'], name='u')
+        assert_series_equal(result,expected)
+
+        result = p.loc[:, (1,'y'), 'u']
+        assert_series_equal(result,expected)
+
     def test_iloc_getitem_doc_issue(self):
 
         # multi axis slicing issue with single block
@@ -1262,7 +1272,6 @@ class TestIndexing(tm.TestCase):
         result = df.iloc[:,2:3]
         assert_frame_equal(result, expected)
 
-    def test_iloc_setitem_series(self):
         s = Series(np.random.randn(10), index=lrange(0,20,2))
 
         s.iloc[1] = 1
@@ -1273,6 +1282,20 @@ class TestIndexing(tm.TestCase):
         expected = s.iloc[:4]
         result = s.iloc[:4]
         assert_series_equal(result, expected)
+
+    def test_iloc_setitem_list_of_lists(self):
+
+        # GH 7551
+        # list-of-list is set incorrectly in mixed vs. single dtyped frames
+        df = DataFrame(dict(A = np.arange(5,dtype='int64'), B = np.arange(5,10,dtype='int64')))
+        df.iloc[2:4] = [[10,11],[12,13]]
+        expected = DataFrame(dict(A = [0,1,10,12,4], B = [5,6,11,13,9]))
+        assert_frame_equal(df, expected)
+
+        df = DataFrame(dict(A = list('abcde'), B = np.arange(5,10,dtype='int64')))
+        df.iloc[2:4] = [['x',11],['y',13]]
+        expected = DataFrame(dict(A = ['a','b','x','y','e'], B = [5,6,11,13,9]))
+        assert_frame_equal(df, expected)
 
     def test_iloc_getitem_multiindex(self):
         mi_labels = DataFrame(np.random.randn(4, 3), columns=[['i', 'i', 'j'],
@@ -3660,6 +3683,18 @@ class TestIndexing(tm.TestCase):
         r = df.ix[0.2, 'a']
         e = df.loc[0.2, 'a']
         tm.assert_series_equal(r, e)
+
+    def test_float_index_non_scalar_assignment(self):
+        df = DataFrame({'a': [1,2,3], 'b': [3,4,5]},index=[1.,2.,3.])
+        df.loc[df.index[:2]] = 1
+        expected = DataFrame({'a':[1,1,3],'b':[1,1,5]},index=df.index)
+        tm.assert_frame_equal(expected, df)
+
+        df = DataFrame({'a': [1,2,3], 'b': [3,4,5]},index=[1.,2.,3.])
+        df2 = df.copy()
+        df.loc[df.index] = df.loc[df.index]
+        tm.assert_frame_equal(df,df2)
+
 
 
 if __name__ == '__main__':

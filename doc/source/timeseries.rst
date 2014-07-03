@@ -1280,9 +1280,10 @@ To supply the time zone, you can use the ``tz`` keyword to ``date_range`` and
 other functions. Dateutil time zone strings are distinguished from ``pytz``
 time zones by starting with ``dateutil/``.
 
-- In ``pytz`` you can find a list of common (and less common) time zones using ``from pytz import common_timezones, all_timezones``.
+- In ``pytz`` you can find a list of common (and less common) time zones using
+  ``from pytz import common_timezones, all_timezones``.
 - ``dateutil`` uses the OS timezones so there isn't a fixed list available. For
-common zones, the names are the same as ``pytz``.
+  common zones, the names are the same as ``pytz``.
 
 .. ipython:: python
 
@@ -1448,7 +1449,7 @@ Elements can be set to ``NaT`` using ``np.nan`` analagously to datetimes
    y[1] = np.nan
    y
 
-Operands can also appear in a reversed order (a singluar object operated with a Series)
+Operands can also appear in a reversed order (a singular object operated with a Series)
 
 .. ipython:: python
 
