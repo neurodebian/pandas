@@ -1,6 +1,9 @@
 pandas (0.14.0+git393-g959e3e4-1) experimental; urgency=medium
 
-  * New upstream snapshot from v0.14.0-345-g8cd3dd6 
+  * New upstream snapshot from v0.14.0-345-g8cd3dd6
+  * debian/rules
+    - disable running disabled tests to prevent clipboard tests failures
+      under kfreebsd kernels
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 07 Jul 2014 12:29:50 -0400
 

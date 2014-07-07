@@ -94,7 +94,7 @@ ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 	export MPLCONFIGDIR=$(CURDIR)/build HOME=$(CURDIR)/build; \
 	python$* ci/print_versions.py; \
     cd build/; xvfb-run -a -s "-screen 0 1280x1024x24 -noreset" \
-      python$* /usr/bin/nosetests -s -v -a '!network' $(EXCLUDE_TESTS) $(EXCLUDE_TESTS$*) pandas;
+      python$* /usr/bin/nosetests -s -v -A 'not network and not disabled' $(EXCLUDE_TESTS) $(EXCLUDE_TESTS$*) pandas;
 else
 	: # Skip unittests due to nocheck
 endif
