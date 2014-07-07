@@ -1663,7 +1663,7 @@ class NDFrame(PandasObject):
 
         Parameters
         ----------
-        index : array-like, optional
+        labels : array-like
             New labels / index to conform to. Preferably an Index object to
             avoid duplicating data
         axis : %(axes_single_arg)s
@@ -1909,6 +1909,24 @@ class NDFrame(PandasObject):
     def _is_datelike_mixed_type(self):
         f = lambda: self._data.is_datelike_mixed_type
         return self._protect_consolidate(f)
+
+    def _check_inplace_setting(self, value):
+        """ check whether we allow in-place setting with this type of value """
+
+        if self._is_mixed_type:
+            if not self._is_numeric_mixed_type:
+
+                # allow an actual np.nan thru
+                try:
+                    if np.isnan(value):
+                        return True
+                except:
+                    pass
+
+                raise TypeError(
+                    'Cannot do inplace boolean setting on mixed-types with a non np.nan value')
+
+        return True
 
     def _protect_consolidate(self, f):
         blocks_before = len(self._data.blocks)
@@ -2514,7 +2532,7 @@ class NDFrame(PandasObject):
 
         Parameters
         ----------
-        method : {'linear', 'time', 'values', 'index' 'nearest', 'zero',
+        method : {'linear', 'time', 'index', 'values', 'nearest', 'zero',
                   'slinear', 'quadratic', 'cubic', 'barycentric', 'krogh',
                   'polynomial', 'spline' 'piecewise_polynomial', 'pchip'}
 
@@ -2522,7 +2540,7 @@ class NDFrame(PandasObject):
               spaced. default
             * 'time': interpolation works on daily and higher resolution
               data to interpolate given length of interval
-            * 'index': use the actual numerical values of the index
+            * 'index', 'values': use the actual numerical values of the index
             * 'nearest', 'zero', 'slinear', 'quadratic', 'cubic',
               'barycentric', 'polynomial' is passed to
               `scipy.interpolate.interp1d` with the order given both
@@ -3214,6 +3232,8 @@ class NDFrame(PandasObject):
         if inplace:
             # we may have different type blocks come out of putmask, so
             # reconstruct the block manager
+
+            self._check_inplace_setting(other)
             new_data = self._data.putmask(mask=cond, new=other, align=axis is None,
                                           inplace=True)
             self._update_inplace(new_data)

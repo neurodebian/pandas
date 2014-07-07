@@ -76,6 +76,17 @@ def _parse_date_columns(data_frame, parse_dates):
     return data_frame
 
 
+def _is_sqlalchemy_engine(con):
+    try:
+        import sqlalchemy
+        if isinstance(con, sqlalchemy.engine.Engine):
+            return True
+        else:
+            return False
+    except ImportError:
+        return False
+
+
 def execute(sql, con, cur=None, params=None):
     """
     Execute the given SQL query using the provided connection object.
@@ -262,7 +273,15 @@ def read_sql_table(table_name, con, index_col=None, coerce_float=True,
 
 
     """
-    pandas_sql = PandasSQLAlchemy(con)
+    import sqlalchemy
+    from sqlalchemy.schema import MetaData
+    meta = MetaData(con)
+    try:
+        meta.reflect(only=[table_name])
+    except sqlalchemy.exc.InvalidRequestError:
+        raise ValueError("Table %s not found" % table_name)
+
+    pandas_sql = PandasSQLAlchemy(con, meta=meta)
     table = pandas_sql.read_table(
         table_name, index_col=index_col, coerce_float=coerce_float,
         parse_dates=parse_dates, columns=columns)
@@ -380,6 +399,7 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
             coerce_float=coerce_float, parse_dates=parse_dates)
 
     if pandas_sql.has_table(sql):
+        pandas_sql.meta.reflect(only=[sql])
         return pandas_sql.read_table(
             sql, index_col=index_col, coerce_float=coerce_float,
             parse_dates=parse_dates, columns=columns)
@@ -471,17 +491,9 @@ def pandasSQL_builder(con, flavor=None, meta=None, is_cursor=False):
     """
     # When support for DBAPI connections is removed,
     # is_cursor should not be necessary.
-    try:
-        import sqlalchemy
-
-        if isinstance(con, sqlalchemy.engine.Engine):
-            return PandasSQLAlchemy(con, meta=meta)
-        else:
-            if flavor == 'mysql':
-                warnings.warn(_MYSQL_WARNING, FutureWarning)
-            return PandasSQLLegacy(con, flavor, is_cursor=is_cursor)
-
-    except ImportError:
+    if _is_sqlalchemy_engine(con):
+        return PandasSQLAlchemy(con, meta=meta)
+    else:
         if flavor == 'mysql':
             warnings.warn(_MYSQL_WARNING, FutureWarning)
         return PandasSQLLegacy(con, flavor, is_cursor=is_cursor)
@@ -700,7 +712,8 @@ class PandasSQLTable(PandasObject):
                 pass  # this column not in results
 
     def _sqlalchemy_type(self, arr_or_dtype):
-        from sqlalchemy.types import Integer, Float, Text, Boolean, DateTime, Date, Interval
+        from sqlalchemy.types import (BigInteger, Float, Text, Boolean,
+            DateTime, Date, Interval)
 
         if arr_or_dtype is date:
             return Date
@@ -714,12 +727,12 @@ class PandasSQLTable(PandasObject):
             warnings.warn("the 'timedelta' type is not supported, and will be "
                           "written as integer values (ns frequency) to the "
                           "database.", UserWarning)
-            return Integer
+            return BigInteger
         elif com.is_float_dtype(arr_or_dtype):
             return Float
         elif com.is_integer_dtype(arr_or_dtype):
             # TODO: Refine integer size.
-            return Integer
+            return BigInteger
         elif com.is_bool(arr_or_dtype):
             return Boolean
         return Text
@@ -767,7 +780,6 @@ class PandasSQLAlchemy(PandasSQL):
         if not meta:
             from sqlalchemy.schema import MetaData
             meta = MetaData(self.engine)
-            meta.reflect(self.engine)
 
         self.meta = meta
 
@@ -812,19 +824,16 @@ class PandasSQLAlchemy(PandasSQL):
         return self.meta.tables
 
     def has_table(self, name):
-        if self.meta.tables.get(name) is not None:
-            return True
-        else:
-            return False
+        return self.engine.has_table(name)
 
     def get_table(self, table_name):
         return self.meta.tables.get(table_name)
 
     def drop_table(self, table_name):
         if self.engine.has_table(table_name):
+            self.meta.reflect(only=[table_name])
             self.get_table(table_name).drop()
             self.meta.clear()
-            self.meta.reflect()
 
     def _create_sql_schema(self, frame, table_name):
         table = PandasSQLTable(table_name, self, frame=frame)
