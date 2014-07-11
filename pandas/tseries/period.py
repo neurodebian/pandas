@@ -14,13 +14,13 @@ import pandas.tseries.frequencies as _freq_mod
 
 import pandas.core.common as com
 from pandas.core.common import (isnull, _INT64_DTYPE, _maybe_box,
-                                _values_from_object)
+                                _values_from_object, ABCSeries)
 from pandas import compat
 from pandas.lib import Timestamp
 import pandas.lib as lib
 import pandas.tslib as tslib
 import pandas.algos as _algos
-from pandas.compat import map, zip, u
+from pandas.compat import zip, u
 
 
 #---------------
@@ -546,13 +546,13 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
     end   : end value, period-like, optional
         If periods is none, generated index will extend to first conforming
         period on or just past end argument
-    year : int or array, default None
-    month : int or array, default None
-    quarter : int or array, default None
-    day : int or array, default None
-    hour : int or array, default None
-    minute : int or array, default None
-    second : int or array, default None
+    year : int, array, or Series, default None
+    month : int, array, or Series, default None
+    quarter : int, array, or Series, default None
+    day : int, array, or Series, default None
+    hour : int, array, or Series, default None
+    minute : int, array, or Series, default None
+    second : int, array, or Series, default None
     tz : object, default None
         Timezone for converting datetime64 data to Periods
 
@@ -1261,13 +1261,13 @@ def _range_from_fields(year=None, month=None, quarter=None, day=None,
 def _make_field_arrays(*fields):
     length = None
     for x in fields:
-        if isinstance(x, (list, np.ndarray)):
+        if isinstance(x, (list, np.ndarray, ABCSeries)):
             if length is not None and len(x) != length:
                 raise ValueError('Mismatched Period array lengths')
             elif length is None:
                 length = len(x)
 
-    arrays = [np.asarray(x) if isinstance(x, (np.ndarray, list))
+    arrays = [np.asarray(x) if isinstance(x, (np.ndarray, list, ABCSeries))
               else np.repeat(x, length) for x in fields]
 
     return arrays

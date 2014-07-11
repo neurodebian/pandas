@@ -6,7 +6,7 @@ import numpy as np
 from pandas.core import common as com
 import pandas.core.nanops as nanops
 import pandas.tslib as tslib
-
+from pandas.util.decorators import cache_readonly
 
 class StringMixin(object):
 
@@ -248,9 +248,11 @@ class IndexOpsMixin(object):
     def value_counts(self, normalize=False, sort=True, ascending=False,
                      bins=None, dropna=True):
         """
-        Returns object containing counts of unique values. The resulting object
-        will be in descending order so that the first element is the most
-        frequently-occurring element. Excludes NA values.
+        Returns object containing counts of unique values.
+
+        The resulting object will be in descending order so that the
+        first element is the most frequently-occurring element.
+        Excludes NA values by default.
 
         Parameters
         ----------
@@ -264,8 +266,8 @@ class IndexOpsMixin(object):
         bins : integer, optional
             Rather than count values, group them into half-open bins,
             a convenience for pd.cut, only works with numeric data
-        dropna : boolean, default False
-            Don't include counts of NaN
+        dropna : boolean, default True
+            Don't include counts of NaN.
 
         Returns
         -------
@@ -289,7 +291,14 @@ class IndexOpsMixin(object):
 
     def nunique(self, dropna=True):
         """
-        Return count of unique elements in the object. Excludes NA values.
+        Return number of unique elements in the object.
+
+        Excludes NA values by default.
+
+        Parameters
+        ----------
+        dropna : boolean, default True
+            Don't include NaN in the count.
 
         Returns
         -------
@@ -392,6 +401,11 @@ class DatetimeIndexOpsMixin(object):
         import pandas.lib as lib
         return lib.map_infer(values, self._box_func)
 
+    @cache_readonly
+    def hasnans(self):
+        """ return if I have any nans; enables various perf speedups """
+        return (self.asi8 == tslib.iNaT).any()
+
     @property
     def asobject(self):
         from pandas.core.index import Index
@@ -408,11 +422,18 @@ class DatetimeIndexOpsMixin(object):
         Overridden ndarray.min to return an object
         """
         try:
-            mask = self.asi8 == tslib.iNaT
-            if mask.any():
+            i8 = self.asi8
+
+            # quick check
+            if len(i8) and self.is_monotonic:
+                if i8[0] != tslib.iNaT:
+                    return self._box_func(i8[0])
+
+            if self.hasnans:
+                mask = i8 == tslib.iNaT
                 min_stamp = self[~mask].asi8.min()
             else:
-                min_stamp = self.asi8.min()
+                min_stamp = i8.min()
             return self._box_func(min_stamp)
         except ValueError:
             return self._na_value
@@ -422,11 +443,18 @@ class DatetimeIndexOpsMixin(object):
         Overridden ndarray.max to return an object
         """
         try:
-            mask = self.asi8 == tslib.iNaT
-            if mask.any():
+            i8 = self.asi8
+
+            # quick check
+            if len(i8) and self.is_monotonic:
+                if i8[-1] != tslib.iNaT:
+                    return self._box_func(i8[-1])
+
+            if self.hasnans:
+                mask = i8 == tslib.iNaT
                 max_stamp = self[~mask].asi8.max()
             else:
-                max_stamp = self.asi8.max()
+                max_stamp = i8.max()
             return self._box_func(max_stamp)
         except ValueError:
             return self._na_value

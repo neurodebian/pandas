@@ -180,7 +180,7 @@ class TestCommon(Base):
                           'Milli': Timestamp('2011-01-01 09:00:00.001000'),
                           'Micro': Timestamp('2011-01-01 09:00:00.000001'),
                           'Nano': Timestamp(np.datetime64('2011-01-01T09:00:00.000000001Z'))}
- 
+
         self.timezones = ['UTC', 'Asia/Tokyo', 'US/Eastern']
 
     def test_return_type(self):
@@ -360,6 +360,42 @@ class TestCommon(Base):
 
             date = datetime(dt.year, dt.month, dt.day)
             self.assert_(offset_n.onOffset(date))
+
+    def test_add(self):
+        dt = datetime(2011, 1, 1, 9, 0)
+
+        for offset in self.offset_types:
+            offset_s = self._get_offset(offset)
+            expected = self.expecteds[offset.__name__]
+
+            result_dt = dt + offset_s
+            result_ts = Timestamp(dt) + offset_s
+            for result in [result_dt, result_ts]:
+                self.assertTrue(isinstance(result, Timestamp))
+                self.assertEqual(result, expected)
+
+            tm._skip_if_no_pytz()
+            for tz in self.timezones:
+                expected_localize = expected.tz_localize(tz)
+                result = Timestamp(dt, tz=tz) + offset_s
+                self.assert_(isinstance(result, Timestamp))
+                self.assertEqual(result, expected_localize)
+
+            # normalize=True
+            offset_s = self._get_offset(offset, normalize=True)
+            expected = Timestamp(expected.date())
+
+            result_dt = dt + offset_s
+            result_ts = Timestamp(dt) + offset_s
+            for result in [result_dt, result_ts]:
+                self.assertTrue(isinstance(result, Timestamp))
+                self.assertEqual(result, expected)
+
+            for tz in self.timezones:
+                expected_localize = expected.tz_localize(tz)
+                result = Timestamp(dt, tz=tz) + offset_s
+                self.assert_(isinstance(result, Timestamp))
+                self.assertEqual(result, expected_localize)
 
 
 class TestDateOffset(Base):
@@ -2782,8 +2818,8 @@ def test_Microsecond():
 
 
 def test_NanosecondGeneric():
-    if _np_version_under1p7:
-        raise nose.SkipTest('numpy >= 1.7 required')
+    tm._skip_if_not_numpy17_friendly()
+
     timestamp = Timestamp(datetime(2010, 1, 1))
     assert timestamp.nanosecond == 0
 
@@ -2795,8 +2831,7 @@ def test_NanosecondGeneric():
 
 
 def test_Nanosecond():
-    if _np_version_under1p7:
-        raise nose.SkipTest('numpy >= 1.7 required')
+    tm._skip_if_not_numpy17_friendly()
 
     timestamp = Timestamp(datetime(2010, 1, 1))
     assertEq(Nano(), timestamp, timestamp + np.timedelta64(1, 'ns'))
