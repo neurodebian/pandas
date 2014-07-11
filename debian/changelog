@@ -1,4 +1,10 @@
-pandas (0.14.0+git393-g959e3e4-1) experimental; urgency=medium
+pandas (0.14.1-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 10 Jul 2014 23:38:49 -0400
+
+pandas (0.14.0+git393-g959e3e4-1) UNRELEASED; urgency=medium
 
   * New upstream snapshot from v0.14.0-345-g8cd3dd6
   * debian/rules
