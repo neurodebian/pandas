@@ -278,7 +278,8 @@ latex_documents = [
 intersphinx_mapping = {
     'statsmodels': ('http://statsmodels.sourceforge.net/devel/', None),
     'matplotlib': ('http://matplotlib.org/', None),
-    'python': ('http://docs.python.org/', None)
+    'python': ('http://docs.python.org/', None),
+    'numpy': ('http://docs.scipy.org/doc/numpy', None)
 }
 import glob
 autosummary_generate = glob.glob("*.rst")
@@ -293,7 +294,7 @@ ipython_exec_lines = [
     'import numpy as np',
     'import pandas as pd',
     # This ensures correct rendering on system with console encoding != utf8
-    # (windows). It forces pandas to encode it's output reprs using utf8
+    # (windows). It forces pandas to encode its output reprs using utf8
     # whereever the docs are built. The docs' target is the browser, not
     # the console, so this is fine.
     'pd.options.display.encoding="utf8"'

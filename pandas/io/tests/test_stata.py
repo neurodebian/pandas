@@ -5,17 +5,20 @@ import datetime as dt
 import os
 import warnings
 import nose
+import struct
 import sys
 from distutils.version import LooseVersion
 
 import numpy as np
 
 import pandas as pd
+from pandas.compat import iterkeys
 from pandas.core.frame import DataFrame, Series
 from pandas.io.parsers import read_csv
 from pandas.io.stata import (read_stata, StataReader, InvalidColumnName,
-    PossiblePrecisionLoss)
+    PossiblePrecisionLoss, StataMissingValue)
 import pandas.util.testing as tm
+from pandas.tslib import NaT
 from pandas.util.misc import is_little_endian
 from pandas import compat
 
@@ -68,7 +71,19 @@ class TestStata(tm.TestCase):
         self.dta15_115 = os.path.join(self.dirpath, 'stata6_115.dta')
         self.dta15_117 = os.path.join(self.dirpath, 'stata6_117.dta')
 
+        self.dta16_115 = os.path.join(self.dirpath, 'stata7_115.dta')
+        self.dta16_117 = os.path.join(self.dirpath, 'stata7_117.dta')
+
+        self.dta17_113 = os.path.join(self.dirpath, 'stata8_113.dta')
+        self.dta17_115 = os.path.join(self.dirpath, 'stata8_115.dta')
+        self.dta17_117 = os.path.join(self.dirpath, 'stata8_117.dta')
+
+        self.dta18_115 = os.path.join(self.dirpath, 'stata9_115.dta')
+        self.dta18_117 = os.path.join(self.dirpath, 'stata9_117.dta')
+
+
     def read_dta(self, file):
+        # Legacy default reader configuration
         return read_stata(file, convert_dates=True)
 
     def read_csv(self, file):
@@ -197,6 +212,9 @@ class TestStata(tm.TestCase):
             ],
             columns=['fully_labeled', 'fully_labeled2', 'incompletely_labeled',
                      'labeled_with_missings', 'float_labelled'])
+
+        # these are all categoricals
+        expected = pd.concat([ Series(pd.Categorical(value)) for col, value in compat.iteritems(expected)],axis=1)
 
         tm.assert_frame_equal(parsed_113, expected)
         tm.assert_frame_equal(parsed_114, expected)
@@ -523,6 +541,190 @@ class TestStata(tm.TestCase):
             written_and_read_again = self.read_dta(path)
             tm.assert_frame_equal(written_and_read_again.set_index('index'),
                                   expected)
+
+    def test_bool_uint(self):
+        s0 = Series([0, 1, True], dtype=np.bool)
+        s1 = Series([0, 1, 100], dtype=np.uint8)
+        s2 = Series([0, 1, 255], dtype=np.uint8)
+        s3 = Series([0, 1, 2 ** 15 - 100], dtype=np.uint16)
+        s4 = Series([0, 1, 2 ** 16 - 1], dtype=np.uint16)
+        s5 = Series([0, 1, 2 ** 31 - 100], dtype=np.uint32)
+        s6 = Series([0, 1, 2 ** 32 - 1], dtype=np.uint32)
+
+        original = DataFrame({'s0': s0, 's1': s1, 's2': s2, 's3': s3,
+                              's4': s4, 's5': s5, 's6': s6})
+        original.index.name = 'index'
+        expected = original.copy()
+        expected_types = (np.int8, np.int8, np.int16, np.int16, np.int32,
+                          np.int32, np.float64)
+        for c, t in zip(expected.columns, expected_types):
+            expected[c] = expected[c].astype(t)
+
+        with tm.ensure_clean() as path:
+            original.to_stata(path)
+            written_and_read_again = self.read_dta(path)
+            written_and_read_again = written_and_read_again.set_index('index')
+            tm.assert_frame_equal(written_and_read_again, expected)
+
+    def test_variable_labels(self):
+        sr_115 = StataReader(self.dta16_115).variable_labels()
+        sr_117 = StataReader(self.dta16_117).variable_labels()
+        keys = ('var1', 'var2', 'var3')
+        labels = ('label1', 'label2', 'label3')
+        for k,v in compat.iteritems(sr_115):
+            self.assertTrue(k in sr_117)
+            self.assertTrue(v == sr_117[k])
+            self.assertTrue(k in keys)
+            self.assertTrue(v in labels)
+
+    def test_minimal_size_col(self):
+        str_lens = (1, 100, 244)
+        s = {}
+        for str_len in str_lens:
+            s['s' + str(str_len)] = Series(['a' * str_len, 'b' * str_len, 'c' * str_len])
+        original = DataFrame(s)
+        with tm.ensure_clean() as path:
+            original.to_stata(path, write_index=False)
+            sr = StataReader(path)
+            variables = sr.varlist
+            formats = sr.fmtlist
+            for variable, fmt in zip(variables, formats):
+                self.assertTrue(int(variable[1:]) == int(fmt[1:-1]))
+
+    def test_excessively_long_string(self):
+        str_lens = (1, 244, 500)
+        s = {}
+        for str_len in str_lens:
+            s['s' + str(str_len)] = Series(['a' * str_len, 'b' * str_len, 'c' * str_len])
+        original = DataFrame(s)
+        with tm.assertRaises(ValueError):
+            with tm.ensure_clean() as path:
+                original.to_stata(path)
+
+    def test_missing_value_generator(self):
+        types = ('b','h','l')
+        df = DataFrame([[0.0]],columns=['float_'])
+        with tm.ensure_clean() as path:
+            df.to_stata(path)
+            valid_range = StataReader(path).VALID_RANGE
+        expected_values = ['.' + chr(97 + i) for i in range(26)]
+        expected_values.insert(0, '.')
+        for t in types:
+            offset = valid_range[t][1]
+            for i in range(0,27):
+                val = StataMissingValue(offset+1+i)
+                self.assertTrue(val.string == expected_values[i])
+
+        # Test extremes for floats
+        val = StataMissingValue(struct.unpack('<f',b'\x00\x00\x00\x7f')[0])
+        self.assertTrue(val.string == '.')
+        val = StataMissingValue(struct.unpack('<f',b'\x00\xd0\x00\x7f')[0])
+        self.assertTrue(val.string == '.z')
+
+        # Test extremes for floats
+        val = StataMissingValue(struct.unpack('<d',b'\x00\x00\x00\x00\x00\x00\xe0\x7f')[0])
+        self.assertTrue(val.string == '.')
+        val = StataMissingValue(struct.unpack('<d',b'\x00\x00\x00\x00\x00\x1a\xe0\x7f')[0])
+        self.assertTrue(val.string == '.z')
+
+    def test_missing_value_conversion(self):
+        columns = ['int8_', 'int16_', 'int32_', 'float32_', 'float64_']
+        smv = StataMissingValue(101)
+        keys = [key for key in iterkeys(smv.MISSING_VALUES)]
+        keys.sort()
+        data = []
+        for i in range(27):
+            row = [StataMissingValue(keys[i+(j*27)]) for j in range(5)]
+            data.append(row)
+        expected = DataFrame(data,columns=columns)
+
+        parsed_113 = read_stata(self.dta17_113, convert_missing=True)
+        parsed_115 = read_stata(self.dta17_115, convert_missing=True)
+        parsed_117 = read_stata(self.dta17_117, convert_missing=True)
+
+        tm.assert_frame_equal(expected, parsed_113)
+        tm.assert_frame_equal(expected, parsed_115)
+        tm.assert_frame_equal(expected, parsed_117)
+
+    def test_big_dates(self):
+        yr = [1960, 2000, 9999, 100, 2262, 1677]
+        mo = [1, 1, 12, 1, 4, 9]
+        dd = [1, 1, 31, 1, 22, 23]
+        hr = [0, 0, 23, 0, 0, 0]
+        mm = [0, 0, 59, 0, 0, 0]
+        ss = [0, 0, 59, 0, 0, 0]
+        expected = []
+        for i in range(len(yr)):
+            row = []
+            for j in range(7):
+                if j == 0:
+                    row.append(
+                        datetime(yr[i], mo[i], dd[i], hr[i], mm[i], ss[i]))
+                elif j == 6:
+                    row.append(datetime(yr[i], 1, 1))
+                else:
+                    row.append(datetime(yr[i], mo[i], dd[i]))
+            expected.append(row)
+        expected.append([NaT] * 7)
+        columns = ['date_tc', 'date_td', 'date_tw', 'date_tm', 'date_tq',
+                   'date_th', 'date_ty']
+        # Fixes for weekly, quarterly,half,year
+        expected[2][2] = datetime(9999,12,24)
+        expected[2][3] = datetime(9999,12,1)
+        expected[2][4] = datetime(9999,10,1)
+        expected[2][5] = datetime(9999,7,1)
+        expected[4][2] = datetime(2262,4,16)
+        expected[4][3] = expected[4][4] = datetime(2262,4,1)
+        expected[4][5] = expected[4][6] = datetime(2262,1,1)
+        expected[5][2] = expected[5][3] = expected[5][4] = datetime(1677,10,1)
+        expected[5][5] = expected[5][6] = datetime(1678,1,1)
+
+        expected = DataFrame(expected, columns=columns, dtype=np.object)
+
+        parsed_115 = read_stata(self.dta18_115)
+        parsed_117 = read_stata(self.dta18_117)
+        tm.assert_frame_equal(expected, parsed_115)
+        tm.assert_frame_equal(expected, parsed_117)
+
+        date_conversion =  dict((c, c[-2:]) for c in columns)
+        #{c : c[-2:] for c in columns}
+        with tm.ensure_clean() as path:
+            expected.index.name = 'index'
+            expected.to_stata(path, date_conversion)
+            written_and_read_again = self.read_dta(path)
+            tm.assert_frame_equal(written_and_read_again.set_index('index'),
+                                  expected)
+
+    def test_dtype_conversion(self):
+        expected = self.read_csv(self.csv15)
+        expected['byte_'] = expected['byte_'].astype(np.int8)
+        expected['int_'] = expected['int_'].astype(np.int16)
+        expected['long_'] = expected['long_'].astype(np.int32)
+        expected['float_'] = expected['float_'].astype(np.float32)
+        expected['double_'] = expected['double_'].astype(np.float64)
+        expected['date_td'] = expected['date_td'].apply(datetime.strptime,
+                                                        args=('%Y-%m-%d',))
+
+        no_conversion = read_stata(self.dta15_117,
+                                   convert_dates=True)
+        tm.assert_frame_equal(expected, no_conversion)
+
+        conversion = read_stata(self.dta15_117,
+                                convert_dates=True,
+                                preserve_dtypes=False)
+
+        # read_csv types are the same
+        expected = self.read_csv(self.csv15)
+        expected['date_td'] = expected['date_td'].apply(datetime.strptime,
+                                                        args=('%Y-%m-%d',))
+
+        tm.assert_frame_equal(expected, conversion)
+
+
+
+
+
+
 
 
 if __name__ == '__main__':

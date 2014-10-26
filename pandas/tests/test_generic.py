@@ -7,7 +7,7 @@ from numpy import nan
 import pandas as pd
 
 from pandas import (Index, Series, DataFrame, Panel,
-                    isnull, notnull,date_range)
+                    isnull, notnull, date_range, period_range)
 from pandas.core.index import Index, MultiIndex
 
 import pandas.core.common as com
@@ -123,6 +123,23 @@ class Generic(object):
 
         # _get_numeric_data is includes _get_bool_data, so can't test for non-inclusion
 
+    def test_get_default(self):
+
+        # GH 7725
+        d0 = "a", "b", "c", "d"
+        d1 = np.arange(4, dtype='int64')
+        others = "e", 10
+
+        for data, index in ((d0, d1), (d1, d0)):
+            s = Series(data, index=index)
+            for i,d in zip(index, data):
+                self.assertEqual(s.get(i), d)
+                self.assertEqual(s.get(i, d), d)
+                self.assertEqual(s.get(i, "z"), d)
+                for other in others:
+                    self.assertEqual(s.get(other, "z"), "z")
+                    self.assertEqual(s.get(other, other), other)
+
     def test_nonzero(self):
 
         # GH 4633
@@ -160,8 +177,6 @@ class Generic(object):
         self.assertRaises(ValueError, lambda : not obj1)
 
     def test_numpy_1_7_compat_numeric_methods(self):
-        tm._skip_if_not_numpy17_friendly()
-
         # GH 4435
         # numpy in 1.7 tries to pass addtional arguments to pandas functions
 
@@ -486,7 +501,7 @@ class TestSeries(tm.TestCase, Generic):
         ser = Series(np.sort(np.random.uniform(size=100)))
 
         # interpolate at new_index
-        new_index = ser.index + Index([49.25, 49.5, 49.75, 50.25, 50.5, 50.75])
+        new_index = ser.index.union(Index([49.25, 49.5, 49.75, 50.25, 50.5, 50.75]))
         interp_s = ser.reindex(new_index).interpolate(method='pchip')
         # does not blow up, GH5977
         interp_s[49:51]
@@ -641,6 +656,13 @@ class TestSeries(tm.TestCase, Generic):
         expected = Series([1., 1., 3.], index=date_range('1/1/2000', periods=3))
         assert_series_equal(result, expected)
 
+    def test_interp_limit_no_nans(self):
+        # GH 7173
+        s = pd.Series([1., 2., 3.])
+        result = s.interpolate(limit=1)
+        expected = s
+        assert_series_equal(result, expected)
+
     def test_describe(self):
         _ = self.series.describe()
         _ = self.ts.describe()
@@ -734,8 +756,8 @@ class TestDataFrame(tm.TestCase, Generic):
 
         result = df.set_index('C').interpolate()
         expected = df.set_index('C')
-        expected.A.loc[3] = 3
-        expected.B.loc[5] = 9
+        expected.loc[3,'A'] = 3
+        expected.loc[5,'B'] = 9
         assert_frame_equal(result, expected)
 
     def test_interp_bad_method(self):
@@ -810,8 +832,8 @@ class TestDataFrame(tm.TestCase, Generic):
                         'C': [1, 2, 3, 5, 8, 13, 21]})
         result = df.interpolate(method='barycentric')
         expected = df.copy()
-        expected['A'].iloc[2] = 3
-        expected['A'].iloc[5] = 6
+        expected.ix[2,'A'] = 3
+        expected.ix[5,'A'] = 6
         assert_frame_equal(result, expected)
 
         result = df.interpolate(method='barycentric', downcast='infer')
@@ -819,15 +841,13 @@ class TestDataFrame(tm.TestCase, Generic):
 
         result = df.interpolate(method='krogh')
         expectedk = df.copy()
-        # expectedk['A'].iloc[2] = 3
-        # expectedk['A'].iloc[5] = 6
         expectedk['A'] = expected['A']
         assert_frame_equal(result, expectedk)
 
         _skip_if_no_pchip()
         result = df.interpolate(method='pchip')
-        expected['A'].iloc[2] = 3
-        expected['A'].iloc[5] = 6.125
+        expected.ix[2,'A'] = 3
+        expected.ix[5,'A'] = 6.125
         assert_frame_equal(result, expected)
 
     def test_interp_rowwise(self):
@@ -838,9 +858,9 @@ class TestDataFrame(tm.TestCase, Generic):
                         4: [1, 2, 3, 4]})
         result = df.interpolate(axis=1)
         expected = df.copy()
-        expected[1].loc[3] = 5
-        expected[2].loc[0] = 3
-        expected[3].loc[1] = 3
+        expected.loc[3,1] = 5
+        expected.loc[0,2] = 3
+        expected.loc[1,3] = 3
         expected[4] = expected[4].astype(np.float64)
         assert_frame_equal(result, expected)
 
@@ -985,18 +1005,17 @@ class TestDataFrame(tm.TestCase, Generic):
         df = DataFrame({"C1": pd.date_range('2010-01-01', periods=4, freq='D')})
         df.loc[4] = pd.Timestamp('2010-01-04')
         result = df.describe()
-        expected = DataFrame({"C1": [5, 4, pd.Timestamp('2010-01-01'),
-                                     pd.Timestamp('2010-01-04'),
-                                     pd.Timestamp('2010-01-04'), 2]},
-                             index=['count', 'unique', 'first', 'last', 'top',
-                                    'freq'])
+        expected = DataFrame({"C1": [5, 4, pd.Timestamp('2010-01-04'), 2,
+                                     pd.Timestamp('2010-01-01'),
+                                     pd.Timestamp('2010-01-04')]},
+                             index=['count', 'unique', 'top', 'freq',
+                                    'first', 'last'])
         assert_frame_equal(result, expected)
 
         # mix time and str
         df['C2'] = ['a', 'a', 'b', 'c', 'a']
         result = df.describe()
-        # when mix of dateimte / obj the index gets reordered.
-        expected['C2'] = [5, 3, np.nan, np.nan, 'a', 3]
+        expected['C2'] = [5, 3, 'a', 3, np.nan, np.nan]
         assert_frame_equal(result, expected)
 
         # just str
@@ -1015,6 +1034,112 @@ class TestDataFrame(tm.TestCase, Generic):
 
         assert_frame_equal(df[['C1', 'C3']].describe(), df[['C3']].describe())
         assert_frame_equal(df[['C2', 'C3']].describe(), df[['C3']].describe())
+
+    def test_describe_typefiltering(self):
+        df = DataFrame({'catA': ['foo', 'foo', 'bar'] * 8,
+                        'catB': ['a', 'b', 'c', 'd'] * 6,
+                        'numC': np.arange(24, dtype='int64'),
+                        'numD': np.arange(24.) + .5,
+                        'ts': tm.makeTimeSeries()[:24].index})
+
+        descN = df.describe()
+        expected_cols = ['numC', 'numD',]
+        expected = DataFrame(dict((k, df[k].describe())
+                                  for k in expected_cols),
+                             columns=expected_cols)
+        assert_frame_equal(descN, expected)
+
+        desc = df.describe(include=['number'])
+        assert_frame_equal(desc, descN)
+        desc = df.describe(exclude=['object', 'datetime'])
+        assert_frame_equal(desc, descN)
+        desc = df.describe(include=['float'])
+        assert_frame_equal(desc, descN.drop('numC',1))
+
+        descC = df.describe(include=['O'])
+        expected_cols = ['catA', 'catB']
+        expected = DataFrame(dict((k, df[k].describe())
+                                  for k in expected_cols),
+                             columns=expected_cols)
+        assert_frame_equal(descC, expected)
+
+        descD = df.describe(include=['datetime'])
+        assert_series_equal( descD.ts, df.ts.describe())
+
+        desc = df.describe(include=['object','number', 'datetime'])
+        assert_frame_equal(desc.loc[:,["numC","numD"]].dropna(), descN)
+        assert_frame_equal(desc.loc[:,["catA","catB"]].dropna(), descC)
+        descDs = descD.sort_index() # the index order change for mixed-types
+        assert_frame_equal(desc.loc[:,"ts":].dropna().sort_index(), descDs)
+
+        desc = df.loc[:,'catA':'catB'].describe(include='all')
+        assert_frame_equal(desc, descC)
+        desc = df.loc[:,'numC':'numD'].describe(include='all')
+        assert_frame_equal(desc, descN)
+
+        desc = df.describe(percentiles = [], include='all')
+        cnt = Series(data=[4,4,6,6,6], index=['catA','catB','numC','numD','ts'])
+        assert_series_equal( desc.count(), cnt)
+        self.assertTrue('count' in desc.index)
+        self.assertTrue('unique' in desc.index)
+        self.assertTrue('50%' in desc.index)
+        self.assertTrue('first' in desc.index)
+
+        desc = df.drop("ts", 1).describe(percentiles = [], include='all')
+        assert_series_equal( desc.count(), cnt.drop("ts"))
+        self.assertTrue('first' not in desc.index)
+        desc = df.drop(["numC","numD"], 1).describe(percentiles = [], include='all')
+        assert_series_equal( desc.count(), cnt.drop(["numC","numD"]))
+        self.assertTrue('50%' not in desc.index)
+
+    def test_describe_typefiltering_category_bool(self):
+        df = DataFrame({'A_cat': pd.Categorical(['foo', 'foo', 'bar'] * 8),
+                        'B_str': ['a', 'b', 'c', 'd'] * 6,
+                        'C_bool': [True] * 12 + [False] * 12,
+                        'D_num': np.arange(24.) + .5,
+                        'E_ts': tm.makeTimeSeries()[:24].index})
+
+        # bool is considered numeric in describe, although not an np.number
+        desc = df.describe()
+        expected_cols = ['C_bool', 'D_num']
+        expected = DataFrame(dict((k, df[k].describe())
+                                  for k in expected_cols),
+                             columns=expected_cols)
+        assert_frame_equal(desc, expected)
+
+        desc = df.describe(include=["category"])
+        self.assertTrue(desc.columns.tolist() == ["A_cat"])
+
+        # 'all' includes numpy-dtypes + category
+        desc1 = df.describe(include="all")
+        desc2 = df.describe(include=[np.generic, "category"])
+        assert_frame_equal(desc1, desc2)
+
+    def test_describe_timedelta(self):
+        df = DataFrame({"td": pd.to_timedelta(np.arange(24)%20,"D")})
+        self.assertTrue(df.describe().loc["mean"][0] == pd.to_timedelta("8d4h"))
+
+    def test_describe_typefiltering_dupcol(self):
+        df = DataFrame({'catA': ['foo', 'foo', 'bar'] * 8,
+                        'catB': ['a', 'b', 'c', 'd'] * 6,
+                        'numC': np.arange(24),
+                        'numD': np.arange(24.) + .5,
+                        'ts': tm.makeTimeSeries()[:24].index})
+        s = df.describe(include='all').shape[1]
+        df = pd.concat([df, df], axis=1)
+        s2 = df.describe(include='all').shape[1]
+        self.assertTrue(s2 == 2 * s)
+
+    def test_describe_typefiltering_groupby(self):
+        df = DataFrame({'catA': ['foo', 'foo', 'bar'] * 8,
+                'catB': ['a', 'b', 'c', 'd'] * 6,
+                'numC': np.arange(24),
+                'numD': np.arange(24.) + .5,
+                'ts': tm.makeTimeSeries()[:24].index})
+        G = df.groupby('catA')
+        self.assertTrue(G.describe(include=['number']).shape == (16, 2))
+        self.assertTrue(G.describe(include=['number', 'object']).shape == (22, 3))
+        self.assertTrue(G.describe(include='all').shape == (26, 4))
 
     def test_no_order(self):
         tm._skip_if_no_scipy()
@@ -1101,6 +1226,80 @@ class TestDataFrame(tm.TestCase, Generic):
         # reset
         DataFrame._metadata = _metadata
         DataFrame.__finalize__ = _finalize
+
+    def test_tz_convert_and_localize(self):
+        l0 = date_range('20140701', periods=5, freq='D')
+
+        # TODO: l1 should be a PeriodIndex for testing
+        #       after GH2106 is addressed
+        with tm.assertRaises(NotImplementedError):
+            period_range('20140701', periods=1).tz_convert('UTC')
+        with tm.assertRaises(NotImplementedError):
+            period_range('20140701', periods=1).tz_localize('UTC')
+        # l1 = period_range('20140701', periods=5, freq='D')
+        l1 = date_range('20140701', periods=5, freq='D')
+
+        int_idx = Index(range(5))
+
+        for fn in ['tz_localize', 'tz_convert']:
+
+            if fn == 'tz_convert':
+                l0 = l0.tz_localize('UTC')
+                l1 = l1.tz_localize('UTC')
+
+            for idx in [l0, l1]:
+
+                l0_expected  = getattr(idx, fn)('US/Pacific')
+                l1_expected  = getattr(idx, fn)('US/Pacific')
+
+                df1 = DataFrame(np.ones(5), index=l0)
+                df1 = getattr(df1, fn)('US/Pacific')
+                self.assertTrue(df1.index.equals(l0_expected))
+
+                # MultiIndex
+                # GH7846
+                df2 = DataFrame(np.ones(5),
+                                MultiIndex.from_arrays([l0, l1]))
+
+                df3 = getattr(df2, fn)('US/Pacific', level=0)
+                self.assertFalse(df3.index.levels[0].equals(l0))
+                self.assertTrue(df3.index.levels[0].equals(l0_expected))
+                self.assertTrue(df3.index.levels[1].equals(l1))
+                self.assertFalse(df3.index.levels[1].equals(l1_expected))
+
+                df3 = getattr(df2, fn)('US/Pacific', level=1)
+                self.assertTrue(df3.index.levels[0].equals(l0))
+                self.assertFalse(df3.index.levels[0].equals(l0_expected))
+                self.assertTrue(df3.index.levels[1].equals(l1_expected))
+                self.assertFalse(df3.index.levels[1].equals(l1))
+
+                df4 = DataFrame(np.ones(5),
+                                MultiIndex.from_arrays([int_idx, l0]))
+
+                df5 = getattr(df4, fn)('US/Pacific', level=1)
+                self.assertTrue(df3.index.levels[0].equals(l0))
+                self.assertFalse(df3.index.levels[0].equals(l0_expected))
+                self.assertTrue(df3.index.levels[1].equals(l1_expected))
+                self.assertFalse(df3.index.levels[1].equals(l1))
+
+        # Bad Inputs
+        for fn in ['tz_localize', 'tz_convert']:
+            # Not DatetimeIndex / PeriodIndex
+            with tm.assertRaisesRegexp(TypeError, 'DatetimeIndex'):
+                df = DataFrame(index=int_idx)
+                df = getattr(df, fn)('US/Pacific')
+
+            # Not DatetimeIndex / PeriodIndex
+            with tm.assertRaisesRegexp(TypeError, 'DatetimeIndex'):
+                df = DataFrame(np.ones(5),
+                            MultiIndex.from_arrays([int_idx, l0]))
+                df = getattr(df, fn)('US/Pacific', level=0)
+
+            # Invalid level
+            with tm.assertRaisesRegexp(ValueError, 'not valid'):
+                df = DataFrame(index=l0)
+                df = getattr(df, fn)('US/Pacific', level=1)
+
 
 class TestPanel(tm.TestCase, Generic):
     _typ = Panel
@@ -1210,6 +1409,21 @@ class TestNDFrame(tm.TestCase):
         df2 = df1.set_index(['floats'], append=True)
         self.assertTrue(df3.equals(df2))
 
+        # GH 8437
+        a = pd.Series([False, np.nan])
+        b = pd.Series([False, np.nan])
+        c = pd.Series(index=range(2))
+        d = pd.Series(index=range(2))
+        e = pd.Series(index=range(2))
+        f = pd.Series(index=range(2))
+        c[:-1] = d[:-1] = e[0] = f[0] = False
+        self.assertTrue(a.equals(a))
+        self.assertTrue(a.equals(b))
+        self.assertTrue(a.equals(c))
+        self.assertTrue(a.equals(d))
+        self.assertFalse(a.equals(e))
+        self.assertTrue(e.equals(f)) 
+        
     def test_describe_raises(self):
         with tm.assertRaises(NotImplementedError):
             tm.makePanel().describe()

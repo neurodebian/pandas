@@ -3,7 +3,6 @@
 from datetime import datetime, timedelta
 from pandas.compat import range, lrange, lzip, u, zip
 import operator
-import pickle
 import re
 import nose
 import warnings
@@ -12,9 +11,13 @@ import os
 import numpy as np
 from numpy.testing import assert_array_equal
 
+from pandas import period_range, date_range
+
 from pandas.core.index import (Index, Float64Index, Int64Index, MultiIndex,
-                               InvalidIndexError)
+                               InvalidIndexError, NumericIndex)
 from pandas.tseries.index import DatetimeIndex
+from pandas.tseries.tdi import TimedeltaIndex
+from pandas.tseries.period import PeriodIndex
 from pandas.core.series import Series
 from pandas.util.testing import (assert_almost_equal, assertRaisesRegexp,
                                  assert_copy)
@@ -30,9 +33,58 @@ import pandas.tseries.offsets as offsets
 import pandas as pd
 from pandas.lib import Timestamp
 
-from pandas import _np_version_under1p7
 
-class TestIndex(tm.TestCase):
+class Base(object):
+    """ base class for index sub-class tests """
+    _holder = None
+
+    def verify_pickle(self,index):
+        unpickled = self.round_trip_pickle(index)
+        self.assertTrue(index.equals(unpickled))
+
+    def test_pickle_compat_construction(self):
+        # this is testing for pickle compat
+        if self._holder is None:
+            return
+
+        # need an object to create with
+        self.assertRaises(TypeError, self._holder)
+
+    def test_numeric_compat(self):
+
+        idx = self.create_index()
+        tm.assertRaisesRegexp(TypeError,
+                              "cannot perform __mul__",
+                              lambda : idx * 1)
+        tm.assertRaisesRegexp(TypeError,
+                              "cannot perform __mul__",
+                              lambda : 1 * idx)
+
+        div_err = "cannot perform __truediv__" if compat.PY3 else "cannot perform __div__"
+        tm.assertRaisesRegexp(TypeError,
+                              div_err,
+                              lambda : idx / 1)
+        tm.assertRaisesRegexp(TypeError,
+                              div_err,
+                              lambda : 1 / idx)
+        tm.assertRaisesRegexp(TypeError,
+                              "cannot perform __floordiv__",
+                              lambda : idx // 1)
+        tm.assertRaisesRegexp(TypeError,
+                              "cannot perform __floordiv__",
+                              lambda : 1 // idx)
+
+    def test_boolean_context_compat(self):
+
+        # boolean context compat
+        idx = self.create_index()
+        def f():
+            if idx:
+                pass
+        tm.assertRaisesRegexp(ValueError,'The truth value of a',f)
+
+class TestIndex(Base, tm.TestCase):
+    _holder = Index
     _multiprocess_can_split_ = True
 
     def setUp(self):
@@ -42,12 +94,16 @@ class TestIndex(tm.TestCase):
             dateIndex = tm.makeDateIndex(100),
             intIndex = tm.makeIntIndex(100),
             floatIndex = tm.makeFloatIndex(100),
+            boolIndex = Index([True,False]),
             empty = Index([]),
             tuples = MultiIndex.from_tuples(lzip(['foo', 'bar', 'baz'],
                                                  [1, 2, 3]))
         )
         for name, ind in self.indices.items():
             setattr(self, name, ind)
+
+    def create_index(self):
+        return Index(list('abcde'))
 
     def test_wrong_number_names(self):
         def testit(ind):
@@ -70,9 +126,11 @@ class TestIndex(tm.TestCase):
             self.assertIsNone(res)
             self.assertEqual(ind.name, new_name)
             self.assertEqual(ind.names, [new_name])
-            with assertRaisesRegexp(TypeError, "list-like"):
-                # should still fail even if it would be the right length
-                ind.set_names("a")
+            #with assertRaisesRegexp(TypeError, "list-like"):
+            #    # should still fail even if it would be the right length
+            #    ind.set_names("a")
+            with assertRaisesRegexp(ValueError, "Level must be None"):
+                ind.set_names("a", level=0)
         # rename in place just leaves tuples and other containers alone
         name = ('A', 'B')
         ind = self.intIndex
@@ -121,7 +179,7 @@ class TestIndex(tm.TestCase):
 
         # casting
         arr = np.array(self.strIndex)
-        index = arr.view(Index)
+        index = Index(arr)
         tm.assert_contains_all(arr, index)
         self.assert_numpy_array_equal(self.strIndex, index)
 
@@ -179,13 +237,12 @@ class TestIndex(tm.TestCase):
 
         for array in [np.arange(5),
                       np.array(['a', 'b', 'c']),
-                      pd.date_range('2000-01-01', periods=3).values]:
+                      date_range('2000-01-01', periods=3).values]:
             expected = pd.Index(array)
             result = pd.Index(ArrayLike(array))
             self.assertTrue(result.equals(expected))
 
     def test_index_ctor_infer_periodindex(self):
-        from pandas import period_range, PeriodIndex
         xp = period_range('2012-1-1', freq='M', periods=3)
         rs = Index(xp)
         assert_array_equal(rs, xp)
@@ -213,6 +270,15 @@ class TestIndex(tm.TestCase):
         i = Index([], name='Foo')
         i_view = i.view()
         self.assertEqual(i_view.name, 'Foo')
+
+    def test_legacy_pickle_identity(self):
+
+        # GH 8431
+        pth = tm.get_data_path()
+        s1 = pd.read_pickle(os.path.join(pth,'s1-0.12.0.pickle'))
+        s2 = pd.read_pickle(os.path.join(pth,'s2-0.12.0.pickle'))
+        self.assertFalse(s1.index.identical(s2.index))
+        self.assertFalse(s1.index.equals(s2.index))
 
     def test_astype(self):
         casted = self.intIndex.astype('i8')
@@ -310,8 +376,9 @@ class TestIndex(tm.TestCase):
         self.assertFalse(ind.is_(ind[:]))
         self.assertFalse(ind.is_(ind.view(np.ndarray).view(Index)))
         self.assertFalse(ind.is_(np.array(range(10))))
+
         # quasi-implementation dependent
-        self.assertTrue(ind.is_(ind.view().base))
+        self.assertTrue(ind.is_(ind.view()))
         ind2 = ind.view()
         ind2.name = 'bob'
         self.assertTrue(ind.is_(ind2))
@@ -334,9 +401,13 @@ class TestIndex(tm.TestCase):
         d = self.dateIndex[0].to_datetime()
         tm.assert_isinstance(self.dateIndex.asof(d), Timestamp)
 
-    def test_nanosecond_index_access(self):
-        tm._skip_if_not_numpy17_friendly()
+    def test_asof_datetime_partial(self):
+        idx = pd.date_range('2010-01-01', periods=2, freq='m')
+        expected = Timestamp('2010-01-31')
+        result = idx.asof('2010-02')
+        self.assertEqual(result, expected)
 
+    def test_nanosecond_index_access(self):
         s = Series([Timestamp('20130101')]).values.view('i8')[0]
         r = DatetimeIndex([s + 50 + i for i in range(100)])
         x = Series(np.random.randn(100), index=r)
@@ -364,8 +435,7 @@ class TestIndex(tm.TestCase):
             arr_result = op(arr, element)
             index_result = op(index, element)
 
-            tm.assert_isinstance(index_result, np.ndarray)
-            self.assertNotIsInstance(index_result, Index)
+            self.assertIsInstance(index_result, np.ndarray)
             self.assert_numpy_array_equal(arr_result, index_result)
 
         _check(operator.eq)
@@ -473,6 +543,13 @@ class TestIndex(tm.TestCase):
         self.assertTrue(tm.equalContents(result3, expected3))
         self.assertEqual(result3.name, expected3.name)
 
+        # non-monotonic non-unique
+        idx1 = Index(['A','B','A','C'])
+        idx2 = Index(['B','D'])
+        expected = Index(['B'], dtype='object')
+        result = idx1.intersection(idx2)
+        self.assertTrue(result.equals(expected))
+
     def test_union(self):
         first = self.strIndex[5:20]
         second = self.strIndex[:10]
@@ -504,8 +581,13 @@ class TestIndex(tm.TestCase):
         self.assertIsNone(union.name)
 
     def test_add(self):
-        firstCat = self.strIndex + self.dateIndex
-        secondCat = self.strIndex + self.strIndex
+
+        # - API change GH 8226
+        with tm.assert_produces_warning():
+            self.strIndex + self.dateIndex
+
+        firstCat = self.strIndex.union(self.dateIndex)
+        secondCat = self.strIndex.union(self.strIndex)
 
         if self.dateIndex.dtype == np.object_:
             appended = np.append(self.strIndex, self.dateIndex)
@@ -558,29 +640,30 @@ class TestIndex(tm.TestCase):
         index += '_x'
         self.assertIn('a_x', index)
 
-    def test_diff(self):
+    def test_difference(self):
+
         first = self.strIndex[5:20]
         second = self.strIndex[:10]
         answer = self.strIndex[10:20]
         first.name = 'name'
         # different names
-        result = first - second
+        result = first.difference(second)
 
         self.assertTrue(tm.equalContents(result, answer))
         self.assertEqual(result.name, None)
 
         # same names
         second.name = 'name'
-        result = first - second
+        result = first.difference(second)
         self.assertEqual(result.name, 'name')
 
         # with empty
-        result = first.diff([])
+        result = first.difference([])
         self.assertTrue(tm.equalContents(result, first))
         self.assertEqual(result.name, first.name)
 
         # with everythin
-        result = first.diff(first)
+        result = first.difference(first)
         self.assertEqual(len(result), 0)
         self.assertEqual(result.name, first.name)
 
@@ -615,6 +698,7 @@ class TestIndex(tm.TestCase):
         idx2 = Index([0, 1, np.nan])
         result = idx1.sym_diff(idx2)
         # expected = Index([0.0, np.nan, 2.0, 3.0, np.nan])
+
         nans = pd.isnull(result)
         self.assertEqual(nans.sum(), 2)
         self.assertEqual((~nans).sum(), 3)
@@ -637,27 +721,24 @@ class TestIndex(tm.TestCase):
             idx1 - 1
 
     def test_pickle(self):
-        def testit(index):
-            pickled = pickle.dumps(index)
-            unpickled = pickle.loads(pickled)
 
-            tm.assert_isinstance(unpickled, Index)
-            self.assert_numpy_array_equal(unpickled, index)
-            self.assertEqual(unpickled.name, index.name)
-
-            # tm.assert_dict_equal(unpickled.indexMap, index.indexMap)
-
-        testit(self.strIndex)
+        self.verify_pickle(self.strIndex)
         self.strIndex.name = 'foo'
-        testit(self.strIndex)
-
-        testit(self.dateIndex)
+        self.verify_pickle(self.strIndex)
+        self.verify_pickle(self.dateIndex)
 
     def test_is_numeric(self):
         self.assertFalse(self.dateIndex.is_numeric())
         self.assertFalse(self.strIndex.is_numeric())
         self.assertTrue(self.intIndex.is_numeric())
         self.assertTrue(self.floatIndex.is_numeric())
+
+    def test_is_object(self):
+        self.assertTrue(self.strIndex.is_object())
+        self.assertTrue(self.boolIndex.is_object())
+        self.assertFalse(self.intIndex.is_object())
+        self.assertFalse(self.dateIndex.is_object())
+        self.assertFalse(self.floatIndex.is_object())
 
     def test_is_all_dates(self):
         self.assertTrue(self.dateIndex.is_all_dates)
@@ -838,7 +919,7 @@ class TestIndex(tm.TestCase):
         self.assertEqual(values[67], 10)
 
     def test_isin(self):
-        values = ['foo', 'bar']
+        values = ['foo', 'bar', 'quux']
 
         idx = Index(['qux', 'baz', 'foo', 'bar'])
         result = idx.isin(values)
@@ -851,15 +932,56 @@ class TestIndex(tm.TestCase):
         self.assertEqual(len(result), 0)
         self.assertEqual(result.dtype, np.bool_)
 
+    def test_isin_nan(self):
+        self.assert_numpy_array_equal(
+            Index(['a', np.nan]).isin([np.nan]), [False, True])
+        self.assert_numpy_array_equal(
+            Index(['a', pd.NaT]).isin([pd.NaT]), [False, True])
+        self.assert_numpy_array_equal(
+            Index(['a', np.nan]).isin([float('nan')]), [False, False])
+        self.assert_numpy_array_equal(
+            Index(['a', np.nan]).isin([pd.NaT]), [False, False])
+        # Float64Index overrides isin, so must be checked separately
+        self.assert_numpy_array_equal(
+            Float64Index([1.0, np.nan]).isin([np.nan]), [False, True])
+        self.assert_numpy_array_equal(
+            Float64Index([1.0, np.nan]).isin([float('nan')]), [False, True])
+        self.assert_numpy_array_equal(
+            Float64Index([1.0, np.nan]).isin([pd.NaT]), [False, True])
+
+    def test_isin_level_kwarg(self):
+        def check_idx(idx):
+            values = idx.tolist()[-2:] + ['nonexisting']
+
+            expected = np.array([False, False, True, True])
+            self.assert_numpy_array_equal(expected, idx.isin(values, level=0))
+            self.assert_numpy_array_equal(expected, idx.isin(values, level=-1))
+
+            self.assertRaises(IndexError, idx.isin, values, level=1)
+            self.assertRaises(IndexError, idx.isin, values, level=10)
+            self.assertRaises(IndexError, idx.isin, values, level=-2)
+
+            self.assertRaises(KeyError, idx.isin, values, level=1.0)
+            self.assertRaises(KeyError, idx.isin, values, level='foobar')
+
+            idx.name = 'foobar'
+            self.assert_numpy_array_equal(expected,
+                                          idx.isin(values, level='foobar'))
+
+            self.assertRaises(KeyError, idx.isin, values, level='xyzzy')
+            self.assertRaises(KeyError, idx.isin, values, level=np.nan)
+
+        check_idx(Index(['qux', 'baz', 'foo', 'bar']))
+        # Float64Index overrides isin, so must be checked separately
+        check_idx(Float64Index([1.0, 2.0, 3.0, 4.0]))
+
     def test_boolean_cmp(self):
         values = [1, 2, 3, 4]
 
         idx = Index(values)
         res = (idx == values)
 
-        self.assertTrue(res.all())
-        self.assertEqual(res.dtype, 'bool')
-        self.assertNotIsInstance(res, Index)
+        self.assert_numpy_array_equal(res,np.array([True,True,True,True],dtype=bool))
 
     def test_get_level_values(self):
         result = self.strIndex.get_level_values(0)
@@ -905,13 +1027,122 @@ class TestIndex(tm.TestCase):
         exp = Index([idx[-1], idx[0], idx[1]])
         tm.assert_index_equal(res, exp)
 
+    def test_reindex_preserves_name_if_target_is_list_or_ndarray(self):
+        # GH6552
+        idx = pd.Index([0, 1, 2])
 
-class TestFloat64Index(tm.TestCase):
+        dt_idx = pd.date_range('20130101', periods=3)
+
+        idx.name = None
+        self.assertEqual(idx.reindex([])[0].name, None)
+        self.assertEqual(idx.reindex(np.array([]))[0].name, None)
+        self.assertEqual(idx.reindex(idx.tolist())[0].name, None)
+        self.assertEqual(idx.reindex(idx.tolist()[:-1])[0].name, None)
+        self.assertEqual(idx.reindex(idx.values)[0].name, None)
+        self.assertEqual(idx.reindex(idx.values[:-1])[0].name, None)
+
+        # Must preserve name even if dtype changes.
+        self.assertEqual(idx.reindex(dt_idx.values)[0].name, None)
+        self.assertEqual(idx.reindex(dt_idx.tolist())[0].name, None)
+
+        idx.name = 'foobar'
+        self.assertEqual(idx.reindex([])[0].name, 'foobar')
+        self.assertEqual(idx.reindex(np.array([]))[0].name, 'foobar')
+        self.assertEqual(idx.reindex(idx.tolist())[0].name, 'foobar')
+        self.assertEqual(idx.reindex(idx.tolist()[:-1])[0].name, 'foobar')
+        self.assertEqual(idx.reindex(idx.values)[0].name, 'foobar')
+        self.assertEqual(idx.reindex(idx.values[:-1])[0].name, 'foobar')
+
+        # Must preserve name even if dtype changes.
+        self.assertEqual(idx.reindex(dt_idx.values)[0].name, 'foobar')
+        self.assertEqual(idx.reindex(dt_idx.tolist())[0].name, 'foobar')
+
+    def test_reindex_preserves_type_if_target_is_empty_list_or_array(self):
+        # GH7774
+        idx = pd.Index(list('abc'))
+        def get_reindex_type(target):
+            return idx.reindex(target)[0].dtype.type
+
+        self.assertEqual(get_reindex_type([]), np.object_)
+        self.assertEqual(get_reindex_type(np.array([])), np.object_)
+        self.assertEqual(get_reindex_type(np.array([], dtype=np.int64)),
+                         np.object_)
+
+    def test_reindex_doesnt_preserve_type_if_target_is_empty_index(self):
+        # GH7774
+        idx = pd.Index(list('abc'))
+        def get_reindex_type(target):
+            return idx.reindex(target)[0].dtype.type
+
+        self.assertEqual(get_reindex_type(pd.Int64Index([])), np.int64)
+        self.assertEqual(get_reindex_type(pd.Float64Index([])), np.float64)
+        self.assertEqual(get_reindex_type(pd.DatetimeIndex([])), np.datetime64)
+
+        reindexed = idx.reindex(pd.MultiIndex([pd.Int64Index([]),
+                                               pd.Float64Index([])],
+                                              [[], []]))[0]
+        self.assertEqual(reindexed.levels[0].dtype.type, np.int64)
+        self.assertEqual(reindexed.levels[1].dtype.type, np.float64)
+
+
+
+class Numeric(Base):
+
+    def test_numeric_compat(self):
+
+        idx = self._holder(np.arange(5,dtype='int64'))
+        didx = self._holder(np.arange(5,dtype='int64')**2
+                            )
+        result = idx * 1
+        tm.assert_index_equal(result, idx)
+
+        result = 1 * idx
+        tm.assert_index_equal(result, idx)
+
+        result = idx * idx
+        tm.assert_index_equal(result, didx)
+
+        result = idx / 1
+        tm.assert_index_equal(result, idx)
+
+        result = idx // 1
+        tm.assert_index_equal(result, idx)
+
+        result = idx * np.array(5,dtype='int64')
+        tm.assert_index_equal(result, self._holder(np.arange(5,dtype='int64')*5))
+
+        result = idx * np.arange(5,dtype='int64')
+        tm.assert_index_equal(result, didx)
+
+        result = idx * Series(np.arange(5,dtype='int64'))
+        tm.assert_index_equal(result, didx)
+
+        result = idx * Series(np.arange(5,dtype='float64')+0.1)
+        tm.assert_index_equal(result,
+                              Float64Index(np.arange(5,dtype='float64')*(np.arange(5,dtype='float64')+0.1)))
+
+
+        # invalid
+        self.assertRaises(TypeError, lambda : idx * date_range('20130101',periods=5))
+        self.assertRaises(ValueError, lambda : idx * self._holder(np.arange(3)))
+        self.assertRaises(ValueError, lambda : idx * np.array([1,2]))
+
+    def test_ufunc_compat(self):
+        idx = self._holder(np.arange(5,dtype='int64'))
+        result = np.sin(idx)
+        expected = Float64Index(np.sin(np.arange(5,dtype='int64')))
+        tm.assert_index_equal(result, expected)
+
+class TestFloat64Index(Numeric, tm.TestCase):
+    _holder = Float64Index
     _multiprocess_can_split_ = True
 
     def setUp(self):
         self.mixed = Float64Index([1.5, 2, 3, 4, 5])
         self.float = Float64Index(np.arange(5) * 2.5)
+
+    def create_index(self):
+        return Float64Index(np.arange(5,dtype='float64'))
 
     def test_hash_error(self):
         with tm.assertRaisesRegexp(TypeError,
@@ -1050,11 +1281,15 @@ class TestFloat64Index(tm.TestCase):
         tm.assert_index_equal(result, expected)
 
 
-class TestInt64Index(tm.TestCase):
+class TestInt64Index(Numeric, tm.TestCase):
+    _holder = Int64Index
     _multiprocess_can_split_ = True
 
     def setUp(self):
         self.index = Int64Index(np.arange(0, 20, 2))
+
+    def create_index(self):
+        return Int64Index(np.arange(5,dtype='int64'))
 
     def test_too_many_names(self):
         def testit():
@@ -1474,8 +1709,97 @@ class TestInt64Index(tm.TestCase):
         idx = Int64Index([1, 2], name='asdf')
         self.assertEqual(idx.name, idx[1:].name)
 
+class TestDatetimeIndex(Base, tm.TestCase):
+    _holder = DatetimeIndex
+    _multiprocess_can_split_ = True
 
-class TestMultiIndex(tm.TestCase):
+    def create_index(self):
+        return date_range('20130101',periods=5)
+
+    def test_pickle_compat_construction(self):
+        pass
+
+    def test_numeric_compat(self):
+        super(TestDatetimeIndex, self).test_numeric_compat()
+
+        if not compat.PY3_2:
+            for f in [lambda : np.timedelta64(1, 'D').astype('m8[ns]') * pd.date_range('2000-01-01', periods=3),
+                      lambda : pd.date_range('2000-01-01', periods=3) * np.timedelta64(1, 'D').astype('m8[ns]') ]:
+                self.assertRaises(TypeError, f)
+
+    def test_roundtrip_pickle_with_tz(self):
+
+        # GH 8367
+        # round-trip of timezone
+        index=date_range('20130101',periods=3,tz='US/Eastern',name='foo')
+        unpickled = self.round_trip_pickle(index)
+        self.assertTrue(index.equals(unpickled))
+
+    def test_reindex_preserves_tz_if_target_is_empty_list_or_array(self):
+        # GH7774
+        index = date_range('20130101', periods=3, tz='US/Eastern')
+        self.assertEqual(str(index.reindex([])[0].tz), 'US/Eastern')
+        self.assertEqual(str(index.reindex(np.array([]))[0].tz), 'US/Eastern')
+
+
+class TestPeriodIndex(Base, tm.TestCase):
+    _holder = PeriodIndex
+    _multiprocess_can_split_ = True
+
+    def create_index(self):
+        return period_range('20130101',periods=5,freq='D')
+
+    def test_pickle_compat_construction(self):
+        pass
+
+class TestTimedeltaIndex(Base, tm.TestCase):
+    _holder = TimedeltaIndex
+    _multiprocess_can_split_ = True
+
+    def create_index(self):
+        return pd.to_timedelta(range(5),unit='d') + pd.offsets.Hour(1)
+
+    def test_numeric_compat(self):
+
+        idx = self._holder(np.arange(5,dtype='int64'))
+        didx = self._holder(np.arange(5,dtype='int64')**2
+                            )
+        result = idx * 1
+        tm.assert_index_equal(result, idx)
+
+        result = 1 * idx
+        tm.assert_index_equal(result, idx)
+
+        result = idx / 1
+        tm.assert_index_equal(result, idx)
+
+        result = idx // 1
+        tm.assert_index_equal(result, idx)
+
+        result = idx * np.array(5,dtype='int64')
+        tm.assert_index_equal(result, self._holder(np.arange(5,dtype='int64')*5))
+
+        result = idx * np.arange(5,dtype='int64')
+        tm.assert_index_equal(result, didx)
+
+        result = idx * Series(np.arange(5,dtype='int64'))
+        tm.assert_index_equal(result, didx)
+
+        result = idx * Series(np.arange(5,dtype='float64')+0.1)
+        tm.assert_index_equal(result,
+                              Float64Index(np.arange(5,dtype='float64')*(np.arange(5,dtype='float64')+0.1)))
+
+
+        # invalid
+        self.assertRaises(TypeError, lambda : idx * idx)
+        self.assertRaises(ValueError, lambda : idx * self._holder(np.arange(3)))
+        self.assertRaises(ValueError, lambda : idx * np.array([1,2]))
+
+    def test_pickle_compat_construction(self):
+        pass
+
+class TestMultiIndex(Base, tm.TestCase):
+    _holder = MultiIndex
     _multiprocess_can_split_ = True
 
     def setUp(self):
@@ -1488,6 +1812,22 @@ class TestMultiIndex(tm.TestCase):
         self.index = MultiIndex(levels=[major_axis, minor_axis],
                                 labels=[major_labels, minor_labels],
                                 names=self.index_names, verify_integrity=False)
+
+    def create_index(self):
+        return self.index
+
+    def test_boolean_context_compat2(self):
+
+        # boolean context compat
+        # GH7897
+        i1 = MultiIndex.from_tuples([('A', 1), ('A', 2)])
+        i2 = MultiIndex.from_tuples([('A', 1), ('A', 3)])
+        common = i1.intersection(i2)
+
+        def f():
+            if common:
+                pass
+        tm.assertRaisesRegexp(ValueError,'The truth value of a',f)
 
     def test_hash_error(self):
         with tm.assertRaisesRegexp(TypeError,
@@ -1509,15 +1849,31 @@ class TestMultiIndex(tm.TestCase):
         self.assertIsNone(res)
         self.assertEqual(ind.names, new_names2)
 
-    def test_set_levels_and_set_labels(self):
+        # set names for specific level (# GH7792)
+        ind = self.index.set_names(new_names[0], level=0)
+        self.assertEqual(self.index.names, self.index_names)
+        self.assertEqual(ind.names, [new_names[0], self.index_names[1]])
+
+        res = ind.set_names(new_names2[0], level=0, inplace=True)
+        self.assertIsNone(res)
+        self.assertEqual(ind.names, [new_names2[0], self.index_names[1]])
+
+        # set names for multiple levels
+        ind = self.index.set_names(new_names, level=[0, 1])
+        self.assertEqual(self.index.names, self.index_names)
+        self.assertEqual(ind.names, new_names)
+
+        res = ind.set_names(new_names2, level=[0, 1], inplace=True)
+        self.assertIsNone(res)
+        self.assertEqual(ind.names, new_names2)
+
+
+    def test_set_levels(self):
+
         # side note - you probably wouldn't want to use levels and labels
         # directly like this - but it is possible.
         levels, labels = self.index.levels, self.index.labels
         new_levels = [[lev + 'a' for lev in level] for level in levels]
-        major_labels, minor_labels = labels
-        major_labels = [(x + 1) % 3 for x in major_labels]
-        minor_labels = [(x + 1) % 1 for x in minor_labels]
-        new_labels = [major_labels, minor_labels]
 
         def assert_matching(actual, expected):
             # avoid specifying internal representation
@@ -1539,6 +1895,58 @@ class TestMultiIndex(tm.TestCase):
         self.assertIsNone(inplace_return)
         assert_matching(ind2.levels, new_levels)
 
+        # level changing specific level [w/o mutation]
+        ind2 = self.index.set_levels(new_levels[0], level=0)
+        assert_matching(ind2.levels, [new_levels[0], levels[1]])
+        assert_matching(self.index.levels, levels)
+
+        ind2 = self.index.set_levels(new_levels[1], level=1)
+        assert_matching(ind2.levels, [levels[0], new_levels[1]])
+        assert_matching(self.index.levels, levels)
+
+        # level changing multiple levels [w/o mutation]
+        ind2 = self.index.set_levels(new_levels, level=[0, 1])
+        assert_matching(ind2.levels, new_levels)
+        assert_matching(self.index.levels, levels)
+
+        # level changing specific level [w/ mutation]
+        ind2 = self.index.copy()
+        inplace_return = ind2.set_levels(new_levels[0], level=0, inplace=True)
+        self.assertIsNone(inplace_return)
+        assert_matching(ind2.levels, [new_levels[0], levels[1]])
+        assert_matching(self.index.levels, levels)
+
+        ind2 = self.index.copy()
+        inplace_return = ind2.set_levels(new_levels[1], level=1, inplace=True)
+        self.assertIsNone(inplace_return)
+        assert_matching(ind2.levels, [levels[0], new_levels[1]])
+        assert_matching(self.index.levels, levels)
+
+        # level changing multiple levels [w/ mutation]
+        ind2 = self.index.copy()
+        inplace_return = ind2.set_levels(new_levels, level=[0, 1], inplace=True)
+        self.assertIsNone(inplace_return)
+        assert_matching(ind2.levels, new_levels)
+        assert_matching(self.index.levels, levels)
+
+    def test_set_labels(self):
+        # side note - you probably wouldn't want to use levels and labels
+        # directly like this - but it is possible.
+        levels, labels = self.index.levels, self.index.labels
+        major_labels, minor_labels = labels
+        major_labels = [(x + 1) % 3 for x in major_labels]
+        minor_labels = [(x + 1) % 1 for x in minor_labels]
+        new_labels = [major_labels, minor_labels]
+
+        def assert_matching(actual, expected):
+            # avoid specifying internal representation
+            # as much as possible
+            self.assertEqual(len(actual), len(expected))
+            for act, exp in zip(actual, expected):
+                act = np.asarray(act)
+                exp = np.asarray(exp)
+                assert_almost_equal(act, exp)
+
         # label changing [w/o mutation]
         ind2 = self.index.set_labels(new_labels)
         assert_matching(ind2.labels, new_labels)
@@ -1549,6 +1957,40 @@ class TestMultiIndex(tm.TestCase):
         inplace_return = ind2.set_labels(new_labels, inplace=True)
         self.assertIsNone(inplace_return)
         assert_matching(ind2.labels, new_labels)
+
+        # label changing specific level [w/o mutation]
+        ind2 = self.index.set_labels(new_labels[0], level=0)
+        assert_matching(ind2.labels, [new_labels[0], labels[1]])
+        assert_matching(self.index.labels, labels)
+
+        ind2 = self.index.set_labels(new_labels[1], level=1)
+        assert_matching(ind2.labels, [labels[0], new_labels[1]])
+        assert_matching(self.index.labels, labels)
+
+        # label changing multiple levels [w/o mutation]
+        ind2 = self.index.set_labels(new_labels, level=[0, 1])
+        assert_matching(ind2.labels, new_labels)
+        assert_matching(self.index.labels, labels)
+
+        # label changing specific level [w/ mutation]
+        ind2 = self.index.copy()
+        inplace_return = ind2.set_labels(new_labels[0], level=0, inplace=True)
+        self.assertIsNone(inplace_return)
+        assert_matching(ind2.labels, [new_labels[0], labels[1]])
+        assert_matching(self.index.labels, labels)
+
+        ind2 = self.index.copy()
+        inplace_return = ind2.set_labels(new_labels[1], level=1, inplace=True)
+        self.assertIsNone(inplace_return)
+        assert_matching(ind2.labels, [labels[0], new_labels[1]])
+        assert_matching(self.index.labels, labels)
+
+        # label changing multiple levels [w/ mutation]
+        ind2 = self.index.copy()
+        inplace_return = ind2.set_labels(new_labels, level=[0, 1], inplace=True)
+        self.assertIsNone(inplace_return)
+        assert_matching(ind2.labels, new_labels)
+        assert_matching(self.index.labels, labels)
 
     def test_set_levels_labels_names_bad_input(self):
         levels, labels = self.index.levels, self.index.labels
@@ -1574,6 +2016,27 @@ class TestMultiIndex(tm.TestCase):
         # shouldn't scalar data error, instead should demand list-like
         with tm.assertRaisesRegexp(TypeError, 'list-like'):
             self.index.set_names(names[0])
+
+        # should have equal lengths
+        with tm.assertRaisesRegexp(TypeError, 'list of lists-like'):
+            self.index.set_levels(levels[0], level=[0, 1])
+
+        with tm.assertRaisesRegexp(TypeError, 'list-like'):
+            self.index.set_levels(levels, level=0)
+
+        # should have equal lengths
+        with tm.assertRaisesRegexp(TypeError, 'list of lists-like'):
+            self.index.set_labels(labels[0], level=[0, 1])
+
+        with tm.assertRaisesRegexp(TypeError, 'list-like'):
+            self.index.set_labels(labels, level=0)
+
+        # should have equal lengths
+        with tm.assertRaisesRegexp(ValueError, 'Length of names'):
+            self.index.set_names(names[0], level=[0, 1])
+
+        with tm.assertRaisesRegexp(TypeError, 'string'):
+            self.index.set_names(names, level=0)
 
     def test_metadata_immutable(self):
         levels, labels = self.index.levels, self.index.labels
@@ -1799,6 +2262,7 @@ class TestMultiIndex(tm.TestCase):
         self.assertEqual([level.name for level in index.levels], list(names))
 
     def test_changing_names(self):
+
         # names should be applied to levels
         level_names = [level.name for level in self.index.levels]
         self.check_level_names(self.index, self.index.names)
@@ -1842,7 +2306,13 @@ class TestMultiIndex(tm.TestCase):
         result = MultiIndex.from_arrays(arrays)
         self.assertEqual(list(result), list(self.index))
 
+        # infer correctly
+        result = MultiIndex.from_arrays([[pd.NaT, Timestamp('20130101')], ['a', 'b']])
+        self.assertTrue(result.levels[0].equals(Index([Timestamp('20130101')])))
+        self.assertTrue(result.levels[1].equals(Index(['a','b'])))
+
     def test_from_product(self):
+
         first = ['foo', 'bar', 'buz']
         second = ['a', 'b', 'c']
         names = ['first', 'second']
@@ -1857,13 +2327,25 @@ class TestMultiIndex(tm.TestCase):
         self.assertEqual(result.names, names)
 
     def test_from_product_datetimeindex(self):
-        dt_index = pd.date_range('2000-01-01', periods=2)
+        dt_index = date_range('2000-01-01', periods=2)
         mi = pd.MultiIndex.from_product([[1, 2], dt_index])
         etalon = pd.lib.list_to_object_array([(1, pd.Timestamp('2000-01-01')),
                                               (1, pd.Timestamp('2000-01-02')),
                                               (2, pd.Timestamp('2000-01-01')),
                                               (2, pd.Timestamp('2000-01-02'))])
         assert_array_equal(mi.values, etalon)
+
+    def test_values_boxed(self):
+        tuples = [(1, pd.Timestamp('2000-01-01')),
+                  (2, pd.NaT),
+                  (3, pd.Timestamp('2000-01-03')),
+                  (1, pd.Timestamp('2000-01-04')),
+                  (2, pd.Timestamp('2000-01-02')),
+                  (3, pd.Timestamp('2000-01-03'))]
+        mi = pd.MultiIndex.from_tuples(tuples)
+        assert_array_equal(mi.values, pd.lib.list_to_object_array(tuples))
+        # Check that code branches for boxed values produce identical results
+        assert_array_equal(mi.values[:4], mi[:4].values)
 
     def test_append(self):
         result = self.index[:3].append(self.index[3:])
@@ -1907,15 +2389,14 @@ class TestMultiIndex(tm.TestCase):
         expected = [np.nan, np.nan, np.nan]
         assert_array_equal(values.values.astype(float), expected)
         values = index.get_level_values(1)
-        expected = ['a', np.nan, 1]
+        expected = np.array(['a', np.nan, 1],dtype=object)
         assert_array_equal(values.values, expected)
 
-        if not _np_version_under1p7:
-            arrays = [['a', 'b', 'b'], pd.DatetimeIndex([0, 1, pd.NaT])]
-            index = pd.MultiIndex.from_arrays(arrays)
-            values = index.get_level_values(1)
-            expected = pd.DatetimeIndex([0, 1, pd.NaT])
-            assert_array_equal(values.values, expected.values)
+        arrays = [['a', 'b', 'b'], pd.DatetimeIndex([0, 1, pd.NaT])]
+        index = pd.MultiIndex.from_arrays(arrays)
+        values = index.get_level_values(1)
+        expected = pd.DatetimeIndex([0, 1, pd.NaT])
+        assert_array_equal(values.values, expected.values)
 
         arrays = [[], []]
         index = pd.MultiIndex.from_arrays(arrays)
@@ -1936,23 +2417,12 @@ class TestMultiIndex(tm.TestCase):
                     ('baz', 'two'), ('qux', 'one'), ('qux', 'two')]
         self.assertEqual(result, expected)
 
-    def test_pickle(self):
-        pickled = pickle.dumps(self.index)
-        unpickled = pickle.loads(pickled)
-        self.assertTrue(self.index.equals(unpickled))
-
     def test_legacy_pickle(self):
         if compat.PY3:
-            raise nose.SkipTest("doesn't work on Python 3")
+            raise nose.SkipTest("testing for legacy pickles not support on py3")
 
-        def curpath():
-            pth, _ = os.path.split(os.path.abspath(__file__))
-            return pth
-
-        ppath = os.path.join(curpath(), 'data/multiindex_v1.pickle')
-        obj = pickle.load(open(ppath, 'r'))
-
-        self.assertTrue(obj._is_v1)
+        path = tm.get_data_path('multiindex_v1.pickle')
+        obj = pd.read_pickle(path)
 
         obj2 = MultiIndex.from_tuples(obj.values)
         self.assertTrue(obj.equals(obj2))
@@ -1968,11 +2438,10 @@ class TestMultiIndex(tm.TestCase):
         assert_almost_equal(exp, exp2)
 
     def test_legacy_v2_unpickle(self):
-        # 0.7.3 -> 0.8.0 format manage
-        pth, _ = os.path.split(os.path.abspath(__file__))
-        filepath = os.path.join(pth, 'data', 'mindex_073.pickle')
 
-        obj = pd.read_pickle(filepath)
+        # 0.7.3 -> 0.8.0 format manage
+        path = tm.get_data_path('mindex_073.pickle')
+        obj = pd.read_pickle(path)
 
         obj2 = MultiIndex.from_tuples(obj.values)
         self.assertTrue(obj.equals(obj2))
@@ -1986,6 +2455,14 @@ class TestMultiIndex(tm.TestCase):
         exp2 = obj2.get_indexer(obj2[::-1])
         assert_almost_equal(res, exp)
         assert_almost_equal(exp, exp2)
+
+    def test_roundtrip_pickle_with_tz(self):
+
+        # GH 8367
+        # round-trip of timezone
+        index=MultiIndex.from_product([[1,2],['a','b'],date_range('20130101',periods=3,tz='US/Eastern')],names=['one','two','three'])
+        unpickled = self.round_trip_pickle(index)
+        self.assertTrue(index.equal_levels(unpickled))
 
     def test_from_tuples_index_values(self):
         result = MultiIndex.from_tuples(self.index)
@@ -2279,7 +2756,6 @@ class TestMultiIndex(tm.TestCase):
         self.assertEqual(result[3], '1  0  0  0')
 
     def test_format_sparse_config(self):
-        import warnings
         warn_filters = warnings.filters
         warnings.filterwarnings('ignore',
                                 category=FutureWarning,
@@ -2390,6 +2866,7 @@ class TestMultiIndex(tm.TestCase):
         self.assertTrue(mi.equals(mi4))
 
     def test_is_(self):
+
         mi = MultiIndex.from_tuples(lzip(range(10), range(10)))
         self.assertTrue(mi.is_(mi))
         self.assertTrue(mi.is_(mi.view()))
@@ -2399,6 +2876,7 @@ class TestMultiIndex(tm.TestCase):
         mi2.names = ["A", "B"]
         self.assertTrue(mi2.is_(mi))
         self.assertTrue(mi.is_(mi2))
+
         self.assertTrue(mi.is_(mi.set_names(["C", "D"])))
         mi2 = mi.view()
         mi2.set_names(["E", "F"], inplace=True)
@@ -2472,9 +2950,15 @@ class TestMultiIndex(tm.TestCase):
         # result = self.index & tuples
         # self.assertTrue(result.equals(tuples))
 
-    def test_diff(self):
+    def test_difference(self):
+
         first = self.index
-        result = first - self.index[-3:]
+        result = first.difference(self.index[-3:])
+
+        # - API change GH 8226
+        with tm.assert_produces_warning():
+            first - self.index[-3:]
+
         expected = MultiIndex.from_tuples(sorted(self.index[:-3].values),
                                           sortorder=0,
                                           names=self.index.names)
@@ -2484,19 +2968,19 @@ class TestMultiIndex(tm.TestCase):
         self.assertEqual(result.names, self.index.names)
 
         # empty difference: reflexive
-        result = self.index - self.index
+        result = self.index.difference(self.index)
         expected = self.index[:0]
         self.assertTrue(result.equals(expected))
         self.assertEqual(result.names, self.index.names)
 
         # empty difference: superset
-        result = self.index[-3:] - self.index
+        result = self.index[-3:].difference(self.index)
         expected = self.index[:0]
         self.assertTrue(result.equals(expected))
         self.assertEqual(result.names, self.index.names)
 
         # empty difference: degenerate
-        result = self.index[:0] - self.index
+        result = self.index[:0].difference(self.index)
         expected = self.index[:0]
         self.assertTrue(result.equals(expected))
         self.assertEqual(result.names, self.index.names)
@@ -2504,31 +2988,31 @@ class TestMultiIndex(tm.TestCase):
         # names not the same
         chunklet = self.index[-3:]
         chunklet.names = ['foo', 'baz']
-        result = first - chunklet
+        result = first.difference(chunklet)
         self.assertEqual(result.names, (None, None))
 
         # empty, but non-equal
-        result = self.index - self.index.sortlevel(1)[0]
+        result = self.index.difference(self.index.sortlevel(1)[0])
         self.assertEqual(len(result), 0)
 
         # raise Exception called with non-MultiIndex
-        result = first.diff(first._tuple_index)
+        result = first.difference(first._tuple_index)
         self.assertTrue(result.equals(first[:0]))
 
         # name from empty array
-        result = first.diff([])
+        result = first.difference([])
         self.assertTrue(first.equals(result))
         self.assertEqual(first.names, result.names)
 
         # name from non-empty array
-        result = first.diff([('foo', 'one')])
+        result = first.difference([('foo', 'one')])
         expected = pd.MultiIndex.from_tuples([('bar', 'one'), ('baz', 'two'),
                                             ('foo', 'two'), ('qux', 'one'),
                                             ('qux', 'two')])
         expected.names = first.names
         self.assertEqual(first.names, result.names)
         assertRaisesRegexp(TypeError, "other must be a MultiIndex or a list"
-                           " of tuples", first.diff, [1, 2, 3, 4, 5])
+                           " of tuples", first.difference, [1, 2, 3, 4, 5])
 
     def test_from_tuples(self):
         assertRaisesRegexp(TypeError, 'Cannot infer number of levels from'
@@ -2818,6 +3302,94 @@ class TestMultiIndex(tm.TestCase):
                        inplace=True)
         # if this fails, probably didn't reset the cache correctly.
         assert not ind.is_monotonic
+
+    def test_isin(self):
+        values = [('foo', 2), ('bar', 3), ('quux', 4)]
+
+        idx = MultiIndex.from_arrays([['qux', 'baz', 'foo', 'bar'],
+                                      np.arange(4)])
+        result = idx.isin(values)
+        expected = np.array([False, False, True, True])
+        self.assert_numpy_array_equal(result, expected)
+
+        # empty, return dtype bool
+        idx = MultiIndex.from_arrays([[], []])
+        result = idx.isin(values)
+        self.assertEqual(len(result), 0)
+        self.assertEqual(result.dtype, np.bool_)
+
+    def test_isin_nan(self):
+        idx = MultiIndex.from_arrays([['foo', 'bar'], [1.0, np.nan]])
+        self.assert_numpy_array_equal(idx.isin([('bar', np.nan)]),
+                                      [False, False])
+        self.assert_numpy_array_equal(idx.isin([('bar', float('nan'))]),
+                                      [False, False])
+
+    def test_isin_level_kwarg(self):
+        idx = MultiIndex.from_arrays([['qux', 'baz', 'foo', 'bar'],
+                                      np.arange(4)])
+
+        vals_0 = ['foo', 'bar', 'quux']
+        vals_1 = [2, 3, 10]
+
+        expected = np.array([False, False, True, True])
+        self.assert_numpy_array_equal(expected, idx.isin(vals_0, level=0))
+        self.assert_numpy_array_equal(expected, idx.isin(vals_0, level=-2))
+
+        self.assert_numpy_array_equal(expected, idx.isin(vals_1, level=1))
+        self.assert_numpy_array_equal(expected, idx.isin(vals_1, level=-1))
+
+        self.assertRaises(IndexError, idx.isin, vals_0, level=5)
+        self.assertRaises(IndexError, idx.isin, vals_0, level=-5)
+
+        self.assertRaises(KeyError, idx.isin, vals_0, level=1.0)
+        self.assertRaises(KeyError, idx.isin, vals_1, level=-1.0)
+        self.assertRaises(KeyError, idx.isin, vals_1, level='A')
+
+        idx.names = ['A', 'B']
+        self.assert_numpy_array_equal(expected, idx.isin(vals_0, level='A'))
+        self.assert_numpy_array_equal(expected, idx.isin(vals_1, level='B'))
+
+        self.assertRaises(KeyError, idx.isin, vals_1, level='C')
+
+    def test_reindex_preserves_names_when_target_is_list_or_ndarray(self):
+        # GH6552
+        idx = self.index.copy()
+        target = idx.copy()
+        idx.names = target.names = [None, None]
+
+        other_dtype = pd.MultiIndex.from_product([[1, 2], [3, 4]])
+
+        # list & ndarray cases
+        self.assertEqual(idx.reindex([])[0].names, [None, None])
+        self.assertEqual(idx.reindex(np.array([]))[0].names, [None, None])
+        self.assertEqual(idx.reindex(target.tolist())[0].names, [None, None])
+        self.assertEqual(idx.reindex(target.values)[0].names, [None, None])
+        self.assertEqual(idx.reindex(other_dtype.tolist())[0].names, [None, None])
+        self.assertEqual(idx.reindex(other_dtype.values)[0].names, [None, None])
+
+        idx.names = ['foo', 'bar']
+        self.assertEqual(idx.reindex([])[0].names, ['foo', 'bar'])
+        self.assertEqual(idx.reindex(np.array([]))[0].names, ['foo', 'bar'])
+        self.assertEqual(idx.reindex(target.tolist())[0].names, ['foo', 'bar'])
+        self.assertEqual(idx.reindex(target.values)[0].names, ['foo', 'bar'])
+        self.assertEqual(idx.reindex(other_dtype.tolist())[0].names, ['foo', 'bar'])
+        self.assertEqual(idx.reindex(other_dtype.values)[0].names, ['foo', 'bar'])
+
+    def test_reindex_lvl_preserves_names_when_target_is_list_or_array(self):
+        # GH7774
+        idx = pd.MultiIndex.from_product([[0, 1], ['a', 'b']],
+                                         names=['foo', 'bar'])
+        self.assertEqual(idx.reindex([], level=0)[0].names, ['foo', 'bar'])
+        self.assertEqual(idx.reindex([], level=1)[0].names, ['foo', 'bar'])
+
+    def test_reindex_lvl_preserves_type_if_target_is_empty_list_or_array(self):
+        # GH7774
+        idx = pd.MultiIndex.from_product([[0, 1], ['a', 'b']])
+        self.assertEqual(idx.reindex([], level=0)[0].levels[0].dtype.type,
+                         np.int64)
+        self.assertEqual(idx.reindex([], level=1)[0].levels[1].dtype.type,
+                         np.object_)
 
 
 def test_get_combined_index():

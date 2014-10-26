@@ -45,7 +45,9 @@ class Resolution(object):
     RESO_HR: 'hour',
     RESO_DAY: 'day'}
 
-    _reso_period_map = {
+    _str_reso_map = dict([(v, k) for k, v in compat.iteritems(_reso_str_map)])
+
+    _reso_freq_map = {
     'year': 'A',
     'quarter': 'Q',
     'month': 'M',
@@ -57,13 +59,28 @@ class Resolution(object):
     'microsecond': 'U',
     'nanosecond': 'N'}
 
+    _freq_reso_map = dict([(v, k) for k, v in compat.iteritems(_reso_freq_map)])
+
     @classmethod
     def get_str(cls, reso):
         return cls._reso_str_map.get(reso, 'day')
 
     @classmethod
+    def get_reso(cls, resostr):
+        return cls._str_reso_map.get(resostr, cls.RESO_DAY)
+
+    @classmethod
     def get_freq(cls, resostr):
-        return cls._reso_period_map[resostr]
+        return cls._reso_freq_map[resostr]
+
+    @classmethod
+    def get_str_from_freq(cls, freq):
+        return cls._freq_reso_map.get(freq, 'day')
+
+    @classmethod
+    def get_reso_from_freq(cls, freq):
+        return cls.get_reso(cls.get_str_from_freq(freq))
+
 
 def get_reso_string(reso):
     return Resolution.get_str(reso)
@@ -593,7 +610,7 @@ def _period_alias_dictionary():
 
 
 def _infer_period_group(freqstr):
-    return _period_group(Resolution._reso_period_map[freqstr])
+    return _period_group(Resolution._reso_freq_map[freqstr])
 
 
 def _period_group(freqstr):
@@ -644,12 +661,17 @@ def infer_freq(index, warn=True):
 
     if isinstance(index, com.ABCSeries):
         values = index.values
-        if not (com.is_datetime64_dtype(index.values) or values.dtype == object):
+        if not (com.is_datetime64_dtype(index.values) or com.is_timedelta64_dtype(index.values) or values.dtype == object):
             raise TypeError("cannot infer freq from a non-convertible dtype on a Series of {0}".format(index.dtype))
         index = values
-    if isinstance(index, pd.PeriodIndex):
+
+    if com.is_period_arraylike(index):
         raise TypeError("PeriodIndex given. Check the `freq` attribute "
-                         "instead of using infer_freq.")
+                        "instead of using infer_freq.")
+    elif isinstance(index, pd.TimedeltaIndex):
+        inferer = _TimedeltaFrequencyInferer(index, warn=warn)
+        return inferer.get_freq()
+
     if isinstance(index, pd.Index) and not isinstance(index, pd.DatetimeIndex):
         if isinstance(index, (pd.Int64Index, pd.Float64Index)):
             raise TypeError("cannot infer freq from a non-convertible index type {0}".format(type(index)))
@@ -666,25 +688,6 @@ _ONE_MINUTE = 60 * _ONE_SECOND
 _ONE_HOUR = 60 * _ONE_MINUTE
 _ONE_DAY = 24 * _ONE_HOUR
 
-def _tz_convert_with_transitions(values, to_tz, from_tz):
-    """
-    convert i8 values from the specificed timezone to the to_tz zone, taking
-    into account DST transitions
-    """
-
-    # vectorization is slow, so tests if we can do this via the faster tz_convert
-    f = lambda x: tslib.tz_convert_single(x, to_tz, from_tz)
-
-    if len(values) > 2:
-        first_slow, last_slow = f(values[0]),f(values[-1])
-
-        first_fast, last_fast = tslib.tz_convert(np.array([values[0],values[-1]],dtype='i8'),to_tz,from_tz)
-
-        # don't cross a DST, so ok
-        if first_fast == first_slow and last_fast == last_slow:
-            return tslib.tz_convert(values,to_tz,from_tz)
-
-    return np.vectorize(f)(values)
 
 class _FrequencyInferer(object):
     """
@@ -695,8 +698,9 @@ class _FrequencyInferer(object):
         self.index = index
         self.values = np.asarray(index).view('i8')
 
-        if index.tz is not None:
-            self.values = _tz_convert_with_transitions(self.values,'UTC',index.tz)
+        if hasattr(index,'tz'):
+            if index.tz is not None:
+                self.values = tslib.tz_convert(self.values, 'UTC', index.tz)
 
         self.warn = warn
 
@@ -893,6 +897,18 @@ class _FrequencyInferer(object):
 
 import pandas.core.algorithms as algos
 
+class _TimedeltaFrequencyInferer(_FrequencyInferer):
+
+    def _infer_daily_rule(self):
+        if self.is_unique:
+            days = self.deltas[0] / _ONE_DAY
+            if days % 7 == 0:
+                # Weekly
+                alias = _weekday_rule_aliases[self.rep_stamp.weekday()]
+                return _maybe_add_count('W-%s' % alias, days / 7)
+            else:
+                return _maybe_add_count('D', days)
+
 
 def _maybe_add_count(base, count):
     if count > 1:
@@ -929,25 +945,31 @@ def is_subperiod(source, target):
         if _is_quarterly(source):
             return _quarter_months_conform(_get_rule_month(source),
                                            _get_rule_month(target))
-        return source in ['D', 'C', 'B', 'M', 'H', 'T', 'S']
+        return source in ['D', 'C', 'B', 'M', 'H', 'T', 'S', 'L', 'U', 'N']
     elif _is_quarterly(target):
-        return source in ['D', 'C', 'B', 'M', 'H', 'T', 'S']
+        return source in ['D', 'C', 'B', 'M', 'H', 'T', 'S', 'L', 'U', 'N']
     elif target == 'M':
-        return source in ['D', 'C', 'B', 'H', 'T', 'S']
+        return source in ['D', 'C', 'B', 'H', 'T', 'S', 'L', 'U', 'N']
     elif _is_weekly(target):
-        return source in [target, 'D', 'C', 'B', 'H', 'T', 'S']
+        return source in [target, 'D', 'C', 'B', 'H', 'T', 'S', 'L', 'U', 'N']
     elif target == 'B':
-        return source in ['B', 'H', 'T', 'S']
+        return source in ['B', 'H', 'T', 'S', 'L', 'U', 'N']
     elif target == 'C':
-        return source in ['C', 'H', 'T', 'S']
+        return source in ['C', 'H', 'T', 'S', 'L', 'U', 'N']
     elif target == 'D':
-        return source in ['D', 'H', 'T', 'S']
+        return source in ['D', 'H', 'T', 'S', 'L', 'U', 'N']
     elif target == 'H':
-        return source in ['H', 'T', 'S']
+        return source in ['H', 'T', 'S', 'L', 'U', 'N']
     elif target == 'T':
-        return source in ['T', 'S']
+        return source in ['T', 'S', 'L', 'U', 'N']
     elif target == 'S':
-        return source in ['S']
+        return source in ['S', 'L', 'U', 'N']
+    elif target == 'L':
+        return source in ['L', 'U', 'N']
+    elif target == 'U':
+        return source in ['U', 'N']
+    elif target == 'N':
+        return source in ['N']
 
 
 def is_superperiod(source, target):
@@ -982,25 +1004,31 @@ def is_superperiod(source, target):
             smonth = _get_rule_month(source)
             tmonth = _get_rule_month(target)
             return _quarter_months_conform(smonth, tmonth)
-        return target in ['D', 'C', 'B', 'M', 'H', 'T', 'S']
+        return target in ['D', 'C', 'B', 'M', 'H', 'T', 'S', 'L', 'U', 'N']
     elif _is_quarterly(source):
-        return target in ['D', 'C', 'B', 'M', 'H', 'T', 'S']
+        return target in ['D', 'C', 'B', 'M', 'H', 'T', 'S', 'L', 'U', 'N']
     elif source == 'M':
-        return target in ['D', 'C', 'B', 'H', 'T', 'S']
+        return target in ['D', 'C', 'B', 'H', 'T', 'S', 'L', 'U', 'N']
     elif _is_weekly(source):
-        return target in [source, 'D', 'C', 'B', 'H', 'T', 'S']
+        return target in [source, 'D', 'C', 'B', 'H', 'T', 'S', 'L', 'U', 'N']
     elif source == 'B':
-        return target in ['D', 'C', 'B', 'H', 'T', 'S']
+        return target in ['D', 'C', 'B', 'H', 'T', 'S', 'L', 'U', 'N']
     elif source == 'C':
-        return target in ['D', 'C', 'B', 'H', 'T', 'S']
+        return target in ['D', 'C', 'B', 'H', 'T', 'S', 'L', 'U', 'N']
     elif source == 'D':
-        return target in ['D', 'C', 'B', 'H', 'T', 'S']
+        return target in ['D', 'C', 'B', 'H', 'T', 'S', 'L', 'U', 'N']
     elif source == 'H':
-        return target in ['H', 'T', 'S']
+        return target in ['H', 'T', 'S', 'L', 'U', 'N']
     elif source == 'T':
-        return target in ['T', 'S']
+        return target in ['T', 'S', 'L', 'U', 'N']
     elif source == 'S':
-        return target in ['S']
+        return target in ['S', 'L', 'U', 'N']
+    elif source == 'L':
+        return target in ['L', 'U', 'N']
+    elif source == 'U':
+        return target in ['U', 'N']
+    elif source == 'N':
+        return target in ['N']
 
 
 def _get_rule_month(source, default='DEC'):

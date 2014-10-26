@@ -12,7 +12,6 @@ from pandas import compat, lib, tslib
 import pandas.index as _index
 from pandas.util.decorators import Appender
 import pandas.core.common as com
-import pandas.core.array as pa
 import pandas.computation.expressions as expressions
 from pandas.core.common import(bind_method, is_list_like, notnull, isnull,
                                _values_from_object, _maybe_match_name)
@@ -162,20 +161,39 @@ def add_special_arithmetic_methods(cls, arith_method=None, radd_func=None,
         if passed, will not set functions with names in exclude
     """
     radd_func = radd_func or operator.add
+
     # in frame, special methods have default_axis = None, comp methods use
     # 'columns'
+
     new_methods = _create_methods(arith_method, radd_func, comp_method,
                                   bool_method, use_numexpr, default_axis=None,
                                   special=True)
 
     # inplace operators (I feel like these should get passed an `inplace=True`
     # or just be removed
+
+    def _wrap_inplace_method(method):
+        """
+        return an inplace wrapper for this method
+        """
+
+        def f(self, other):
+            result = method(self, other)
+
+            # this makes sure that we are aligned like the input
+            # we are updating inplace so we want to ignore is_copy
+            self._update_inplace(result.reindex_like(self,copy=False)._data,
+                                 verify_is_copy=False)
+
+            return self
+        return f
+
     new_methods.update(dict(
-        __iadd__=new_methods["__add__"],
-        __isub__=new_methods["__sub__"],
-        __imul__=new_methods["__mul__"],
-        __itruediv__=new_methods["__truediv__"],
-        __ipow__=new_methods["__pow__"]
+        __iadd__=_wrap_inplace_method(new_methods["__add__"]),
+        __isub__=_wrap_inplace_method(new_methods["__sub__"]),
+        __imul__=_wrap_inplace_method(new_methods["__mul__"]),
+        __itruediv__=_wrap_inplace_method(new_methods["__truediv__"]),
+        __ipow__=_wrap_inplace_method(new_methods["__pow__"]),
     ))
     if not compat.PY3:
         new_methods["__idiv__"] = new_methods["__div__"]
@@ -247,7 +265,7 @@ class _TimeOp(object):
 
         # need to make sure that we are aligning the data
         if isinstance(left, pd.Series) and isinstance(right, pd.Series):
-            left, right = left.align(right)
+            left, right = left.align(right,copy=False)
 
         self.left = left
         self.right = right
@@ -258,9 +276,7 @@ class _TimeOp(object):
         self.is_datetime_lhs = com.is_datetime64_dtype(left)
         self.is_integer_lhs = left.dtype.kind in ['i', 'u']
         self.is_datetime_rhs = com.is_datetime64_dtype(rvalues)
-        self.is_timedelta_rhs = (com.is_timedelta64_dtype(rvalues)
-                                 or (not self.is_datetime_rhs
-                                     and pd._np_version_under1p7))
+        self.is_timedelta_rhs = com.is_timedelta64_dtype(rvalues)
         self.is_integer_rhs = rvalues.dtype.kind in ('i', 'u')
 
         self._validate()
@@ -316,9 +332,9 @@ class _TimeOp(object):
 
     def _convert_to_array(self, values, name=None, other=None):
         """converts values to ndarray"""
-        from pandas.tseries.timedeltas import _possibly_cast_to_timedelta
+        from pandas.tseries.timedeltas import to_timedelta
 
-        coerce = 'compat' if pd._np_version_under1p7 else True
+        coerce = True
         if not is_list_like(values):
             values = np.array([values])
         inferred_type = lib.infer_dtype(values)
@@ -331,15 +347,15 @@ class _TimeOp(object):
                 values = np.empty(values.shape, dtype=other.dtype)
                 values[:] = tslib.iNaT
 
-            # a datetlike
-            elif not (isinstance(values, (pa.Array, pd.Series)) and
-                      com.is_datetime64_dtype(values)):
-                values = tslib.array_to_datetime(values)
+            # a datelike
             elif isinstance(values, pd.DatetimeIndex):
                 values = values.to_series()
+            elif not (isinstance(values, (np.ndarray, pd.Series)) and
+                      com.is_datetime64_dtype(values)):
+                values = tslib.array_to_datetime(values)
         elif inferred_type in ('timedelta', 'timedelta64'):
             # have a timedelta, convert to to ns here
-            values = _possibly_cast_to_timedelta(values, coerce=coerce, dtype='timedelta64[ns]')
+            values = to_timedelta(values, coerce=coerce)
         elif inferred_type == 'integer':
             # py3 compat where dtype is 'm' but is an integer
             if values.dtype.kind == 'm':
@@ -351,14 +367,14 @@ class _TimeOp(object):
                                 "operation [{0}]".format(name))
         elif isinstance(values[0], pd.DateOffset):
             # handle DateOffsets
-            os = pa.array([getattr(v, 'delta', None) for v in values])
+            os = np.array([getattr(v, 'delta', None) for v in values])
             mask = isnull(os)
             if mask.any():
                 raise TypeError("cannot use a non-absolute DateOffset in "
                                 "datetime/timedelta operations [{0}]".format(
                                     ', '.join([com.pprint_thing(v)
                                                for v in values[mask]])))
-            values = _possibly_cast_to_timedelta(os, coerce=coerce)
+            values = to_timedelta(os, coerce=coerce)
         elif inferred_type == 'floating':
 
             # all nan, so ok, use the other dtype (e.g. timedelta or datetime)
@@ -368,10 +384,10 @@ class _TimeOp(object):
             else:
                 raise TypeError(
                     'incompatible type [{0}] for a datetime/timedelta '
-                    'operation'.format(pa.array(values).dtype))
+                    'operation'.format(np.array(values).dtype))
         else:
             raise TypeError("incompatible type [{0}] for a datetime/timedelta"
-                            " operation".format(pa.array(values).dtype))
+                            " operation".format(np.array(values).dtype))
 
         return values
 
@@ -410,7 +426,7 @@ class _TimeOp(object):
         if mask is not None:
             if mask.any():
                 def f(x):
-                    x = pa.array(x, dtype=self.dtype)
+                    x = np.array(x, dtype=self.dtype)
                     np.putmask(x, mask, self.fill_value)
                     return x
                 self.wrap_results = f
@@ -451,17 +467,19 @@ def _arith_method_SERIES(op, name, str_rep, fill_zeros=None,
             result = expressions.evaluate(op, str_rep, x, y,
                                           raise_on_error=True, **eval_kwargs)
         except TypeError:
-            if isinstance(y, (pa.Array, pd.Series)):
+            if isinstance(y, (np.ndarray, pd.Series, pd.Index)):
                 dtype = np.find_common_type([x.dtype, y.dtype], [])
                 result = np.empty(x.size, dtype=dtype)
                 mask = notnull(x) & notnull(y)
-                result[mask] = op(x[mask], y[mask])
-            else:
-                result = pa.empty(len(x), dtype=x.dtype)
+                result[mask] = op(x[mask], _values_from_object(y[mask]))
+            elif isinstance(x, np.ndarray):
+                result = np.empty(len(x), dtype=x.dtype)
                 mask = notnull(x)
                 result[mask] = op(x[mask], y)
+            else:
+                raise TypeError("{typ} cannot perform the operation {op}".format(typ=type(x).__name__,op=str_rep))
 
-            result, changed = com._maybe_upcast_putmask(result, ~mask, pa.NA)
+            result, changed = com._maybe_upcast_putmask(result, ~mask, np.nan)
 
         result = com._fill_zeros(result, x, y, name, fill_zeros)
         return result
@@ -522,11 +540,16 @@ def _comp_method_SERIES(op, name, str_rep, masker=False):
     code duplication.
     """
     def na_op(x, y):
+
+        if com.is_categorical_dtype(x) != (not np.isscalar(y) and com.is_categorical_dtype(y)):
+            msg = "Cannot compare a Categorical for op {op} with type {typ}. If you want to \n" \
+                  "compare values, use 'series <op> np.asarray(cat)'."
+            raise TypeError(msg.format(op=op,typ=type(y)))
         if x.dtype == np.object_:
             if isinstance(y, list):
                 y = lib.list_to_object_array(y)
 
-            if isinstance(y, (pa.Array, pd.Series)):
+            if isinstance(y, (np.ndarray, pd.Series)):
                 if y.dtype != np.object_:
                     result = lib.vec_compare(x, y.astype(np.object_), op)
                 else:
@@ -553,19 +576,24 @@ def _comp_method_SERIES(op, name, str_rep, masker=False):
                                      index=self.index, name=name)
         elif isinstance(other, pd.DataFrame):  # pragma: no cover
             return NotImplemented
-        elif isinstance(other, (pa.Array, pd.Series)):
+        elif isinstance(other, (np.ndarray, pd.Index)):
             if len(self) != len(other):
                 raise ValueError('Lengths must match to compare')
             return self._constructor(na_op(self.values, np.asarray(other)),
                                      index=self.index).__finalize__(self)
+        elif isinstance(other, pd.Categorical):
+            if not com.is_categorical_dtype(self):
+                msg = "Cannot compare a Categorical for op {op} with Series of dtype {typ}.\n"\
+                      "If you want to compare values, use 'series <op> np.asarray(other)'."
+                raise TypeError(msg.format(op=op,typ=self.dtype))
         else:
 
             mask = isnull(self)
 
-            values = self.values
-            other = _index.convert_scalar(values, other)
+            values = self.get_values()
+            other = _index.convert_scalar(values,_values_from_object(other))
 
-            if issubclass(values.dtype.type, np.datetime64):
+            if issubclass(values.dtype.type, (np.datetime64, np.timedelta64)):
                 values = values.view('i8')
 
             # scalars
@@ -600,7 +628,7 @@ def _bool_method_SERIES(op, name, str_rep):
             if isinstance(y, list):
                 y = lib.list_to_object_array(y)
 
-            if isinstance(y, (pa.Array, pd.Series)):
+            if isinstance(y, (np.ndarray, pd.Series)):
                 if (x.dtype == np.bool_ and
                         y.dtype == np.bool_):  # pragma: no cover
                     result = op(x, y)  # when would this be hit?
@@ -646,13 +674,7 @@ def _radd_compat(left, right):
     try:
         output = radd(left, right)
     except TypeError:
-        cond = (pd._np_version_under1p6 and
-                left.dtype == np.object_)
-        if cond:  # pragma: no cover
-            output = np.empty_like(left)
-            output.flat[:] = [radd(x, right) for x in left.flat]
-        else:
-            raise
+        raise
 
     return output
 
@@ -684,7 +706,7 @@ def _flex_method_SERIES(op, name, str_rep, default_axis=None,
         self._get_axis_number(axis)
         if isinstance(other, pd.Series):
             return self._binop(other, op, level=level, fill_value=fill_value)
-        elif isinstance(other, (pa.Array, pd.Series, list, tuple)):
+        elif isinstance(other, (np.ndarray, pd.Series, list, tuple)):
             if len(other) != len(self):
                 raise ValueError('Lengths must be equal')
             return self._binop(self._constructor(other, self.index), op,
@@ -749,12 +771,15 @@ def _arith_method_FRAME(op, name, str_rep=None, default_axis='columns',
                 yrav = yrav[mask]
                 if np.prod(xrav.shape) and np.prod(yrav.shape):
                     result[mask] = op(xrav, yrav)
-            else:
+            elif hasattr(x,'size'):
                 result = np.empty(x.size, dtype=x.dtype)
                 mask = notnull(xrav)
                 xrav = xrav[mask]
                 if np.prod(xrav.shape):
                     result[mask] = op(xrav, y)
+            else:
+                raise TypeError("cannot perform operation {op} between objects "
+                                "of type {x} and {y}".format(op=name,x=type(x),y=type(y)))
 
             result, changed = com._maybe_upcast_putmask(result, ~mask, np.nan)
             result = result.reshape(x.shape)
@@ -778,7 +803,7 @@ def _arith_method_FRAME(op, name, str_rep=None, default_axis='columns',
                 # casted = self._constructor_sliced(other, index=self.columns)
                 casted = pd.Series(other, index=self.columns)
             return self._combine_series(casted, na_op, fill_value, axis, level)
-        elif isinstance(other, np.ndarray):
+        elif isinstance(other, np.ndarray) and other.ndim:  # skips np scalar
             if other.ndim == 1:
                 if axis is not None and self._get_axis_name(axis) == 'index':
                     # casted = self._constructor_sliced(other,
@@ -918,10 +943,10 @@ def _arith_method_PANEL(op, name, str_rep=None, fill_zeros=None,
         except TypeError:
 
             # TODO: might need to find_common_type here?
-            result = pa.empty(len(x), dtype=x.dtype)
+            result = np.empty(len(x), dtype=x.dtype)
             mask = notnull(x)
             result[mask] = op(x[mask], y)
-            result, changed = com._maybe_upcast_putmask(result, ~mask, pa.NA)
+            result, changed = com._maybe_upcast_putmask(result, ~mask, np.nan)
 
         result = com._fill_zeros(result, x, y, name, fill_zeros)
         return result

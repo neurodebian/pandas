@@ -43,7 +43,8 @@ echo "home_dir: [$home_dir]"
 pip install -I -U pip
 pip install -I -U setuptools
 pip install wheel==0.22
-pip install nose==1.3.3
+#pip install nose==1.3.3
+pip install nose==1.3.4
 
 # comment this line to disable the fetching of wheel files
 base_url=http://pandas.pydata.org/pandas-build/dev/wheels
@@ -136,11 +137,8 @@ if [ "$IRON_TOKEN" ]; then
 fi
 
 # build pandas
-time python setup.py sdist
-pip uninstall cython -y
-
-# install pandas
-time pip install $(find dist | grep gz | head -n 1)
+python setup.py build_ext --inplace
+python setup.py develop
 
 # restore cython (if not numpy building)
 if [ -z "$NUMPY_BUILD" ]; then

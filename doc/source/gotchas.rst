@@ -183,7 +183,7 @@ Why not make NumPy like R?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Many people have suggested that NumPy should simply emulate the ``NA`` support
-present in the more domain-specific statistical programming langauge `R
+present in the more domain-specific statistical programming language `R
 <http://r-project.org>`__. Part of the reason is the NumPy type hierarchy:
 
 .. csv-table::
@@ -358,6 +358,8 @@ such as ``numpy.logical_and``.
 See the `this old issue <https://github.com/pydata/pandas/issues/2388>`__ for a more
 detailed discussion.
 
+.. _gotchas.timestamp-limits:
+
 Timestamp limitations
 ---------------------
 
@@ -375,14 +377,7 @@ can be represented using a 64-bit integer is limited to approximately 584 years:
    end = Timestamp.max
    end
 
-If you need to represent time series data outside the nanosecond timespan, use
-PeriodIndex:
-
-.. ipython:: python
-
-   span = period_range('1215-01-01', '1381-01-01', freq='D')
-   span
-
+See :ref:`here <timeseries.oob>` for ways to represent data outside these bound.
 
 Parsing Dates from Text Files
 -----------------------------
@@ -500,7 +495,7 @@ parse HTML tables in the top-level pandas io function ``read_html``.
        molasses.  However consider the fact that many tables on the web are not
        big enough for the parsing algorithm runtime to matter. It is more
        likely that the bottleneck will be in the process of reading the raw
-       text from the url over the web, i.e., IO (input-output). For very large
+       text from the URL over the web, i.e., IO (input-output). For very large
        tables, this might not be true.
 
 **Issues with using** |Anaconda|_

@@ -712,17 +712,15 @@ def rank_2d_generic(object in_arr, axis=0, ties_method='average',
 #
 # -
 
-def _check_minp(win, minp, N):
+def _check_minp(win, minp, N, floor=1):
     if minp > win:
         raise ValueError('min_periods (%d) must be <= window (%d)'
                         % (minp, win))
     elif minp > N:
         minp = N + 1
-    elif minp == 0:
-        minp = 1
     elif minp < 0:
         raise ValueError('min_periods must be >= 0')
-    return minp
+    return max(minp, floor)
 
 # original C implementation by N. Devillard.
 # This code in public domain.
@@ -979,7 +977,7 @@ def roll_mean(ndarray[double_t] input,
 #-------------------------------------------------------------------------------
 # Exponentially weighted moving average
 
-def ewma(ndarray[double_t] input, double_t com, int adjust):
+def ewma(ndarray[double_t] input, double_t com, int adjust, int ignore_na, int minp):
     '''
     Compute exponentially-weighted moving average using center-of-mass.
 
@@ -987,52 +985,148 @@ def ewma(ndarray[double_t] input, double_t com, int adjust):
     ----------
     input : ndarray (float64 type)
     com : float64
+    adjust: int
+    ignore_na: int
+    minp: int
 
     Returns
     -------
     y : ndarray
     '''
 
-    cdef double cur, prev, neww, oldw, adj
-    cdef Py_ssize_t i
     cdef Py_ssize_t N = len(input)
-
     cdef ndarray[double_t] output = np.empty(N, dtype=float)
-
     if N == 0:
         return output
 
-    neww = 1. / (1. + com)
-    oldw = 1. - neww
-    adj = oldw
+    minp = max(minp, 1)
 
-    if adjust:
-        output[0] = neww * input[0]
-    else:
-        output[0] = input[0]
+    cdef double alpha, old_wt_factor, new_wt, weighted_avg, old_wt, cur
+    cdef Py_ssize_t i, nobs
+
+    alpha = 1. / (1. + com)
+    old_wt_factor = 1. - alpha
+    new_wt = 1. if adjust else alpha
+
+    weighted_avg = input[0]
+    is_observation = (weighted_avg == weighted_avg)
+    nobs = int(is_observation)
+    output[0] = weighted_avg if (nobs >= minp) else NaN
+    old_wt = 1.
 
     for i from 1 <= i < N:
         cur = input[i]
-        prev = output[i - 1]
+        is_observation = (cur == cur)
+        nobs += int(is_observation)
+        if weighted_avg == weighted_avg:
+            if is_observation or (not ignore_na):
+                old_wt *= old_wt_factor
+                if is_observation:
+                    if weighted_avg != cur:  # avoid numerical errors on constant series
+                        weighted_avg = ((old_wt * weighted_avg) + (new_wt * cur)) / (old_wt + new_wt)
+                    if adjust:
+                        old_wt += new_wt
+                    else:
+                        old_wt = 1.
+        elif is_observation:
+            weighted_avg = cur
 
-        if cur == cur:
-            if prev == prev:
-                output[i] = oldw * prev + neww * cur
+        output[i] = weighted_avg if (nobs >= minp) else NaN
+
+    return output
+
+#-------------------------------------------------------------------------------
+# Exponentially weighted moving covariance
+
+def ewmcov(ndarray[double_t] input_x, ndarray[double_t] input_y,
+           double_t com, int adjust, int ignore_na, int minp, int bias):
+    '''
+    Compute exponentially-weighted moving variance using center-of-mass.
+
+    Parameters
+    ----------
+    input_x : ndarray (float64 type)
+    input_y : ndarray (float64 type)
+    com : float64
+    adjust: int
+    ignore_na: int
+    minp: int
+    bias: int
+
+    Returns
+    -------
+    y : ndarray
+    '''
+
+    cdef Py_ssize_t N = len(input_x)
+    if len(input_y) != N:
+        raise ValueError('arrays are of different lengths (%d and %d)' % (N, len(input_y)))
+    cdef ndarray[double_t] output = np.empty(N, dtype=float)
+    if N == 0:
+        return output
+
+    minp = max(minp, 1)
+
+    cdef double alpha, old_wt_factor, new_wt, mean_x, mean_y, cov
+    cdef double sum_wt, sum_wt2, old_wt, cur_x, cur_y, old_mean_x, old_mean_y
+    cdef Py_ssize_t i, nobs
+
+    alpha = 1. / (1. + com)
+    old_wt_factor = 1. - alpha
+    new_wt = 1. if adjust else alpha
+
+    mean_x = input_x[0]
+    mean_y = input_y[0]
+    is_observation = ((mean_x == mean_x) and (mean_y == mean_y))
+    nobs = int(is_observation)
+    if not is_observation:
+        mean_x = NaN
+        mean_y = NaN
+    output[0] = (0. if bias else NaN) if (nobs >= minp) else NaN
+    cov = 0.
+    sum_wt = 1.
+    sum_wt2 = 1.
+    old_wt = 1.
+    
+    for i from 1 <= i < N:
+        cur_x = input_x[i]
+        cur_y = input_y[i]
+        is_observation = ((cur_x == cur_x) and (cur_y == cur_y))
+        nobs += int(is_observation)
+        if mean_x == mean_x:
+            if is_observation or (not ignore_na):
+                sum_wt *= old_wt_factor
+                sum_wt2 *= (old_wt_factor * old_wt_factor)
+                old_wt *= old_wt_factor
+                if is_observation:
+                    old_mean_x = mean_x
+                    old_mean_y = mean_y
+                    if mean_x != cur_x:  # avoid numerical errors on constant series
+                        mean_x = ((old_wt * old_mean_x) + (new_wt * cur_x)) / (old_wt + new_wt)
+                    if mean_y != cur_y:  # avoid numerical errors on constant series
+                        mean_y = ((old_wt * old_mean_y) + (new_wt * cur_y)) / (old_wt + new_wt)
+                    cov = ((old_wt * (cov + ((old_mean_x - mean_x) * (old_mean_y - mean_y)))) +
+                           (new_wt * ((cur_x - mean_x) * (cur_y - mean_y)))) / (old_wt + new_wt)
+                    sum_wt += new_wt
+                    sum_wt2 += (new_wt * new_wt)
+                    old_wt += new_wt
+                    if not adjust:
+                        sum_wt /= old_wt
+                        sum_wt2 /= (old_wt * old_wt)
+                        old_wt = 1.
+        elif is_observation:
+            mean_x = cur_x
+            mean_y = cur_y
+        
+        if nobs >= minp:
+            if not bias:
+                numerator = sum_wt * sum_wt
+                denominator = numerator - sum_wt2
+                output[i] = ((numerator / denominator) * cov) if (denominator > 0.) else NaN
             else:
-                output[i] = neww * cur
+                output[i] = cov
         else:
-            output[i] = prev
-
-    if adjust:
-        for i from 0 <= i < N:
-            cur = input[i]
-
-            if cur == cur:
-                output[i] = output[i] / (1. - adj)
-                adj *= oldw
-            else:
-                if i >= 1:
-                    output[i] = output[i - 1]
+            output[i] = NaN
 
     return output
 
@@ -1187,7 +1281,7 @@ def roll_var(ndarray[double_t] input, int win, int minp, int ddof=1):
             mean_x += delta / nobs
             ssqdm_x += delta * (val - mean_x)
 
-        if nobs >= minp:
+        if (nobs >= minp) and (nobs > ddof):
             #pathological case
             if nobs == 1:
                 val = 0
@@ -1231,7 +1325,7 @@ def roll_var(ndarray[double_t] input, int win, int minp, int ddof=1):
                 ssqdm_x = 0
         # Variance is unchanged if no observation is added or removed
 
-        if nobs >= minp:
+        if (nobs >= minp) and (nobs > ddof):
             #pathological case
             if nobs == 1:
                 val = 0
@@ -1292,17 +1386,14 @@ def roll_skew(ndarray[double_t] input, int win, int minp):
                 xxx -= prev * prev * prev
 
                 nobs -= 1
-
         if nobs >= minp:
             A = x / nobs
             B = xx / nobs - A * A
             C = xxx / nobs - A * A * A - 3 * A * B
-
-            R = sqrt(B)
-
-            if B == 0 or nobs < 3:
+            if B <= 0 or nobs < 3:
                 output[i] = NaN
             else:
+                R = sqrt(B)
                 output[i] = ((sqrt(nobs * (nobs - 1.)) * C) /
                              ((nobs-2) * R * R * R))
         else:
@@ -1551,8 +1642,6 @@ def roll_max2(ndarray[float64_t] a, int window, int minp):
 
     minp = _check_minp(window, minp, n0)
 
-    window = min(window, n0)
-
     ring = <pairs*>stdlib.malloc(window * sizeof(pairs))
     end = ring + window
     last = ring
@@ -1649,8 +1738,6 @@ def roll_min2(np.ndarray[np.float64_t, ndim=1] a, int window, int minp):
     if minp > window:
         raise ValueError('Invalid min_periods size %d greater than window %d'
                         % (minp, window))
-
-    window = min(window, n0)
 
     minp = _check_minp(window, minp, n0)
 
@@ -1759,8 +1846,9 @@ def roll_quantile(ndarray[float64_t, cast=True] input, int win,
 
     return output
 
-def roll_generic(ndarray[float64_t, cast=True] input, int win,
-                 int minp, object func, object args, object kwargs):
+def roll_generic(ndarray[float64_t, cast=True] input,
+                 int win, int minp, int offset,
+                 object func, object args, object kwargs):
     cdef ndarray[double_t] output, counts, bufarr
     cdef Py_ssize_t i, n
     cdef float64_t *buf
@@ -1769,43 +1857,47 @@ def roll_generic(ndarray[float64_t, cast=True] input, int win,
     if not input.flags.c_contiguous:
         input = input.copy('C')
 
-    buf = <float64_t*> input.data
-
     n = len(input)
     if n == 0:
         return input
 
-    minp = _check_minp(win, minp, n)
+    minp = _check_minp(win, minp, n, floor=0)
     output = np.empty(n, dtype=float)
-    counts = roll_sum(np.isfinite(input).astype(float), win, minp)
+    counts = roll_sum(np.concatenate((np.isfinite(input).astype(float), np.array([0.] * offset))), win, minp)[offset:]
 
-    bufarr = np.empty(win, dtype=float)
-    oldbuf = <float64_t*> bufarr.data
-
-    n = len(input)
-    for i from 0 <= i < int_min(win, n):
+    # truncated windows at the beginning, through first full-length window
+    for i from 0 <= i < (int_min(win, n) - offset):
         if counts[i] >= minp:
-            output[i] = func(input[int_max(i - win + 1, 0) : i + 1], *args,
-                             **kwargs)
+            output[i] = func(input[0 : (i + offset + 1)], *args, **kwargs)
         else:
             output[i] = NaN
 
-    for i from win <= i < n:
+    # remaining full-length windows
+    buf = <float64_t*> input.data
+    bufarr = np.empty(win, dtype=float)
+    oldbuf = <float64_t*> bufarr.data
+    for i from (win - offset) <= i < (n - offset):
         buf = buf + 1
         bufarr.data = <char*> buf
         if counts[i] >= minp:
             output[i] = func(bufarr, *args, **kwargs)
         else:
             output[i] = NaN
-
     bufarr.data = <char*> oldbuf
+
+    # truncated windows at the end
+    for i from int_max(n - offset, 0) <= i < n:
+        if counts[i] >= minp:
+            output[i] = func(input[int_max(i + offset - win + 1, 0) : n], *args, **kwargs)
+        else:
+            output[i] = NaN
 
     return output
 
 
 def roll_window(ndarray[float64_t, ndim=1, cast=True] input,
                 ndarray[float64_t, ndim=1, cast=True] weights,
-                int minp, bint avg=True, bint avg_wgt=False):
+                int minp, bint avg=True):
     """
     Assume len(weights) << len(input)
     """
@@ -1823,7 +1915,7 @@ def roll_window(ndarray[float64_t, ndim=1, cast=True] input,
 
     minp = _check_minp(len(weights), minp, in_n)
 
-    if avg_wgt:
+    if avg:
         for win_i from 0 <= win_i < win_n:
             val_win = weights[win_i]
             if val_win != val_win:
@@ -1864,8 +1956,6 @@ def roll_window(ndarray[float64_t, ndim=1, cast=True] input,
             c = counts[in_i]
             if c < minp:
                 output[in_i] = NaN
-            elif avg:
-                output[in_i] /= c
 
     return output
 

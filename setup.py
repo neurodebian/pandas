@@ -35,11 +35,8 @@ except ImportError:
     _have_setuptools = False
 
 setuptools_kwargs = {}
-min_numpy_ver = '1.6'
+min_numpy_ver = '1.7.0'
 if sys.version_info[0] >= 3:
-
-    if sys.version_info[1] >= 3:  # 3.3 needs numpy 1.7+
-        min_numpy_ver = "1.7.0b2"
 
     setuptools_kwargs = {
                          'zip_safe': False,
@@ -53,7 +50,6 @@ if sys.version_info[0] >= 3:
                  "\n$ pip install distribute")
 
 else:
-    min_numpy_ver = '1.6.1'
     setuptools_kwargs = {
         'install_requires': ['python-dateutil',
                             'pytz >= 2011k',
@@ -191,8 +187,8 @@ CLASSIFIERS = [
 ]
 
 MAJOR = 0
-MINOR = 14
-MICRO = 1
+MINOR = 15
+MICRO = 0
 ISRELEASED = True
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
 QUALIFIER = ''
@@ -396,6 +392,20 @@ cmdclass = {'clean': CleanCommand,
             'build': build,
             'sdist': CheckSDist}
 
+try:
+    from wheel.bdist_wheel import bdist_wheel
+
+    class BdistWheel(bdist_wheel):
+        def get_tag(self):
+            tag = bdist_wheel.get_tag(self)
+            repl = 'macosx_10_6_intel.macosx_10_9_intel.macosx_10_9_x86_64'
+            if tag[2] == 'macosx_10_6_intel':
+                tag = (tag[0], tag[1], repl)
+            return tag
+    cmdclass['bdist_wheel'] = BdistWheel
+except ImportError:
+    pass
+
 if cython:
     suffix = '.pyx'
     cmdclass['build_ext'] = CheckingBuildExt
@@ -452,7 +462,8 @@ ext_data = dict(
            'sources': ['pandas/src/datetime/np_datetime.c',
                        'pandas/src/datetime/np_datetime_strings.c']},
     algos={'pyxfile': 'algos',
-           'depends': [srcpath('generated', suffix='.pyx')]},
+           'depends': [srcpath('generated', suffix='.pyx'),
+                       srcpath('join', suffix='.pyx')]},
     parser=dict(pyxfile='parser',
                 depends=['pandas/src/parser/tokenizer.h',
                          'pandas/src/parser/io.h',
@@ -578,6 +589,7 @@ setup(name=DISTNAME,
                                   'tests/data/legacy_pickle/0.11.0/*.pickle',
                                   'tests/data/legacy_pickle/0.12.0/*.pickle',
                                   'tests/data/legacy_pickle/0.13.0/*.pickle',
+                                  'tests/data/legacy_pickle/0.14.0/*.pickle',
                                   'tests/data/*.csv',
                                   'tests/data/*.dta',
                                   'tests/data/*.txt',
@@ -586,6 +598,7 @@ setup(name=DISTNAME,
                                   'tests/data/*.xlsm',
                                   'tests/data/*.table',
                                   'tests/data/*.html',
+                                  'tests/data/html_encoding/*.html',
                                   'tests/test_json/data/*.json'],
                     'pandas.tools': ['tests/*.csv'],
                     'pandas.tests': ['data/*.pickle',

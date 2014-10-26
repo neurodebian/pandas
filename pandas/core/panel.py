@@ -7,6 +7,7 @@ from pandas.compat import (map, zip, range, lrange, lmap, u, OrderedDict,
                            OrderedDefaultdict)
 from pandas import compat
 import sys
+import warnings
 import numpy as np
 from pandas.core.common import (PandasError, _try_sort, _default_index,
                                 _infer_dtype_from_scalar, notnull)
@@ -97,8 +98,8 @@ def panel_index(time, panels, names=['time', 'panel']):
     time_factor = Categorical.from_array(time)
     panel_factor = Categorical.from_array(panels)
 
-    labels = [time_factor.labels, panel_factor.labels]
-    levels = [time_factor.levels, panel_factor.levels]
+    labels = [time_factor.codes, panel_factor.codes]
+    levels = [time_factor.categories, panel_factor.categories]
     return MultiIndex(levels, labels, sortorder=None, names=names,
                       verify_integrity=False)
 
@@ -677,9 +678,9 @@ class Panel(NDFrame):
                                  self.minor_axis)
 
     def _combine_panel(self, other, func):
-        items = self.items + other.items
-        major = self.major_axis + other.major_axis
-        minor = self.minor_axis + other.minor_axis
+        items = self.items.union(other.items)
+        major = self.major_axis.union(other.major_axis)
+        minor = self.minor_axis.union(other.minor_axis)
 
         # could check that everything's the same size, but forget it
         this = self.reindex(items=items, major=major, minor=minor)
@@ -710,7 +711,7 @@ class Panel(NDFrame):
         major_xs is only for getting, not setting values.
 
         MultiIndex Slicers is a generic way to get/set values on any level or levels
-        it is a superset of major_xs functionality, see :ref:`MultiIndex Slicers <indexing.mi_slicers>`
+        it is a superset of major_xs functionality, see :ref:`MultiIndex Slicers <advanced.mi_slicers>`
 
         """
         if copy is not None:
@@ -740,7 +741,7 @@ class Panel(NDFrame):
         minor_xs is only for getting, not setting values.
 
         MultiIndex Slicers is a generic way to get/set values on any level or levels
-        it is a superset of minor_xs functionality, see :ref:`MultiIndex Slicers <indexing.mi_slicers>`
+        it is a superset of minor_xs functionality, see :ref:`MultiIndex Slicers <advanced.mi_slicers>`
 
         """
         if copy is not None:
@@ -770,7 +771,7 @@ class Panel(NDFrame):
         xs is only for getting, not setting values.
 
         MultiIndex Slicers is a generic way to get/set values on any level or levels
-        it is a superset of xs functionality, see :ref:`MultiIndex Slicers <indexing.mi_slicers>`
+        it is a superset of xs functionality, see :ref:`MultiIndex Slicers <advanced.mi_slicers>`
 
         """
         if copy is not None:
@@ -1045,7 +1046,7 @@ class Panel(NDFrame):
         return self._construct_return_type(dict(results))
 
     def _reduce(self, op, axis=0, skipna=True, numeric_only=None,
-                filter_type=None, **kwds):
+                filter_type=None, name=None, **kwds):
         axis_name = self._get_axis_name(axis)
         axis_number = self._get_axis_number(axis_name)
         f = lambda x: op(x, axis=axis_number, skipna=skipna, **kwds)

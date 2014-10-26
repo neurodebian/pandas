@@ -187,15 +187,16 @@ class TestUnique(tm.TestCase):
             len(algos.unique(lst))
 
     def test_on_index_object(self):
+
         mindex = pd.MultiIndex.from_arrays([np.arange(5).repeat(5),
                                             np.tile(np.arange(5), 5)])
+        expected = mindex.values
+        expected.sort()
+
         mindex = mindex.repeat(2)
 
         result = pd.unique(mindex)
         result.sort()
-
-        expected = mindex.values
-        expected.sort()
 
         tm.assert_almost_equal(result, expected)
 
@@ -203,6 +204,7 @@ class TestValueCounts(tm.TestCase):
     _multiprocess_can_split_ = True
 
     def test_value_counts(self):
+        np.random.seed(1234)
         from pandas.tools.tile import cut
 
         arr = np.random.randn(4)
@@ -212,7 +214,7 @@ class TestValueCounts(tm.TestCase):
 
         result = algos.value_counts(factor)
         expected = algos.value_counts(np.asarray(factor))
-        tm.assert_series_equal(result, expected)
+        tm.assert_series_equal(result.sort_index(), expected.sort_index())
 
     def test_value_counts_bins(self):
         s = [1, 2, 3, 4]

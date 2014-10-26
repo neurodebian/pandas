@@ -93,6 +93,8 @@ def _unique_generic(values, table_type, type_caster):
     return type_caster(uniques)
 
 
+
+
 def factorize(values, sort=False, order=None, na_sentinel=-1):
     """
     Encode input values as an enumerated type or categorical variable
@@ -122,7 +124,9 @@ def factorize(values, sort=False, order=None, na_sentinel=-1):
     from pandas.core.index import Index
     from pandas.core.series import Series
     vals = np.asarray(values)
+
     is_datetime = com.is_datetime64_dtype(vals)
+    is_timedelta = com.is_timedelta64_dtype(vals)
     (hash_klass, vec_klass), vals = _get_data_algo(vals, _hashtables)
 
     table = hash_klass(len(vals))
@@ -159,8 +163,10 @@ def factorize(values, sort=False, order=None, na_sentinel=-1):
 
     if is_datetime:
         uniques = uniques.astype('M8[ns]')
+    elif is_timedelta:
+        uniques = uniques.astype('m8[ns]')
     if isinstance(values, Index):
-        uniques = values._simple_new(uniques, None, freq=getattr(values, 'freq', None), 
+        uniques = values._simple_new(uniques, None, freq=getattr(values, 'freq', None),
                                      tz=getattr(values, 'tz', None))
     elif isinstance(values, Series):
         uniques = Index(uniques)
@@ -194,22 +200,29 @@ def value_counts(values, sort=True, ascending=False, normalize=False,
     """
     from pandas.core.series import Series
     from pandas.tools.tile import cut
+    from pandas.tseries.period import PeriodIndex
 
+    is_period = com.is_period_arraylike(values)
     values = Series(values).values
+    is_category = com.is_categorical_dtype(values.dtype)
 
     if bins is not None:
         try:
             cat, bins = cut(values, bins, retbins=True)
         except TypeError:
             raise TypeError("bins argument only works with numeric data.")
-        values = cat.labels
+        values = cat.codes
+    elif is_category:
+        bins = values.categories
+        cat = values
+        values = cat.codes
 
     dtype = values.dtype
-    if com.is_integer_dtype(dtype):
-        values = com._ensure_int64(values)
-        keys, counts = htable.value_count_int64(values)
 
-    elif issubclass(values.dtype.type, (np.datetime64, np.timedelta64)):
+    if issubclass(values.dtype.type, (np.datetime64, np.timedelta64)) or is_period:
+        if is_period:
+            values = PeriodIndex(values)
+
         values = values.view(np.int64)
         keys, counts = htable.value_count_int64(values)
 
@@ -219,6 +232,10 @@ def value_counts(values, sort=True, ascending=False, normalize=False,
             keys, counts = keys[msk], counts[msk]
         # convert the keys back to the dtype we came in
         keys = keys.astype(dtype)
+
+    elif com.is_integer_dtype(dtype):
+        values = com._ensure_int64(values)
+        keys, counts = htable.value_count_int64(values)
 
     else:
         values = com._ensure_object(values)
@@ -231,8 +248,11 @@ def value_counts(values, sort=True, ascending=False, normalize=False,
     result = Series(counts, index=com._values_from_object(keys))
     if bins is not None:
         # TODO: This next line should be more efficient
-        result = result.reindex(np.arange(len(cat.levels)), fill_value=0)
-        result.index = bins[:-1]
+        result = result.reindex(np.arange(len(cat.categories)), fill_value=0)
+        if not is_category:
+            result.index = bins[:-1]
+        else:
+            result.index = cat.categories
 
     if sort:
         result.sort()
@@ -258,7 +278,7 @@ def mode(values):
         constructor = Series
 
     dtype = values.dtype
-    if com.is_integer_dtype(values.dtype):
+    if com.is_integer_dtype(values):
         values = com._ensure_int64(values)
         result = constructor(sorted(htable.mode_int64(values)), dtype=dtype)
 
@@ -267,6 +287,8 @@ def mode(values):
         values = values.view(np.int64)
         result = constructor(sorted(htable.mode_int64(values)), dtype=dtype)
 
+    elif com.is_categorical_dtype(values):
+        result = constructor(values.mode())
     else:
         mask = com.isnull(values)
         values = com._ensure_object(values)
@@ -383,7 +405,8 @@ def _get_data_algo(values, func_map):
     if com.is_float_dtype(values):
         f = func_map['float64']
         values = com._ensure_float64(values)
-    elif com.is_datetime64_dtype(values):
+
+    elif com.needs_i8_conversion(values):
 
         # if we have NaT, punt to object dtype
         mask = com.isnull(values)

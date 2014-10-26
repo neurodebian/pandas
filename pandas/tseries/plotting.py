@@ -18,8 +18,6 @@ import pandas.core.common as com
 from pandas.tseries.converter import (PeriodConverter, TimeSeries_DateLocator,
                                       TimeSeries_DateFormatter)
 
-from pandas.tools.plotting import _get_all_lines, _get_xlim
-
 #----------------------------------------------------------------------
 # Plotting functions and monkey patches
 
@@ -59,25 +57,14 @@ def tsplot(series, plotf, **kwargs):
     # Set ax with freq info
     _decorate_axes(ax, freq, kwargs)
 
-    # mask missing values
-    args = _maybe_mask(series)
-
     # how to make sure ax.clear() flows through?
     if not hasattr(ax, '_plot_data'):
         ax._plot_data = []
-    ax._plot_data.append((series, kwargs))
-
-    # styles
-    style = kwargs.pop('style', None)
-    if style is not None:
-        args.append(style)
-
-    lines = plotf(ax, *args, **kwargs)
+    ax._plot_data.append((series, plotf, kwargs))
+    lines = plotf(ax, series.index._mpl_repr(), series.values, **kwargs)
 
     # set date formatter, locators and rescale limits
     format_dateaxis(ax, ax.freq)
-    left, right = _get_xlim(_get_all_lines(ax))
-    ax.set_xlim(left, right)
 
     # x and y coord info
     ax.format_coord = lambda t, y: ("t = {0}  "
@@ -130,7 +117,7 @@ def _is_sup(f1, f2):
 
 def _upsample_others(ax, freq, plotf, kwargs):
     legend = ax.get_legend()
-    lines, labels = _replot_ax(ax, freq, plotf, kwargs)
+    lines, labels = _replot_ax(ax, freq, kwargs)
 
     other_ax = None
     if hasattr(ax, 'left_ax'):
@@ -139,7 +126,7 @@ def _upsample_others(ax, freq, plotf, kwargs):
         other_ax = ax.right_ax
 
     if other_ax is not None:
-        rlines, rlabels = _replot_ax(other_ax, freq, plotf, kwargs)
+        rlines, rlabels = _replot_ax(other_ax, freq, kwargs)
         lines.extend(rlines)
         labels.extend(rlabels)
 
@@ -151,7 +138,7 @@ def _upsample_others(ax, freq, plotf, kwargs):
         ax.legend(lines, labels, loc='best', title=title)
 
 
-def _replot_ax(ax, freq, plotf, kwargs):
+def _replot_ax(ax, freq, kwargs):
     data = getattr(ax, '_plot_data', None)
     ax._plot_data = []
     ax.clear()
@@ -160,13 +147,12 @@ def _replot_ax(ax, freq, plotf, kwargs):
     lines = []
     labels = []
     if data is not None:
-        for series, kwds in data:
+        for series, plotf, kwds in data:
             series = series.copy()
             idx = series.index.asfreq(freq, how='S')
             series.index = idx
             ax._plot_data.append(series)
-            args = _maybe_mask(series)
-            lines.append(plotf(ax, *args, **kwds)[0])
+            lines.append(plotf(ax, series.index._mpl_repr(), series.values, **kwds)[0])
             labels.append(com.pprint_thing(series.name))
 
     return lines, labels
@@ -182,17 +168,6 @@ def _decorate_axes(ax, freq, kwargs):
         ax.legendlabels.append(kwargs.get('label', None))
     ax.view_interval = None
     ax.date_axis_info = None
-
-
-def _maybe_mask(series):
-    mask = isnull(series)
-    if mask.any():
-        masked_array = np.ma.array(series.values)
-        masked_array = np.ma.masked_where(mask, masked_array)
-        args = [series.index, masked_array]
-    else:
-        args = [series.index, series.values]
-    return args
 
 
 def _get_freq(ax, series):

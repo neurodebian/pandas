@@ -3,7 +3,7 @@
 import warnings
 
 from pandas import Series, DataFrame
-from pandas.core.index import MultiIndex
+from pandas.core.index import MultiIndex, Index
 from pandas.core.groupby import Grouper
 from pandas.tools.merge import concat
 from pandas.tools.util import cartesian_product
@@ -116,7 +116,7 @@ def pivot_table(data, values=None, index=None, columns=None, aggfunc='mean',
 
     table = agged
     if table.index.nlevels > 1:
-        to_unstack = [agged.index.names[i]
+        to_unstack = [agged.index.names[i] or i
                       for i in range(len(index), len(keys))]
         table = agged.unstack(to_unstack)
 
@@ -207,6 +207,11 @@ def _compute_grand_margin(data, values, aggfunc):
             try:
                 if isinstance(aggfunc, compat.string_types):
                     grand_margin[k] = getattr(v, aggfunc)()
+                elif isinstance(aggfunc, dict):
+                    if isinstance(aggfunc[k], compat.string_types):
+                        grand_margin[k] = getattr(v, aggfunc[k])()
+                    else:
+                        grand_margin[k] = aggfunc[k](v)
                 else:
                     grand_margin[k] = aggfunc(v)
             except TypeError:
@@ -228,9 +233,14 @@ def _generate_marginal_results(table, data, values, rows, cols, aggfunc, grand_m
         if len(rows) > 0:
             margin = data[rows + values].groupby(rows).agg(aggfunc)
             cat_axis = 1
+
             for key, piece in table.groupby(level=0, axis=cat_axis):
                 all_key = _all_key(key)
+
+                # we are going to mutate this, so need to copy!
+                piece = piece.copy()
                 piece[all_key] = margin[key]
+
                 table_pieces.append(piece)
                 margin_keys.append(all_key)
         else:
@@ -302,7 +312,7 @@ def _generate_marginal_results_without_values(table, data, rows, cols, aggfunc):
 def _convert_by(by):
     if by is None:
         by = []
-    elif (np.isscalar(by) or isinstance(by, (np.ndarray, Series, Grouper))
+    elif (np.isscalar(by) or isinstance(by, (np.ndarray, Index, Series, Grouper))
           or hasattr(by, '__call__')):
         by = [by]
     else:

@@ -24,6 +24,63 @@ Frequently Asked Questions (FAQ)
    options.display.mpl_style='default'
    from pandas.compat import lrange
 
+
+.. _df-memory-usage:
+
+DataFrame memory usage
+~~~~~~~~~~~~~~~~~~~~~~
+As of pandas version 0.15.0, the memory usage of a dataframe (including
+the index) is shown when accessing the ``info`` method of a dataframe. A
+configuration option, ``display.memory_usage`` (see :ref:`options`),
+specifies if the dataframe's memory usage will be displayed when
+invoking the ``df.info()`` method.
+
+For example, the memory usage of the dataframe below is shown
+when calling ``df.info()``:
+
+.. ipython:: python
+
+    dtypes = ['int64', 'float64', 'datetime64[ns]', 'timedelta64[ns]',
+               'complex128', 'object', 'bool']
+    n = 5000
+    data = dict([ (t, np.random.randint(100, size=n).astype(t))
+                    for t in dtypes])
+    df = DataFrame(data)
+    df['categorical'] = df['object'].astype('category')
+
+    df.info()
+
+By default the display option is set to ``True`` but can be explicitly
+overridden by passing the ``memory_usage`` argument when invoking ``df.info()``.
+
+The memory usage of each column can be found by calling the ``memory_usage``
+method. This returns a Series with an index represented by column names
+and memory usage of each column shown in bytes. For the dataframe above,
+the memory usage of each column and the total memory usage of the
+dataframe can be found with the memory_usage method:
+
+.. ipython:: python
+
+    df.memory_usage()
+
+    # total memory usage of dataframe
+    df.memory_usage().sum()
+
+By default the memory usage of the dataframe's index is not shown in the
+returned Series, the memory usage of the index can be shown by passing
+the ``index=True`` argument:
+
+.. ipython:: python
+
+    df.memory_usage(index=True)
+
+The memory usage displayed by the ``info`` method utilizes the
+``memory_usage`` method to determine the memory usage of a dataframe
+while also formatting the output in human-readable units (base-2
+representation; i.e., 1KB = 1024 bytes).
+
+See also :ref:`Categorical Memory Usage <categorical.memory>`.
+
 .. _ref-monkey-patching:
 
 Adding Features to your pandas Installation
@@ -144,7 +201,7 @@ Frequency conversion
 
 Frequency conversion is implemented using the ``resample`` method on TimeSeries
 and DataFrame objects (multiple time series). ``resample`` also works on panels
-(3D). Here is some code that resamples daily data to montly:
+(3D). Here is some code that resamples daily data to monthly:
 
 .. ipython:: python
 

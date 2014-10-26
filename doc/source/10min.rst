@@ -66,7 +66,8 @@ Creating a ``DataFrame`` by passing a dict of objects that can be converted to s
                         'B' : pd.Timestamp('20130102'),
                         'C' : pd.Series(1,index=list(range(4)),dtype='float32'),
                         'D' : np.array([3] * 4,dtype='int32'),
-                        'E' : 'foo' })
+                        'E' : pd.Categorical(["test","train","test","train"]),
+                        'F' : 'foo' })
    df2
 
 Having specific :ref:`dtypes <basics.dtypes>`
@@ -165,7 +166,7 @@ Selection
    recommend the optimized pandas data access methods, ``.at``, ``.iat``,
    ``.loc``, ``.iloc`` and ``.ix``.
 
-See the :ref:`Indexing section <indexing>` and below.
+See the indexing documentation :ref:`Indexing and Selecing Data <indexing>` and :ref:`MultiIndex / Advanced Indexing <advanced>`
 
 Getting
 ~~~~~~~
@@ -260,7 +261,7 @@ For slicing columns explicitly
 
    df.iloc[:,1:3]
 
-For getting a value explicity
+For getting a value explicitly
 
 .. ipython:: python
 
@@ -432,7 +433,12 @@ See more at :ref:`Histogramming and Discretization <basics.discretization>`
 String Methods
 ~~~~~~~~~~~~~~
 
-See more at :ref:`Vectorized String Methods <basics.string_methods>`
+Series is equipped with a set of string processing methods in the `str`
+attribute that make it easy to operate on each element of the array, as in the
+code snippet below. Note that pattern-matching in `str` generally uses `regular
+expressions <https://docs.python.org/2/library/re.html>`__ by default (and in
+some cases always uses them). See more at :ref:`Vectorized String Methods
+<text.string_methods>`.
 
 .. ipython:: python
 
@@ -528,8 +534,8 @@ the function.
 Reshaping
 ---------
 
-See the section on :ref:`Hierarchical Indexing <indexing.hierarchical>` and
-see the section on :ref:`Reshaping <reshaping.stacking>`).
+See the sections on :ref:`Hierarchical Indexing <advanced.hierarchical>` and
+:ref:`Reshaping <reshaping.stacking>`.
 
 Stack
 ~~~~~
@@ -634,6 +640,49 @@ the quarter end:
    ts = pd.Series(np.random.randn(len(prng)), prng)
    ts.index = (prng.asfreq('M', 'e') + 1).asfreq('H', 's') + 9
    ts.head()
+
+Categoricals
+------------
+
+Since version 0.15, pandas can include categorical data in a ``DataFrame``. For full docs, see the
+:ref:`categorical introduction <categorical>` and the :ref:`API documentation <api.categorical>`.
+
+.. ipython:: python
+
+    df = pd.DataFrame({"id":[1,2,3,4,5,6], "raw_grade":['a', 'b', 'b', 'a', 'a', 'e']})
+
+Convert the raw grades to a categorical data type.
+
+.. ipython:: python
+
+    df["grade"] = df["raw_grade"].astype("category")
+    df["grade"]
+
+Rename the categories to more meaningful names (assigning to ``Series.cat.categories`` is inplace!)
+
+.. ipython:: python
+
+    df["grade"].cat.categories = ["very good", "good", "very bad"]
+
+Reorder the categories and simultaneously add the missing categories (methods under ``Series
+.cat`` return a new ``Series`` per default).
+
+.. ipython:: python
+
+    df["grade"] = df["grade"].cat.set_categories(["very bad", "bad", "medium", "good", "very good"])
+    df["grade"]
+
+Sorting is per order in the categories, not lexical order.
+
+.. ipython:: python
+
+    df.sort("grade")
+
+Grouping by a categorical column shows also empty categories.
+
+.. ipython:: python
+
+    df.groupby("grade").size()
 
 
 Plotting

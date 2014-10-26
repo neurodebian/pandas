@@ -86,6 +86,8 @@ pandas namespace.  To change an option, call ``set_option('option regex', new_va
    pd.set_option('mode.sim_interactive', True)
    pd.get_option('mode.sim_interactive')
 
+**Note:** that the option 'mode.sim_interactive' is mostly used for debugging purposes.  
+
 All options also have a default value, and you can use ``reset_option`` to do just that:
 
 .. ipython:: python
@@ -120,6 +122,25 @@ are restored automatically when you exit the `with` block:
         print(pd.get_option("display.max_columns"))
    print(pd.get_option("display.max_rows"))
    print(pd.get_option("display.max_columns"))
+
+
+Setting Startup Options in python/ipython Environment
+-----------------------------------------------------
+
+Using startup scripts for the python/ipython environment to import pandas and set options makes working with pandas more efficient.  To do this, create a .py or .ipy script in the startup directory of the desired profile.  An example where the startup folder is in a default ipython profile can be found at:
+
+.. code-block:: python
+
+  $IPYTHONDIR/profile_default/startup
+
+More information can be found in the `ipython documentation
+<http://ipython.org/ipython-doc/stable/interactive/tutorial.html#startup-files>`__.  An example startup script for pandas is displayed below:
+
+.. code-block:: python
+
+  import pandas as pd
+  pd.set_option('display.max_rows', 999)
+  pd.set_option('precision', 5)
 
 
 Frequently Used Options
@@ -166,7 +187,7 @@ dataframes to stretch across pages, wrapped over the full column vs row-wise.
    pd.reset_option('max_rows')
 
 ``display.max_columnwidth`` sets the maximum width of columns.  Cells
-of this length or longer will be truncated with an elipsis.
+of this length or longer will be truncated with an ellipsis.
 
 .. ipython:: python
 
@@ -327,6 +348,9 @@ display.max_seq_items      100          when pretty-printing a long sequence,
                                         of "..." to the resulting string.
                                         If set to None, the number of items
                                         to be printed is unlimited.
+display.memory_usage       True         This specifies if the memory usage of
+                                        a DataFrame should be displayed when the
+                                        df.info() method is invoked.
 display.mpl_style          None         Setting this to 'default' will modify
                                         the rcParams used by matplotlib
                                         to give plots a more pleasing visual

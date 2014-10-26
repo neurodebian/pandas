@@ -1,3 +1,4 @@
+import os
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from pandas.compat import range
@@ -19,18 +20,17 @@ from pandas.core.datetools import (
 
 from pandas.tseries.frequencies import _offset_map
 from pandas.tseries.index import _to_m8, DatetimeIndex, _daterange_cache, date_range
-from pandas.tseries.tools import parse_time_string, _maybe_get_tz
+from pandas.tseries.tools import parse_time_string
 import pandas.tseries.offsets as offsets
 
-from pandas.tslib import monthrange, OutOfBoundsDatetime, NaT
-from pandas.lib import Timestamp
+from pandas.io.pickle import read_pickle
+from pandas.tslib import NaT, Timestamp
+import pandas.tslib as tslib
 from pandas.util.testing import assertRaisesRegexp
 import pandas.util.testing as tm
 from pandas.tseries.offsets import BusinessMonthEnd, CacheableOffset, \
     LastWeekOfMonth, FY5253, FY5253Quarter, WeekDay
 from pandas.tseries.holiday import USFederalHolidayCalendar
-
-from pandas import _np_version_under1p7
 
 _multiprocess_can_split_ = True
 
@@ -39,7 +39,7 @@ def test_monthrange():
     import calendar
     for y in range(2000, 2013):
         for m in range(1, 13):
-            assert monthrange(y, m) == calendar.monthrange(y, m)
+            assert tslib.monthrange(y, m) == calendar.monthrange(y, m)
 
 
 ####
@@ -96,15 +96,13 @@ class Base(tm.TestCase):
     _offset = None
 
     _offset_types = [getattr(offsets, o) for o in offsets.__all__]
-    skip_np_u1p7 = [offsets.CustomBusinessDay, offsets.CDay, offsets.CustomBusinessMonthBegin,
-                    offsets.CustomBusinessMonthEnd, offsets.Nano]
+
+    timezones = [None, 'UTC', 'Asia/Tokyo', 'US/Eastern',
+                 'dateutil/Asia/Tokyo', 'dateutil/US/Pacific']
 
     @property
     def offset_types(self):
-        if _np_version_under1p7:
-            return [o for o in self._offset_types if o not in self.skip_np_u1p7]
-        else:
-            return self._offset_types
+        return self._offset_types
 
     def _get_offset(self, klass, value=1, normalize=False):
         # create instance from offset class
@@ -118,6 +116,8 @@ class Base(tm.TestCase):
             klass = klass(n=value, week=1, weekday=5, normalize=normalize)
         elif klass is Week:
             klass = klass(n=value, weekday=5, normalize=normalize)
+        elif klass is DateOffset:
+            klass = klass(days=value, normalize=normalize)
         else:
             try:
                 klass = klass(value, normalize=normalize)
@@ -128,8 +128,6 @@ class Base(tm.TestCase):
     def test_apply_out_of_range(self):
         if self._offset is None:
             return
-        if _np_version_under1p7 and self._offset in self.skip_np_u1p7:
-            raise nose.SkipTest('numpy >= 1.7 required')
 
         # try to create an out-of-bounds result timestamp; if we can't create the offset
         # skip
@@ -138,7 +136,18 @@ class Base(tm.TestCase):
 
             result = Timestamp('20080101') + offset
             self.assertIsInstance(result, datetime)
-        except (OutOfBoundsDatetime):
+            self.assertIsNone(result.tzinfo)
+
+            tm._skip_if_no_pytz()
+            tm._skip_if_no_dateutil()
+            # Check tz is preserved
+            for tz in self.timezones:
+                t = Timestamp('20080101', tz=tz)
+                result = t + offset
+                self.assertIsInstance(result, datetime)
+                self.assertEqual(t.tzinfo, result.tzinfo)
+
+        except (tslib.OutOfBoundsDatetime):
             raise
         except (ValueError, KeyError) as e:
             raise nose.SkipTest("cannot create out_of_range offset: {0} {1}".format(str(self).split('.')[-1],e))
@@ -152,6 +161,7 @@ class TestCommon(Base):
         # are applied to 2011/01/01 09:00 (Saturday)
         # used for .apply and .rollforward
         self.expecteds = {'Day': Timestamp('2011-01-02 09:00:00'),
+                          'DateOffset': Timestamp('2011-01-02 09:00:00'),
                           'BusinessDay': Timestamp('2011-01-03 09:00:00'),
                           'CustomBusinessDay': Timestamp('2011-01-03 09:00:00'),
                           'CustomBusinessMonthEnd': Timestamp('2011-01-31 09:00:00'),
@@ -181,8 +191,6 @@ class TestCommon(Base):
                           'Micro': Timestamp('2011-01-01 09:00:00.000001'),
                           'Nano': Timestamp(np.datetime64('2011-01-01T09:00:00.000000001Z'))}
 
-        self.timezones = ['UTC', 'Asia/Tokyo', 'US/Eastern']
-
     def test_return_type(self):
         for offset in self.offset_types:
             offset = self._get_offset(offset)
@@ -204,37 +212,48 @@ class TestCommon(Base):
         func = getattr(offset_s, funcname)
 
         result = func(dt)
-        self.assert_(isinstance(result, Timestamp))
+        self.assertTrue(isinstance(result, Timestamp))
         self.assertEqual(result, expected)
 
         result = func(Timestamp(dt))
-        self.assert_(isinstance(result, Timestamp))
+        self.assertTrue(isinstance(result, Timestamp))
         self.assertEqual(result, expected)
+
+        # test nano second is preserved
+        result = func(Timestamp(dt) + Nano(5))
+        self.assertTrue(isinstance(result, Timestamp))
+        if normalize is False:
+            self.assertEqual(result, expected + Nano(5))
+        else:
+            self.assertEqual(result, expected)
 
         if isinstance(dt, np.datetime64):
             # test tz when input is datetime or Timestamp
             return
 
         tm._skip_if_no_pytz()
-        import pytz
+        tm._skip_if_no_dateutil()
+
         for tz in self.timezones:
             expected_localize = expected.tz_localize(tz)
+            tz_obj = tslib.maybe_get_tz(tz)
+            dt_tz = tslib._localize_pydatetime(dt, tz_obj)
 
-            dt_tz = pytz.timezone(tz).localize(dt)
             result = func(dt_tz)
-            self.assert_(isinstance(result, Timestamp))
+            self.assertTrue(isinstance(result, Timestamp))
             self.assertEqual(result, expected_localize)
 
             result = func(Timestamp(dt, tz=tz))
-            self.assert_(isinstance(result, Timestamp))
+            self.assertTrue(isinstance(result, Timestamp))
             self.assertEqual(result, expected_localize)
 
-    def _check_nanofunc_works(self, offset, funcname, dt, expected):
-        offset = self._get_offset(offset)
-        func = getattr(offset, funcname)
-
-        t1 = Timestamp(dt)
-        self.assertEqual(func(t1), expected)
+            # test nano second is preserved
+            result = func(Timestamp(dt, tz=tz) + Nano(5))
+            self.assertTrue(isinstance(result, Timestamp))
+            if normalize is False:
+                self.assertEqual(result, expected_localize + Nano(5))
+            else:
+                self.assertEqual(result, expected_localize)
 
     def test_apply(self):
         sdt = datetime(2011, 1, 1, 9, 0)
@@ -243,21 +262,18 @@ class TestCommon(Base):
         for offset in self.offset_types:
             for dt in [sdt, ndt]:
                 expected = self.expecteds[offset.__name__]
-                if offset == Nano:
-                    self._check_nanofunc_works(offset, 'apply', dt, expected)
-                else:
-                    self._check_offsetfunc_works(offset, 'apply', dt, expected)
+                self._check_offsetfunc_works(offset, 'apply', dt, expected)
 
-                    expected = Timestamp(expected.date())
-                    self._check_offsetfunc_works(offset, 'apply', dt, expected,
-                                                 normalize=True)
+                expected = Timestamp(expected.date())
+                self._check_offsetfunc_works(offset, 'apply', dt, expected,
+                                             normalize=True)
 
     def test_rollforward(self):
         expecteds = self.expecteds.copy()
 
         # result will not be changed if the target is on the offset
         no_changes = ['Day', 'MonthBegin', 'YearBegin', 'Week', 'Hour', 'Minute',
-                      'Second', 'Milli', 'Micro', 'Nano']
+                      'Second', 'Milli', 'Micro', 'Nano', 'DateOffset']
         for n in no_changes:
             expecteds[n] = Timestamp('2011/01/01 09:00')
 
@@ -267,6 +283,7 @@ class TestCommon(Base):
             norm_expected[k] = Timestamp(norm_expected[k].date())
 
         normalized = {'Day': Timestamp('2011-01-02 00:00:00'),
+                      'DateOffset': Timestamp('2011-01-02 00:00:00'),
                       'MonthBegin': Timestamp('2011-02-01 00:00:00'),
                       'YearBegin': Timestamp('2012-01-01 00:00:00'),
                       'Week': Timestamp('2011-01-08 00:00:00'),
@@ -283,13 +300,10 @@ class TestCommon(Base):
         for offset in self.offset_types:
             for dt in [sdt, ndt]:
                 expected = expecteds[offset.__name__]
-                if offset == Nano:
-                    self._check_nanofunc_works(offset, 'rollforward', dt, expected)
-                else:
-                    self._check_offsetfunc_works(offset, 'rollforward', dt, expected)
-                    expected = norm_expected[offset.__name__]
-                    self._check_offsetfunc_works(offset, 'rollforward', dt, expected,
-                                                 normalize=True)
+                self._check_offsetfunc_works(offset, 'rollforward', dt, expected)
+                expected = norm_expected[offset.__name__]
+                self._check_offsetfunc_works(offset, 'rollforward', dt, expected,
+                                             normalize=True)
 
     def test_rollback(self):
         expecteds = {'BusinessDay': Timestamp('2010-12-31 09:00:00'),
@@ -314,7 +328,7 @@ class TestCommon(Base):
 
         # result will not be changed if the target is on the offset
         for n in ['Day', 'MonthBegin', 'YearBegin', 'Week', 'Hour', 'Minute',
-                  'Second', 'Milli', 'Micro', 'Nano']:
+                  'Second', 'Milli', 'Micro', 'Nano', 'DateOffset']:
             expecteds[n] = Timestamp('2011/01/01 09:00')
 
         # but be changed when normalize=True
@@ -323,6 +337,7 @@ class TestCommon(Base):
             norm_expected[k] = Timestamp(norm_expected[k].date())
 
         normalized = {'Day': Timestamp('2010-12-31 00:00:00'),
+                      'DateOffset': Timestamp('2010-12-31 00:00:00'),
                       'MonthBegin': Timestamp('2010-12-01 00:00:00'),
                       'YearBegin': Timestamp('2010-01-01 00:00:00'),
                       'Week': Timestamp('2010-12-25 00:00:00'),
@@ -339,27 +354,24 @@ class TestCommon(Base):
         for offset in self.offset_types:
             for dt in [sdt, ndt]:
                 expected = expecteds[offset.__name__]
-                if offset == Nano:
-                    self._check_nanofunc_works(offset, 'rollback', dt, expected)
-                else:
-                    self._check_offsetfunc_works(offset, 'rollback', dt, expected)
+                self._check_offsetfunc_works(offset, 'rollback', dt, expected)
 
-                    expected = norm_expected[offset.__name__]
-                    self._check_offsetfunc_works(offset, 'rollback',
-                                                 dt, expected, normalize=True)
+                expected = norm_expected[offset.__name__]
+                self._check_offsetfunc_works(offset, 'rollback',
+                                             dt, expected, normalize=True)
 
     def test_onOffset(self):
         for offset in self.offset_types:
             dt = self.expecteds[offset.__name__]
             offset_s = self._get_offset(offset)
-            self.assert_(offset_s.onOffset(dt))
+            self.assertTrue(offset_s.onOffset(dt))
 
             # when normalize=True, onOffset checks time is 00:00:00
             offset_n = self._get_offset(offset, normalize=True)
-            self.assert_(not offset_n.onOffset(dt))
+            self.assertFalse(offset_n.onOffset(dt))
 
             date = datetime(dt.year, dt.month, dt.day)
-            self.assert_(offset_n.onOffset(date))
+            self.assertTrue(offset_n.onOffset(date))
 
     def test_add(self):
         dt = datetime(2011, 1, 1, 9, 0)
@@ -838,6 +850,24 @@ class TestCustomBusinessDay(Base):
         dt = datetime(2014, 1, 17)
         assertEq(CDay(calendar=calendar), dt, datetime(2014, 1, 21))
 
+    def test_roundtrip_pickle(self):
+        def _check_roundtrip(obj):
+            unpickled = self.round_trip_pickle(obj)
+            self.assertEqual(unpickled, obj)
+        _check_roundtrip(self.offset)
+        _check_roundtrip(self.offset2)
+        _check_roundtrip(self.offset*2)
+
+    def test_pickle_compat_0_14_1(self):
+        hdays = [datetime(2013,1,1) for ele in range(4)]
+
+        pth = tm.get_data_path()
+
+        cday0_14_1 = read_pickle(os.path.join(pth, 'cday-0.14.1.pickle'))
+        cday = CDay(holidays=hdays)
+        self.assertEqual(cday, cday0_14_1)
+
+
 class CustomBusinessMonthBase(object):
     _multiprocess_can_split_ = True
 
@@ -883,6 +913,15 @@ class CustomBusinessMonthBase(object):
         offset1 = self._object()
         offset2 = self._object()
         self.assertFalse(offset1 != offset2)
+
+    def test_roundtrip_pickle(self):
+        def _check_roundtrip(obj):
+            unpickled = self.round_trip_pickle(obj)
+            self.assertEqual(unpickled, obj)
+        _check_roundtrip(self._object())
+        _check_roundtrip(self._object(2))
+        _check_roundtrip(self._object()*2)
+
 
 class TestCustomBusinessMonthEnd(CustomBusinessMonthBase, Base):
     _object = CBMonthEnd
@@ -996,8 +1035,12 @@ class TestCustomBusinessMonthEnd(CustomBusinessMonthBase, Base):
 
     def test_datetimeindex(self):
         from pandas.tseries.holiday import USFederalHolidayCalendar
-        self.assertEqual(DatetimeIndex(start='20120101',end='20130101',freq=CBMonthEnd(calendar=USFederalHolidayCalendar())).tolist()[0],
-        datetime(2012,1,31))
+        hcal = USFederalHolidayCalendar()
+        freq = CBMonthEnd(calendar=hcal)
+
+        self.assertEqual(DatetimeIndex(start='20120101',end='20130101',
+                                       freq=freq).tolist()[0],
+                         datetime(2012,1,31))
 
 class TestCustomBusinessMonthBegin(CustomBusinessMonthBase, Base):
     _object = CBMonthBegin
@@ -1110,8 +1153,11 @@ class TestCustomBusinessMonthBegin(CustomBusinessMonthBase, Base):
         self.assertEqual(dt + 2*bm_offset,datetime(2012,2,3))
 
     def test_datetimeindex(self):
-        self.assertEqual(DatetimeIndex(start='20120101',end='20130101',freq=CBMonthBegin(calendar=USFederalHolidayCalendar())).tolist()[0],
-        datetime(2012,1,3))
+        hcal = USFederalHolidayCalendar()
+        cbmb = CBMonthBegin(calendar=hcal)
+        self.assertEqual(DatetimeIndex(start='20120101', end='20130101',
+                                       freq=cbmb).tolist()[0],
+                         datetime(2012,1,3))
 
 
 def assertOnOffset(offset, date, expected):
@@ -2482,6 +2528,13 @@ class TestYearBegin(Base):
                        datetime(2005, 12, 30): datetime(2006, 1, 1),
                        datetime(2005, 12, 31): datetime(2006, 1, 1), }))
 
+        tests.append((YearBegin(3),
+                      {datetime(2008, 1, 1): datetime(2011, 1, 1),
+                       datetime(2008, 6, 30): datetime(2011, 1, 1),
+                       datetime(2008, 12, 31): datetime(2011, 1, 1),
+                       datetime(2005, 12, 30): datetime(2008, 1, 1),
+                       datetime(2005, 12, 31): datetime(2008, 1, 1), }))
+
         tests.append((YearBegin(-1),
                       {datetime(2007, 1, 1): datetime(2006, 1, 1),
                        datetime(2007, 1, 15): datetime(2007, 1, 1),
@@ -2509,11 +2562,24 @@ class TestYearBegin(Base):
                        datetime(2007, 12, 15): datetime(2008, 4, 1),
                        datetime(2012, 1, 31): datetime(2012, 4, 1), }))
 
+        tests.append((YearBegin(4, month=4),
+                      {datetime(2007, 4, 1): datetime(2011, 4, 1),
+                       datetime(2007, 4, 15): datetime(2011, 4, 1),
+                       datetime(2007, 3, 1): datetime(2010, 4, 1),
+                       datetime(2007, 12, 15): datetime(2011, 4, 1),
+                       datetime(2012, 1, 31): datetime(2015, 4, 1), }))
+
         tests.append((YearBegin(-1, month=4),
                       {datetime(2007, 4, 1): datetime(2006, 4, 1),
                        datetime(2007, 3, 1): datetime(2006, 4, 1),
                        datetime(2007, 12, 15): datetime(2007, 4, 1),
                        datetime(2012, 1, 31): datetime(2011, 4, 1), }))
+
+        tests.append((YearBegin(-3, month=4),
+                      {datetime(2007, 4, 1): datetime(2004, 4, 1),
+                       datetime(2007, 3, 1): datetime(2004, 4, 1),
+                       datetime(2007, 12, 15): datetime(2005, 4, 1),
+                       datetime(2012, 1, 31): datetime(2009, 4, 1), }))
 
         for offset, cases in tests:
             for base, expected in compat.iteritems(cases):
@@ -2818,8 +2884,6 @@ def test_Microsecond():
 
 
 def test_NanosecondGeneric():
-    tm._skip_if_not_numpy17_friendly()
-
     timestamp = Timestamp(datetime(2010, 1, 1))
     assert timestamp.nanosecond == 0
 
@@ -2831,8 +2895,6 @@ def test_NanosecondGeneric():
 
 
 def test_Nanosecond():
-    tm._skip_if_not_numpy17_friendly()
-
     timestamp = Timestamp(datetime(2010, 1, 1))
     assertEq(Nano(), timestamp, timestamp + np.timedelta64(1, 'ns'))
     assertEq(Nano(-1), timestamp + np.timedelta64(1, 'ns'), timestamp)
@@ -3076,6 +3138,134 @@ class TestReprNames(tm.TestCase):
             offset = get_offset(name)
             self.assertEqual(repr(offset), name)
             self.assertEqual(str(offset), name)
+
+
+def get_utc_offset_hours(ts):
+    # take a Timestamp and compute total hours of utc offset
+    o = ts.utcoffset()
+    return (o.days * 24 * 3600 + o.seconds) / 3600.0
+
+
+class TestDST(tm.TestCase):
+    """
+    test DateOffset additions over Daylight Savings Time
+    """
+    # one microsecond before the DST transition
+    ts_pre_fallback = "2013-11-03 01:59:59.999999"
+    ts_pre_springfwd = "2013-03-10 01:59:59.999999"
+
+    # test both basic names and dateutil timezones
+    timezone_utc_offsets = {
+        'US/Eastern': dict(
+            utc_offset_daylight=-4,
+            utc_offset_standard=-5,
+            ),
+        'dateutil/US/Pacific': dict(
+            utc_offset_daylight=-7,
+            utc_offset_standard=-8,
+            )
+        }
+    valid_date_offsets_singular = [
+        'weekday', 'day', 'hour', 'minute', 'second', 'microsecond'
+        ]
+    valid_date_offsets_plural = [
+        'weeks', 'days',
+        'hours', 'minutes', 'seconds',
+        'milliseconds', 'microseconds'
+        ]
+
+    def _test_all_offsets(self, n, **kwds):
+        valid_offsets = self.valid_date_offsets_plural if n > 1 \
+            else self.valid_date_offsets_singular
+
+        for name in valid_offsets:
+            self._test_offset(offset_name=name, offset_n=n, **kwds)
+
+    def _test_offset(self, offset_name, offset_n, tstart, expected_utc_offset):
+        offset = DateOffset(**{offset_name: offset_n})
+        t = tstart + offset
+        if expected_utc_offset is not None:
+            self.assertTrue(get_utc_offset_hours(t) == expected_utc_offset)
+
+        if offset_name == 'weeks':
+            # dates should match
+            self.assertTrue(
+                t.date() ==
+                timedelta(days=7 * offset.kwds['weeks']) + tstart.date()
+                )
+            # expect the same day of week, hour of day, minute, second, ...
+            self.assertTrue(
+                t.dayofweek == tstart.dayofweek and
+                t.hour == tstart.hour and
+                t.minute == tstart.minute and
+                t.second == tstart.second
+                )
+        elif offset_name == 'days':
+            # dates should match
+            self.assertTrue(timedelta(offset.kwds['days']) + tstart.date() == t.date())
+            # expect the same hour of day, minute, second, ...
+            self.assertTrue(
+                t.hour == tstart.hour and
+                t.minute == tstart.minute and
+                t.second == tstart.second
+                )
+        elif offset_name in self.valid_date_offsets_singular:
+            # expect the signular offset value to match between tstart and t
+            datepart_offset = getattr(t, offset_name if offset_name != 'weekday' else 'dayofweek')
+            self.assertTrue(datepart_offset == offset.kwds[offset_name])
+        else:
+            # the offset should be the same as if it was done in UTC
+            self.assertTrue(
+                t == (tstart.tz_convert('UTC') + offset).tz_convert('US/Pacific')
+                )
+
+    def _make_timestamp(self, string, hrs_offset, tz):
+        offset_string = '{hrs:02d}00'.format(hrs=hrs_offset) if hrs_offset >= 0 else \
+            '-{hrs:02d}00'.format(hrs=-1 * hrs_offset)
+        return Timestamp(string + offset_string).tz_convert(tz)
+
+    def test_fallback_plural(self):
+        """test moving from daylight savings to standard time"""
+        for tz, utc_offsets in self.timezone_utc_offsets.items():
+            hrs_pre = utc_offsets['utc_offset_daylight']
+            hrs_post = utc_offsets['utc_offset_standard']
+            self._test_all_offsets(
+                n=3,
+                tstart=self._make_timestamp(self.ts_pre_fallback, hrs_pre, tz),
+                expected_utc_offset=hrs_post
+                )
+
+    def test_springforward_plural(self):
+        """test moving from standard to daylight savings"""
+        for tz, utc_offsets in self.timezone_utc_offsets.items():
+            hrs_pre = utc_offsets['utc_offset_standard']
+            hrs_post = utc_offsets['utc_offset_daylight']
+            self._test_all_offsets(
+                n=3,
+                tstart=self._make_timestamp(self.ts_pre_springfwd, hrs_pre, tz),
+                expected_utc_offset=hrs_post
+                )
+
+    def test_fallback_singular(self):
+        # in the case of signular offsets, we dont neccesarily know which utc offset
+        # the new Timestamp will wind up in (the tz for 1 month may be different from 1 second)
+        # so we don't specify an expected_utc_offset
+        for tz, utc_offsets in self.timezone_utc_offsets.items():
+            hrs_pre = utc_offsets['utc_offset_standard']
+            self._test_all_offsets(
+                n=1,
+                tstart=self._make_timestamp(self.ts_pre_fallback, hrs_pre, tz),
+                expected_utc_offset=None
+                )
+
+    def test_springforward_singular(self):
+        for tz, utc_offsets in self.timezone_utc_offsets.items():
+            hrs_pre = utc_offsets['utc_offset_standard']
+            self._test_all_offsets(
+                n=1,
+                tstart=self._make_timestamp(self.ts_pre_springfwd, hrs_pre, tz),
+                expected_utc_offset=None
+                )
 
 
 if __name__ == '__main__':

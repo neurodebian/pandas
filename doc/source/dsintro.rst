@@ -118,7 +118,7 @@ provided. The value will be repeated to match the length of **index**
 Series is ndarray-like
 ~~~~~~~~~~~~~~~~~~~~~~
 
-``Series`` acts very similary to a ``ndarray``, and is a valid argument to most NumPy functions.
+``Series`` acts very similarly to a ``ndarray``, and is a valid argument to most NumPy functions.
 However, things like slicing also slice the index.
 
 .. ipython :: python
@@ -474,7 +474,7 @@ DataFrame:
 
 For a more exhaustive treatment of more sophisticated label-based indexing and
 slicing, see the :ref:`section on indexing <indexing>`. We will address the
-fundamentals of reindexing / conforming to new sets of lables in the
+fundamentals of reindexing / conforming to new sets of labels in the
 :ref:`section on reindexing <basics.reindexing>`.
 
 Data alignment and arithmetic
@@ -828,7 +828,7 @@ Conversion to DataFrame
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 A Panel can be represented in 2D form as a hierarchically indexed
-DataFrame. See the section :ref:`hierarchical indexing <indexing.hierarchical>`
+DataFrame. See the section :ref:`hierarchical indexing <advanced.hierarchical>`
 for more on this. To convert a Panel to a DataFrame, use the ``to_frame``
 method:
 
@@ -892,7 +892,7 @@ Slicing
 ~~~~~~~
 
 Slicing works in a similar manner to a Panel. ``[]`` slices the first dimension.
-``.ix`` allows you to slice abitrarily and get back lower dimensional objects
+``.ix`` allows you to slice arbitrarily and get back lower dimensional objects
 
 .. ipython:: python
 

@@ -59,7 +59,7 @@ class TestTSPlot(tm.TestCase):
         _check_plot_works(df.plot)
 
         # axes freq
-        idx = idx[0:40] + idx[45:99]
+        idx = idx[0:40].union(idx[45:99])
         df2 = DataFrame(np.random.randn(len(idx), 3), index=idx)
         _check_plot_works(df2.plot)
 
@@ -298,7 +298,7 @@ class TestTSPlot(tm.TestCase):
         bts = DataFrame({'a': tm.makeTimeSeries()})
         ax = bts.plot()
         idx = ax.get_lines()[0].get_xdata()
-        assert_array_equal(bts.index.to_period(), idx)
+        assert_array_equal(bts.index.to_period(), PeriodIndex(idx))
 
     @slow
     def test_axis_limits(self):
@@ -605,8 +605,8 @@ class TestTSPlot(tm.TestCase):
         ax = s1.plot()
         ax2 = s2.plot(style='g')
         lines = ax2.get_lines()
-        idx1 = lines[0].get_xdata()
-        idx2 = lines[1].get_xdata()
+        idx1 = PeriodIndex(lines[0].get_xdata())
+        idx2 = PeriodIndex(lines[1].get_xdata())
         self.assertTrue(idx1.equals(s1.index.to_period('B')))
         self.assertTrue(idx2.equals(s2.index.to_period('B')))
         left, right = ax2.get_xlim()
@@ -704,8 +704,102 @@ class TestTSPlot(tm.TestCase):
         low = Series(np.random.randn(len(idxl)), idxl)
         low.plot()
         ax = high.plot()
+
+        expected_h = idxh.to_period().asi8
+        expected_l = np.array([1514, 1519, 1523, 1527, 1531, 1536, 1540, 1544, 1549,
+                               1553, 1558, 1562])
         for l in ax.get_lines():
             self.assertTrue(PeriodIndex(data=l.get_xdata()).freq.startswith('W'))
+
+            xdata = l.get_xdata(orig=False)
+            if len(xdata) == 12: # idxl lines
+                self.assert_numpy_array_equal(xdata, expected_l)
+            else:
+                self.assert_numpy_array_equal(xdata, expected_h)
+
+    @slow
+    def test_from_resampling_area_line_mixed(self):
+        idxh = date_range('1/1/1999', periods=52, freq='W')
+        idxl = date_range('1/1/1999', periods=12, freq='M')
+        high = DataFrame(np.random.rand(len(idxh), 3),
+                         index=idxh, columns=[0, 1, 2])
+        low = DataFrame(np.random.rand(len(idxl), 3),
+                     index=idxl, columns=[0, 1, 2])
+
+        # low to high
+        for kind1, kind2 in [('line', 'area'), ('area', 'line')]:
+            ax = low.plot(kind=kind1, stacked=True)
+            ax = high.plot(kind=kind2, stacked=True, ax=ax)
+
+            # check low dataframe result
+            expected_x = np.array([1514, 1519, 1523, 1527, 1531, 1536, 1540, 1544, 1549,
+                                   1553, 1558, 1562])
+            expected_y = np.zeros(len(expected_x))
+            for i in range(3):
+                l = ax.lines[i]
+                self.assertTrue(PeriodIndex(data=l.get_xdata()).freq.startswith('W'))
+                self.assert_numpy_array_equal(l.get_xdata(orig=False), expected_x)
+                # check stacked values are correct
+                expected_y += low[i].values
+                self.assert_numpy_array_equal(l.get_ydata(orig=False), expected_y)
+
+            # check high dataframe result
+            expected_x = idxh.to_period().asi8
+            expected_y = np.zeros(len(expected_x))
+            for i in range(3):
+                l = ax.lines[3 + i]
+                self.assertTrue(PeriodIndex(data=l.get_xdata()).freq.startswith('W'))
+                self.assert_numpy_array_equal(l.get_xdata(orig=False), expected_x)
+                expected_y += high[i].values
+                self.assert_numpy_array_equal(l.get_ydata(orig=False), expected_y)
+
+        # high to low
+        for kind1, kind2 in [('line', 'area'), ('area', 'line')]:
+            ax = high.plot(kind=kind1, stacked=True)
+            ax = low.plot(kind=kind2, stacked=True, ax=ax)
+
+            # check high dataframe result
+            expected_x = idxh.to_period().asi8
+            expected_y = np.zeros(len(expected_x))
+            for i in range(3):
+                l = ax.lines[i]
+                self.assertTrue(PeriodIndex(data=l.get_xdata()).freq.startswith('W'))
+                self.assert_numpy_array_equal(l.get_xdata(orig=False), expected_x)
+                expected_y += high[i].values
+                self.assert_numpy_array_equal(l.get_ydata(orig=False), expected_y)
+
+            # check low dataframe result
+            expected_x = np.array([1514, 1519, 1523, 1527, 1531, 1536, 1540, 1544, 1549,
+                                   1553, 1558, 1562])
+            expected_y = np.zeros(len(expected_x))
+            for i in range(3):
+                l = ax.lines[3 + i]
+                self.assertTrue(PeriodIndex(data=l.get_xdata()).freq.startswith('W'))
+                self.assert_numpy_array_equal(l.get_xdata(orig=False), expected_x)
+                expected_y += low[i].values
+                self.assert_numpy_array_equal(l.get_ydata(orig=False), expected_y)
+
+    @slow
+    def test_mixed_freq_second_millisecond(self):
+        # GH 7772, GH 7760
+        idxh = date_range('2014-07-01 09:00', freq='S', periods=50)
+        idxl = date_range('2014-07-01 09:00', freq='100L', periods=500)
+        high = Series(np.random.randn(len(idxh)), idxh)
+        low = Series(np.random.randn(len(idxl)), idxl)
+        # high to low
+        high.plot()
+        ax = low.plot()
+        self.assertEqual(len(ax.get_lines()), 2)
+        for l in ax.get_lines():
+            self.assertEqual(PeriodIndex(data=l.get_xdata()).freq, 'L')
+        tm.close()
+
+        # low to high
+        low.plot()
+        ax = high.plot()
+        self.assertEqual(len(ax.get_lines()), 2)
+        for l in ax.get_lines():
+            self.assertEqual(PeriodIndex(data=l.get_xdata()).freq, 'L')
 
     @slow
     def test_irreg_dtypes(self):
@@ -787,9 +881,9 @@ class TestTSPlot(tm.TestCase):
         low.plot()
         ax = high.plot(secondary_y=True)
         for l in ax.get_lines():
-            self.assertEqual(l.get_xdata().freq, 'D')
+            self.assertEqual(PeriodIndex(l.get_xdata()).freq, 'D')
         for l in ax.right_ax.get_lines():
-            self.assertEqual(l.get_xdata().freq, 'D')
+            self.assertEqual(PeriodIndex(l.get_xdata()).freq, 'D')
 
     @slow
     def test_secondary_legend(self):

@@ -233,7 +233,7 @@ however pass ``sort=False`` for potential speedups:
 GroupBy with MultiIndex
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-With :ref:`hierarchically-indexed data <indexing.hierarchical>`, it's quite
+With :ref:`hierarchically-indexed data <advanced.hierarchical>`, it's quite
 natural to group by one of the levels of the hierarchy.
 
 .. ipython:: python
@@ -358,7 +358,7 @@ An obvious one is aggregation via the ``aggregate`` or equivalently ``agg`` meth
 
 As you can see, the result of the aggregation will have the group names as the
 new index along the grouped axis. In the case of multiple keys, the result is a
-:ref:`MultiIndex <indexing.hierarchical>` by default, though this can be
+:ref:`MultiIndex <advanced.hierarchical>` by default, though this can be
 changed by using the ``as_index`` option:
 
 .. ipython:: python
@@ -869,7 +869,7 @@ This shows the first or last n rows from each group.
 Taking the nth row of each group
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To select from a DataFrame or Series the nth item, use the nth method. This is a reduction method, and will return a single row (or no row) per group:
+To select from a DataFrame or Series the nth item, use the nth method. This is a reduction method, and will return a single row (or no row) per group if you pass an int for n:
 
 .. ipython:: python
 
@@ -880,7 +880,7 @@ To select from a DataFrame or Series the nth item, use the nth method. This is a
    g.nth(-1)
    g.nth(1)
 
-If you want to select the nth not-null method, use the ``dropna`` kwarg. For a DataFrame this should be either ``'any'`` or ``'all'`` just like you would pass to dropna, for a Series this just needs to be truthy.
+If you want to select the nth not-null item, use the ``dropna`` kwarg. For a DataFrame this should be either ``'any'`` or ``'all'`` just like you would pass to dropna, for a Series this just needs to be truthy.
 
 .. ipython:: python
 
@@ -903,6 +903,15 @@ As with other methods, passing ``as_index=False``, will achieve a filtration, wh
 
    g.nth(0)
    g.nth(-1)
+
+You can also select multiple rows from each group by specifying multiple nth values as a list of ints.
+
+.. ipython:: python
+
+   business_dates = date_range(start='4/1/2014', end='6/30/2014', freq='B')
+   df = DataFrame(1, index=business_dates, columns=['a', 'b'])
+   # get the first, 4th, and last date index for each month
+   df.groupby((df.index.year, df.index.month)).nth([0, 3, -1])
 
 Enumerate group items
 ~~~~~~~~~~~~~~~~~~~~~
@@ -969,7 +978,7 @@ Regroup columns of a DataFrame according to their sum, and sum the aggregated on
    df.groupby(df.sum(), axis=1).sum()
 
 
-Returning a Series to propogate names
+Returning a Series to propagate names
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Group DataFrame columns, compute a set of metrics and return a named Series.

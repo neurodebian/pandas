@@ -14,7 +14,7 @@ from numpy import nan
 from numpy.random import randn
 import numpy as np
 
-from pandas import DataFrame, Series, Index, _np_version_under1p7, Timestamp, MultiIndex
+from pandas import DataFrame, Series, Index, Timestamp, MultiIndex
 
 import pandas.core.format as fmt
 import pandas.util.testing as tm
@@ -43,7 +43,7 @@ def has_info_repr(df):
 def has_non_verbose_info_repr(df):
     has_info = has_info_repr(df)
     r = repr(df)
-    nv = len(r.split('\n')) == 4  # 1. <class>, 2. Index, 3. Columns, 4. dtype
+    nv = len(r.split('\n')) == 6  # 1. <class>, 2. Index, 3. Columns, 4. dtype, 5. memory usage, 6. trailing newline
     return has_info and nv
 
 def has_horizontally_truncated_repr(df):
@@ -280,6 +280,36 @@ class TestDataFrameFormatting(tm.TestCase):
                 com.pprint_thing(df._repr_fits_horizontal_())
                 self.assertTrue(has_expanded_repr(df))
 
+    def test_auto_detect(self):
+        term_width, term_height = get_terminal_size()
+        fac = 1.05  # Arbitrary large factor to exceed term widht
+        cols = range(int(term_width * fac))
+        index = range(10)
+        df = DataFrame(index=index, columns=cols)
+        with option_context('mode.sim_interactive', True):
+            with option_context('max_rows',None):
+                with option_context('max_columns',None):
+                    # Wrap around with None
+                    self.assertTrue(has_expanded_repr(df))
+            with option_context('max_rows',0):
+                with option_context('max_columns',0):
+                    # Truncate with auto detection.
+                    self.assertTrue(has_horizontally_truncated_repr(df))
+
+            index = range(int(term_height * fac))
+            df = DataFrame(index=index, columns=cols)
+            with option_context('max_rows',0):
+                with option_context('max_columns',None):
+                    # Wrap around with None
+                    self.assertTrue(has_expanded_repr(df))
+                    # Truncate vertically
+                    self.assertTrue(has_vertically_truncated_repr(df))
+
+            with option_context('max_rows',None):
+                with option_context('max_columns',0):
+                    self.assertTrue(has_horizontally_truncated_repr(df))
+
+
     def test_to_string_repr_unicode(self):
         buf = StringIO()
 
@@ -384,6 +414,13 @@ class TestDataFrameFormatting(tm.TestCase):
         c20 = len(df.to_string(col_space=20).split("\n")[1])
         c30 = len(df.to_string(col_space=30).split("\n")[1])
         self.assertTrue(c10 < c20 < c30)
+
+        # GH 8230
+        # col_space wasn't being applied with header=False
+        with_header = df.to_string(col_space=20)
+        with_header_row1 = with_header.splitlines()[1]
+        no_header = df.to_string(col_space=20, header=False)
+        self.assertEqual(len(with_header_row1), len(no_header))
 
     def test_to_string_truncate_indices(self):
         for index in [ tm.makeStringIndex, tm.makeUnicodeIndex, tm.makeIntIndex,
@@ -1348,8 +1385,8 @@ class TestDataFrameFormatting(tm.TestCase):
                             'B': tm.makeStringIndex(200)},
                            index=lrange(200))
 
-        biggie['A'][:20] = nan
-        biggie['B'][:20] = nan
+        biggie.loc[:20,'A'] = nan
+        biggie.loc[:20,'B'] = nan
         s = biggie.to_string()
 
         buf = StringIO()
@@ -1597,8 +1634,8 @@ c  10  11  12  13  14\
                             'B': tm.makeStringIndex(200)},
                            index=lrange(200))
 
-        biggie['A'][:20] = nan
-        biggie['B'][:20] = nan
+        biggie.loc[:20,'A'] = nan
+        biggie.loc[:20,'B'] = nan
         s = biggie.to_html()
 
         buf = StringIO()
@@ -1624,8 +1661,8 @@ c  10  11  12  13  14\
                             'B': tm.makeStringIndex(200)},
                            index=lrange(200))
 
-        biggie['A'][:20] = nan
-        biggie['B'][:20] = nan
+        biggie.loc[:20,'A'] = nan
+        biggie.loc[:20,'B'] = nan
         with tm.ensure_clean('test.html') as path:
             biggie.to_html(path)
             with open(path, 'r') as f:
@@ -2083,6 +2120,31 @@ c  10  11  12  13  14\
 """
         self.assertEqual(withoutindex_result, withoutindex_expected)
 
+    def test_to_latex_multiindex(self):
+        df = DataFrame({('x', 'y'): ['a']})
+        result = df.to_latex()
+        expected = r"""\begin{tabular}{ll}
+\toprule
+{} &  x \\
+{} &  y \\
+\midrule
+0 &  a \\
+\bottomrule
+\end{tabular}
+"""
+        self.assertEqual(result, expected)
+
+        result = df.T.to_latex()
+        expected = r"""\begin{tabular}{lll}
+\toprule
+  &   &  0 \\
+\midrule
+x & y &  a \\
+\bottomrule
+\end{tabular}
+"""
+        self.assertEqual(result, expected)
+
     def test_to_latex_escape(self):
         a = 'a'
         b = 'b'
@@ -2428,39 +2490,44 @@ class TestSeriesFormatting(tm.TestCase):
         o = Series([datetime(2012,1,1,microsecond=150)]*3)
         y = s-o
         result = y.to_string()
-        self.assertTrue('-0 days, 00:00:00.000150' in result)
+        self.assertTrue('-1 days +23:59:59.999850' in result)
 
         # rounding?
         o = Series([datetime(2012,1,1,1)]*3)
         y = s-o
         result = y.to_string()
-        self.assertTrue('-0 days, 01:00:00' in result)
-        self.assertTrue('1 days, 23:00:00' in result)
+        self.assertTrue('-1 days +23:00:00' in result)
+        self.assertTrue('1 days 23:00:00' in result)
 
         o = Series([datetime(2012,1,1,1,1)]*3)
         y = s-o
         result = y.to_string()
-        self.assertTrue('-0 days, 01:01:00' in result)
-        self.assertTrue('1 days, 22:59:00' in result)
+        self.assertTrue('-1 days +22:59:00' in result)
+        self.assertTrue('1 days 22:59:00' in result)
 
         o = Series([datetime(2012,1,1,1,1,microsecond=150)]*3)
         y = s-o
         result = y.to_string()
-        self.assertTrue('-0 days, 01:01:00.000150' in result)
-        self.assertTrue('1 days, 22:58:59.999850' in result)
+        self.assertTrue('-1 days +22:58:59.999850' in result)
+        self.assertTrue('0 days 22:58:59.999850' in result)
 
         # neg time
         td = timedelta(minutes=5,seconds=3)
         s2 = Series(date_range('2012-1-1', periods=3, freq='D')) + td
         y = s - s2
         result = y.to_string()
-        self.assertTrue('-00:05:03' in result)
+        self.assertTrue('-1 days +23:54:57' in result)
 
         td = timedelta(microseconds=550)
         s2 = Series(date_range('2012-1-1', periods=3, freq='D')) + td
         y = s - td
         result = y.to_string()
         self.assertTrue('2012-01-01 23:59:59.999450' in result)
+
+        # no boxing of the actual elements
+        td = Series(pd.timedelta_range('1 days',periods=3))
+        result = td.to_string()
+        self.assertEqual(result,u("0   1 days\n1   2 days\n2   3 days"))
 
     def test_mixed_datetime64(self):
         df = DataFrame({'A': [1, 2],
@@ -2727,37 +2794,51 @@ class TestFloatArrayFormatter(tm.TestCase):
 
 
 class TestRepr_timedelta64(tm.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        tm._skip_if_not_numpy17_friendly()
 
-    def test_legacy(self):
+    def test_none(self):
         delta_1d = pd.to_timedelta(1, unit='D')
         delta_0d = pd.to_timedelta(0, unit='D')
         delta_1s = pd.to_timedelta(1, unit='s')
         delta_500ms = pd.to_timedelta(500, unit='ms')
 
-        self.assertEqual(tslib.repr_timedelta64(delta_1d), "1 days, 00:00:00")
-        self.assertEqual(tslib.repr_timedelta64(-delta_1d), "-1 days, 00:00:00")
-        self.assertEqual(tslib.repr_timedelta64(delta_0d), "00:00:00")
-        self.assertEqual(tslib.repr_timedelta64(delta_1s), "00:00:01")
-        self.assertEqual(tslib.repr_timedelta64(delta_500ms), "00:00:00.500000")
-        self.assertEqual(tslib.repr_timedelta64(delta_1d + delta_1s), "1 days, 00:00:01")
-        self.assertEqual(tslib.repr_timedelta64(delta_1d + delta_500ms), "1 days, 00:00:00.500000")
+        drepr = lambda x: x._repr_base()
+        self.assertEqual(drepr(delta_1d), "1 days")
+        self.assertEqual(drepr(-delta_1d), "-1 days")
+        self.assertEqual(drepr(delta_0d), "0 days")
+        self.assertEqual(drepr(delta_1s), "0 days 00:00:01")
+        self.assertEqual(drepr(delta_500ms), "0 days 00:00:00.500000")
+        self.assertEqual(drepr(delta_1d + delta_1s), "1 days 00:00:01")
+        self.assertEqual(drepr(delta_1d + delta_500ms), "1 days 00:00:00.500000")
 
-    def test_short(self):
+    def test_even_day(self):
         delta_1d = pd.to_timedelta(1, unit='D')
         delta_0d = pd.to_timedelta(0, unit='D')
         delta_1s = pd.to_timedelta(1, unit='s')
         delta_500ms = pd.to_timedelta(500, unit='ms')
 
-        self.assertEqual(tslib.repr_timedelta64(delta_1d, format='short'), "1 days")
-        self.assertEqual(tslib.repr_timedelta64(-delta_1d, format='short'), "-1 days")
-        self.assertEqual(tslib.repr_timedelta64(delta_0d, format='short'), "00:00:00")
-        self.assertEqual(tslib.repr_timedelta64(delta_1s, format='short'), "00:00:01")
-        self.assertEqual(tslib.repr_timedelta64(delta_500ms, format='short'), "00:00:00.500000")
-        self.assertEqual(tslib.repr_timedelta64(delta_1d + delta_1s, format='short'), "1 days, 00:00:01")
-        self.assertEqual(tslib.repr_timedelta64(delta_1d + delta_500ms, format='short'), "1 days, 00:00:00.500000")
+        drepr = lambda x: x._repr_base(format='even_day')
+        self.assertEqual(drepr(delta_1d), "1 days")
+        self.assertEqual(drepr(-delta_1d), "-1 days")
+        self.assertEqual(drepr(delta_0d), "0 days")
+        self.assertEqual(drepr(delta_1s), "0 days 00:00:01")
+        self.assertEqual(drepr(delta_500ms), "0 days 00:00:00.500000")
+        self.assertEqual(drepr(delta_1d + delta_1s), "1 days 00:00:01")
+        self.assertEqual(drepr(delta_1d + delta_500ms), "1 days 00:00:00.500000")
+
+    def test_sub_day(self):
+        delta_1d = pd.to_timedelta(1, unit='D')
+        delta_0d = pd.to_timedelta(0, unit='D')
+        delta_1s = pd.to_timedelta(1, unit='s')
+        delta_500ms = pd.to_timedelta(500, unit='ms')
+
+        drepr = lambda x: x._repr_base(format='sub_day')
+        self.assertEqual(drepr(delta_1d), "1 days")
+        self.assertEqual(drepr(-delta_1d), "-1 days")
+        self.assertEqual(drepr(delta_0d), "00:00:00")
+        self.assertEqual(drepr(delta_1s), "00:00:01")
+        self.assertEqual(drepr(delta_500ms), "00:00:00.500000")
+        self.assertEqual(drepr(delta_1d + delta_1s), "1 days 00:00:01")
+        self.assertEqual(drepr(delta_1d + delta_500ms), "1 days 00:00:00.500000")
 
     def test_long(self):
         delta_1d = pd.to_timedelta(1, unit='D')
@@ -2765,69 +2846,69 @@ class TestRepr_timedelta64(tm.TestCase):
         delta_1s = pd.to_timedelta(1, unit='s')
         delta_500ms = pd.to_timedelta(500, unit='ms')
 
-        self.assertEqual(tslib.repr_timedelta64(delta_1d, format='long'), "1 days, 00:00:00")
-        self.assertEqual(tslib.repr_timedelta64(-delta_1d, format='long'), "-1 days, 00:00:00")
-        self.assertEqual(tslib.repr_timedelta64(delta_0d, format='long'), "0 days, 00:00:00")
-        self.assertEqual(tslib.repr_timedelta64(delta_1s, format='long'), "0 days, 00:00:01")
-        self.assertEqual(tslib.repr_timedelta64(delta_500ms, format='long'), "0 days, 00:00:00.500000")
-        self.assertEqual(tslib.repr_timedelta64(delta_1d + delta_1s, format='long'), "1 days, 00:00:01")
-        self.assertEqual(tslib.repr_timedelta64(delta_1d + delta_500ms, format='long'), "1 days, 00:00:00.500000")
+        drepr = lambda x: x._repr_base(format='long')
+        self.assertEqual(drepr(delta_1d), "1 days 00:00:00")
+        self.assertEqual(drepr(-delta_1d), "-1 days +00:00:00")
+        self.assertEqual(drepr(delta_0d), "0 days 00:00:00")
+        self.assertEqual(drepr(delta_1s), "0 days 00:00:01")
+        self.assertEqual(drepr(delta_500ms), "0 days 00:00:00.500000")
+        self.assertEqual(drepr(delta_1d + delta_1s), "1 days 00:00:01")
+        self.assertEqual(drepr(delta_1d + delta_500ms), "1 days 00:00:00.500000")
 
+    def test_all(self):
+        delta_1d = pd.to_timedelta(1, unit='D')
+        delta_0d = pd.to_timedelta(0, unit='D')
+        delta_1ns = pd.to_timedelta(1, unit='ns')
+
+        drepr = lambda x: x._repr_base(format='all')
+        self.assertEqual(drepr(delta_1d), "1 days 00:00:00.000000000")
+        self.assertEqual(drepr(delta_0d), "0 days 00:00:00.000000000")
+        self.assertEqual(drepr(delta_1ns), "0 days 00:00:00.000000001")
 
 class TestTimedelta64Formatter(tm.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        tm._skip_if_not_numpy17_friendly()
-
-    def test_mixed(self):
-        x = pd.to_timedelta(list(range(5)) + [pd.NaT], unit='D')
-        y = pd.to_timedelta(list(range(5)) + [pd.NaT], unit='s')
-        result = fmt.Timedelta64Formatter(x + y).get_result()
-        self.assertEqual(result[0].strip(), "0 days, 00:00:00")
-        self.assertEqual(result[1].strip(), "1 days, 00:00:01")
-
-    def test_mixed_neg(self):
-        x = pd.to_timedelta(list(range(5)) + [pd.NaT], unit='D')
-        y = pd.to_timedelta(list(range(5)) + [pd.NaT], unit='s')
-        result = fmt.Timedelta64Formatter(-(x + y)).get_result()
-        self.assertEqual(result[0].strip(), "0 days, 00:00:00")
-        self.assertEqual(result[1].strip(), "-1 days, 00:00:01")
 
     def test_days(self):
         x = pd.to_timedelta(list(range(5)) + [pd.NaT], unit='D')
-        result = fmt.Timedelta64Formatter(x).get_result()
+        result = fmt.Timedelta64Formatter(x,box=True).get_result()
+        self.assertEqual(result[0].strip(), "'0 days'")
+        self.assertEqual(result[1].strip(), "'1 days'")
+
+        result = fmt.Timedelta64Formatter(x[1:2],box=True).get_result()
+        self.assertEqual(result[0].strip(), "'1 days'")
+
+        result = fmt.Timedelta64Formatter(x,box=False).get_result()
         self.assertEqual(result[0].strip(), "0 days")
         self.assertEqual(result[1].strip(), "1 days")
 
-        result = fmt.Timedelta64Formatter(x[1:2]).get_result()
+        result = fmt.Timedelta64Formatter(x[1:2],box=False).get_result()
         self.assertEqual(result[0].strip(), "1 days")
 
     def test_days_neg(self):
         x = pd.to_timedelta(list(range(5)) + [pd.NaT], unit='D')
-        result = fmt.Timedelta64Formatter(-x).get_result()
-        self.assertEqual(result[0].strip(), "0 days")
-        self.assertEqual(result[1].strip(), "-1 days")
+        result = fmt.Timedelta64Formatter(-x,box=True).get_result()
+        self.assertEqual(result[0].strip(), "'0 days'")
+        self.assertEqual(result[1].strip(), "'-1 days'")
 
     def test_subdays(self):
         y = pd.to_timedelta(list(range(5)) + [pd.NaT], unit='s')
-        result = fmt.Timedelta64Formatter(y).get_result()
-        self.assertEqual(result[0].strip(), "00:00:00")
-        self.assertEqual(result[1].strip(), "00:00:01")
+        result = fmt.Timedelta64Formatter(y,box=True).get_result()
+        self.assertEqual(result[0].strip(), "'00:00:00'")
+        self.assertEqual(result[1].strip(), "'00:00:01'")
 
     def test_subdays_neg(self):
         y = pd.to_timedelta(list(range(5)) + [pd.NaT], unit='s')
-        result = fmt.Timedelta64Formatter(-y).get_result()
-        self.assertEqual(result[0].strip(), "00:00:00")
-        self.assertEqual(result[1].strip(), "-00:00:01")
+        result = fmt.Timedelta64Formatter(-y,box=True).get_result()
+        self.assertEqual(result[0].strip(), "'00:00:00'")
+        self.assertEqual(result[1].strip(), "'-1 days +23:59:59'")
 
     def test_zero(self):
         x = pd.to_timedelta(list(range(1)) + [pd.NaT], unit='D')
-        result = fmt.Timedelta64Formatter(x).get_result()
-        self.assertEqual(result[0].strip(), "0 days")
+        result = fmt.Timedelta64Formatter(x,box=True).get_result()
+        self.assertEqual(result[0].strip(), "'0 days'")
 
         x = pd.to_timedelta(list(range(1)), unit='D')
-        result = fmt.Timedelta64Formatter(x).get_result()
-        self.assertEqual(result[0].strip(), "0 days")
+        result = fmt.Timedelta64Formatter(x,box=True).get_result()
+        self.assertEqual(result[0].strip(), "'0 days'")
 
 
 class TestDatetime64Formatter(tm.TestCase):

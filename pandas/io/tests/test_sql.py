@@ -6,12 +6,12 @@ The SQL tests are broken down in different classes:
 - Tests for the public API (only tests with sqlite3)
     - `_TestSQLApi` base class
     - `TestSQLApi`: test the public API with sqlalchemy engine
-    - `TesySQLLegacyApi`: test the public API with DBAPI connection
+    - `TesySQLiteFallbackApi`: test the public API with a sqlite DBAPI connection
 - Tests for the different SQL flavors (flavor specific type conversions)
     - Tests for the sqlalchemy mode: `_TestSQLAlchemy` is the base class with
       common methods, the different tested flavors (sqlite3, MySQL, PostgreSQL)
       derive from the base class
-    - Tests for the legacy mode (`TestSQLiteLegacy` and `TestMySQLLegacy`)
+    - Tests for the fallback mode (`TestSQLiteFallback` and `TestMySQLLegacy`)
 
 """
 
@@ -26,17 +26,17 @@ import nose
 import warnings
 import numpy as np
 
-from datetime import datetime
+from datetime import datetime, date, time
 
-from pandas import DataFrame, Series, Index, MultiIndex, isnull
+from pandas import DataFrame, Series, Index, MultiIndex, isnull, concat
 from pandas import date_range, to_datetime, to_timedelta
 import pandas.compat as compat
 from pandas.compat import StringIO, range, lrange, string_types
 from pandas.core.datetools import format as date_format
 
 import pandas.io.sql as sql
+from pandas.io.sql import read_sql_table, read_sql_query
 import pandas.util.testing as tm
-from pandas import _np_version_under1p7
 
 
 try:
@@ -199,7 +199,7 @@ class PandasSQLTest(unittest.TestCase):
                             E=['1990-11-22', '1991-10-26', '1993-11-26', '1995-12-12']))
         df['E'] = to_datetime(df['E'])
 
-        self.test_frame3 = df
+        self.test_frame2 = df
 
     def _load_test3_data(self):
         columns = ['index', 'A', 'B']
@@ -228,19 +228,19 @@ class PandasSQLTest(unittest.TestCase):
         return result[0]
 
     def _read_sql_iris(self):
-        iris_frame = self.pandasSQL.read_sql("SELECT * FROM iris")
+        iris_frame = self.pandasSQL.read_query("SELECT * FROM iris")
         self._check_iris_loaded_frame(iris_frame)
 
     def _read_sql_iris_parameter(self):
         query = SQL_STRINGS['read_parameters'][self.flavor]
         params = ['Iris-setosa', 5.1]
-        iris_frame = self.pandasSQL.read_sql(query, params=params)
+        iris_frame = self.pandasSQL.read_query(query, params=params)
         self._check_iris_loaded_frame(iris_frame)
 
     def _read_sql_iris_named_parameter(self):
         query = SQL_STRINGS['read_named_parameters'][self.flavor]
         params = {'name': 'Iris-setosa', 'length': 5.1}
-        iris_frame = self.pandasSQL.read_sql(query, params=params)
+        iris_frame = self.pandasSQL.read_query(query, params=params)
         self._check_iris_loaded_frame(iris_frame)
 
     def _to_sql(self):
@@ -252,6 +252,10 @@ class PandasSQLTest(unittest.TestCase):
 
         # Nuke table
         self.drop_table('test_frame1')
+
+    def _to_sql_empty(self):
+        self.drop_table('test_frame1')
+        self.pandasSQL.to_sql(self.test_frame1.iloc[:0], 'test_frame1')
 
     def _to_sql_fail(self):
         self.drop_table('test_frame1')
@@ -309,7 +313,7 @@ class PandasSQLTest(unittest.TestCase):
     def _roundtrip(self):
         self.drop_table('test_frame_roundtrip')
         self.pandasSQL.to_sql(self.test_frame1, 'test_frame_roundtrip')
-        result = self.pandasSQL.read_sql('SELECT * FROM test_frame_roundtrip')
+        result = self.pandasSQL.read_query('SELECT * FROM test_frame_roundtrip')
 
         result.set_index('level_0', inplace=True)
         # result.index.astype(int)
@@ -324,6 +328,35 @@ class PandasSQLTest(unittest.TestCase):
         row = iris_results.fetchone()
         tm.equalContents(row, [5.1, 3.5, 1.4, 0.2, 'Iris-setosa'])
 
+    def _to_sql_save_index(self):
+        df = DataFrame.from_records([(1,2.1,'line1'), (2,1.5,'line2')],
+                                    columns=['A','B','C'], index=['A'])
+        self.pandasSQL.to_sql(df, 'test_to_sql_saves_index')
+        ix_cols = self._get_index_columns('test_to_sql_saves_index')
+        self.assertEqual(ix_cols, [['A',],])
+
+    def _transaction_test(self):
+        self.pandasSQL.execute("CREATE TABLE test_trans (A INT, B TEXT)")
+
+        ins_sql = "INSERT INTO test_trans (A,B) VALUES (1, 'blah')"
+        
+        # Make sure when transaction is rolled back, no rows get inserted
+        try:
+            with self.pandasSQL.run_transaction() as trans:
+                trans.execute(ins_sql)
+                raise Exception('error')
+        except:
+            # ignore raised exception
+            pass
+        res = self.pandasSQL.read_query('SELECT * FROM test_trans')
+        self.assertEqual(len(res), 0)
+        
+        # Make sure when transaction is committed, rows do get inserted
+        with self.pandasSQL.run_transaction() as trans:
+            trans.execute(ins_sql)
+        res2 = self.pandasSQL.read_query('SELECT * FROM test_trans')
+        self.assertEqual(len(res2), 1)
+
 
 #------------------------------------------------------------------------------
 #--- Testing the public API
@@ -334,7 +367,7 @@ class _TestSQLApi(PandasSQLTest):
     Base class to test the public API.
 
     From this two classes are derived to run these tests for both the
-    sqlalchemy mode (`TestSQLApi`) and the legacy mode (`TestSQLLegacyApi`).
+    sqlalchemy mode (`TestSQLApi`) and the fallback mode (`TestSQLiteFallbackApi`).
     These tests are run with sqlite3. Specific tests for the different
     sql flavours are included in `_TestSQLAlchemy`.
 
@@ -346,6 +379,7 @@ class _TestSQLApi(PandasSQLTest):
 
     """
     flavor = 'sqlite'
+    mode = None
 
     def setUp(self):
         self.conn = self.connect()
@@ -456,6 +490,14 @@ class _TestSQLApi(PandasSQLTest):
         result.index.name = None
         tm.assert_frame_equal(result, self.test_frame1)
 
+    def test_roundtrip_chunksize(self):
+        sql.to_sql(self.test_frame1, 'test_frame_roundtrip', con=self.conn,
+            index=False, flavor='sqlite', chunksize=2)
+        result = sql.read_sql_query(
+            'SELECT * FROM test_frame_roundtrip',
+            con=self.conn)
+        tm.assert_frame_equal(result, self.test_frame1)
+
     def test_execute_sql(self):
         # drop_sql = "DROP TABLE IF EXISTS test"  # should already be done
         iris_results = sql.execute("SELECT * FROM iris", con=self.conn)
@@ -508,9 +550,8 @@ class _TestSQLApi(PandasSQLTest):
                         "IntDateCol loaded with incorrect type")
 
     def test_timedelta(self):
-        # see #6921
-        tm._skip_if_not_numpy17_friendly()
 
+        # see #6921
         df = to_timedelta(Series(['00:00:01', '00:00:03'], name='foo')).to_frame()
         with tm.assert_produces_warning(UserWarning):
             df.to_sql('test_timedelta', self.conn)
@@ -584,6 +625,15 @@ class _TestSQLApi(PandasSQLTest):
                           'test_index_label', self.conn, if_exists='replace',
                           index_label='C')
 
+    def test_multiindex_roundtrip(self):
+        df = DataFrame.from_records([(1,2.1,'line1'), (2,1.5,'line2')],
+                                    columns=['A','B','C'], index=['A','B'])
+
+        df.to_sql('test_multiindex_roundtrip', self.conn)
+        result = sql.read_sql_query('SELECT * FROM test_multiindex_roundtrip',
+                                    self.conn, index_col=['A','B'])
+        tm.assert_frame_equal(df, result, check_index_type=True)
+
     def test_integer_col_names(self):
         df = DataFrame([[1, 2], [3, 4]], columns=[0, 1])
         sql.to_sql(df, "test_frame_integer_col_names", self.conn,
@@ -593,6 +643,40 @@ class _TestSQLApi(PandasSQLTest):
         create_sql = sql.get_schema(self.test_frame1, 'test', 'sqlite',
                                     con=self.conn)
         self.assertTrue('CREATE' in create_sql)
+
+    def test_chunksize_read(self):
+        df = DataFrame(np.random.randn(22, 5), columns=list('abcde'))
+        df.to_sql('test_chunksize', self.conn, index=False)
+
+        # reading the query in one time
+        res1 = sql.read_sql_query("select * from test_chunksize", self.conn)
+
+        # reading the query in chunks with read_sql_query
+        res2 = DataFrame()
+        i = 0
+        sizes = [5, 5, 5, 5, 2]
+
+        for chunk in sql.read_sql_query("select * from test_chunksize",
+                                        self.conn, chunksize=5):
+            res2 = concat([res2, chunk], ignore_index=True)
+            self.assertEqual(len(chunk), sizes[i])
+            i += 1
+
+        tm.assert_frame_equal(res1, res2)
+
+        # reading the query in chunks with read_sql_query
+        if self.mode == 'sqlalchemy':
+            res3 = DataFrame()
+            i = 0
+            sizes = [5, 5, 5, 5, 2]
+
+            for chunk in sql.read_sql_table("test_chunksize", self.conn,
+                                            chunksize=5):
+                res3 = concat([res3, chunk], ignore_index=True)
+                self.assertEqual(len(chunk), sizes[i])
+                i += 1
+
+            tm.assert_frame_equal(res1, res3)
 
 
 class TestSQLApi(_TestSQLApi):
@@ -604,6 +688,7 @@ class TestSQLApi(_TestSQLApi):
 
     """
     flavor = 'sqlite'
+    mode = 'sqlalchemy'
 
     def connect(self):
         if SQLALCHEMY_INSTALLED:
@@ -644,9 +729,7 @@ class TestSQLApi(_TestSQLApi):
             "SELECT * FROM iris", self.conn)
         iris_frame2 = sql.read_sql(
             "SELECT * FROM iris", self.conn)
-        tm.assert_frame_equal(iris_frame1, iris_frame2,
-                              "read_sql and read_sql_query have not the same"
-                              " result with a query")
+        tm.assert_frame_equal(iris_frame1, iris_frame2)
 
         iris_frame1 = sql.read_sql_table('iris', self.conn)
         iris_frame2 = sql.read_sql('iris', self.conn)
@@ -668,13 +751,34 @@ class TestSQLApi(_TestSQLApi):
             # Verify some things
             self.assertEqual(len(w), 0, "Warning triggered for other table")
 
+    def test_warning_case_insensitive_table_name(self):
+        # see GH7815.
+        # We can't test that this warning is triggered, a the database
+        # configuration would have to be altered. But here we test that
+        # the warning is certainly NOT triggered in a normal case.
+        with warnings.catch_warnings(record=True) as w:
+            # Cause all warnings to always be triggered.
+            warnings.simplefilter("always")
+            # This should not trigger a Warning
+            self.test_frame1.to_sql('CaseSensitive', self.conn)
+            # Verify some things
+            self.assertEqual(len(w), 0, "Warning triggered for writing a table")
 
-class TestSQLLegacyApi(_TestSQLApi):
+    def _get_index_columns(self, tbl_name):
+        from sqlalchemy.engine import reflection
+        insp = reflection.Inspector.from_engine(self.conn)
+        ixs = insp.get_indexes('test_index_saved')
+        ixs = [i['column_names'] for i in ixs]
+        return ixs
+
+
+class TestSQLiteFallbackApi(_TestSQLApi):
     """
-    Test the public legacy API
+    Test the public sqlite connection fallback API
 
     """
     flavor = 'sqlite'
+    mode = 'fallback'
 
     def connect(self, database=":memory:"):
         return sqlite3.connect(database)
@@ -700,9 +804,7 @@ class TestSQLLegacyApi(_TestSQLApi):
     def test_read_sql_delegate(self):
         iris_frame1 = sql.read_sql_query("SELECT * FROM iris", self.conn)
         iris_frame2 = sql.read_sql("SELECT * FROM iris", self.conn)
-        tm.assert_frame_equal(iris_frame1, iris_frame2,
-                              "read_sql and read_sql_query have not the same"
-                              " result with a query")
+        tm.assert_frame_equal(iris_frame1, iris_frame2)
 
         self.assertRaises(sql.DatabaseError, sql.read_sql, 'iris', self.conn)
 
@@ -768,7 +870,7 @@ class _TestSQLAlchemy(PandasSQLTest):
     def setup_connect(self):
         try:
             self.conn = self.connect()
-            self.pandasSQL = sql.PandasSQLAlchemy(self.conn)
+            self.pandasSQL = sql.SQLDatabase(self.conn)
             # to test if connection can be made:
             self.conn.connect()
         except sqlalchemy.exc.OperationalError:
@@ -789,6 +891,9 @@ class _TestSQLAlchemy(PandasSQLTest):
     def test_to_sql(self):
         self._to_sql()
 
+    def test_to_sql_empty(self):
+        self._to_sql_empty()
+
     def test_to_sql_fail(self):
         self._to_sql_fail()
 
@@ -803,7 +908,7 @@ class _TestSQLAlchemy(PandasSQLTest):
         temp_frame = DataFrame(
             {'one': [1., 2., 3., 4.], 'two': [4., 3., 2., 1.]})
 
-        pandasSQL = sql.PandasSQLAlchemy(temp_conn)
+        pandasSQL = sql.SQLDatabase(temp_conn)
         pandasSQL.to_sql(temp_frame, 'temp_frame')
 
         self.assertTrue(
@@ -815,7 +920,7 @@ class _TestSQLAlchemy(PandasSQLTest):
         temp_frame = DataFrame(
             {'one': [1., 2., 3., 4.], 'two': [4., 3., 2., 1.]})
 
-        pandasSQL = sql.PandasSQLAlchemy(temp_conn)
+        pandasSQL = sql.SQLDatabase(temp_conn)
         pandasSQL.to_sql(temp_frame, 'temp_frame')
 
         self.assertTrue(
@@ -914,9 +1019,6 @@ class _TestSQLAlchemy(PandasSQLTest):
                         "IntDateCol loaded with incorrect type")
 
     def test_datetime(self):
-        if self.driver == 'pymysql':
-             raise nose.SkipTest('writing datetime not working with pymysql')
-
         df = DataFrame({'A': date_range('2013-01-01 09:00:00', periods=3),
                         'B': np.arange(3.0)})
         df.to_sql('test_datetime', self.conn)
@@ -937,17 +1039,6 @@ class _TestSQLAlchemy(PandasSQLTest):
             tm.assert_frame_equal(result, df)
 
     def test_datetime_NaT(self):
-        # status:
-        # - postgresql: gives error on inserting "0001-255-255T00:00:00"
-        # - sqlite3: works, but reading it with query returns '-001--1--1 -1:-1:-1.-00001'
-
-        if self.driver == 'pymysql':
-            raise nose.SkipTest('writing datetime not working with pymysql')
-        if self.driver == 'psycopg2':
-            raise nose.SkipTest('writing datetime NaT not working with psycopg2')
-        if self.flavor == 'sqlite':
-            raise nose.SkipTest('reading datetime NaT not working with sqlite')
-
         df = DataFrame({'A': date_range('2013-01-01 09:00:00', periods=3),
                         'B': np.arange(3.0)})
         df.loc[1, 'A'] = np.nan
@@ -966,6 +1057,21 @@ class _TestSQLAlchemy(PandasSQLTest):
         else:
             tm.assert_frame_equal(result, df)
 
+    def test_datetime_date(self):
+        # test support for datetime.date
+        df = DataFrame([date(2014, 1, 1), date(2014, 1, 2)], columns=["a"])
+        df.to_sql('test_date', self.conn, index=False)
+        res = read_sql_table('test_date', self.conn)
+        # comes back as datetime64
+        tm.assert_series_equal(res['a'], to_datetime(df['a']))
+
+    def test_datetime_time(self):
+        # test support for datetime.time
+        df = DataFrame([time(9, 0, 0), time(9, 1, 30)], columns=["a"])
+        df.to_sql('test_time', self.conn, index=False)
+        res = read_sql_table('test_time', self.conn)
+        tm.assert_frame_equal(res, df)
+
     def test_mixed_dtype_insert(self):
         # see GH6509
         s1 = Series(2**25 + 1,dtype=np.int32)
@@ -979,9 +1085,6 @@ class _TestSQLAlchemy(PandasSQLTest):
         tm.assert_frame_equal(df, df2, check_dtype=False, check_exact=True)
 
     def test_nan_numeric(self):
-        if self.driver == 'pymysql':
-            raise nose.SkipTest('writing NaNs not working with pymysql')
-
         # NaNs in numeric float column
         df = DataFrame({'A':[0, 1, 2], 'B':[0.2, np.nan, 5.6]})
         df.to_sql('test_nan', self.conn, index=False)
@@ -995,37 +1098,27 @@ class _TestSQLAlchemy(PandasSQLTest):
         tm.assert_frame_equal(result, df)
 
     def test_nan_fullcolumn(self):
-        if self.driver == 'pymysql':
-            raise nose.SkipTest('writing NaNs not working with pymysql')
-
         # full NaN column (numeric float column)
         df = DataFrame({'A':[0, 1, 2], 'B':[np.nan, np.nan, np.nan]})
         df.to_sql('test_nan', self.conn, index=False)
 
-        if self.flavor == 'sqlite':
-            df['B'] = df['B'].astype('object')
-            df['B'] = None
-
         # with read_table
         result = sql.read_sql_table('test_nan', self.conn)
         tm.assert_frame_equal(result, df)
 
-        # with read_sql
+        # with read_sql -> not type info from table -> stays None
+        df['B'] = df['B'].astype('object')
+        df['B'] = None
         result = sql.read_sql_query('SELECT * FROM test_nan', self.conn)
         tm.assert_frame_equal(result, df)
 
     def test_nan_string(self):
-        if self.driver == 'pymysql':
-             raise nose.SkipTest('writing NaNs not working with pymysql')
-
         # NaNs in string column
         df = DataFrame({'A':[0, 1, 2], 'B':['a', 'b', np.nan]})
         df.to_sql('test_nan', self.conn, index=False)
 
-        if self.flavor == 'sqlite':
-            df.loc[2, 'B'] = None
-        elif self.flavor == 'postgresql':
-            df = df.fillna('NaN')
+        # NaNs are coming back as None
+        df.loc[2, 'B'] = None
 
         # with read_table
         result = sql.read_sql_table('test_nan', self.conn)
@@ -1035,6 +1128,18 @@ class _TestSQLAlchemy(PandasSQLTest):
         result = sql.read_sql_query('SELECT * FROM test_nan', self.conn)
         tm.assert_frame_equal(result, df)
 
+    def _get_index_columns(self, tbl_name):
+        from sqlalchemy.engine import reflection
+        insp = reflection.Inspector.from_engine(self.conn)
+        ixs = insp.get_indexes(tbl_name)
+        ixs = [i['column_names'] for i in ixs]
+        return ixs
+
+    def test_to_sql_save_index(self):
+        self._to_sql_save_index()
+
+    def test_transactions(self):
+        self._transaction_test()
 
 class TestSQLiteAlchemy(_TestSQLAlchemy):
     """
@@ -1170,8 +1275,8 @@ class TestPostgreSQLAlchemy(_TestSQLAlchemy):
     flavor = 'postgresql'
 
     def connect(self):
-        return sqlalchemy.create_engine(
-            'postgresql+{driver}://postgres@localhost/pandas_nosetest'.format(driver=self.driver))
+        url = 'postgresql+{driver}://postgres@localhost/pandas_nosetest'
+        return sqlalchemy.create_engine(url.format(driver=self.driver))
 
     def setup_driver(self):
         try:
@@ -1187,13 +1292,68 @@ class TestPostgreSQLAlchemy(_TestSQLAlchemy):
         for table in c.fetchall():
             self.conn.execute("DROP TABLE %s" % table[0])
 
+    def test_schema_support(self):
+        # only test this for postgresql (schema's not supported in mysql/sqlite)
+        df = DataFrame({'col1':[1, 2], 'col2':[0.1, 0.2], 'col3':['a', 'n']})
+
+        # create a schema
+        self.conn.execute("DROP SCHEMA IF EXISTS other CASCADE;")
+        self.conn.execute("CREATE SCHEMA other;")
+
+        # write dataframe to different schema's
+        df.to_sql('test_schema_public', self.conn, index=False)
+        df.to_sql('test_schema_public_explicit', self.conn, index=False,
+                  schema='public')
+        df.to_sql('test_schema_other', self.conn, index=False, schema='other')
+
+        # read dataframes back in
+        res1 = sql.read_sql_table('test_schema_public', self.conn)
+        tm.assert_frame_equal(df, res1)
+        res2 = sql.read_sql_table('test_schema_public_explicit', self.conn)
+        tm.assert_frame_equal(df, res2)
+        res3 = sql.read_sql_table('test_schema_public_explicit', self.conn,
+                                  schema='public')
+        tm.assert_frame_equal(df, res3)
+        res4 = sql.read_sql_table('test_schema_other', self.conn,
+                                  schema='other')
+        tm.assert_frame_equal(df, res4)
+        self.assertRaises(ValueError, sql.read_sql_table, 'test_schema_other',
+                          self.conn, schema='public')
+
+        ## different if_exists options
+
+        # create a schema
+        self.conn.execute("DROP SCHEMA IF EXISTS other CASCADE;")
+        self.conn.execute("CREATE SCHEMA other;")
+
+        # write dataframe with different if_exists options
+        df.to_sql('test_schema_other', self.conn, schema='other', index=False)
+        df.to_sql('test_schema_other', self.conn, schema='other', index=False,
+                  if_exists='replace')
+        df.to_sql('test_schema_other', self.conn, schema='other', index=False,
+                  if_exists='append')
+        res = sql.read_sql_table('test_schema_other', self.conn, schema='other')
+        tm.assert_frame_equal(concat([df, df], ignore_index=True), res)
+
+        ## specifying schema in user-provided meta
+
+        engine2 = self.connect()
+        meta = sqlalchemy.MetaData(engine2, schema='other')
+        pdsql = sql.SQLDatabase(engine2, meta=meta)
+        pdsql.to_sql(df, 'test_schema_other2', index=False)
+        pdsql.to_sql(df, 'test_schema_other2', index=False, if_exists='replace')
+        pdsql.to_sql(df, 'test_schema_other2', index=False, if_exists='append')
+        res1 = sql.read_sql_table('test_schema_other2', self.conn, schema='other')
+        res2 = pdsql.read_table('test_schema_other2')
+        tm.assert_frame_equal(res1, res2)
+
 
 #------------------------------------------------------------------------------
 #--- Test Sqlite / MySQL fallback
 
-class TestSQLiteLegacy(PandasSQLTest):
+class TestSQLiteFallback(PandasSQLTest):
     """
-    Test the legacy mode against an in-memory sqlite database.
+    Test the fallback mode against an in-memory sqlite database.
 
     """
     flavor = 'sqlite'
@@ -1208,7 +1368,7 @@ class TestSQLiteLegacy(PandasSQLTest):
 
     def setUp(self):
         self.conn = self.connect()
-        self.pandasSQL = sql.PandasSQLLegacy(self.conn, 'sqlite')
+        self.pandasSQL = sql.SQLiteDatabase(self.conn, 'sqlite')
 
         self._load_iris_data()
 
@@ -1216,7 +1376,7 @@ class TestSQLiteLegacy(PandasSQLTest):
 
     def test_invalid_flavor(self):
         self.assertRaises(
-            NotImplementedError, sql.PandasSQLLegacy, self.conn, 'oracle')
+            NotImplementedError, sql.SQLiteDatabase, self.conn, 'oracle')
 
     def test_read_sql(self):
         self._read_sql_iris()
@@ -1229,6 +1389,9 @@ class TestSQLiteLegacy(PandasSQLTest):
 
     def test_to_sql(self):
         self._to_sql()
+
+    def test_to_sql_empty(self):
+        self._to_sql_empty()
 
     def test_to_sql_fail(self):
         self._to_sql_fail()
@@ -1259,8 +1422,43 @@ class TestSQLiteLegacy(PandasSQLTest):
     def test_execute_sql(self):
         self._execute_sql()
 
+    def test_datetime_date(self):
+        # test support for datetime.date
+        df = DataFrame([date(2014, 1, 1), date(2014, 1, 2)], columns=["a"])
+        df.to_sql('test_date', self.conn, index=False, flavor=self.flavor)
+        res = read_sql_query('SELECT * FROM test_date', self.conn)
+        if self.flavor == 'sqlite':
+            # comes back as strings
+            tm.assert_frame_equal(res, df.astype(str))
+        elif self.flavor == 'mysql':
+            tm.assert_frame_equal(res, df)
 
-class TestMySQLLegacy(TestSQLiteLegacy):
+    def test_datetime_time(self):
+        # test support for datetime.time
+        df = DataFrame([time(9, 0, 0), time(9, 1, 30)], columns=["a"])
+        # test it raises an error and not fails silently (GH8341)
+        if self.flavor == 'sqlite':
+            self.assertRaises(sqlite3.InterfaceError, sql.to_sql, df,
+                              'test_time', self.conn)
+                          
+    def _get_index_columns(self, tbl_name):
+        ixs = sql.read_sql_query(
+            "SELECT * FROM sqlite_master WHERE type = 'index' " +
+            "AND tbl_name = '%s'" % tbl_name, self.conn)
+        ix_cols = []
+        for ix_name in ixs.name:
+            ix_info = sql.read_sql_query(
+                "PRAGMA index_info(%s)" % ix_name, self.conn)
+            ix_cols.append(ix_info.name.tolist())
+        return ix_cols
+
+    def test_to_sql_save_index(self):
+        self._to_sql_save_index()
+
+    def test_transactions(self):
+        self._transaction_test()
+
+class TestMySQLLegacy(TestSQLiteFallback):
     """
     Test the legacy mode against a MySQL database.
 
@@ -1294,7 +1492,7 @@ class TestMySQLLegacy(TestSQLiteLegacy):
         except self.driver.err.OperationalError:
             raise nose.SkipTest("Can't connect to MySQL server")
 
-        self.pandasSQL = sql.PandasSQLLegacy(self.conn, 'mysql')
+        self.pandasSQL = sql.SQLiteDatabase(self.conn, 'mysql')
 
         self._load_iris_data()
         self._load_test1_data()
@@ -1314,6 +1512,28 @@ class TestMySQLLegacy(TestSQLiteLegacy):
         self.assertTrue(
             sql.has_table('test_frame1', self.conn, flavor='mysql'),
             'Table not written to DB')
+
+    def _get_index_columns(self, tbl_name):
+        ixs = sql.read_sql_query(
+            "SHOW INDEX IN %s" % tbl_name, self.conn)
+        ix_cols = {}
+        for ix_name, ix_col in zip(ixs.Key_name, ixs.Column_name):
+            if ix_name not in ix_cols:
+                ix_cols[ix_name] = []
+            ix_cols[ix_name].append(ix_col)
+        return list(ix_cols.values())
+
+    def test_to_sql_save_index(self):
+        self._to_sql_save_index()
+
+        for ix_name, ix_col in zip(ixs.Key_name, ixs.Column_name):
+            if ix_name not in ix_cols:
+                ix_cols[ix_name] = []
+            ix_cols[ix_name].append(ix_col)
+        return ix_cols.values()
+
+    def test_to_sql_save_index(self):
+        self._to_sql_save_index()
 
 
 #------------------------------------------------------------------------------
@@ -1411,7 +1631,7 @@ class TestXSQLite(tm.TestCase):
         frame = tm.makeTimeDataFrame()
         create_sql = sql.get_schema(frame, 'test', 'sqlite', keys=['A', 'B'],)
         lines = create_sql.splitlines()
-        self.assertTrue('PRIMARY KEY (A,B)' in create_sql)
+        self.assertTrue('PRIMARY KEY ([A],[B])' in create_sql)
         cur = self.db.cursor()
         cur.execute(create_sql)
 
@@ -1690,7 +1910,7 @@ class TestXMySQL(tm.TestCase):
         drop_sql = "DROP TABLE IF EXISTS test"
         create_sql = sql.get_schema(frame, 'test', 'mysql', keys=['A', 'B'],)
         lines = create_sql.splitlines()
-        self.assertTrue('PRIMARY KEY (A,B)' in create_sql)
+        self.assertTrue('PRIMARY KEY (`A`,`B`)' in create_sql)
         cur = self.db.cursor()
         cur.execute(drop_sql)
         cur.execute(create_sql)

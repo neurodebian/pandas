@@ -41,7 +41,7 @@ if __debug__:
     merge.__doc__ = _merge_doc % '\nleft : DataFrame'
 
 
-class MergeError(Exception):
+class MergeError(ValueError):
     pass
 
 
@@ -106,6 +106,8 @@ def ordered_merge(left, right, on=None, left_by=None, right_by=None,
     Returns
     -------
     merged : DataFrame
+        The output type will the be same as 'left', if it is a subclass
+        of DataFrame.
     """
     def _merger(x, y):
         op = _OrderedMerge(x, y, on=on, left_on=left_on, right_on=right_on,
@@ -198,7 +200,8 @@ class _MergeOperation(object):
             axes=[llabels.append(rlabels), join_index],
             concat_axis=0, copy=self.copy)
 
-        result = DataFrame(result_data).__finalize__(self, method='merge')
+        typ = self.left._constructor
+        result = typ(result_data).__finalize__(self, method='merge')
 
         self._maybe_add_join_keys(result, left_indexer, right_indexer)
 
@@ -235,7 +238,9 @@ class _MergeOperation(object):
                         key_col.put(na_indexer, com.take_1d(self.left_join_keys[i],
                                                             left_na_indexer))
 
-            elif left_indexer is not None:
+            elif left_indexer is not None \
+                    and isinstance(self.left_join_keys[i], np.ndarray):
+
                 if name is None:
                     name = 'key_%d' % i
 
@@ -520,7 +525,8 @@ class _OrderedMerge(_MergeOperation):
             axes=[llabels.append(rlabels), join_index],
             concat_axis=0, copy=self.copy)
 
-        result = DataFrame(result_data)
+        typ = self.left._constructor
+        result = typ(result_data).__finalize__(self, method='ordered_merge')
 
         self._maybe_add_join_keys(result, left_indexer, right_indexer)
 
@@ -562,9 +568,6 @@ def _get_single_indexer(join_key, index, sort=False):
 
 
 def _left_join_on_index(left_ax, right_ax, join_keys, sort=False):
-    join_index = left_ax
-    left_indexer = None
-
     if len(join_keys) > 1:
         if not ((isinstance(right_ax, MultiIndex) and
                  len(join_keys) == right_ax.nlevels)):
@@ -573,22 +576,21 @@ def _left_join_on_index(left_ax, right_ax, join_keys, sort=False):
                                  "number of join keys must be the number of "
                                  "levels in right_ax")
 
-        left_tmp, right_indexer = \
-            _get_multiindex_indexer(join_keys, right_ax,
-                                    sort=sort)
-        if sort:
-            left_indexer = left_tmp
-            join_index = left_ax.take(left_indexer)
+        left_indexer, right_indexer = \
+            _get_multiindex_indexer(join_keys, right_ax, sort=sort)
     else:
         jkey = join_keys[0]
-        if sort:
-            left_indexer, right_indexer = \
-                _get_single_indexer(jkey, right_ax, sort=sort)
-            join_index = left_ax.take(left_indexer)
-        else:
-            right_indexer = right_ax.get_indexer(jkey)
 
-    return join_index, left_indexer, right_indexer
+        left_indexer, right_indexer = \
+            _get_single_indexer(jkey, right_ax, sort=sort)
+
+    if sort or len(left_ax) != len(left_indexer):
+        # if asked to sort or there are 1-to-many matches
+        join_index = left_ax.take(left_indexer)
+        return join_index, left_indexer, right_indexer
+    else:
+        # left frame preserves order & length of its index
+        return left_ax, None, right_indexer
 
 
 def _right_outer_join(x, y, max_groups):
@@ -664,7 +666,7 @@ def _sort_labels(uniques, left, right):
 
 
 def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
-           keys=None, levels=None, names=None, verify_integrity=False):
+           keys=None, levels=None, names=None, verify_integrity=False, copy=True):
     """
     Concatenate pandas objects along a particular axis with optional set logic
     along the other axes. Can also add a layer of hierarchical indexing on the
@@ -677,7 +679,7 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
         If a dict is passed, the sorted keys will be used as the `keys`
         argument, unless it is passed, in which case the values will be
         selected (see below). Any None objects will be dropped silently unless
-        they are all None in which case an Exception will be raised
+        they are all None in which case a ValueError will be raised
     axis : {0, 1, ...}, default 0
         The axis to concatenate along
     join : {'inner', 'outer'}, default 'outer'
@@ -702,6 +704,8 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
         concatenating objects where the concatenation axis does not have
         meaningful indexing information. Note the the index values on the other
         axes are still respected in the join.
+    copy : boolean, default True
+        If False, do not copy data unnecessarily
 
     Notes
     -----
@@ -714,7 +718,8 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
     op = _Concatenator(objs, axis=axis, join_axes=join_axes,
                        ignore_index=ignore_index, join=join,
                        keys=keys, levels=levels, names=names,
-                       verify_integrity=verify_integrity)
+                       verify_integrity=verify_integrity,
+                       copy=copy)
     return op.get_result()
 
 
@@ -725,7 +730,7 @@ class _Concatenator(object):
 
     def __init__(self, objs, axis=0, join='outer', join_axes=None,
                  keys=None, levels=None, names=None,
-                 ignore_index=False, verify_integrity=False):
+                 ignore_index=False, verify_integrity=False, copy=True):
         if not isinstance(objs, (list,tuple,types.GeneratorType,dict,TextFileReader)):
             raise TypeError('first argument must be a list-like of pandas '
                             'objects, you passed an object of type '
@@ -759,7 +764,7 @@ class _Concatenator(object):
             keys = clean_keys
 
         if len(objs) == 0:
-            raise Exception('All objects passed were None')
+            raise ValueError('All objects passed were None')
 
         # consolidate data & figure out what our result ndim is going to be
         ndims = set()
@@ -844,6 +849,7 @@ class _Concatenator(object):
 
         self.ignore_index = ignore_index
         self.verify_integrity = verify_integrity
+        self.copy = copy
 
         self.new_axes = self._get_new_axes()
 
@@ -877,7 +883,9 @@ class _Concatenator(object):
                 mgrs_indexers.append((obj._data, indexers))
 
             new_data = concatenate_block_managers(
-                mgrs_indexers, self.new_axes, concat_axis=self.axis, copy=True)
+                mgrs_indexers, self.new_axes, concat_axis=self.axis, copy=self.copy)
+            if not self.copy:
+                new_data._consolidate_inplace()
 
             return self.objs[0]._from_axes(new_data, self.new_axes).__finalize__(self, method='concat')
 
@@ -989,7 +997,7 @@ def _make_concat_multiindex(indexes, keys, levels=None, names=None):
             names = [None] * len(zipped)
 
         if levels is None:
-            levels = [Categorical.from_array(zp).levels for zp in zipped]
+            levels = [Categorical.from_array(zp).categories for zp in zipped]
         else:
             levels = [_ensure_index(x) for x in levels]
     else:
@@ -1028,8 +1036,8 @@ def _make_concat_multiindex(indexes, keys, levels=None, names=None):
             label_list.extend(concat_index.labels)
         else:
             factor = Categorical.from_array(concat_index)
-            levels.append(factor.levels)
-            label_list.append(factor.labels)
+            levels.append(factor.categories)
+            label_list.append(factor.codes)
 
         if len(names) == len(levels):
             names = list(names)

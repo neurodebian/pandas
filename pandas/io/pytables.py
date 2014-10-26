@@ -14,7 +14,7 @@ import os
 
 import numpy as np
 from pandas import (Series, TimeSeries, DataFrame, Panel, Panel4D, Index,
-                    MultiIndex, Int64Index, Timestamp, _np_version_under1p7)
+                    MultiIndex, Int64Index, Timestamp)
 from pandas.sparse.api import SparseSeries, SparseDataFrame, SparsePanel
 from pandas.sparse.array import BlockIndex, IntIndex
 from pandas.tseries.api import PeriodIndex, DatetimeIndex
@@ -61,6 +61,18 @@ def _ensure_encoding(encoding):
         if PY3:
             encoding = _default_encoding
     return encoding
+
+def _set_tz(values, tz, preserve_UTC=False):
+    """ set the timezone if values are an Index """
+    if tz is not None and isinstance(values, Index):
+        tz = _ensure_decoded(tz)
+        if values.tz is None:
+            values = values.tz_localize('UTC').tz_convert(tz)
+        if preserve_UTC:
+            if tslib.get_timezone(tz) == 'UTC':
+                values = list(values)
+
+    return values
 
 
 Term = Expr
@@ -216,20 +228,18 @@ with config.config_prefix('io.hdf'):
 
 # oh the troubles to reduce import time
 _table_mod = None
-_table_supports_index = False
 _table_file_open_policy_is_strict = False
 
 def _tables():
     global _table_mod
-    global _table_supports_index
     global _table_file_open_policy_is_strict
     if _table_mod is None:
         import tables
         _table_mod = tables
 
         # version requirements
-        ver = tables.__version__
-        _table_supports_index = LooseVersion(ver) >= '2.3'
+        if LooseVersion(tables.__version__) < '3.0.0':
+            raise ImportError("PyTables version >= 3.0.0 is required")
 
         # set the file open policy
         # return the file open policy; this changes as of pytables 3.1
@@ -322,6 +332,16 @@ def read_hdf(path_or_buf, key, **kwargs):
         key, auto_close=auto_close, **kwargs)
 
     if isinstance(path_or_buf, string_types):
+        
+        try:
+            exists = os.path.exists(path_or_buf)
+
+        #if filepath is too long
+        except (TypeError,ValueError):
+            exists = False
+
+        if not exists:
+            raise IOError('File %s does not exist' % path_or_buf)
 
         # can't auto open/close if we are using an iterator
         # so delegate to the iterator
@@ -388,8 +408,8 @@ class HDFStore(StringMixin):
                  fletcher32=False, **kwargs):
         try:
             import tables
-        except ImportError:  # pragma: no cover
-            raise ImportError('HDFStore requires PyTables')
+        except ImportError as ex:  # pragma: no cover
+            raise ImportError('HDFStore requires PyTables, "{ex}" problem importing'.format(ex=str(ex)))
 
         self._path = path
         if mode is None:
@@ -497,7 +517,7 @@ class HDFStore(StringMixin):
         Parameters
         ----------
         mode : {'a', 'w', 'r', 'r+'}, default 'a'
-            See HDFStore docstring or tables.openFile for info about modes
+            See HDFStore docstring or tables.open_file for info about modes
         """
         tables = _tables()
 
@@ -530,11 +550,11 @@ class HDFStore(StringMixin):
                                               fletcher32=self._fletcher32)
 
         try:
-            self._handle = tables.openFile(self._path, self._mode, **kwargs)
+            self._handle = tables.open_file(self._path, self._mode, **kwargs)
         except (IOError) as e:  # pragma: no cover
             if 'can not be written' in str(e):
                 print('Opening %s in read-only mode' % self._path)
-                self._handle = tables.openFile(self._path, 'r', **kwargs)
+                self._handle = tables.open_file(self._path, 'r', **kwargs)
             else:
                 raise
 
@@ -549,7 +569,7 @@ class HDFStore(StringMixin):
                                "and not open the same file multiple times at once,\n"
                                "upgrade the HDF5 version, or downgrade to PyTables 3.0.0 which allows\n"
                                "files to be opened multiple times at once\n".format(version=tables.__version__,
-                                                                                    hdf_version=tables.getHDF5Version()))
+                                                                                    hdf_version=tables.get_hdf5_version()))
 
             raise e
 
@@ -652,21 +672,18 @@ class HDFStore(StringMixin):
         s = self._create_storer(group)
         s.infer_axes()
 
-        # what we are actually going to do for a chunk
-        def func(_start, _stop):
-            return s.read(where=where, start=_start, stop=_stop,
+        # function to call on iteration
+        def func(_start, _stop, _where):
+            return s.read(start=_start, stop=_stop,
+                          where=_where,
                           columns=columns, **kwargs)
 
-        if iterator or chunksize is not None:
-            if not s.is_table:
-                raise TypeError(
-                    "can only use an iterator or chunksize on a table")
-            return TableIterator(self, func, nrows=s.nrows, start=start,
-                                 stop=stop, chunksize=chunksize,
-                                 auto_close=auto_close)
+        # create the iterator
+        it = TableIterator(self, s, func, where=where, nrows=s.nrows, start=start,
+                           stop=stop, iterator=iterator, chunksize=chunksize,
+                           auto_close=auto_close)
 
-        return TableIterator(self, func, nrows=s.nrows, start=start, stop=stop,
-                             auto_close=auto_close).get_values()
+        return it.get_result()
 
     def select_as_coordinates(
             self, key, where=None, start=None, stop=None, **kwargs):
@@ -769,26 +786,22 @@ class HDFStore(StringMixin):
         # axis is the concentation axes
         axis = list(set([t.non_index_axes[0][0] for t in tbls]))[0]
 
-        def func(_start, _stop):
-            if where is not None:
-                c = s.read_coordinates(where=where, start=_start, stop=_stop, **kwargs)
-            else:
-                c = None
+        def func(_start, _stop, _where):
 
-            objs = [t.read(where=c, start=_start, stop=_stop,
-                           columns=columns, **kwargs) for t in tbls]
+            # retrieve the objs, _where is always passed as a set of coordinates here
+            objs = [t.read(where=_where, columns=columns, **kwargs) for t in tbls]
 
             # concat and return
             return concat(objs, axis=axis,
                           verify_integrity=False).consolidate()
 
-        if iterator or chunksize is not None:
-            return TableIterator(self, func, nrows=nrows, start=start,
-                                 stop=stop, chunksize=chunksize,
-                                 auto_close=auto_close)
+        # create the iterator
+        it = TableIterator(self, s, func, where=where, nrows=nrows, start=start,
+                           stop=stop, iterator=iterator, chunksize=chunksize,
+                           auto_close=auto_close)
 
-        return TableIterator(self, func, nrows=nrows, start=start, stop=stop,
-                             auto_close=auto_close).get_values()
+        return it.get_result(coordinates=True)
+
 
     def put(self, key, value, format=None, append=False, **kwargs):
         """
@@ -967,7 +980,7 @@ class HDFStore(StringMixin):
                 remain_values.extend(v)
         if remain_key is not None:
             ordered = value.axes[axis]
-            ordd = ordered - Index(remain_values)
+            ordd = ordered.difference(Index(remain_values))
             ordd = sorted(ordered.get_indexer(ordd))
             d[remain_key] = ordered.take(ordd)
 
@@ -1006,9 +1019,6 @@ class HDFStore(StringMixin):
 
         # version requirements
         _tables()
-        if not _table_supports_index:
-            raise ValueError("PyTables >= 2.3 is required for table indexing")
-
         s = self.get_storer(key)
         if s is None:
             return
@@ -1025,7 +1035,7 @@ class HDFStore(StringMixin):
         _tables()
         self._check_if_open()
         return [
-            g for g in self._handle.walkNodes()
+            g for g in self._handle.walk_nodes()
             if (getattr(g._v_attrs, 'pandas_type', None) or
                 getattr(g, 'table', None) or
                 (isinstance(g, _table_mod.table.Table) and
@@ -1038,7 +1048,7 @@ class HDFStore(StringMixin):
         try:
             if not key.startswith('/'):
                 key = '/' + key
-            return self._handle.getNode(self.root, key)
+            return self._handle.get_node(self.root, key)
         except:
             return None
 
@@ -1223,7 +1233,7 @@ class HDFStore(StringMixin):
 
         # remove the node if we are not appending
         if group is not None and not append:
-            self._handle.removeNode(group, recursive=True)
+            self._handle.remove_node(group, recursive=True)
             group = None
 
         # we don't want to store a table node at all if are object is 0-len
@@ -1245,7 +1255,7 @@ class HDFStore(StringMixin):
                 new_path += p
                 group = self.get_node(new_path)
                 if group is None:
-                    group = self._handle.createGroup(path, p)
+                    group = self._handle.create_group(path, p)
                 path = new_path
 
         s = self._create_storer(group, format, value, append=append,
@@ -1286,20 +1296,25 @@ class TableIterator(object):
         ----------
 
         store : the reference store
-        func  : the function to get results
+        s     : the refered storer
+        func  : the function to execute the query
+        where : the where of the query
         nrows : the rows to iterate on
         start : the passed start value (default is None)
         stop  : the passed stop value (default is None)
-        chunksize : the passed chunking valeu (default is 50000)
+        iterator : boolean, whether to use the default iterator
+        chunksize : the passed chunking value (default is 50000)
         auto_close : boolean, automatically close the store at the end of
             iteration, default is False
         kwargs : the passed kwargs
         """
 
-    def __init__(self, store, func, nrows, start=None, stop=None,
-                 chunksize=None, auto_close=False):
+    def __init__(self, store, s, func, where, nrows, start=None, stop=None,
+                 iterator=False, chunksize=None, auto_close=False):
         self.store = store
-        self.func = func
+        self.s     = s
+        self.func  = func
+        self.where = where
         self.nrows = nrows or 0
         self.start = start or 0
 
@@ -1307,23 +1322,29 @@ class TableIterator(object):
             stop = self.nrows
         self.stop = min(self.nrows, stop)
 
-        if chunksize is None:
-            chunksize = 100000
+        self.coordinates = None
+        if iterator or chunksize is not None:
+            if chunksize is None:
+                chunksize = 100000
+            self.chunksize = int(chunksize)
+        else:
+            self.chunksize = None
 
-        self.chunksize = chunksize
         self.auto_close = auto_close
 
     def __iter__(self):
+
+        # iterate
         current = self.start
         while current < self.stop:
-            stop = current + self.chunksize
-            v = self.func(current, stop)
-            current = stop
 
-            if v is None:
+            stop = min(current + self.chunksize, self.stop)
+            value = self.func(None, None, self.coordinates[current:stop])
+            current = stop
+            if value is None or not len(value):
                 continue
 
-            yield v
+            yield value
 
         self.close()
 
@@ -1331,11 +1352,28 @@ class TableIterator(object):
         if self.auto_close:
             self.store.close()
 
-    def get_values(self):
-        results = self.func(self.start, self.stop)
+    def get_result(self, coordinates=False):
+
+        #  return the actual iterator
+        if self.chunksize is not None:
+            if not self.s.is_table:
+                raise TypeError(
+                    "can only use an iterator or chunksize on a table")
+
+            self.coordinates = self.s.read_coordinates(where=self.where)
+
+            return self
+
+        # if specified read via coordinates (necessary for multiple selections
+        if coordinates:
+            where = self.s.read_coordinates(where=self.where)
+        else:
+            where = self.where
+
+        # directly return the result
+        results = self.func(self.start, self.stop, where)
         self.close()
         return results
-
 
 class IndexCol(StringMixin):
 
@@ -1464,11 +1502,7 @@ class IndexCol(StringMixin):
                 kwargs['freq'] = None
             self.values = Index(values, **kwargs)
 
-        # set the timezone if indicated
-        # we stored in utc, so reverse to local timezone
-        if self.tz is not None:
-            self.values = self.values.tz_localize(
-                'UTC').tz_convert(_ensure_decoded(self.tz))
+        self.values = _set_tz(self.values, self.tz)
 
         return self
 
@@ -1718,9 +1752,6 @@ class DataCol(IndexCol):
         if inferred_type == 'datetime64':
             self.set_atom_datetime64(block)
         elif dtype == 'timedelta64[ns]':
-            if _np_version_under1p7:
-                raise TypeError(
-                    "timdelta64 is not supported under under numpy < 1.7")
             self.set_atom_timedelta64(block)
         elif inferred_type == 'date':
             raise TypeError(
@@ -1772,6 +1803,9 @@ class DataCol(IndexCol):
         elif inferred_type == 'unicode':
             raise TypeError(
                 "[unicode] is not implemented as a table column")
+
+        elif dtype == 'category':
+            raise NotImplementedError("cannot store a category dtype")
 
         # this is basically a catchall; if say a datetime64 has nans then will
         # end up here ###
@@ -2151,7 +2185,7 @@ class Fixed(StringMixin):
     def delete(self, where=None, start=None, stop=None, **kwargs):
         """ support fully deleting the node in its entirety (only) - where specification must be None """
         if where is None and start is None and stop is None:
-            self._handle.removeNode(self.group, recursive=True)
+            self._handle.remove_node(self.group, recursive=True)
             return None
 
         raise TypeError("cannot delete on an abstract storer")
@@ -2234,9 +2268,6 @@ class GenericFixed(Fixed):
             if dtype == u('datetime64'):
                 ret = np.array(ret, dtype='M8[ns]')
             elif dtype == u('timedelta64'):
-                if _np_version_under1p7:
-                    raise TypeError(
-                        "timedelta64 is not supported under under numpy < 1.7")
                 ret = np.array(ret, dtype='m8[ns]')
 
         if transposed:
@@ -2393,7 +2424,7 @@ class GenericFixed(Fixed):
 
         # ugly hack for length 0 axes
         arr = np.empty((1,) * value.ndim)
-        self._handle.createArray(self.group, key, arr)
+        self._handle.create_array(self.group, key, arr)
         getattr(self.group, key)._v_attrs.value_type = str(value.dtype)
         getattr(self.group, key)._v_attrs.shape = value.shape
 
@@ -2403,11 +2434,14 @@ class GenericFixed(Fixed):
 
     def write_array(self, key, value, items=None):
         if key in self.group:
-            self._handle.removeNode(self.group, key)
+            self._handle.remove_node(self.group, key)
 
         # Transform needed to interface with pytables row/col notation
         empty_array = self._is_empty_array(value.shape)
         transposed = False
+
+        if com.is_categorical_dtype(value):
+            raise NotImplementedError("cannot store a category dtype")
 
         if not empty_array:
             value = value.T
@@ -2424,7 +2458,7 @@ class GenericFixed(Fixed):
             if atom is not None:
                 # create an empty chunked array and fill it from value
                 if not empty_array:
-                    ca = self._handle.createCArray(self.group, key, atom,
+                    ca = self._handle.create_carray(self.group, key, atom,
                                                    value.shape,
                                                    filters=self._filters)
                     ca[:] = value
@@ -2452,7 +2486,7 @@ class GenericFixed(Fixed):
                 ws = performance_doc % (inferred_type, key, items)
                 warnings.warn(ws, PerformanceWarning)
 
-            vlarr = self._handle.createVLArray(self.group, key,
+            vlarr = self._handle.create_vlarray(self.group, key,
                                                _tables().ObjectAtom())
             vlarr.append(value)
         else:
@@ -2460,15 +2494,15 @@ class GenericFixed(Fixed):
                 self.write_array_empty(key, value)
             else:
                 if value.dtype.type == np.datetime64:
-                    self._handle.createArray(self.group, key, value.view('i8'))
+                    self._handle.create_array(self.group, key, value.view('i8'))
                     getattr(
                         self.group, key)._v_attrs.value_type = 'datetime64'
                 elif value.dtype.type == np.timedelta64:
-                    self._handle.createArray(self.group, key, value.view('i8'))
+                    self._handle.create_array(self.group, key, value.view('i8'))
                     getattr(
                         self.group, key)._v_attrs.value_type = 'timedelta64'
                 else:
-                    self._handle.createArray(self.group, key, value)
+                    self._handle.create_array(self.group, key, value)
 
         getattr(self.group, key)._v_attrs.transposed = transposed
 
@@ -2572,7 +2606,7 @@ class SparseFrameFixed(GenericFixed):
         for name, ss in compat.iteritems(obj):
             key = 'sparse_series_%s' % name
             if key not in self.group._v_children:
-                node = self._handle.createGroup(self.group, key)
+                node = self._handle.create_group(self.group, key)
             else:
                 node = getattr(self.group, key)
             s = SparseSeriesFixed(self.parent, node)
@@ -2608,7 +2642,7 @@ class SparsePanelFixed(GenericFixed):
         for name, sdf in compat.iteritems(obj):
             key = 'sparse_frame_%s' % name
             if key not in self.group._v_children:
-                node = self._handle.createGroup(self.group, key)
+                node = self._handle.create_group(self.group, key)
             else:
                 node = getattr(self.group, key)
             s = SparseFrameFixed(self.parent, node)
@@ -2677,6 +2711,9 @@ class BlockManagerFixed(GenericFixed):
 
         self.attrs.ndim = data.ndim
         for i, ax in enumerate(data.axes):
+            if i == 0:
+                if not ax.is_unique:
+                    raise ValueError("Columns index has to be unique for fixed format")
             self.write_index('axis%d' % i, ax)
 
         # Supporting mixed-type DataFrame objects...nontrivial
@@ -3026,18 +3063,18 @@ class Table(Fixed):
                     cur_kind = index.kind
 
                     if kind is not None and cur_kind != kind:
-                        v.removeIndex()
+                        v.remove_index()
                     else:
                         kw['kind'] = cur_kind
 
                     if optlevel is not None and cur_optlevel != optlevel:
-                        v.removeIndex()
+                        v.remove_index()
                     else:
                         kw['optlevel'] = cur_optlevel
 
                 # create the index
                 if not v.is_indexed:
-                    v.createIndex(**kw)
+                    v.create_index(**kw)
 
     def read_axes(self, where, **kwargs):
         """create and return the axes sniffed from the table: return boolean
@@ -3218,7 +3255,7 @@ class Table(Fixed):
                 data_columns, min_itemsize)
             if len(data_columns):
                 mgr = block_obj.reindex_axis(
-                    Index(axis_labels) - Index(data_columns),
+                    Index(axis_labels).difference(Index(data_columns)),
                     axis=axis
                 )._data
 
@@ -3335,7 +3372,7 @@ class Table(Fixed):
                             # if we have a multi-index, then need to include
                             # the levels
                             if self.is_multi_index:
-                                filt = filt + Index(self.levels)
+                                filt = filt.union(Index(self.levels))
 
                             takers = op(axis_values, filt)
                             return obj.ix._getitem_axis(takers,
@@ -3437,8 +3474,11 @@ class Table(Fixed):
                 # column must be an indexable or a data column
                 c = getattr(self.table.cols, column)
                 a.set_info(self.info)
-                return Series(a.convert(c[start:stop], nan_rep=self.nan_rep,
-                                        encoding=self.encoding).take_data())
+                return Series(_set_tz(a.convert(c[start:stop],
+                                                nan_rep=self.nan_rep,
+                                                encoding=self.encoding
+                                                ).take_data(),
+                                      a.tz, True))
 
         raise KeyError("column [%s] not found in the table" % column)
 
@@ -3492,9 +3532,9 @@ class LegacyTable(Table):
             return None
 
         factors = [Categorical.from_array(a.values) for a in self.index_axes]
-        levels = [f.levels for f in factors]
-        N = [len(f.levels) for f in factors]
-        labels = [f.labels for f in factors]
+        levels = [f.categories for f in factors]
+        N = [len(f.categories) for f in factors]
+        labels = [f.codes for f in factors]
 
         # compute the key
         key = factor_indexer(N[1:], labels)
@@ -3544,7 +3584,7 @@ class LegacyTable(Table):
                 # need a better algorithm
                 tuple_index = long_index._tuple_index
 
-                unique_tuples = lib.fast_unique(tuple_index)
+                unique_tuples = lib.fast_unique(tuple_index.values)
                 unique_tuples = _asarray_tuplesafe(unique_tuples)
 
                 indexer = match(unique_tuples, tuple_index)
@@ -3597,7 +3637,7 @@ class AppendableTable(LegacyTable):
               chunksize=None, expectedrows=None, dropna=True, **kwargs):
 
         if not append and self.is_exists:
-            self._handle.removeNode(self.group, 'table')
+            self._handle.remove_node(self.group, 'table')
 
         # create the axes
         self.create_axes(axes=axes, obj=obj, validate=append,
@@ -3616,7 +3656,7 @@ class AppendableTable(LegacyTable):
             self.set_attrs()
 
             # create the table
-            table = self._handle.createTable(self.group, **options)
+            table = self._handle.create_table(self.group, **options)
 
         else:
             table = self.table
@@ -3745,12 +3785,12 @@ class AppendableTable(LegacyTable):
         if where is None or not len(where):
             if start is None and stop is None:
                 nrows = self.nrows
-                self._handle.removeNode(self.group, recursive=True)
+                self._handle.remove_node(self.group, recursive=True)
             else:
                 # pytables<3.0 would remove a single row with stop=None
                 if stop is None:
                     stop = self.nrows
-                nrows = self.table.removeRows(start=start, stop=stop)
+                nrows = self.table.remove_rows(start=start, stop=stop)
                 self.table.flush()
             return nrows
 
@@ -3789,7 +3829,7 @@ class AppendableTable(LegacyTable):
             pg = groups.pop()
             for g in reversed(groups):
                 rows = l.take(lrange(g, pg))
-                table.removeRows(start=rows[rows.index[0]
+                table.remove_rows(start=rows[rows.index[0]
                                             ], stop=rows[rows.index[-1]] + 1)
                 pg = g
 
@@ -4332,10 +4372,10 @@ class Selection(object):
         generate the selection
         """
         if self.condition is not None:
-            return self.table.table.readWhere(self.condition.format(),
+            return self.table.table.read_where(self.condition.format(),
                                               start=self.start, stop=self.stop)
         elif self.coordinates is not None:
-            return self.table.table.readCoordinates(self.coordinates)
+            return self.table.table.read_coordinates(self.coordinates)
         return self.table.table.read(start=self.start, stop=self.stop)
 
     def select_coords(self):
@@ -4354,7 +4394,7 @@ class Selection(object):
             stop += nrows
 
         if self.condition is not None:
-            return self.table.table.getWhereList(self.condition.format(),
+            return self.table.table.get_where_list(self.condition.format(),
                                                  start=start, stop=stop,
                                                  sort=True)
         elif self.coordinates is not None:

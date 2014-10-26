@@ -1,6 +1,7 @@
 # pylint: disable=E1101
 
 from datetime import datetime, timedelta
+from functools import partial
 
 from pandas.compat import range, lrange, zip, product
 import numpy as np
@@ -139,6 +140,89 @@ class TestResample(tm.TestCase):
 
                 exc.args += ('how=%s' % arg,)
                 raise
+
+    def test_resample_how_callables(self):
+        # GH 7929
+        data = np.arange(5, dtype=np.int64)
+        ind = pd.DatetimeIndex(start='2014-01-01', periods=len(data), freq='d')
+        df = pd.DataFrame({"A": data, "B": data}, index=ind)
+
+        def fn(x, a=1):
+            return str(type(x))
+
+        class fn_class:
+            def __call__(self, x):
+                return str(type(x))
+
+        df_standard = df.resample("M", how=fn)
+        df_lambda = df.resample("M", how=lambda x: str(type(x)))
+        df_partial = df.resample("M", how=partial(fn))
+        df_partial2 = df.resample("M", how=partial(fn, a=2))
+        df_class = df.resample("M", how=fn_class())
+
+        assert_frame_equal(df_standard, df_lambda)
+        assert_frame_equal(df_standard, df_partial)
+        assert_frame_equal(df_standard, df_partial2)
+        assert_frame_equal(df_standard, df_class)
+
+    def test_resample_with_timedeltas(self):
+
+        expected = DataFrame({'A' : np.arange(1480)})
+        expected = expected.groupby(expected.index // 30).sum()
+        expected.index = pd.timedelta_range('0 days',freq='30T',periods=50)
+
+        df = DataFrame({'A' : np.arange(1480)},index=pd.to_timedelta(np.arange(1480),unit='T'))
+        result = df.resample('30T',how='sum')
+
+        assert_frame_equal(result, expected)
+
+    def test_resample_rounding(self):
+        # GH 8371
+        # odd results when rounding is needed
+
+        data = """date,time,value
+11-08-2014,00:00:01.093,1
+11-08-2014,00:00:02.159,1
+11-08-2014,00:00:02.667,1
+11-08-2014,00:00:03.175,1
+11-08-2014,00:00:07.058,1
+11-08-2014,00:00:07.362,1
+11-08-2014,00:00:08.324,1
+11-08-2014,00:00:08.830,1
+11-08-2014,00:00:08.982,1
+11-08-2014,00:00:09.815,1
+11-08-2014,00:00:10.540,1
+11-08-2014,00:00:11.061,1
+11-08-2014,00:00:11.617,1
+11-08-2014,00:00:13.607,1
+11-08-2014,00:00:14.535,1
+11-08-2014,00:00:15.525,1
+11-08-2014,00:00:17.960,1
+11-08-2014,00:00:20.674,1
+11-08-2014,00:00:21.191,1"""
+
+        from pandas.compat import StringIO
+        df = pd.read_csv(StringIO(data), parse_dates={'timestamp': ['date', 'time']}, index_col='timestamp')
+        df.index.name = None
+        result = df.resample('6s', how='sum')
+        expected = DataFrame({'value' : [4,9,4,2]},index=date_range('2014-11-08',freq='6s',periods=4))
+        assert_frame_equal(result,expected)
+
+        result = df.resample('7s', how='sum')
+        expected = DataFrame({'value' : [4,10,4,1]},index=date_range('2014-11-08',freq='7s',periods=4))
+        assert_frame_equal(result,expected)
+
+        result = df.resample('11s', how='sum')
+        expected = DataFrame({'value' : [11,8]},index=date_range('2014-11-08',freq='11s',periods=2))
+        assert_frame_equal(result,expected)
+
+        result = df.resample('13s', how='sum')
+        expected = DataFrame({'value' : [13,6]},index=date_range('2014-11-08',freq='13s',periods=2))
+        assert_frame_equal(result,expected)
+
+        result = df.resample('17s', how='sum')
+        expected = DataFrame({'value' : [16,3]},index=date_range('2014-11-08',freq='17s',periods=2))
+        assert_frame_equal(result,expected)
 
     def test_resample_basic_from_daily(self):
         # from daily
@@ -763,6 +847,7 @@ class TestResample(tm.TestCase):
 
             result = df.groupby(pd.Grouper(freq='M', key='A')).count()
             assert_frame_equal(result, expected)
+
 
 
 def _simple_ts(start, end, freq='D'):

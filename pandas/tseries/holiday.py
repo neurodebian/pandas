@@ -2,6 +2,8 @@ from pandas import DateOffset, DatetimeIndex, Series, Timestamp
 from pandas.compat import add_metaclass
 from datetime import datetime, timedelta
 from dateutil.relativedelta import MO, TU, WE, TH, FR, SA, SU
+from pandas.tseries.offsets import Easter, Day
+
 
 def next_monday(dt):
     """
@@ -46,6 +48,20 @@ def sunday_to_monday(dt):
         return dt + timedelta(1)
     return dt
 
+
+def weekend_to_monday(dt):
+    """
+    If holiday falls on Sunday or Saturday,
+    use day thereafter (Monday) instead.
+    Needed for holidays such as Christmas observation in Europe
+    """
+    if dt.weekday() == 6:
+        return dt + timedelta(1)
+    elif dt.weekday() == 5:
+        return dt + timedelta(2)
+    return dt
+
+
 def nearest_workday(dt):
     """
     If holiday falls on Saturday, use day before (Friday) instead;
@@ -57,21 +73,91 @@ def nearest_workday(dt):
         return dt + timedelta(1)
     return dt
 
+
+def next_workday(dt):
+    """
+    returns next weekday used for observances
+    """
+    dt += timedelta(days=1)
+    while dt.weekday() > 4:
+        # Mon-Fri are 0-4
+        dt += timedelta(days=1)
+    return dt
+
+
+def previous_workday(dt):
+    """
+    returns previous weekday used for observances
+    """
+    dt -= timedelta(days=1)
+    while dt.weekday() > 4:
+        # Mon-Fri are 0-4
+        dt -= timedelta(days=1)
+    return dt
+
+
+def before_nearest_workday(dt):
+    """
+    returns previous workday after nearest workday
+    """
+    return previous_workday(nearest_workday(dt))
+
+
+def after_nearest_workday(dt):
+    """
+    returns next workday after nearest workday
+    needed for Boxing day or multiple holidays in a series
+    """
+    return next_workday(nearest_workday(dt))
+
+
 class Holiday(object):
     """
     Class that defines a holiday with start/end dates and rules
     for observance.
     """
     def __init__(self, name, year=None, month=None, day=None, offset=None,
-                 observance=None, start_date=None, end_date=None):
-        self.name   =   name
-        self.year   =   year
-        self.month  =   month
-        self.day    =   day
-        self.offset =   offset
+                 observance=None, start_date=None, end_date=None,
+                 days_of_week=None):
+        """
+        Parameters
+        ----------
+        name : str
+            Name of the holiday , defaults to class name
+        offset : array of pandas.tseries.offsets or
+                class from pandas.tseries.offsets
+            computes offset from  date
+        observance: function
+            computes when holiday is given a pandas Timestamp
+        days_of_week:
+            provide a tuple of days e.g  (0,1,2,3,) for Monday Through Thursday
+            Monday=0,..,Sunday=6
+
+        Examples
+        --------
+        >>> from pandas.tseries.holiday import Holiday, nearest_workday
+        >>> from pandas import DateOffset
+        >>> from dateutil.relativedelta import MO
+        >>> USMemorialDay = Holiday('MemorialDay', month=5, day=24,
+                                    offset=DateOffset(weekday=MO(1)))
+        >>> USLaborDay = Holiday('Labor Day', month=9, day=1,
+                            offset=DateOffset(weekday=MO(1)))
+        >>> July3rd = Holiday('July 3rd', month=7, day=3,)
+        >>> NewYears = Holiday('New Years Day', month=1,  day=1,
+                               observance=nearest_workday),
+        >>> July3rd = Holiday('July 3rd', month=7, day=3,
+                              days_of_week=(0, 1, 2, 3))
+        """
+        self.name = name
+        self.year = year
+        self.month = month
+        self.day = day
+        self.offset = offset
         self.start_date = start_date
-        self.end_date   = end_date
+        self.end_date = end_date
         self.observance = observance
+        assert (days_of_week is None or type(days_of_week) == tuple)
+        self.days_of_week = days_of_week
 
     def __repr__(self):
         info = ''
@@ -114,16 +200,20 @@ class Holiday(object):
             end_date = self.end_date
 
         start_date = Timestamp(start_date)
-        end_date   = Timestamp(end_date)
+        end_date = Timestamp(end_date)
 
         year_offset = DateOffset(years=1)
         base_date = Timestamp(datetime(start_date.year, self.month, self.day))
         dates = DatetimeIndex(start=base_date, end=end_date, freq=year_offset)
-        holiday_dates = list(self._apply_rule(dates))
-
+        holiday_dates = self._apply_rule(dates)
+        if self.days_of_week is not None:
+            holiday_dates = list(filter(lambda x: x is not None and
+                                                  x.dayofweek in self.days_of_week,
+                                                  holiday_dates))
+        else:
+            holiday_dates = list(filter(lambda x: x is not None, holiday_dates))
         if return_name:
             return Series(self.name, index=holiday_dates)
-
         return holiday_dates
 
     def _apply_rule(self, dates):
@@ -143,14 +233,13 @@ class Holiday(object):
         if self.observance is not None:
             return map(lambda d: self.observance(d), dates)
 
-        if not isinstance(self.offset, list):
-            offsets =   [self.offset]
-        else:
-            offsets =   self.offset
-
-        for offset in offsets:
-            dates = map(lambda d: d + offset, dates)
-
+        if self.offset is not None:
+            if not isinstance(self.offset, list):
+                offsets = [self.offset]
+            else:
+                offsets = self.offset
+            for offset in offsets:
+                dates = list(map(lambda d: d + offset, dates))
         return dates
 
 holiday_calendars = {}
@@ -186,7 +275,7 @@ class AbstractHolidayCalendar(object):
     __metaclass__ = HolidayCalendarMetaClass
     rules = []
     start_date = Timestamp(datetime(1970, 1, 1))
-    end_date   = Timestamp(datetime(2030, 12, 31))
+    end_date = Timestamp(datetime(2030, 12, 31))
     _holiday_cache = None
 
     def __init__(self, name=None, rules=None):
@@ -226,7 +315,7 @@ class AbstractHolidayCalendar(object):
             DatetimeIndex of holidays
         """
         if self.rules is None:
-            raise Exception('Holiday Calendar %s does not have any '\
+            raise Exception('Holiday Calendar %s does not have any '
                             'rules specified' % self.name)
 
         if start is None:
@@ -236,7 +325,7 @@ class AbstractHolidayCalendar(object):
             end = AbstractHolidayCalendar.end_date
 
         start = Timestamp(start)
-        end   = Timestamp(end)
+        end = Timestamp(end)
 
         holidays = None
         # If we don't have a cache or the dates are outside the prior cache, we get them again
@@ -270,7 +359,7 @@ class AbstractHolidayCalendar(object):
     @staticmethod
     def merge_class(base, other):
         """
-        Merge holiday calendars together.  The base calendar
+        Merge holiday calendars together. The base calendar
         will take precedence to other. The merge will be done
         based on each holiday's name.
 
@@ -295,7 +384,7 @@ class AbstractHolidayCalendar(object):
 
         if not isinstance(base, list):
             base = [base]
-        base_holidays = dict([ (holiday.name,holiday) for holiday in base ])
+        base_holidays = dict([(holiday.name, holiday) for holiday in base])
 
         other_holidays.update(base_holidays)
         return list(other_holidays.values())
@@ -312,24 +401,28 @@ class AbstractHolidayCalendar(object):
         inplace : bool (default=False)
             If True set rule_table to holidays, else return array of Holidays
         """
-        holidays    =   self.merge_class(self, other)
+        holidays = self.merge_class(self, other)
         if inplace:
             self.rules = holidays
         else:
             return holidays
 
-USMemorialDay     = Holiday('MemorialDay', month=5, day=24,
-                            offset=DateOffset(weekday=MO(1)))
-USLaborDay        = Holiday('Labor Day', month=9, day=1,
-                            offset=DateOffset(weekday=MO(1)))
-USColumbusDay     = Holiday('Columbus Day', month=10, day=1,
-                            offset=DateOffset(weekday=MO(2)))
+USMemorialDay = Holiday('MemorialDay', month=5, day=24,
+                        offset=DateOffset(weekday=MO(1)))
+USLaborDay = Holiday('Labor Day', month=9, day=1,
+                     offset=DateOffset(weekday=MO(1)))
+USColumbusDay = Holiday('Columbus Day', month=10, day=1,
+                        offset=DateOffset(weekday=MO(2)))
 USThanksgivingDay = Holiday('Thanksgiving', month=11, day=1,
                             offset=DateOffset(weekday=TH(4)))
 USMartinLutherKingJr = Holiday('Dr. Martin Luther King Jr.', month=1, day=1,
                                offset=DateOffset(weekday=MO(3)))
-USPresidentsDay      = Holiday('President''s Day', month=2, day=1,
-                               offset=DateOffset(weekday=MO(3)))
+USPresidentsDay = Holiday('President''s Day', month=2, day=1,
+                          offset=DateOffset(weekday=MO(3)))
+GoodFriday = Holiday("Good Friday", month=1, day=1, offset=[Easter(), Day(-2)])
+
+EasterMonday = Holiday("Easter Monday", month=1, day=1, offset=[Easter(), Day(1)])
+
 
 class USFederalHolidayCalendar(AbstractHolidayCalendar):
     """

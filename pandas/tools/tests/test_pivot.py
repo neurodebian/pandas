@@ -266,6 +266,34 @@ class TestPivotTable(tm.TestCase):
             gmarg = table[item]['All', '']
             self.assertEqual(gmarg, self.data[item].mean())
 
+        # issue number #8349: pivot_table with margins and dictionary aggfunc
+
+        df=DataFrame([  {'JOB':'Worker','NAME':'Bob' ,'YEAR':2013,'MONTH':12,'DAYS': 3,'SALARY': 17}, 
+                        {'JOB':'Employ','NAME':'Mary','YEAR':2013,'MONTH':12,'DAYS': 5,'SALARY': 23}, 
+                        {'JOB':'Worker','NAME':'Bob' ,'YEAR':2014,'MONTH': 1,'DAYS':10,'SALARY':100}, 
+                        {'JOB':'Worker','NAME':'Bob' ,'YEAR':2014,'MONTH': 1,'DAYS':11,'SALARY':110}, 
+                        {'JOB':'Employ','NAME':'Mary','YEAR':2014,'MONTH': 1,'DAYS':15,'SALARY':200}, 
+                        {'JOB':'Worker','NAME':'Bob' ,'YEAR':2014,'MONTH': 2,'DAYS': 8,'SALARY': 80}, 
+                        {'JOB':'Employ','NAME':'Mary','YEAR':2014,'MONTH': 2,'DAYS': 5,'SALARY':190} ])
+
+        df=df.set_index(['JOB','NAME','YEAR','MONTH'],drop=False,append=False)
+
+        rs=df.pivot_table(  index=['JOB','NAME'],
+                            columns=['YEAR','MONTH'],
+                            values=['DAYS','SALARY'],
+                            aggfunc={'DAYS':'mean','SALARY':'sum'},
+                            margins=True)
+
+        ex=df.pivot_table(index=['JOB','NAME'],columns=['YEAR','MONTH'],values=['DAYS'],aggfunc='mean',margins=True)
+
+        tm.assert_frame_equal(rs['DAYS'], ex['DAYS'])
+
+        ex=df.pivot_table(index=['JOB','NAME'],columns=['YEAR','MONTH'],values=['SALARY'],aggfunc='sum',margins=True)
+
+        tm.assert_frame_equal(rs['SALARY'], ex['SALARY'])
+
+
+
     def test_pivot_integer_columns(self):
         # caused by upstream bug in unstack
 
@@ -517,14 +545,58 @@ class TestPivotTable(tm.TestCase):
         exp_col3 = pd.DatetimeIndex(['2013-01-01 15:00:00', '2013-02-01 15:00:00'] * 4,
                                     tz='Asia/Tokyo', name='dt2')
         exp_col = MultiIndex.from_arrays([exp_col1, exp_col2, exp_col3])
-        expected = DataFrame(np.array([[0, 3, 1, 2, 0, 3, 1, 2], 
+        expected = DataFrame(np.array([[0, 3, 1, 2, 0, 3, 1, 2],
                                        [1, 4, 2, 1, 1, 4, 2, 1],
-                                       [2, 5, 1, 2, 2, 5, 1, 2]], dtype='int64'), 
-                             index=exp_idx, 
+                                       [2, 5, 1, 2, 2, 5, 1, 2]], dtype='int64'),
+                             index=exp_idx,
                              columns=exp_col)
 
         result = pivot_table(df, index=['dt1'], columns=['dt2'], values=['value1', 'value2'],
                              aggfunc=[np.sum, np.mean])
+        tm.assert_frame_equal(result, expected)
+
+    def test_pivot_dtaccessor(self):
+        # GH 8103
+        dates1 = ['2011-07-19 07:00:00', '2011-07-19 08:00:00', '2011-07-19 09:00:00',
+                  '2011-07-19 07:00:00', '2011-07-19 08:00:00', '2011-07-19 09:00:00']
+        dates2 = ['2013-01-01 15:00:00', '2013-01-01 15:00:00', '2013-01-01 15:00:00',
+                  '2013-02-01 15:00:00', '2013-02-01 15:00:00', '2013-02-01 15:00:00']
+        df = DataFrame({'label': ['a', 'a', 'a', 'b', 'b', 'b'],
+                        'dt1': dates1, 'dt2': dates2,
+                        'value1': np.arange(6,dtype='int64'), 'value2': [1, 2] * 3})
+        df['dt1'] = df['dt1'].apply(lambda d: pd.Timestamp(d))
+        df['dt2'] = df['dt2'].apply(lambda d: pd.Timestamp(d))
+
+        result = pivot_table(df, index='label', columns=df['dt1'].dt.hour,
+                             values='value1')
+
+        exp_idx = Index(['a', 'b'], name='label')
+        expected = DataFrame({7: [0, 3], 8: [1, 4], 9:[2, 5]},
+                             index=exp_idx, columns=[7, 8, 9])
+        tm.assert_frame_equal(result, expected)
+
+        result = pivot_table(df, index=df['dt2'].dt.month, columns=df['dt1'].dt.hour,
+                             values='value1')
+
+        expected = DataFrame({7: [0, 3], 8: [1, 4], 9:[2, 5]},
+                             index=[1, 2], columns=[7, 8, 9])
+        tm.assert_frame_equal(result, expected)
+
+        result = pivot_table(df, index=df['dt2'].dt.year,
+                             columns=[df['dt1'].dt.hour, df['dt2'].dt.month],
+                             values='value1')
+
+        exp_col = MultiIndex.from_arrays([[7, 7, 8, 8, 9, 9], [1, 2] * 3])
+        expected = DataFrame(np.array([[0, 3, 1, 4, 2, 5]],dtype='int64'),
+                             index=[2013], columns=exp_col)
+        tm.assert_frame_equal(result, expected)
+
+        result = pivot_table(df, index=np.array(['X', 'X', 'X', 'X', 'Y', 'Y']),
+                             columns=[df['dt1'].dt.hour, df['dt2'].dt.month],
+                             values='value1')
+        expected = DataFrame(np.array([[0, 3, 1, np.nan, 2, np.nan],
+                                       [np.nan, np.nan, np.nan, 4, np.nan, 5]]),
+                             index=['X', 'Y'], columns=exp_col)
         tm.assert_frame_equal(result, expected)
 
 

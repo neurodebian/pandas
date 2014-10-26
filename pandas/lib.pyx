@@ -46,7 +46,7 @@ from datetime cimport *
 
 from tslib cimport convert_to_tsobject, convert_to_timedelta64
 import tslib
-from tslib import NaT, Timestamp, repr_timedelta64
+from tslib import NaT, Timestamp, Timedelta
 
 cdef int64_t NPY_NAT = util.get_nat()
 
@@ -235,7 +235,7 @@ cpdef checknull_old(object val):
         return util._checknull(val)
 
 def isscalar(object val):
-    return np.isscalar(val) or val is None or PyDateTime_Check(val)
+    return np.isscalar(val) or val is None or PyDateTime_Check(val) or PyDelta_Check(val)
 
 
 @cython.wraparound(False)
@@ -647,7 +647,21 @@ def scalar_compare(ndarray[object] values, object val, object op):
             if _checknull(x):
                 result[i] = True
             else:
-                result[i] = cpython.PyObject_RichCompareBool(x, val, flag)
+                try:
+                    result[i] = cpython.PyObject_RichCompareBool(x, val, flag)
+                except (TypeError):
+                    result[i] = True
+    elif flag == cpython.Py_EQ:
+        for i in range(n):
+            x = values[i]
+            if _checknull(x):
+                result[i] = False
+            else:
+                try:
+                    result[i] = cpython.PyObject_RichCompareBool(x, val, flag)
+                except (TypeError):
+                    result[i] = False
+
     else:
         for i in range(n):
             x = values[i]
@@ -657,6 +671,31 @@ def scalar_compare(ndarray[object] values, object val, object op):
                 result[i] = cpython.PyObject_RichCompareBool(x, val, flag)
 
     return result.view(bool)
+
+@cython.wraparound(False)
+@cython.boundscheck(False)
+def array_equivalent_object(ndarray[object] left, ndarray[object] right):
+    """ perform an element by element comparion on 1-d object arrays
+        taking into account nan positions """
+    cdef Py_ssize_t i, n
+    cdef object x, y
+
+    n = len(left)
+    for i from 0 <= i < n:
+        x = left[i]
+        y = right[i]
+
+        # we are either not equal or both nan
+        # I think None == None will be true here
+        if cpython.PyObject_RichCompareBool(x, y, cpython.Py_EQ):
+            continue
+        elif _checknull(x) and _checknull(y):
+            continue
+        else:
+            return False
+
+    return True
+
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
@@ -781,6 +820,16 @@ def astype_intsafe(ndarray[object] arr, new_dtype):
 
     return result
 
+cpdef ndarray[object] astype_unicode(ndarray arr):
+    cdef:
+        Py_ssize_t i, n = arr.size
+        ndarray[object] result = np.empty(n, dtype=object)
+
+    for i in range(n):
+        util.set_value_at(result, i, unicode(arr[i]))
+
+    return result
+
 cpdef ndarray[object] astype_str(ndarray arr):
     cdef:
         Py_ssize_t i, n = arr.size
@@ -803,7 +852,7 @@ def clean_index_list(list obj):
 
     for i in range(n):
         v = obj[i]
-        if not (PyList_Check(v) or np.PyArray_Check(v)):
+        if not (PyList_Check(v) or np.PyArray_Check(v) or hasattr(v,'_data')):
             all_arrays = 0
             break
 
@@ -813,7 +862,7 @@ def clean_index_list(list obj):
     converted = np.empty(n, dtype=object)
     for i in range(n):
         v = obj[i]
-        if PyList_Check(v) or np.PyArray_Check(v):
+        if PyList_Check(v) or np.PyArray_Check(v) or hasattr(v,'_data'):
             converted[i] = tuple(v)
         else:
             converted[i] = v

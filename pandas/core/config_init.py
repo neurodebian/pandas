@@ -33,22 +33,36 @@ pc_colspace_doc = """
 
 pc_max_rows_doc = """
 : int
-    This sets the maximum number of rows pandas should output when printing
-    out various output. For example, this value determines whether the repr()
-    for a dataframe prints out fully or just a summary repr.
-    'None' value means unlimited.
+    If max_rows is exceeded, switch to truncate view. Depending on
+    `large_repr`, objects are either centrally truncated or printed as
+    a summary view. 'None' value means unlimited.
+
+    In case python/IPython is running in a terminal and `large_repr`
+    equals 'truncate' this can be set to 0 and pandas will auto-detect
+    the height of the terminal and print a truncated object which fits
+    the screen height. The IPython notebook, IPython qtconsole, or
+    IDLE do not run in a terminal and hence it is not possible to do
+    correct auto-detection.
 """
 
 pc_max_cols_doc = """
 : int
-    max_rows and max_columns are used in __repr__() methods to decide if
-    to_string() or info() is used to render an object to a string.  In case
-    python/IPython is running in a terminal this can be set to 0 and pandas
-    will correctly auto-detect the width the terminal and swap to a smaller
-    format in case all columns would not fit vertically. The IPython notebook,
-    IPython qtconsole, or IDLE do not run in a terminal and hence it is not
-    possible to do correct auto-detection.
-    'None' value means unlimited.
+    If max_cols is exceeded, switch to truncate view. Depending on
+    `large_repr`, objects are either centrally truncated or printed as
+    a summary view. 'None' value means unlimited.
+
+    In case python/IPython is running in a terminal and `large_repr`
+    equals 'truncate' this can be set to 0 and pandas will auto-detect
+    the width of the terminal and print a truncated object which fits
+    the screen width. The IPython notebook, IPython qtconsole, or IDLE
+    do not run in a terminal and hence it is not possible to do
+    correct auto-detection.
+"""
+
+pc_max_categories_doc = """
+: int
+    This sets the maximum number of categories pandas should output when printing
+    out a `Categorical` or a Series of dtype "category".
 """
 
 pc_max_info_cols_doc = """
@@ -115,7 +129,7 @@ pc_expand_repr_doc = """
 : boolean
     Whether to print out the full DataFrame repr for wide DataFrames across
     multiple lines, `max_columns` is still respected, but the output will
-    wrap-around across multiple "pages" if it's width exceeds `display.width`.
+    wrap-around across multiple "pages" if its width exceeds `display.width`.
 """
 
 pc_show_dimensions_doc = """
@@ -189,6 +203,12 @@ pc_mpl_style_doc = """
     Setting this to None/False restores the values to their initial value.
 """
 
+pc_memory_usage_doc = """
+: bool or None
+    This specifies if the memory usage of a DataFrame should be displayed when
+    df.info() is called.
+"""
+
 style_backup = dict()
 
 
@@ -223,6 +243,7 @@ with cf.config_prefix('display'):
                        validator=is_instance_factory((int, type(None))))
     cf.register_option('max_rows', 60, pc_max_rows_doc,
                        validator=is_instance_factory([type(None), int]))
+    cf.register_option('max_categories', 8, pc_max_categories_doc, validator=is_int)
     cf.register_option('max_colwidth', 50, max_colwidth_doc, validator=is_int)
     cf.register_option('max_columns', 20, pc_max_cols_doc,
                        validator=is_instance_factory([type(None), int]))
@@ -259,6 +280,8 @@ with cf.config_prefix('display'):
     # redirected to width, make defval identical
     cf.register_option('line_width', get_default_val('display.width'),
                        pc_line_width_doc)
+    cf.register_option('memory_usage', True, pc_memory_usage_doc,
+                        validator=is_instance_factory([type(None), bool]))
 
 cf.deprecate_option('display.line_width',
                     msg=pc_line_width_deprecation_warning,

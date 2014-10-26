@@ -1,12 +1,13 @@
 # pylint: disable-msg=W0612,E1101,W0141
 import datetime
+import itertools
 import nose
 
 from numpy.random import randn
 import numpy as np
 
 from pandas.core.index import Index, MultiIndex
-from pandas import Panel, DataFrame, Series, notnull, isnull
+from pandas import Panel, DataFrame, Series, notnull, isnull, Timestamp
 
 from pandas.util.testing import (assert_almost_equal,
                                  assert_series_equal,
@@ -14,7 +15,7 @@ from pandas.util.testing import (assert_almost_equal,
                                  assertRaisesRegexp)
 import pandas.core.common as com
 import pandas.util.testing as tm
-from pandas.compat import (range, lrange, StringIO, lzip, u, cPickle,
+from pandas.compat import (range, lrange, StringIO, lzip, u,
                                 product as cart_product, zip)
 import pandas as pd
 
@@ -181,8 +182,7 @@ class TestMultiLevel(tm.TestCase):
     def test_pickle(self):
 
         def _test_roundtrip(frame):
-            pickled = cPickle.dumps(frame)
-            unpickled = cPickle.loads(pickled)
+            unpickled = self.round_trip_pickle(frame)
             assert_frame_equal(frame, unpickled)
 
         _test_roundtrip(self.frame)
@@ -213,6 +213,44 @@ class TestMultiLevel(tm.TestCase):
     def test_sort_index_preserve_levels(self):
         result = self.frame.sort_index()
         self.assertEqual(result.index.names, self.frame.index.names)
+
+    def test_sorting_repr_8017(self):
+
+        np.random.seed(0)
+        data = np.random.randn(3,4)
+
+        for gen, extra in [([1.,3.,2.,5.],4.),
+                           ([1,3,2,5],4),
+                           ([Timestamp('20130101'),Timestamp('20130103'),Timestamp('20130102'),Timestamp('20130105')],Timestamp('20130104')),
+                           (['1one','3one','2one','5one'],'4one')]:
+            columns = MultiIndex.from_tuples([('red', i) for i in gen])
+            df = DataFrame(data, index=list('def'), columns=columns)
+            df2 = pd.concat([df,DataFrame('world',
+                                          index=list('def'),
+                                          columns=MultiIndex.from_tuples([('red', extra)]))],axis=1)
+
+            # check that the repr is good
+            # make sure that we have a correct sparsified repr
+            # e.g. only 1 header of read
+            self.assertEqual(str(df2).splitlines()[0].split(),['red'])
+
+            # GH 8017
+            # sorting fails after columns added
+
+            # construct single-dtype then sort
+            result = df.copy().sort_index(axis=1)
+            expected = df.iloc[:,[0,2,1,3]]
+            assert_frame_equal(result, expected)
+
+            result = df2.sort_index(axis=1)
+            expected = df2.iloc[:,[0,2,1,4,3]]
+            assert_frame_equal(result, expected)
+
+            # setitem then sort
+            result = df.copy()
+            result[('red',extra)] = 'world'
+            result = result.sort_index(axis=1)
+            assert_frame_equal(result, expected)
 
     def test_repr_to_string(self):
         repr(self.frame)
@@ -445,6 +483,7 @@ class TestMultiLevel(tm.TestCase):
             ]
         df = DataFrame(acc, columns=['a1','a2','cnt']).set_index(['a1','a2'])
         expected = DataFrame({ 'cnt' : [24,26,25,26] }, index=Index(['xbcde',np.nan,'zbcde','ybcde'],name='a2'))
+
         result = df.xs('z',level='a1')
         assert_frame_equal(result, expected)
 
@@ -834,6 +873,12 @@ x   q   30      3    -0.6662 -0.5243 -0.3580  0.89145  2.5838"""
                              columns=df.columns).fillna(0).astype(np.int64)
         assert_frame_equal(result, expected)
 
+    def test_get_level_number_out_of_bounds(self):
+        with assertRaisesRegexp(IndexError, "Too many levels"):
+            self.frame.index._get_level_number(2)
+        with assertRaisesRegexp(IndexError, "not a valid level number"):
+            self.frame.index._get_level_number(-3)
+
     def test_unstack(self):
         # just check that it works for now
         unstacked = self.ymd.unstack()
@@ -1004,6 +1049,22 @@ Thur,Lunch,Yes,51.51,17"""
         unstacked = self.ymd.unstack([2, 1])
         expected = self.ymd.unstack(2).unstack(1).dropna(axis=1, how='all')
         assert_frame_equal(unstacked, expected.ix[:, unstacked.columns])
+
+    def test_stack_names_and_numbers(self):
+        unstacked = self.ymd.unstack(['year', 'month'])
+
+        # Can't use mixture of names and numbers to stack
+        with assertRaisesRegexp(ValueError, "level should contain"):
+            unstacked.stack([0, 'month'])
+
+    def test_stack_multiple_out_of_bounds(self):
+        # nlevels == 3
+        unstacked = self.ymd.unstack(['year', 'month'])
+
+        with assertRaisesRegexp(IndexError, "Too many levels"):
+            unstacked.stack([2, 3])
+        with assertRaisesRegexp(IndexError, "not a valid level number"):
+            unstacked.stack([-4, -3])
 
     def test_unstack_period_series(self):
         # GH 4342
@@ -2009,6 +2070,20 @@ Thur,Lunch,Yes,51.51,17"""
         result = df.loc[('foo','bar')]
         assert_frame_equal(result,expected)
 
+    def test_duplicated_drop_duplicates(self):
+        # GH 4060
+        idx = MultiIndex.from_arrays(([1, 2, 3, 1, 2 ,3], [1, 1, 1, 1, 2, 2]))
+
+        expected = Index([False, False, False, True, False, False])
+        tm.assert_index_equal(idx.duplicated(), expected)
+        expected = MultiIndex.from_arrays(([1, 2, 3, 2 ,3], [1, 1, 1, 2, 2]))
+        tm.assert_index_equal(idx.drop_duplicates(), expected)
+
+        expected = Index([True, False, False, False, False, False])
+        tm.assert_index_equal(idx.duplicated(take_last=True), expected)
+        expected = MultiIndex.from_arrays(([2, 3, 1, 2 ,3], [1, 1, 1, 2, 2]))
+        tm.assert_index_equal(idx.drop_duplicates(take_last=True), expected)
+
     def test_multiindex_set_index(self):
         # segfault in #3308
         d = {'t1': [2, 2.5, 3], 't2': [4, 5, 6]}
@@ -2029,6 +2104,17 @@ Thur,Lunch,Yes,51.51,17"""
 
         self.assertTrue(idx.levels[0].equals(expected1))
         self.assertTrue(idx.levels[1].equals(idx2))
+
+        # from datetime combos
+        # GH 7888
+        date1 = datetime.date.today()
+        date2 = datetime.datetime.today()
+        date3 = Timestamp.today()
+
+        for d1, d2 in itertools.product([date1,date2,date3],[date1,date2,date3]):
+            index = pd.MultiIndex.from_product([[d1],[d2]])
+            self.assertIsInstance(index.levels[0],pd.DatetimeIndex)
+            self.assertIsInstance(index.levels[1],pd.DatetimeIndex)
 
     def test_set_index_datetime(self):
         # GH 3950
@@ -2084,39 +2170,67 @@ Thur,Lunch,Yes,51.51,17"""
             idx1 = pd.date_range('1/1/2011', periods=5, freq='D', tz=tz, name='idx1')
             idx2 = pd.Index(range(5), name='idx2',dtype='int64')
             idx = pd.MultiIndex.from_arrays([idx1, idx2])
-            df = pd.DataFrame({'a': np.arange(5,dtype='int64'), 'b': ['A', 'B', 'C', 'D', 'E']}, index=idx) 
+            df = pd.DataFrame({'a': np.arange(5,dtype='int64'), 'b': ['A', 'B', 'C', 'D', 'E']}, index=idx)
 
             expected = pd.DataFrame({'idx1': [datetime.datetime(2011, 1, 1),
                                               datetime.datetime(2011, 1, 2),
                                               datetime.datetime(2011, 1, 3),
                                               datetime.datetime(2011, 1, 4),
-                                              datetime.datetime(2011, 1, 5)], 
+                                              datetime.datetime(2011, 1, 5)],
                                      'idx2': np.arange(5,dtype='int64'),
                                      'a': np.arange(5,dtype='int64'), 'b': ['A', 'B', 'C', 'D', 'E']},
                                      columns=['idx1', 'idx2', 'a', 'b'])
             expected['idx1'] = expected['idx1'].apply(lambda d: pd.Timestamp(d, tz=tz))
+
             assert_frame_equal(df.reset_index(), expected)
 
             idx3 = pd.date_range('1/1/2012', periods=5, freq='MS', tz='Europe/Paris', name='idx3')
             idx = pd.MultiIndex.from_arrays([idx1, idx2, idx3])
-            df = pd.DataFrame({'a': np.arange(5,dtype='int64'), 'b': ['A', 'B', 'C', 'D', 'E']}, index=idx) 
+            df = pd.DataFrame({'a': np.arange(5,dtype='int64'), 'b': ['A', 'B', 'C', 'D', 'E']}, index=idx)
 
             expected = pd.DataFrame({'idx1': [datetime.datetime(2011, 1, 1),
                                               datetime.datetime(2011, 1, 2),
                                               datetime.datetime(2011, 1, 3),
                                               datetime.datetime(2011, 1, 4),
-                                              datetime.datetime(2011, 1, 5)], 
+                                              datetime.datetime(2011, 1, 5)],
                                      'idx2': np.arange(5,dtype='int64'),
                                      'idx3': [datetime.datetime(2012, 1, 1),
                                               datetime.datetime(2012, 2, 1),
                                               datetime.datetime(2012, 3, 1),
                                               datetime.datetime(2012, 4, 1),
-                                              datetime.datetime(2012, 5, 1)], 
+                                              datetime.datetime(2012, 5, 1)],
                                      'a': np.arange(5,dtype='int64'), 'b': ['A', 'B', 'C', 'D', 'E']},
                                      columns=['idx1', 'idx2', 'idx3', 'a', 'b'])
             expected['idx1'] = expected['idx1'].apply(lambda d: pd.Timestamp(d, tz=tz))
             expected['idx3'] = expected['idx3'].apply(lambda d: pd.Timestamp(d, tz='Europe/Paris'))
             assert_frame_equal(df.reset_index(), expected)
+
+            # GH 7793
+            idx = pd.MultiIndex.from_product([['a','b'], pd.date_range('20130101', periods=3, tz=tz)])
+            df = pd.DataFrame(np.arange(6,dtype='int64').reshape(6,1), columns=['a'], index=idx)
+
+            expected = pd.DataFrame({'level_0': 'a a a b b b'.split(),
+                                     'level_1': [datetime.datetime(2013, 1, 1),
+                                                 datetime.datetime(2013, 1, 2),
+                                                 datetime.datetime(2013, 1, 3)] * 2,
+                                     'a': np.arange(6, dtype='int64')},
+                                     columns=['level_0', 'level_1', 'a'])
+            expected['level_1'] = expected['level_1'].apply(lambda d: pd.Timestamp(d, offset='D', tz=tz))
+            assert_frame_equal(df.reset_index(), expected)
+
+    def test_reset_index_period(self):
+        # GH 7746
+        idx = pd.MultiIndex.from_product([pd.period_range('20130101', periods=3, freq='M'),
+                                         ['a','b','c']], names=['month', 'feature'])
+
+        df = pd.DataFrame(np.arange(9,dtype='int64').reshape(-1,1), index=idx, columns=['a'])
+        expected = pd.DataFrame({'month': [pd.Period('2013-01', freq='M')] * 3 +
+                                          [pd.Period('2013-02', freq='M')] * 3 +
+                                          [pd.Period('2013-03', freq='M')] * 3,
+                                 'feature': ['a', 'b', 'c'] * 3,
+                                 'a': np.arange(9, dtype='int64')},
+                                columns=['month', 'feature', 'a'])
+        assert_frame_equal(df.reset_index(), expected)
 
     def test_set_index_period(self):
         # GH 6631

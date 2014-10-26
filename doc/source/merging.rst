@@ -90,7 +90,7 @@ this using the ``keys`` argument:
    concatenated
 
 As you can see (if you've read the rest of the documentation), the resulting
-object's index has a :ref:`hierarchical index <indexing.hierarchical>`. This
+object's index has a :ref:`hierarchical index <advanced.hierarchical>`. This
 means that we can now do stuff like select out each chunk by key:
 
 .. ipython:: python
@@ -99,6 +99,18 @@ means that we can now do stuff like select out each chunk by key:
 
 It's not a stretch to see how this can be very useful. More detail on this
 functionality below.
+
+.. note::
+   It is worth noting however, that ``concat`` (and therefore ``append``) makes
+   a full copy of the data, and that constantly reusing this function can
+   create a signifcant performance hit. If you need to use the operation over
+   several datasets, use a list comprehension.
+
+::
+
+   frames = [ process_your_file(f) for f in files ]
+   result = pd.concat(frames)
+
 
 Set logic on the other axes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -375,6 +387,10 @@ Here's a description of what each argument is for:
     cases but may improve performance / memory usage. The cases where copying
     can be avoided are somewhat pathological but this option is provided
     nonetheless.
+
+The return type will be the same as ``left``. If ``left`` is a ``DataFrame``
+and ``right`` is a subclass of DataFrame, the return type will still be
+``DataFrame``.
 
 ``merge`` is a function in the pandas namespace, and it is also available as a
 DataFrame instance method, with the calling DataFrame being implicitly

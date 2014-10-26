@@ -310,7 +310,7 @@ keyword. The list of recognized types are:
 
    rolling_window(ser, 5, 'triang')
 
-Note that the ``boxcar`` window is equivalent to ``rolling_mean``:
+Note that the ``boxcar`` window is equivalent to ``rolling_mean``.
 
 .. ipython:: python
 
@@ -336,6 +336,19 @@ This keyword is available in other rolling functions as well.
 
    rolling_mean(ser, 5, center=True)
 
+.. _stats.moments.normalization:
+
+.. note::
+
+    In rolling sum mode (``mean=False``) there is no normalization done to the
+    weights. Passing custom weights of ``[1, 1, 1]`` will yield a different
+    result than passing weights of ``[2, 2, 2]``, for example. When passing a
+    ``win_type`` instead of explicitly specifying the weights, the weights are
+    already normalized so that the largest weight is 1.
+
+    In contrast, the nature of the rolling mean calculation (``mean=True``)is
+    such that the weights are normalized with respect to each other. Weights
+    of ``[1, 1, 1]`` and ``[2, 2, 2]`` yield the same result.
 
 .. _stats.moments.binary:
 
@@ -413,6 +426,8 @@ columns using ``ix`` indexing:
    @savefig rolling_corr_pairwise_ex.png
    correls.ix[:, 'A', 'C'].plot()
 
+.. _stats.moments.expanding:
+
 Expanding window moment functions
 ---------------------------------
 A common alternative to rolling statistics is to use an *expanding* window,
@@ -485,48 +500,14 @@ relative impact of an individual data point. As an example, here is the
    @savefig expanding_mean_frame.png
    expanding_mean(ts).plot(style='k')
 
+.. _stats.moments.exponentially_weighted:
+
 Exponentially weighted moment functions
 ---------------------------------------
 
-A related set of functions are exponentially weighted versions of many of the
-above statistics. A number of EW (exponentially weighted) functions are
-provided using the blending method. For example, where :math:`y_t` is the
-result and :math:`x_t` the input, we compute an exponentially weighted moving
-average as
-
-.. math::
-
-    y_t = (1 - \alpha) y_{t-1} + \alpha x_t
-
-One must have :math:`0 < \alpha \leq 1`, but rather than pass :math:`\alpha`
-directly, it's easier to think about either the **span**, **center of mass
-(com)** or **halflife** of an EW moment:
-
-.. math::
-
-   \alpha =
-    \begin{cases}
-	\frac{2}{s + 1}, s = \text{span}\\
-	\frac{1}{1 + c}, c = \text{center of mass}\\
-	1 - \exp^{\frac{\log 0.5}{h}}, h = \text{half life}
-    \end{cases}
-
-.. note::
-
-  the equation above is sometimes written in the form
-
-  .. math::
-
-    y_t = \alpha' y_{t-1} + (1 - \alpha') x_t
-
-  where :math:`\alpha' = 1 - \alpha`.
-
-You can pass one of the three to these functions but not more. **Span**
-corresponds to what is commonly called a "20-day EW moving average" for
-example. **Center of mass** has a more physical interpretation. For example,
-**span** = 20 corresponds to **com** = 9.5. **Halflife** is the period of
-time for the exponential weight to reduce to one half. Here is the list of
-functions available:
+A related set of functions are exponentially weighted versions of several of
+the above statistics. A number of expanding EW (exponentially weighted)
+functions are provided:
 
 .. csv-table::
     :header: "Function", "Description"
@@ -538,7 +519,60 @@ functions available:
     ``ewmcorr``, EW moving correlation
     ``ewmcov``, EW moving covariance
 
-Here are an example for a univariate time series:
+In general, a weighted moving average is calculated as
+
+.. math::
+
+    y_t = \frac{\sum_{i=0}^t w_i x_{t-i}}{\sum_{i=0}^t w_i},
+
+where :math:`x_t` is the input at :math:`y_t` is the result.
+
+The EW functions support two variants of exponential weights:
+The default, ``adjust=True``, uses the weights :math:`w_i = (1 - \alpha)^i`.
+When ``adjust=False`` is specified, moving averages are calculated as
+
+.. math::
+
+    y_0 &= x_0 \\
+    y_t &= (1 - \alpha) y_{t-1} + \alpha x_t,
+
+which is equivalent to using weights
+
+.. math::
+
+    w_i = \begin{cases}
+        \alpha (1 - \alpha)^i & \text{if } i < t \\
+        (1 - \alpha)^i        & \text{if } i = t.
+    \end{cases}
+
+.. note::
+
+   These equations are sometimes written in terms of :math:`\alpha' = 1 - \alpha`, e.g.
+
+   .. math::
+
+      y_t = \alpha' y_{t-1} + (1 - \alpha') x_t.
+
+One must have :math:`0 < \alpha \leq 1`, but rather than pass :math:`\alpha`
+directly, it's easier to think about either the **span**, **center of mass
+(com)** or **halflife** of an EW moment:
+
+.. math::
+
+   \alpha =
+    \begin{cases}
+        \frac{2}{s + 1},               & s = \text{span}\\
+        \frac{1}{1 + c},               & c = \text{center of mass}\\
+        1 - \exp^{\frac{\log 0.5}{h}}, & h = \text{half life}
+    \end{cases}
+
+One must specify precisely one of the three to the EW functions. **Span**
+corresponds to what is commonly called a "20-day EW moving average" for
+example. **Center of mass** has a more physical interpretation. For example,
+**span** = 20 corresponds to **com** = 9.5. **Halflife** is the period of
+time for the exponential weight to reduce to one half.
+
+Here is an example for a univariate time series:
 
 .. ipython:: python
 
@@ -548,8 +582,45 @@ Here are an example for a univariate time series:
    @savefig ewma_ex.png
    ewma(ts, span=20).plot(style='k')
 
-.. note::
+All the EW functions have a ``min_periods`` argument, which has the same
+meaning it does for all the ``expanding_`` and ``rolling_`` functions:
+no output values will be set until at least ``min_periods`` non-null values
+are encountered in the (expanding) window.
+(This is a change from versions prior to 0.15.0, in which the ``min_periods``
+argument affected only the ``min_periods`` consecutive entries starting at the
+first non-null value.)
 
-   The EW functions perform a standard adjustment to the initial observations
-   whereby if there are fewer observations than called for in the span, those
-   observations are reweighted accordingly.
+All the EW functions also have an ``ignore_na`` argument, which deterines how
+intermediate null values affect the calculation of the weights.
+When ``ignore_na=False`` (the default), weights are calculated based on absolute
+positions, so that intermediate null values affect the result.
+When ``ignore_na=True`` (which reproduces the behavior in versions prior to 0.15.0),
+weights are calculated by ignoring intermediate null values.
+For example, assuming ``adjust=True``, if ``ignore_na=False``, the weighted
+average of ``3, NaN, 5`` would be calculated as
+
+.. math::
+
+	\frac{(1-\alpha)^2 \cdot 3 + 1 \cdot 5}{(1-\alpha)^2 + 1}
+
+Whereas if ``ignore_na=True``, the weighted average would be calculated as
+
+.. math::
+
+	\frac{(1-\alpha) \cdot 3 + 1 \cdot 5}{(1-\alpha) + 1}.
+
+The ``ewmvar``, ``ewmstd``, and ``ewmcov`` functions have a ``bias`` argument,
+specifying whether the result should contain biased or unbiased statistics.
+For example, if ``bias=True``, ``ewmvar(x)`` is calculated as
+``ewmvar(x) = ewma(x**2) - ewma(x)**2``;
+whereas if ``bias=False`` (the default), the biased variance statistics
+are scaled by debiasing factors
+
+.. math::
+
+    \frac{\left(\sum_{i=0}^t w_i\right)^2}{\left(\sum_{i=0}^t w_i\right)^2 - \sum_{i=0}^t w_i^2}.
+
+(For :math:`w_i = 1`, this reduces to the usual :math:`N / (N - 1)` factor,
+with :math:`N = t + 1`.)
+See http://en.wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
+for further details.

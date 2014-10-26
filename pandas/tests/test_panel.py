@@ -8,17 +8,17 @@ import numpy as np
 
 from pandas import Series, DataFrame, Index, isnull, notnull, pivot, MultiIndex
 from pandas.core.datetools import bday
-from pandas.core.frame import group_agg
 from pandas.core.panel import Panel
 from pandas.core.series import remove_na
 import pandas.core.common as com
 from pandas import compat
-from pandas.compat import range, lrange, StringIO, cPickle, OrderedDict
+from pandas.compat import range, lrange, StringIO, OrderedDict
 
 from pandas.util.testing import (assert_panel_equal,
                                  assert_frame_equal,
                                  assert_series_equal,
                                  assert_almost_equal,
+                                 assert_produces_warning,
                                  ensure_clean,
                                  assertRaisesRegexp,
                                  makeCustomDataframe as mkdf,
@@ -32,8 +32,7 @@ class PanelTests(object):
     panel = None
 
     def test_pickle(self):
-        pickled = cPickle.dumps(self.panel)
-        unpickled = cPickle.loads(pickled)
+        unpickled = self.round_trip_pickle(self.panel)
         assert_frame_equal(unpickled['ItemA'], self.panel['ItemA'])
 
     def test_cumsum(self):
@@ -669,24 +668,42 @@ class CheckIndexing(object):
 
     def test_ix_frame_align(self):
         from pandas import DataFrame
-        df = DataFrame(np.random.randn(2, 10))
-        df.sort_index(inplace=True)
-        p_orig = Panel(np.random.randn(3, 10, 2))
+        p_orig = tm.makePanel()
+        df = p_orig.ix[0].copy()
+        assert_frame_equal(p_orig['ItemA'],df)
 
         p = p_orig.copy()
         p.ix[0, :, :] = df
-        out = p.ix[0, :, :].T.reindex(df.index, columns=df.columns)
-        assert_frame_equal(out, df)
+        assert_panel_equal(p, p_orig)
 
         p = p_orig.copy()
         p.ix[0] = df
-        out = p.ix[0].T.reindex(df.index, columns=df.columns)
-        assert_frame_equal(out, df)
+        assert_panel_equal(p, p_orig)
+
+        p = p_orig.copy()
+        p.iloc[0, :, :] = df
+        assert_panel_equal(p, p_orig)
+
+        p = p_orig.copy()
+        p.iloc[0] = df
+        assert_panel_equal(p, p_orig)
+
+        p = p_orig.copy()
+        p.loc['ItemA'] = df
+        assert_panel_equal(p, p_orig)
+
+        p = p_orig.copy()
+        p.loc['ItemA', :, :] = df
+        assert_panel_equal(p, p_orig)
+
+        p = p_orig.copy()
+        p['ItemA'] = df
+        assert_panel_equal(p, p_orig)
 
         p = p_orig.copy()
         p.ix[0, [0, 1, 3, 5], -2:] = df
         out = p.ix[0, [0, 1, 3, 5], -2:]
-        assert_frame_equal(out, df.T.reindex([0, 1, 3, 5], p.minor_axis[-2:]))
+        assert_frame_equal(out, df.iloc[[0,1,3,5],[2,3]])
 
         # GH3830, panel assignent by values/frame
         for dtype in ['float64','int64']:
@@ -1827,19 +1844,6 @@ class TestPanel(tm.TestCase, PanelTests, CheckIndexing,
         self.panel['i'] = self.panel['ItemA']
         assert_frame_equal(self.panel['i'], self.panel.i)
 
-    def test_group_agg(self):
-        values = np.ones((10, 2)) * np.arange(10).reshape((10, 1))
-        bounds = np.arange(5) * 2
-        f = lambda x: x.mean(axis=0)
-
-        agged = group_agg(values, bounds, f)
-
-        assert(agged[1][0] == 2.5)
-        assert(agged[2][0] == 4.5)
-
-        # test a function that doesn't aggregate
-        f2 = lambda x: np.zeros((2, 2))
-        self.assertRaises(Exception, group_agg, values, bounds, f2)
 
     def test_from_frame_level1_unsorted(self):
         tuples = [('MSFT', 3), ('MSFT', 2), ('AAPL', 2),
@@ -2338,6 +2342,13 @@ def test_panel_index():
     expected = MultiIndex.from_arrays([np.tile([1, 2, 3, 4], 3),
                                        np.repeat([1, 2, 3], 4)])
     assert(index.equals(expected))
+
+
+def test_import_warnings():
+    # GH8152
+    panel = Panel(np.random.rand(3, 3, 3))
+    with assert_produces_warning():
+        panel.major_xs(1, copy=False)
 
 if __name__ == '__main__':
     import nose

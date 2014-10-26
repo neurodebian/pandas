@@ -4,7 +4,7 @@
 .. ipython:: python
    :suppress:
 
-   from datetime import datetime
+   from datetime import datetime, timedelta
    import numpy as np
    np.random.seed(123456)
    from pandas import *
@@ -379,9 +379,9 @@ We are stopping on the included end-point as its part of the index
 Datetime Indexing
 ~~~~~~~~~~~~~~~~~
 
-Indexing a ``DateTimeIndex`` with a partial string depends on the "accuracy" of the period, in other words how specific the interval is in relation to the frequency of the index. In contrast, indexing with datetime objects is exact, because the objects have exact meaning. These also follow the sematics of *including both endpoints*.
+Indexing a ``DateTimeIndex`` with a partial string depends on the "accuracy" of the period, in other words how specific the interval is in relation to the frequency of the index. In contrast, indexing with datetime objects is exact, because the objects have exact meaning. These also follow the semantics of *including both endpoints*.
 
-These ``datetime`` objects  are specific ``hours, minutes,`` and ``seconds`` even though they were not explicity specified (they are ``0``).
+These ``datetime`` objects  are specific ``hours, minutes,`` and ``seconds`` even though they were not explicitly specified (they are ``0``).
 
 .. ipython:: python
 
@@ -444,6 +444,7 @@ There are several time/date properties that one can access from ``Timestamp`` or
     is_year_start,"Logical indicating if first day of year (defined by frequency)"
     is_year_end,"Logical indicating if last day of year (defined by frequency)"
 
+Furthermore, if you have a ``Series`` with datetimelike values, then you can access these properties via the ``.dt`` accessor, see the :ref:`docs <basics.dt_accessors>`
 
 DateOffset objects
 ------------------
@@ -700,6 +701,7 @@ frequencies. We will refer to these aliases as *offset aliases*
     "S", "secondly frequency"
     "L", "milliseonds"
     "U", "microseconds"
+    "N", "nanoseconds"
 
 Combining Aliases
 ~~~~~~~~~~~~~~~~~
@@ -1097,6 +1099,36 @@ frequency.
 
    p - 3
 
+If ``Period`` freq is daily or higher (``D``, ``H``, ``T``, ``S``, ``L``, ``U``, ``N``), ``offsets`` and ``timedelta``-like can be added if the result can have same freq. Otherise, ``ValueError`` will be raised.
+
+.. ipython:: python
+
+   p = Period('2014-07-01 09:00', freq='H')
+   p + Hour(2)
+   p + timedelta(minutes=120)
+   p + np.timedelta64(7200, 's')
+
+.. code-block:: python
+
+   In [1]: p + Minute(5)
+   Traceback
+      ...
+   ValueError: Input has different freq from Period(freq=H)
+
+If ``Period`` has other freqs, only the same ``offsets`` can be added. Otherwise, ``ValueError`` will be raised.
+
+.. ipython:: python
+
+   p = Period('2014-07', freq='M')
+   p + MonthEnd(3)
+
+.. code-block:: python
+
+   In [1]: p + MonthBegin(3)
+   Traceback
+      ...
+   ValueError: Input has different freq from Period(freq=M)
+
 Taking the difference of ``Period`` instances with the same frequency will
 return the number of frequency units between them:
 
@@ -1127,6 +1159,18 @@ objects:
 
    ps = Series(randn(len(prng)), prng)
    ps
+
+``PeriodIndex`` supports addition and subtraction as the same rule as ``Period``.
+
+.. ipython:: python
+
+   idx = period_range('2014-07-01 09:00', periods=5, freq='H')
+   idx
+   idx + Hour(2)
+
+   idx = period_range('2014-07', periods=5, freq='M')
+   idx
+   idx + MonthEnd(3)
 
 PeriodIndex Partial String Indexing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1271,6 +1315,39 @@ the quarter end:
 
    ts.head()
 
+.. _timeseries.oob:
+
+Representing out-of-bounds spans
+--------------------------------
+
+If you have data that is outside of the ``Timestamp`` bounds, see :ref:`Timestamp limitations <gotchas.timestamp-limits>`,
+then you can use a ``PeriodIndex`` and/or ``Series`` of ``Periods`` to do computations.
+
+.. ipython:: python
+
+   span = period_range('1215-01-01', '1381-01-01', freq='D')
+   span
+
+To convert from a ``int64`` based YYYYMMDD representation.
+
+.. ipython:: python
+
+   s = Series([20121231, 20141130, 99991231])
+   s
+
+   def conv(x):
+       return Period(year = x // 10000, month = x//100 % 100, day = x%100, freq='D')
+
+   s.apply(conv)
+   s.apply(conv)[2]
+
+These can easily be converted to a ``PeriodIndex``
+
+.. ipython:: python
+
+   span = PeriodIndex(s.apply(conv))
+   span
+
 .. _timeseries.timezone:
 
 Time Zone Handling
@@ -1279,6 +1356,9 @@ Time Zone Handling
 Pandas provides rich support for working with timestamps in different time zones using ``pytz`` and ``dateutil`` libraries.
 ``dateutil`` support is new [in 0.14.1] and currently only supported for fixed offset and tzfile zones. The default library is ``pytz``.
 Support for ``dateutil`` is provided for compatibility with other applications e.g. if you use ``dateutil`` in other python packages.
+
+Working with Time Zones
+~~~~~~~~~~~~~~~~~~~~~~~
 
 By default, pandas objects are time zone unaware:
 
@@ -1354,14 +1434,20 @@ tz-aware data to another time zone:
 
 	Be wary of conversions between libraries. For some zones ``pytz`` and ``dateutil`` have different
 	definitions of the zone. This is more of a problem for unusual timezones than for
-	'standard' zones like ``US/Eastern``.  
+	'standard' zones like ``US/Eastern``.
 
-.. warning:: 
+.. warning::
 
-       Be aware that a timezone definition across versions of timezone libraries may not 
-       be considered equal.  This may cause problems when working with stored data that 
-       is localized using one version and operated on with a different version.  
+       Be aware that a timezone definition across versions of timezone libraries may not
+       be considered equal.  This may cause problems when working with stored data that
+       is localized using one version and operated on with a different version.
        See :ref:`here<io.hdf5-notes>` for how to handle such a situation.
+
+.. warning::
+
+       It is incorrect to pass a timezone directly into the ``datetime.datetime`` constructor (e.g.,
+       ``datetime.datetime(2011, 1, 1, tz=timezone('US/Eastern'))``.  Instead, the datetime
+       needs to be localized using the the localize method on the timezone.
 
 Under the hood, all timestamps are stored in UTC. Scalar values from a
 ``DatetimeIndex`` with a time zone will have their fields (day, hour, minute)
@@ -1405,10 +1491,31 @@ TimeSeries, aligning the data on the UTC timestamps:
    result
    result.index
 
+To remove timezone from tz-aware ``DatetimeIndex``, use ``tz_localize(None)`` or ``tz_convert(None)``.
+``tz_localize(None)`` will remove timezone holding local time representations.
+``tz_convert(None)`` will remove timezone after converting to UTC time.
+
+.. ipython:: python
+
+   didx = DatetimeIndex(start='2014-08-01 09:00', freq='H', periods=10, tz='US/Eastern')
+   didx
+   didx.tz_localize(None)
+   didx.tz_convert(None)
+
+   # tz_convert(None) is identical with tz_convert('UTC').tz_localize(None)
+   didx.tz_convert('UCT').tz_localize(None)
+
+.. _timeseries.timezone_ambiguous:
+
+Ambiguous Times when Localizing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 In some cases, localize cannot determine the DST and non-DST hours when there are
-duplicates.  This often happens when reading files that simply duplicate the hours.
-The infer_dst argument in tz_localize will attempt
-to determine the right offset.
+duplicates.  This often happens when reading files or database records that simply
+duplicate the hours.  Passing ``ambiguous='infer'`` (``infer_dst`` argument in prior
+releases) into ``tz_localize`` will attempt to determine the right offset.  Below
+the top example will fail as it contains ambiguous times and the bottom will
+infer the right offset.
 
 .. ipython:: python
    :okexcept:
@@ -1416,196 +1523,30 @@ to determine the right offset.
    rng_hourly = DatetimeIndex(['11/06/2011 00:00', '11/06/2011 01:00',
                                '11/06/2011 01:00', '11/06/2011 02:00',
                                '11/06/2011 03:00'])
+
+   # This will fail as there are ambiguous times
    rng_hourly.tz_localize('US/Eastern')
-   rng_hourly_eastern = rng_hourly.tz_localize('US/Eastern', infer_dst=True)
-   rng_hourly_eastern.values
+   rng_hourly_eastern = rng_hourly.tz_localize('US/Eastern', ambiguous='infer')
+   rng_hourly_eastern.tolist()
 
-.. _timeseries.timedeltas:
-
-Time Deltas
------------
-
-Timedeltas are differences in times, expressed in difference units, e.g. days,hours,minutes,seconds.
-They can be both positive and negative. :ref:`DateOffsets<timeseries.offsets>` that are absolute in nature
-(``Day, Hour, Minute, Second, Milli, Micro, Nano``) can be used as ``timedeltas``.
-
-.. ipython:: python
-
-   from datetime import datetime, timedelta
-   s = Series(date_range('2012-1-1', periods=3, freq='D'))
-   td = Series([ timedelta(days=i) for i in range(3) ])
-   df = DataFrame(dict(A = s, B = td))
-   df
-   df['C'] = df['A'] + df['B']
-   df
-   df.dtypes
-
-   s - s.max()
-   s - datetime(2011,1,1,3,5)
-   s + timedelta(minutes=5)
-   s + Minute(5)
-   s + Minute(5) + Milli(5)
-
-Getting scalar results from a ``timedelta64[ns]`` series
+In addition to 'infer', there are several other arguments supported.  Passing
+an array-like of bools or 0s/1s where True represents a DST hour and False a
+non-DST hour, allows for distinguishing more than one DST
+transition (e.g., if you have multiple records in a database each with their
+own DST transition).  Or passing 'NaT' will fill in transition times
+with not-a-time values.  These methods are available in the ``DatetimeIndex``
+constructor as well as ``tz_localize``.
 
 .. ipython:: python
 
-   y = s - s[0]
-   y
+   rng_hourly_dst = np.array([1, 1, 0, 0, 0])
+   rng_hourly.tz_localize('US/Eastern', ambiguous=rng_hourly_dst).tolist()
+   rng_hourly.tz_localize('US/Eastern', ambiguous='NaT').tolist()
 
-Series of timedeltas with ``NaT`` values are supported
+   didx = DatetimeIndex(start='2014-08-01 09:00', freq='H', periods=10, tz='US/Eastern')
+   didx
+   didx.tz_localize(None)
+   didx.tz_convert(None)
 
-.. ipython:: python
-
-   y = s - s.shift()
-   y
-
-Elements can be set to ``NaT`` using ``np.nan`` analagously to datetimes
-
-.. ipython:: python
-
-   y[1] = np.nan
-   y
-
-Operands can also appear in a reversed order (a singular object operated with a Series)
-
-.. ipython:: python
-
-   s.max() - s
-   datetime(2011,1,1,3,5) - s
-   timedelta(minutes=5) + s
-
-Some timedelta numeric like operations are supported.
-
-.. ipython:: python
-
-   td - timedelta(minutes=5, seconds=5, microseconds=5)
-
-``min, max`` and the corresponding ``idxmin, idxmax`` operations are supported on frames
-
-.. ipython:: python
-
-   A = s - Timestamp('20120101') - timedelta(minutes=5, seconds=5)
-   B = s - Series(date_range('2012-1-2', periods=3, freq='D'))
-
-   df = DataFrame(dict(A=A, B=B))
-   df
-
-   df.min()
-   df.min(axis=1)
-
-   df.idxmin()
-   df.idxmax()
-
-``min, max`` operations are supported on series; these return a single element
-``timedelta64[ns]`` Series (this avoids having to deal with numpy timedelta64
-issues). ``idxmin, idxmax`` are supported as well.
-
-.. ipython:: python
-
-   df.min().max()
-   df.min(axis=1).min()
-
-   df.min().idxmax()
-   df.min(axis=1).idxmin()
-
-You can fillna on timedeltas. Integers will be interpreted as seconds. You can
-pass a timedelta to get a particular value.
-
-.. ipython:: python
-
-   y.fillna(0)
-   y.fillna(10)
-   y.fillna(timedelta(days=-1,seconds=5))
-
-.. _timeseries.timedeltas_reductions:
-
-Time Deltas & Reductions
-------------------------
-
-.. warning::
-
-   A numeric reduction operation for ``timedelta64[ns]`` can return a single-element ``Series`` of
-   dtype ``timedelta64[ns]``.
-
-You can do numeric reduction operations on timedeltas.
-
-.. ipython:: python
-
-   y2 = y.fillna(timedelta(days=-1,seconds=5))
-   y2
-   y2.mean()
-   y2.quantile(.1)
-
-.. _timeseries.timedeltas_convert:
-
-Time Deltas & Conversions
--------------------------
-
-.. versionadded:: 0.13
-
-**string/integer conversion**
-
-Using the top-level ``to_timedelta``, you can convert a scalar or array from the standard
-timedelta format (produced by ``to_csv``) into a timedelta type (``np.timedelta64`` in ``nanoseconds``).
-It can also construct Series.
-
-.. warning::
-
-   This requires ``numpy >= 1.7``
-
-.. ipython:: python
-
-   to_timedelta('1 days 06:05:01.00003')
-   to_timedelta('15.5us')
-   to_timedelta(['1 days 06:05:01.00003','15.5us','nan'])
-   to_timedelta(np.arange(5),unit='s')
-   to_timedelta(np.arange(5),unit='d')
-
-**frequency conversion**
-
-Timedeltas can be converted to other 'frequencies' by dividing by another timedelta,
-or by astyping to a specific timedelta type. These operations yield ``float64`` dtyped Series.
-
-.. ipython:: python
-
-   td = Series(date_range('20130101',periods=4))-Series(date_range('20121201',periods=4))
-   td[2] += np.timedelta64(timedelta(minutes=5,seconds=3))
-   td[3] = np.nan
-   td
-
-   # to days
-   td / np.timedelta64(1,'D')
-   td.astype('timedelta64[D]')
-
-   # to seconds
-   td / np.timedelta64(1,'s')
-   td.astype('timedelta64[s]')
-
-Dividing or multiplying a ``timedelta64[ns]`` Series by an integer or integer Series
-yields another ``timedelta64[ns]`` dtypes Series.
-
-.. ipython:: python
-
-   td * -1
-   td * Series([1,2,3,4])
-
-Numpy < 1.7 Compatibility
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Numpy < 1.7 has a broken ``timedelta64`` type that does not correctly work
-for arithmetic. pandas bypasses this, but for frequency conversion as above,
-you need to create the divisor yourself. The ``np.timetimedelta64`` type only
-has 1 argument, the number of **micro** seconds.
-
-The following are equivalent statements in the two versions of numpy.
-
-.. code-block:: python
-
-   from distutils.version import LooseVersion
-   if LooseVersion(np.__version__) <= '1.6.2':
-       y / np.timedelta(86400*int(1e6))
-       y / np.timedelta(int(1e6))
-   else:
-       y / np.timedelta64(1,'D')
-       y / np.timedelta64(1,'s')
+   # tz_convert(None) is identical with tz_convert('UTC').tz_localize(None)
+   didx.tz_convert('UCT').tz_localize(None)

@@ -74,7 +74,7 @@ class TestDateTimeConverter(tm.TestCase):
         for freq in ('B', 'L', 'S'):
             dateindex = tm.makeDateIndex(k = 10, freq = freq)
             rs = self.dtc.convert(dateindex, None, None)
-            xp = converter.dates.date2num(dateindex)
+            xp = converter.dates.date2num(dateindex._mpl_repr())
             np_assert_almost_equal(rs, xp, decimals)
 
     def test_resolution(self):
@@ -84,8 +84,8 @@ class TestDateTimeConverter(tm.TestCase):
             if not val1 < val2:
                 raise AssertionError('{0} is not less than {1}.'.format(val1, val2))
 
-        # Matplotlib's time representation using floats cannot distinguish intervals smaller 
-        # than ~10 microsecond in the common range of years. 
+        # Matplotlib's time representation using floats cannot distinguish intervals smaller
+        # than ~10 microsecond in the common range of years.
         ts = Timestamp('2012-1-1')
         _assert_less(ts, ts + Second())
         _assert_less(ts, ts + Milli())

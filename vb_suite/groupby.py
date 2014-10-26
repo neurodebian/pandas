@@ -444,5 +444,118 @@ g = transitions.cumsum()
 
 df = DataFrame({ 'signal' : np.random.rand(N)})
 """
-
 groupby_transform_series = Benchmark("df['signal'].groupby(g).transform(np.mean)", setup)
+
+setup = common_setup + """
+np.random.seed(0)
+
+df=DataFrame( { 'id' : np.arange( 100000 ) / 3,
+                'val': np.random.randn( 100000) } )
+"""
+
+groupby_transform_series2 = Benchmark("df.groupby('id')['val'].transform(np.mean)", setup)
+
+setup = common_setup + '''
+np.random.seed(2718281)
+n = 20000
+df = DataFrame(np.random.randint(1, n, (n, 3)),
+        columns=['jim', 'joe', 'jolie'])
+'''
+
+stmt = "df.groupby(['jim', 'joe'])['jolie'].transform('max')";
+groupby_transform_multi_key1 = Benchmark(stmt, setup)
+groupby_transform_multi_key2 = Benchmark(stmt, setup + "df['jim'] = df['joe']")
+
+setup = common_setup + '''
+np.random.seed(2718281)
+n = 200000
+df = DataFrame(np.random.randint(1, n / 10, (n, 3)),
+        columns=['jim', 'joe', 'jolie'])
+'''
+groupby_transform_multi_key3 = Benchmark(stmt, setup)
+groupby_transform_multi_key4 = Benchmark(stmt, setup + "df['jim'] = df['joe']")
+
+setup = common_setup + '''
+np.random.seed(27182)
+n = 100000
+df = DataFrame(np.random.randint(1, n / 100, (n, 3)),
+        columns=['jim', 'joe', 'jolie'])
+'''
+
+groupby_agg_builtins1 = Benchmark("df.groupby('jim').agg([sum, min, max])", setup)
+groupby_agg_builtins2 = Benchmark("df.groupby(['jim', 'joe']).agg([sum, min, max])", setup)
+
+#----------------------------------------------------------------------
+# groupby with a variable value for ngroups
+
+
+ngroups_list = [100, 10000]
+no_arg_func_list = [
+    'all',
+    'any',
+    'count',
+    'cumcount',
+    'cummax',
+    'cummin',
+    'cumprod',
+    'cumsum',
+    'describe',
+    'diff',
+    'first',
+    'head',
+    'last',
+    'mad',
+    'max',
+    'mean',
+    'median',
+    'min',
+    'nunique',
+    'pct_change',
+    'prod',
+    'rank',
+    'sem',
+    'size',
+    'skew',
+    'std',
+    'sum',
+    'tail',
+    'unique',
+    'var',
+    'value_counts',
+]
+
+
+_stmt_template = "df.groupby('value')['timestamp'].%s"
+_setup_template = common_setup + """
+np.random.seed(1234)
+ngroups = %s
+size = ngroups * 2
+rng = np.arange(ngroups)
+df = DataFrame(dict(
+    timestamp=rng.take(np.random.randint(0, ngroups, size=size)),
+    value=np.random.randint(0, size, size=size)
+))
+"""
+START_DATE = datetime(2011, 7, 1)
+
+
+def make_large_ngroups_bmark(ngroups, func_name, func_args=''):
+    bmark_name = 'groupby_ngroups_%s_%s' % (ngroups, func_name)
+    stmt = _stmt_template % ('%s(%s)' % (func_name, func_args))
+    setup = _setup_template % ngroups
+    bmark = Benchmark(stmt, setup, start_date=START_DATE)
+    # MUST set name
+    bmark.name = bmark_name
+    return bmark
+
+
+def inject_bmark_into_globals(bmark):
+    if not bmark.name:
+        raise AssertionError('benchmark must have a name')
+    globals()[bmark.name] = bmark
+
+
+for ngroups in ngroups_list:
+    for func_name in no_arg_func_list:
+        bmark = make_large_ngroups_bmark(ngroups, func_name)
+        inject_bmark_into_globals(bmark)

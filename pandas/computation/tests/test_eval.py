@@ -81,7 +81,6 @@ def _is_py3_complex_incompat(result, expected):
 
 _good_arith_ops = com.difference(_arith_ops_syms, _special_case_arith_ops_syms)
 
-
 class TestEvalNumexprPandas(tm.TestCase):
 
     @classmethod
@@ -135,9 +134,11 @@ class TestEvalNumexprPandas(tm.TestCase):
 
     @slow
     def test_complex_cmp_ops(self):
-        for lhs, cmp1, rhs, binop, cmp2 in product(self.lhses, self.cmp_ops,
+        cmp_ops = ('!=', '==', '<=', '>=', '<', '>')
+        cmp2_ops = ('>', '<')
+        for lhs, cmp1, rhs, binop, cmp2 in product(self.lhses, cmp_ops,
                                                    self.rhses, self.bin_ops,
-                                                   self.cmp2_ops):
+                                                   cmp2_ops):
             self.check_complex_cmp_op(lhs, cmp1, rhs, binop, cmp2)
 
     def test_simple_cmp_ops(self):
@@ -1515,9 +1516,9 @@ def check_invalid_numexpr_version(engine, parser):
         except ImportError:
             raise nose.SkipTest("no numexpr")
         else:
-            if ne.__version__ < LooseVersion('2.0'):
+            if ne.__version__ < LooseVersion('2.1'):
                 with tm.assertRaisesRegexp(ImportError, "'numexpr' version is "
-                                           ".+, must be >= 2.0"):
+                                           ".+, must be >= 2.1"):
                     testit()
             else:
                 testit()
@@ -1624,6 +1625,26 @@ def check_inf(engine, parser):
 def test_inf():
     for engine, parser in ENGINES_PARSERS:
         yield check_inf, engine, parser
+
+
+def check_negate_lt_eq_le(engine, parser):
+    tm.skip_if_no_ne(engine)
+    df = pd.DataFrame([[0, 10], [1, 20]], columns=['cat', 'count'])
+    expected = df[~(df.cat > 0)]
+
+    result = df.query('~(cat > 0)', engine=engine, parser=parser)
+    tm.assert_frame_equal(result, expected)
+
+    if parser == 'python':
+        with tm.assertRaises(NotImplementedError):
+            df.query('not (cat > 0)', engine=engine, parser=parser)
+    else:
+        result = df.query('not (cat > 0)', engine=engine, parser=parser)
+        tm.assert_frame_equal(result, expected)
+
+def test_negate_lt_eq_le():
+    for engine, parser in product(_engines, expr._parsers):
+        yield check_negate_lt_eq_le, engine, parser
 
 
 if __name__ == '__main__':

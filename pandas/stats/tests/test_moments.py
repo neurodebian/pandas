@@ -1,14 +1,17 @@
 import nose
 import sys
 import functools
+import warnings
 
 from datetime import datetime
 from numpy.random import randn
+from numpy.testing.decorators import slow
 import numpy as np
+from distutils.version import LooseVersion
 
-from pandas import Series, DataFrame, bdate_range, isnull, notnull
+from pandas import Series, DataFrame, Panel, bdate_range, isnull, notnull, concat
 from pandas.util.testing import (
-    assert_almost_equal, assert_series_equal, assert_frame_equal
+    assert_almost_equal, assert_series_equal, assert_frame_equal, assert_panel_equal, assert_index_equal
 )
 import pandas.core.datetools as datetools
 import pandas.stats.moments as mom
@@ -17,15 +20,14 @@ from pandas.compat import range, zip, PY3, StringIO
 
 N, K = 100, 10
 
-
-class TestMoments(tm.TestCase):
+class Base(tm.TestCase):
 
     _multiprocess_can_split_ = True
 
     _nan_locs = np.arange(20, 40)
     _inf_locs = np.array([])
 
-    def setUp(self):
+    def _create_data(self):
         arr = randn(N)
         arr[self._nan_locs] = np.NaN
 
@@ -36,6 +38,12 @@ class TestMoments(tm.TestCase):
 
         self.frame = DataFrame(randn(N, K), index=self.rng,
                                columns=np.arange(K))
+
+class TestMoments(Base):
+
+    def setUp(self):
+        self._create_data()
+        warnings.simplefilter("ignore", category=FutureWarning)
 
     def test_centered_axis_validation(self):
         # ok
@@ -63,47 +71,40 @@ class TestMoments(tm.TestCase):
         self._check_moment_func(mom.rolling_mean, np.mean)
 
     def test_cmov_mean(self):
+        # GH 8238
         tm._skip_if_no_scipy()
-        try:
-            from scikits.timeseries.lib import cmov_mean
-        except ImportError:
-            raise nose.SkipTest("no scikits.timeseries")
 
-        vals = np.random.randn(10)
-        xp = cmov_mean(vals, 5)
+        vals = np.array([6.95, 15.21, 4.72, 9.12, 13.81, 13.49,
+                         16.68, 9.48, 10.63, 14.48])
+        xp = np.array([np.nan, np.nan, 9.962, 11.27 , 11.564, 12.516,
+                       12.818,  12.952, np.nan, np.nan])
 
         rs = mom.rolling_mean(vals, 5, center=True)
-        assert_almost_equal(xp.compressed(), rs[2:-2])
-        assert_almost_equal(xp.mask, np.isnan(rs))
+        assert_almost_equal(xp, rs)
 
         xp = Series(rs)
         rs = mom.rolling_mean(Series(vals), 5, center=True)
         assert_series_equal(xp, rs)
 
     def test_cmov_window(self):
+        # GH 8238
         tm._skip_if_no_scipy()
-        try:
-            from scikits.timeseries.lib import cmov_window
-        except ImportError:
-            raise nose.SkipTest("no scikits.timeseries")
 
-        vals = np.random.randn(10)
-        xp = cmov_window(vals, 5, 'boxcar')
+        vals = np.array([6.95, 15.21, 4.72, 9.12, 13.81,
+                         13.49, 16.68, 9.48, 10.63, 14.48])
+        xp = np.array([np.nan, np.nan, 9.962, 11.27 , 11.564, 12.516,
+                       12.818,  12.952, np.nan, np.nan])
 
         rs = mom.rolling_window(vals, 5, 'boxcar', center=True)
-        assert_almost_equal(xp.compressed(), rs[2:-2])
-        assert_almost_equal(xp.mask, np.isnan(rs))
+        assert_almost_equal(xp, rs)
 
         xp = Series(rs)
         rs = mom.rolling_window(Series(vals), 5, 'boxcar', center=True)
         assert_series_equal(xp, rs)
 
     def test_cmov_window_corner(self):
+        # GH 8238
         tm._skip_if_no_scipy()
-        try:
-            from scikits.timeseries.lib import cmov_window
-        except ImportError:
-            raise nose.SkipTest("no scikits.timeseries")
 
         # all nan
         vals = np.empty(10, dtype=float)
@@ -123,24 +124,37 @@ class TestMoments(tm.TestCase):
         self.assertEqual(len(rs), 5)
 
     def test_cmov_window_frame(self):
+        # Gh 8238
         tm._skip_if_no_scipy()
-        try:
-            from scikits.timeseries.lib import cmov_window
-        except ImportError:
-            raise nose.SkipTest("no scikits.timeseries")
+
+        vals = np.array([[ 12.18,   3.64],
+                         [ 10.18,   9.16],
+                         [ 13.24,  14.61],
+                         [  4.51,   8.11],
+                         [  6.15,  11.44],
+                         [  9.14,   6.21],
+                         [ 11.31,  10.67],
+                         [  2.94,   6.51],
+                         [  9.42,   8.39],
+                         [ 12.44,   7.34 ]])
+
+        xp = np.array([[ np.nan,  np.nan],
+                       [ np.nan,  np.nan],
+                       [  9.252,   9.392],
+                       [  8.644,   9.906],
+                       [  8.87 ,  10.208],
+                       [  6.81 ,   8.588],
+                       [  7.792,   8.644],
+                       [  9.05 ,   7.824],
+                       [ np.nan,  np.nan],
+                       [ np.nan,  np.nan]])
 
         # DataFrame
-        vals = np.random.randn(10, 2)
-        xp = cmov_window(vals, 5, 'boxcar')
         rs = mom.rolling_window(DataFrame(vals), 5, 'boxcar', center=True)
         assert_frame_equal(DataFrame(xp), rs)
 
     def test_cmov_window_na_min_periods(self):
         tm._skip_if_no_scipy()
-        try:
-            from scikits.timeseries.lib import cmov_window
-        except ImportError:
-            raise nose.SkipTest("no scikits.timeseries")
 
         # min_periods
         vals = Series(np.random.randn(10))
@@ -153,39 +167,136 @@ class TestMoments(tm.TestCase):
         assert_series_equal(xp, rs)
 
     def test_cmov_window_regular(self):
+        # GH 8238
         tm._skip_if_no_scipy()
-        try:
-            from scikits.timeseries.lib import cmov_window
-        except ImportError:
-            raise nose.SkipTest("no scikits.timeseries")
 
         win_types = ['triang', 'blackman', 'hamming', 'bartlett', 'bohman',
                      'blackmanharris', 'nuttall', 'barthann']
-        for wt in win_types:
-            vals = np.random.randn(10)
-            xp = cmov_window(vals, 5, wt)
 
+        vals = np.array([6.95, 15.21, 4.72, 9.12, 13.81,
+                         13.49, 16.68, 9.48, 10.63, 14.48])
+        xps = {
+            'hamming': [np.nan, np.nan, 8.71384, 9.56348, 12.38009,
+                        14.03687, 13.8567, 11.81473, np.nan, np.nan],
+            'triang': [np.nan, np.nan, 9.28667, 10.34667, 12.00556,
+                       13.33889, 13.38, 12.33667, np.nan, np.nan],
+            'barthann': [np.nan, np.nan, 8.4425, 9.1925, 12.5575,
+                         14.3675, 14.0825, 11.5675, np.nan, np.nan],
+            'bohman': [np.nan, np.nan, 7.61599, 9.1764, 12.83559,
+                       14.17267, 14.65923, 11.10401, np.nan, np.nan],
+            'blackmanharris': [np.nan, np.nan, 6.97691, 9.16438, 13.05052,
+                               14.02156, 15.10512, 10.74574, np.nan, np.nan],
+            'nuttall': [np.nan, np.nan, 7.04618, 9.16786, 13.02671,
+                        14.03559, 15.05657, 10.78514, np.nan, np.nan],
+            'blackman': [np.nan, np.nan, 7.73345, 9.17869, 12.79607,
+                         14.20036, 14.57726, 11.16988, np.nan, np.nan],
+            'bartlett': [np.nan, np.nan, 8.4425, 9.1925, 12.5575,
+                         14.3675, 14.0825, 11.5675, np.nan, np.nan]}
+
+        for wt in win_types:
+            xp = Series(xps[wt])
             rs = mom.rolling_window(Series(vals), 5, wt, center=True)
-            assert_series_equal(Series(xp), rs)
+            assert_series_equal(xp, rs)
+
+    def test_cmov_window_regular_linear_range(self):
+        # GH 8238
+        tm._skip_if_no_scipy()
+
+        win_types = ['triang', 'blackman', 'hamming', 'bartlett', 'bohman',
+                     'blackmanharris', 'nuttall', 'barthann']
+
+        vals = np.array(range(10), dtype=np.float)
+        xp = vals.copy()
+        xp[:2] = np.nan
+        xp[-2:] = np.nan
+        xp = Series(xp)
+
+        for wt in win_types:
+            rs = mom.rolling_window(Series(vals), 5, wt, center=True)
+            assert_series_equal(xp, rs)
+
+    def test_cmov_window_regular_missing_data(self):
+        # GH 8238
+        tm._skip_if_no_scipy()
+
+        win_types = ['triang', 'blackman', 'hamming', 'bartlett', 'bohman',
+                     'blackmanharris', 'nuttall', 'barthann']
+
+        vals = np.array([6.95, 15.21, 4.72, 9.12, 13.81,
+                         13.49, 16.68, np.nan, 10.63, 14.48])
+        xps = {
+            'bartlett': [np.nan, np.nan, 9.70333, 10.5225, 8.4425,
+                         9.1925, 12.5575, 14.3675, 15.61667, 13.655],
+            'blackman': [np.nan, np.nan, 9.04582, 11.41536, 7.73345,
+                         9.17869, 12.79607, 14.20036, 15.8706, 13.655],
+            'barthann': [np.nan, np.nan, 9.70333, 10.5225, 8.4425,
+                         9.1925, 12.5575, 14.3675, 15.61667, 13.655],
+            'bohman': [np.nan, np.nan, 8.9444, 11.56327, 7.61599,
+                       9.1764, 12.83559, 14.17267, 15.90976, 13.655],
+            'hamming': [np.nan, np.nan, 9.59321, 10.29694, 8.71384,
+                        9.56348, 12.38009, 14.20565, 15.24694, 13.69758],
+            'nuttall': [np.nan, np.nan, 8.47693, 12.2821, 7.04618,
+                        9.16786, 13.02671, 14.03673, 16.08759, 13.65553],
+            'triang': [np.nan, np.nan, 9.33167, 9.76125, 9.28667,
+                       10.34667, 12.00556, 13.82125, 14.49429, 13.765],
+            'blackmanharris': [np.nan, np.nan, 8.42526, 12.36824, 6.97691,
+                               9.16438, 13.05052, 14.02175, 16.1098,
+                               13.65509]
+            }
+
+        for wt in win_types:
+            xp = Series(xps[wt])
+            rs = mom.rolling_window(Series(vals), 5, wt, min_periods=3)
+            assert_series_equal(xp, rs)
 
     def test_cmov_window_special(self):
+        # GH 8238
         tm._skip_if_no_scipy()
-        try:
-            from scikits.timeseries.lib import cmov_window
-        except ImportError:
-            raise nose.SkipTest("no scikits.timeseries")
 
         win_types = ['kaiser', 'gaussian', 'general_gaussian', 'slepian']
         kwds = [{'beta': 1.}, {'std': 1.}, {'power': 2., 'width': 2.},
                 {'width': 0.5}]
 
+        vals = np.array([6.95, 15.21, 4.72, 9.12, 13.81,
+                         13.49, 16.68, 9.48, 10.63, 14.48])
+
+        xps = {
+            'gaussian': [np.nan, np.nan, 8.97297, 9.76077, 12.24763,
+                         13.89053, 13.65671, 12.01002, np.nan, np.nan],
+            'general_gaussian': [np.nan, np.nan, 9.85011, 10.71589,
+                                 11.73161, 13.08516, 12.95111, 12.74577,
+                                 np.nan, np.nan],
+            'slepian': [np.nan, np.nan, 9.81073, 10.89359, 11.70284,
+                        12.88331, 12.96079, 12.77008, np.nan, np.nan],
+            'kaiser': [np.nan, np.nan, 9.86851, 11.02969, 11.65161,
+                       12.75129, 12.90702, 12.83757, np.nan, np.nan]
+        }
+
         for wt, k in zip(win_types, kwds):
-            vals = np.random.randn(10)
-            xp = cmov_window(vals, 5, (wt,) + tuple(k.values()))
+            xp = Series(xps[wt])
 
             rs = mom.rolling_window(Series(vals), 5, wt, center=True,
                                     **k)
-            assert_series_equal(Series(xp), rs)
+            assert_series_equal(xp, rs)
+
+    def test_cmov_window_special_linear_range(self):
+        # GH 8238
+        tm._skip_if_no_scipy()
+
+        win_types = ['kaiser', 'gaussian', 'general_gaussian', 'slepian']
+        kwds = [{'beta': 1.}, {'std': 1.}, {'power': 2., 'width': 2.},
+                {'width': 0.5}]
+
+        vals = np.array(range(10), dtype=np.float)
+        xp = vals.copy()
+        xp[:2] = np.nan
+        xp[-2:] = np.nan
+        xp = Series(xp)
+
+        for wt, k in zip(win_types, kwds):
+            rs = mom.rolling_window(Series(vals), 5, wt, center=True,
+                                    **k)
+            assert_series_equal(xp, rs)
 
     def test_rolling_median(self):
         self._check_moment_func(mom.rolling_median, np.median)
@@ -232,17 +343,26 @@ class TestMoments(tm.TestCase):
             self._check_moment_func(f, alt)
 
     def test_rolling_apply(self):
-        ser = Series([])
-        assert_series_equal(
-            ser, mom.rolling_apply(ser, 10, lambda x: x.mean()))
+        # suppress warnings about empty slices, as we are deliberately testing with a 0-length Series
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*(empty slice|0 for slice).*", category=RuntimeWarning)
 
-        def roll_mean(x, window, min_periods=None, freq=None, center=False):
-            return mom.rolling_apply(x, window,
-                                     lambda x: x[np.isfinite(x)].mean(),
-                                     min_periods=min_periods,
-                                     freq=freq,
-                                     center=center)
-        self._check_moment_func(roll_mean, np.mean)
+            ser = Series([])
+            assert_series_equal(ser, mom.rolling_apply(ser, 10, lambda x: x.mean()))
+
+            def roll_mean(x, window, min_periods=None, freq=None, center=False):
+                return mom.rolling_apply(x, window,
+                                         lambda x: x[np.isfinite(x)].mean(),
+                                         min_periods=min_periods,
+                                         freq=freq,
+                                         center=center)
+            self._check_moment_func(roll_mean, np.mean)
+
+        # GH 8080
+        s = Series([None, None, None])
+        result = mom.rolling_apply(s, 2, lambda x: len(x), min_periods=0)
+        expected = Series([1., 2., 2.])
+        assert_series_equal(result, expected)
 
     def test_rolling_apply_out_of_bounds(self):
         # #1850
@@ -264,8 +384,12 @@ class TestMoments(tm.TestCase):
     def test_rolling_std_1obs(self):
         result = mom.rolling_std(np.array([1., 2., 3., 4., 5.]),
                                  1, min_periods=1)
-        expected = np.zeros(5)
+        expected = np.array([np.nan] * 5)
+        assert_almost_equal(result, expected)
 
+        result = mom.rolling_std(np.array([1., 2., 3., 4., 5.]),
+                                 1, min_periods=1, ddof=0)
+        expected = np.zeros(5)
         assert_almost_equal(result, expected)
 
         result = mom.rolling_std(np.array([np.nan, np.nan, 3., 4., 5.]),
@@ -406,24 +530,16 @@ class TestMoments(tm.TestCase):
             result = func(arr, 50)
             assert_almost_equal(result[-1], static_comp(arr[10:-10]))
 
+        # GH 7925
         if has_center:
             if has_min_periods:
                 result = func(arr, 20, min_periods=15, center=True)
-                expected = func(arr, 20, min_periods=15)
+                expected = func(np.concatenate((arr, np.array([np.NaN] * 9))), 20, min_periods=15)[9:]
             else:
                 result = func(arr, 20, center=True)
-                expected = func(arr, 20)
+                expected = func(np.concatenate((arr, np.array([np.NaN] * 9))), 20)[9:]
 
-            assert_almost_equal(result[1], expected[10])
-            if fill_value is None:
-                self.assertTrue(np.isnan(result[-9:]).all())
-            else:
-                self.assertTrue((result[-9:] == 0).all())
-            if has_min_periods:
-                self.assertTrue(np.isnan(expected[23]))
-                self.assertTrue(np.isnan(result[14]))
-                self.assertTrue(np.isnan(expected[-5]))
-                self.assertTrue(np.isnan(result[-14]))
+            self.assert_numpy_array_equivalent(result, expected)
 
         if test_stable:
             result = func(self.arr + 1e9, window)
@@ -488,11 +604,12 @@ class TestMoments(tm.TestCase):
             assert_almost_equal(frame_result.xs(last_date),
                                 trunc_frame.apply(static_comp))
 
+        # GH 7925
         if has_center:
             if has_min_periods:
                 minp = 10
-                series_xp = func(self.series, 25, min_periods=minp).shift(-12)
-                frame_xp = func(self.frame, 25, min_periods=minp).shift(-12)
+                series_xp = func(self.series.reindex(list(self.series.index)+['x%d'%x for x in range(12)]), 25, min_periods=minp).shift(-12).reindex(self.series.index)
+                frame_xp = func(self.frame.reindex(list(self.frame.index)+['x%d'%x for x in range(12)]), 25, min_periods=minp).shift(-12).reindex(self.frame.index)
 
                 series_rs = func(self.series, 25, min_periods=minp,
                                  center=True)
@@ -500,8 +617,8 @@ class TestMoments(tm.TestCase):
                                 center=True)
 
             else:
-                series_xp = func(self.series, 25).shift(-12)
-                frame_xp = func(self.frame, 25).shift(-12)
+                series_xp = func(self.series.reindex(list(self.series.index)+['x%d'%x for x in range(12)]), 25).shift(-12).reindex(self.series.index)
+                frame_xp = func(self.frame.reindex(list(self.frame.index)+['x%d'%x for x in range(12)]), 25).shift(-12).reindex(self.frame.index)
 
                 series_rs = func(self.series, 25, center=True)
                 frame_rs = func(self.frame, 25, center=True)
@@ -520,11 +637,69 @@ class TestMoments(tm.TestCase):
         result = mom.ewma(arr, span=100, adjust=False).sum()
         self.assertTrue(np.abs(result - 1) < 1e-2)
 
+        s = Series([1.0, 2.0, 4.0, 8.0])
+
+        expected = Series([1.0, 1.6, 2.736842, 4.923077])
+        for f in [lambda s: mom.ewma(s, com=2.0, adjust=True),
+                  lambda s: mom.ewma(s, com=2.0, adjust=True, ignore_na=False),
+                  lambda s: mom.ewma(s, com=2.0, adjust=True, ignore_na=True),
+                 ]:
+            result = f(s)
+            assert_series_equal(result, expected)
+
+        expected = Series([1.0, 1.333333, 2.222222, 4.148148])
+        for f in [lambda s: mom.ewma(s, com=2.0, adjust=False),
+                  lambda s: mom.ewma(s, com=2.0, adjust=False, ignore_na=False),
+                  lambda s: mom.ewma(s, com=2.0, adjust=False, ignore_na=True),
+                 ]:
+            result = f(s)
+            assert_series_equal(result, expected)
+
     def test_ewma_nan_handling(self):
         s = Series([1.] + [np.nan] * 5 + [1.])
-
         result = mom.ewma(s, com=5)
-        assert_almost_equal(result, [1] * len(s))
+        assert_almost_equal(result, [1.] * len(s))
+
+        s = Series([np.nan] * 2 + [1.] + [np.nan] * 2 + [1.])
+        result = mom.ewma(s, com=5)
+        assert_almost_equal(result, [np.nan] * 2 + [1.] * 4)
+
+        # GH 7603
+        s0 = Series([np.nan, 1., 101.])
+        s1 = Series([1., np.nan, 101.])
+        s2 = Series([np.nan, 1., np.nan, np.nan, 101., np.nan])
+        s3 = Series([1., np.nan, 101., 50.])
+        com = 2.
+        alpha = 1. / (1. + com)
+
+        def simple_wma(s, w):
+            return (s.multiply(w).cumsum() / w.cumsum()).fillna(method='ffill')
+
+        for (s, adjust, ignore_na, w) in [
+                (s0, True, False, [np.nan, (1. - alpha), 1.]),
+                (s0, True, True, [np.nan, (1. - alpha), 1.]),
+                (s0, False, False, [np.nan, (1. - alpha), alpha]),
+                (s0, False, True, [np.nan, (1. - alpha), alpha]),
+                (s1, True, False, [(1. - alpha)**2, np.nan, 1.]),
+                (s1, True, True, [(1. - alpha), np.nan, 1.]),
+                (s1, False, False, [(1. - alpha)**2, np.nan, alpha]),
+                (s1, False, True, [(1. - alpha), np.nan, alpha]),
+                (s2, True, False, [np.nan, (1. - alpha)**3, np.nan, np.nan, 1., np.nan]),
+                (s2, True, True, [np.nan, (1. - alpha), np.nan, np.nan, 1., np.nan]),
+                (s2, False, False, [np.nan, (1. - alpha)**3, np.nan, np.nan, alpha, np.nan]),
+                (s2, False, True, [np.nan, (1. - alpha), np.nan, np.nan, alpha, np.nan]),
+                (s3, True, False, [(1. - alpha)**3, np.nan, (1. - alpha), 1.]),
+                (s3, True, True, [(1. - alpha)**2, np.nan, (1. - alpha), 1.]),
+                (s3, False, False, [(1. - alpha)**3, np.nan, (1. - alpha) * alpha, alpha * ((1. - alpha)**2 + alpha)]),
+                (s3, False, True, [(1. - alpha)**2, np.nan, (1. - alpha) * alpha, alpha]),
+                ]:
+            expected = simple_wma(s, Series(w))
+            result = mom.ewma(s, com=com, adjust=adjust, ignore_na=ignore_na)
+            assert_series_equal(result, expected)
+            if ignore_na is False:
+                # check that ignore_na defaults to False
+                result = mom.ewma(s, com=com, adjust=adjust)
+                assert_series_equal(result, expected)
 
     def test_ewmvar(self):
         self._check_ew(mom.ewmvar)
@@ -571,8 +746,35 @@ class TestMoments(tm.TestCase):
         arr = randn(50)
         arr[:10] = np.NaN
         arr[-10:] = np.NaN
+        s = Series(arr)
 
-        # ??? check something
+        # check min_periods
+        # GH 7898
+        result = func(s, 50, min_periods=2)
+        self.assertTrue(np.isnan(result.values[:11]).all())
+        self.assertFalse(np.isnan(result.values[11:]).any())
+
+        for min_periods in (0, 1):
+            result = func(s, 50, min_periods=min_periods)
+            if func == mom.ewma:
+                self.assertTrue(np.isnan(result.values[:10]).all())
+                self.assertFalse(np.isnan(result.values[10:]).any())
+            else:
+                # ewmstd, ewmvol, ewmvar (with bias=False) require at least two values
+                self.assertTrue(np.isnan(result.values[:11]).all())
+                self.assertFalse(np.isnan(result.values[11:]).any())
+
+            # check series of length 0
+            result = func(Series([]), 50, min_periods=min_periods)
+            assert_series_equal(result, Series([]))
+
+            # check series of length 1
+            result = func(Series([1.]), 50, min_periods=min_periods)
+            if func == mom.ewma:
+                assert_series_equal(result, Series([1.]))
+            else:
+                # ewmstd, ewmvol, ewmvar with bias=False require at least two values
+                assert_series_equal(result, Series([np.NaN]))
 
         # pass in ints
         result2 = func(np.arange(50), span=10)
@@ -583,6 +785,439 @@ class TestMoments(tm.TestCase):
         tm.assert_isinstance(series_result, Series)
         frame_result = func(self.frame, com=10)
         self.assertEqual(type(frame_result), DataFrame)
+
+# create the data only once as we are not setting it
+def _create_consistency_data():
+
+    def create_series():
+       return [Series(),
+               Series([np.nan]),
+               Series([np.nan, np.nan]),
+               Series([3.]),
+               Series([np.nan, 3.]),
+               Series([3., np.nan]),
+               Series([1., 3.]),
+               Series([2., 2.]),
+               Series([3., 1.]),
+               Series([5., 5., 5., 5., np.nan, np.nan, np.nan, 5., 5., np.nan, np.nan]),
+               Series([np.nan, 5., 5., 5., np.nan, np.nan, np.nan, 5., 5., np.nan, np.nan]),
+               Series([np.nan, np.nan, 5., 5., np.nan, np.nan, np.nan, 5., 5., np.nan, np.nan]),
+               Series([np.nan, 3., np.nan, 3., 4., 5., 6., np.nan, np.nan, 7., 12., 13., 14., 15.]),
+               Series([np.nan, 5., np.nan, 2., 4., 0., 9., np.nan, np.nan, 3., 12., 13., 14., 15.]),
+               Series([2., 3., np.nan, 3., 4., 5., 6., np.nan, np.nan, 7., 12., 13., 14., 15.]),
+               Series([2., 5., np.nan, 2., 4., 0., 9., np.nan, np.nan, 3., 12., 13., 14., 15.]),
+               Series(range(10)),
+               Series(range(20, 0, -2)),
+              ]
+
+    def create_dataframes():
+       return [DataFrame(),
+               DataFrame(columns=['a']),
+               DataFrame(columns=['a', 'a']),
+               DataFrame(columns=['a', 'b']),
+               DataFrame(np.arange(10).reshape((5, 2))),
+               DataFrame(np.arange(25).reshape((5, 5))),
+               DataFrame(np.arange(25).reshape((5, 5)), columns=['a', 'b', 99, 'd', 'd']),
+              ] + [DataFrame(s) for s in create_series()]
+
+    def is_constant(x):
+        values = x.values.ravel()
+        return len(set(values[notnull(values)])) == 1
+
+    def no_nans(x):
+        return x.notnull().all().all()
+
+    # data is a tuple(object, is_contant, no_nans)
+    data = create_series() + create_dataframes()
+
+    return [ (x, is_constant(x), no_nans(x)) for x in data ]
+_consistency_data = _create_consistency_data()
+
+class TestMomentsConsistency(Base):
+
+    def _create_data(self):
+        super(TestMomentsConsistency, self)._create_data()
+        self.data = _consistency_data
+
+    def setUp(self):
+        self._create_data()
+        warnings.simplefilter("ignore", category=FutureWarning)
+
+    def _test_moments_consistency(self,
+                                  min_periods,
+                                  count, mean, mock_mean, corr,
+                                  var_unbiased=None, std_unbiased=None, cov_unbiased=None,
+                                  var_biased=None, std_biased=None, cov_biased=None,
+                                  var_debiasing_factors=None):
+
+        def _non_null_values(x):
+            values = x.values.ravel()
+            return set(values[notnull(values)].tolist())
+
+        for (x, is_constant, no_nans) in self.data:
+            assert_equal = assert_series_equal if isinstance(x, Series) else assert_frame_equal
+            count_x = count(x)
+            mean_x = mean(x)
+
+            if mock_mean:
+                # check that mean equals mock_mean
+                expected = mock_mean(x)
+                assert_equal(mean_x, expected)
+
+            # check that correlation of a series with itself is either 1 or NaN
+            corr_x_x = corr(x, x)
+            # self.assertTrue(_non_null_values(corr_x_x).issubset(set([1.]))) # restore once rolling_cov(x, x) is identically equal to var(x)
+
+            if is_constant:
+                # check mean of constant series
+                expected = x * np.nan
+                expected[count_x >= max(min_periods, 1)] = x.max().max()
+                assert_equal(mean_x, expected)
+
+                # check correlation of constant series with itself is NaN
+                expected[:] = np.nan
+                assert_equal(corr_x_x, expected)
+
+            if var_unbiased and var_biased and var_debiasing_factors:
+                # check variance debiasing factors
+                var_unbiased_x = var_unbiased(x)
+                var_biased_x = var_biased(x)
+                var_debiasing_factors_x = var_debiasing_factors(x)
+                assert_equal(var_unbiased_x, var_biased_x * var_debiasing_factors_x)
+
+            for (std, var, cov) in [(std_biased, var_biased, cov_biased),
+                                    (std_unbiased, var_unbiased, cov_unbiased)]:
+
+                # check that var(x), std(x), and cov(x) are all >= 0
+                var_x = var(x)
+                std_x = std(x)
+                self.assertFalse((var_x < 0).any().any())
+                self.assertFalse((std_x < 0).any().any())
+                if cov:
+                    cov_x_x = cov(x, x)
+                    self.assertFalse((cov_x_x < 0).any().any())
+
+                    # check that var(x) == cov(x, x)
+                    assert_equal(var_x, cov_x_x)
+
+                # check that var(x) == std(x)^2
+                assert_equal(var_x, std_x * std_x)
+
+                if var is var_biased:
+                    # check that biased var(x) == mean(x^2) - mean(x)^2
+                    mean_x2 = mean(x * x)
+                    assert_equal(var_x, mean_x2 - (mean_x * mean_x))
+
+                if is_constant:
+                    # check that variance of constant series is identically 0
+                    self.assertFalse((var_x > 0).any().any())
+                    expected = x * np.nan
+                    expected[count_x >= max(min_periods, 1)] = 0.
+                    if var is var_unbiased:
+                        expected[count_x < 2] = np.nan
+                    assert_equal(var_x, expected)
+
+                if isinstance(x, Series):
+                    for (y, is_constant, no_nans) in self.data:
+                        if not x.isnull().equals(y.isnull()):
+                            # can only easily test two Series with similar structure
+                            continue
+
+                        # check that cor(x, y) is symmetric
+                        corr_x_y = corr(x, y)
+                        corr_y_x = corr(y, x)
+                        assert_equal(corr_x_y, corr_y_x)
+
+                        if cov:
+                            # check that cov(x, y) is symmetric
+                            cov_x_y = cov(x, y)
+                            cov_y_x = cov(y, x)
+                            assert_equal(cov_x_y, cov_y_x)
+
+                            # check that cov(x, y) == (var(x+y) - var(x) - var(y)) / 2
+                            var_x_plus_y = var(x + y)
+                            var_y = var(y)
+                            assert_equal(cov_x_y, 0.5 * (var_x_plus_y - var_x - var_y))
+
+                            # check that corr(x, y) == cov(x, y) / (std(x) * std(y))
+                            std_y = std(y)
+                            assert_equal(corr_x_y, cov_x_y / (std_x * std_y))
+
+                            if cov is cov_biased:
+                                # check that biased cov(x, y) == mean(x*y) - mean(x)*mean(y)
+                                mean_y = mean(y)
+                                mean_x_times_y = mean(x * y)
+                                assert_equal(cov_x_y, mean_x_times_y - (mean_x * mean_y))
+
+    @slow
+    def test_ewm_consistency(self):
+
+        def _weights(s, com, adjust, ignore_na):
+            if isinstance(s, DataFrame):
+                if not len(s.columns):
+                    return DataFrame(index=s.index, columns=s.columns)
+                w = concat([ _weights(s.iloc[:, i],
+                                      com=com,
+                                      adjust=adjust,
+                                      ignore_na=ignore_na) for i, _ in enumerate(s.columns) ],
+                           axis=1)
+                w.index=s.index
+                w.columns=s.columns
+                return w
+
+            w = Series(np.nan, index=s.index)
+            alpha = 1. / (1. + com)
+            if ignore_na:
+                w[s.notnull()] = _weights(s[s.notnull()], com=com, adjust=adjust, ignore_na=False)
+            elif adjust:
+                for i in range(len(s)):
+                    if s.iat[i] == s.iat[i]:
+                        w.iat[i] = pow(1. / (1. - alpha), i)
+            else:
+                sum_wts = 0.
+                prev_i = -1
+                for i in range(len(s)):
+                    if s.iat[i] == s.iat[i]:
+                        if prev_i == -1:
+                            w.iat[i] = 1.
+                        else:
+                            w.iat[i] = alpha * sum_wts / pow(1. - alpha, i - prev_i)
+                        sum_wts += w.iat[i]
+                        prev_i = i
+            return w
+
+        def _variance_debiasing_factors(s, com, adjust, ignore_na):
+            weights = _weights(s, com=com, adjust=adjust, ignore_na=ignore_na)
+            cum_sum = weights.cumsum().fillna(method='ffill')
+            cum_sum_sq = (weights * weights).cumsum().fillna(method='ffill')
+            numerator = cum_sum * cum_sum
+            denominator = numerator - cum_sum_sq
+            denominator[denominator <= 0.] = np.nan
+            return numerator / denominator
+
+        def _ewma(s, com, min_periods, adjust, ignore_na):
+            weights = _weights(s, com=com, adjust=adjust, ignore_na=ignore_na)
+            result = s.multiply(weights).cumsum().divide(weights.cumsum()).fillna(method='ffill')
+            result[mom.expanding_count(s) < (max(min_periods, 1) if min_periods else 1)] = np.nan
+            return result
+
+        com = 3.
+        for min_periods in [0, 1, 2, 3, 4]:
+            for adjust in [True, False]:
+                for ignore_na in [False, True]:
+                    # test consistency between different ewm* moments
+                    self._test_moments_consistency(
+                        min_periods=min_periods,
+                        count=mom.expanding_count,
+                        mean=lambda x: mom.ewma(x, com=com, min_periods=min_periods, adjust=adjust, ignore_na=ignore_na),
+                        mock_mean=lambda x: _ewma(x, com=com, min_periods=min_periods, adjust=adjust, ignore_na=ignore_na),
+                        corr=lambda x, y: mom.ewmcorr(x, y, com=com, min_periods=min_periods, adjust=adjust, ignore_na=ignore_na),
+                        var_unbiased=lambda x: mom.ewmvar(x, com=com, min_periods=min_periods, adjust=adjust, ignore_na=ignore_na, bias=False),
+                        std_unbiased=lambda x: mom.ewmstd(x, com=com, min_periods=min_periods, adjust=adjust, ignore_na=ignore_na, bias=False),
+                        cov_unbiased=lambda x, y: mom.ewmcov(x, y, com=com, min_periods=min_periods, adjust=adjust, ignore_na=ignore_na, bias=False),
+                        var_biased=lambda x: mom.ewmvar(x, com=com, min_periods=min_periods, adjust=adjust, ignore_na=ignore_na, bias=True),
+                        std_biased=lambda x: mom.ewmstd(x, com=com, min_periods=min_periods, adjust=adjust, ignore_na=ignore_na, bias=True),
+                        cov_biased=lambda x, y: mom.ewmcov(x, y, com=com, min_periods=min_periods, adjust=adjust, ignore_na=ignore_na, bias=True),
+                        var_debiasing_factors=lambda x: _variance_debiasing_factors(x, com=com, adjust=adjust, ignore_na=ignore_na))
+
+    @slow
+    def test_expanding_consistency(self):
+        base_functions = [
+            (mom.expanding_count, lambda v: Series(v).count(), None),
+            (mom.expanding_max, lambda v: Series(v).max(), None),
+            (mom.expanding_min, lambda v: Series(v).min(), None),
+            (mom.expanding_sum, lambda v: Series(v).sum(), None),
+            (mom.expanding_mean, lambda v: Series(v).mean(), None),
+            (mom.expanding_std, lambda v: Series(v).std(), 1),
+            (mom.expanding_cov, lambda v: Series(v).cov(Series(v)), None),
+            (mom.expanding_corr, lambda v: Series(v).corr(Series(v)), None),
+            (mom.expanding_var, lambda v: Series(v).var(), 1),
+            #(mom.expanding_skew, lambda v: Series(v).skew(), 3), # restore once GH 8086 is fixed
+            #(mom.expanding_kurt, lambda v: Series(v).kurt(), 4), # restore once GH 8086 is fixed
+            #(lambda x, min_periods: mom.expanding_quantile(x, 0.3, min_periods=min_periods),
+            # lambda v: Series(v).quantile(0.3), None), # restore once GH 8084 is fixed
+            (mom.expanding_median, lambda v: Series(v).median(), None),
+            (mom.expanding_max, np.nanmax, 1),
+            (mom.expanding_min, np.nanmin, 1),
+            (mom.expanding_sum, np.nansum, 1),
+            ]
+        if np.__version__ >= LooseVersion('1.8.0'):
+            base_functions += [
+                (mom.expanding_mean, np.nanmean, 1),
+                (mom.expanding_std, lambda v: np.nanstd(v, ddof=1), 1),
+                (mom.expanding_var, lambda v: np.nanvar(v, ddof=1), 1),
+            ]
+            if np.__version__ >= LooseVersion('1.9.0'):
+                base_functions += [
+                    (mom.expanding_median, np.nanmedian, 1),
+                ]
+        no_nan_functions = [
+            (mom.expanding_max, np.max, None),
+            (mom.expanding_min, np.min, None),
+            (mom.expanding_sum, np.sum, None),
+            (mom.expanding_mean, np.mean, None),
+            (mom.expanding_std, lambda v: np.std(v, ddof=1), 1),
+            (mom.expanding_var, lambda v: np.var(v, ddof=1), 1),
+            (mom.expanding_median, np.median, None),
+            ]
+
+        # suppress warnings about empty slices, as we are deliberately testing with empty/0-length Series/DataFrames
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*(empty slice|0 for slice).*", category=RuntimeWarning)
+
+            for min_periods in [0, 1, 2, 3, 4]:
+
+                # test consistency between different expanding_* moments
+                self._test_moments_consistency(
+                    min_periods=min_periods,
+                    count=mom.expanding_count,
+                    mean=lambda x: mom.expanding_mean(x, min_periods=min_periods),
+                    mock_mean=lambda x: mom.expanding_sum(x, min_periods=min_periods) / mom.expanding_count(x),
+                    corr=lambda x, y: mom.expanding_corr(x, y, min_periods=min_periods),
+                    var_unbiased=lambda x: mom.expanding_var(x, min_periods=min_periods),
+                    std_unbiased=lambda x: mom.expanding_std(x, min_periods=min_periods),
+                    cov_unbiased=lambda x, y: mom.expanding_cov(x, y, min_periods=min_periods),
+                    var_biased=lambda x: mom.expanding_var(x, min_periods=min_periods, ddof=0),
+                    std_biased=lambda x: mom.expanding_std(x, min_periods=min_periods, ddof=0),
+                    cov_biased=lambda x, y: mom.expanding_cov(x, y, min_periods=min_periods, ddof=0),
+                    var_debiasing_factors=lambda x: mom.expanding_count(x) / (mom.expanding_count(x) - 1.).replace(0., np.nan)
+                    )
+
+                # test consistency between expanding_xyz() and either (a) expanding_apply of Series.xyz(),
+                #                                                  or (b) expanding_apply of np.nanxyz()
+                for (x, is_constant, no_nans) in self.data:
+                    assert_equal = assert_series_equal if isinstance(x, Series) else assert_frame_equal
+                    functions = base_functions
+
+                    # GH 8269
+                    if no_nans:
+                        functions = base_functions + no_nan_functions
+                    for (expanding_f, f, require_min_periods) in functions:
+                        if require_min_periods and (min_periods is not None) and (min_periods < require_min_periods):
+                            continue
+
+                        if expanding_f is mom.expanding_count:
+                            expanding_f_result = expanding_f(x)
+                            expanding_apply_f_result = mom.expanding_apply(x, func=f, min_periods=0)
+                        else:
+                            if expanding_f in [mom.expanding_cov, mom.expanding_corr]:
+                                expanding_f_result = expanding_f(x, min_periods=min_periods, pairwise=False)
+                            else:
+                                expanding_f_result = expanding_f(x, min_periods=min_periods)
+                            expanding_apply_f_result = mom.expanding_apply(x, func=f, min_periods=min_periods)
+                        assert_equal(expanding_f_result, expanding_apply_f_result)
+
+                        if (expanding_f in [mom.expanding_cov, mom.expanding_corr]) and isinstance(x, DataFrame):
+                            # test pairwise=True
+                            expanding_f_result = expanding_f(x, x, min_periods=min_periods, pairwise=True)
+                            expected = Panel(items=x.index, major_axis=x.columns, minor_axis=x.columns)
+                            for i, _ in enumerate(x.columns):
+                                for j, _ in enumerate(x.columns):
+                                    expected.iloc[:, i, j] = expanding_f(x.iloc[:, i], x.iloc[:, j], min_periods=min_periods)
+                            assert_panel_equal(expanding_f_result, expected)
+
+    @slow
+    def test_rolling_consistency(self):
+
+        base_functions = [
+            (mom.rolling_count, lambda v: Series(v).count(), None),
+            (mom.rolling_max, lambda v: Series(v).max(), None),
+            (mom.rolling_min, lambda v: Series(v).min(), None),
+            (mom.rolling_sum, lambda v: Series(v).sum(), None),
+            (mom.rolling_mean, lambda v: Series(v).mean(), None),
+            (mom.rolling_std, lambda v: Series(v).std(), 1),
+            (mom.rolling_cov, lambda v: Series(v).cov(Series(v)), None),
+            (mom.rolling_corr, lambda v: Series(v).corr(Series(v)), None),
+            (mom.rolling_var, lambda v: Series(v).var(), 1),
+            #(mom.rolling_skew, lambda v: Series(v).skew(), 3), # restore once GH 8086 is fixed
+            #(mom.rolling_kurt, lambda v: Series(v).kurt(), 4), # restore once GH 8086 is fixed
+            #(lambda x, window, min_periods, center: mom.rolling_quantile(x, window, 0.3, min_periods=min_periods, center=center),
+            # lambda v: Series(v).quantile(0.3), None), # restore once GH 8084 is fixed
+            (mom.rolling_median, lambda v: Series(v).median(), None),
+            (mom.rolling_max, np.nanmax, 1),
+            (mom.rolling_min, np.nanmin, 1),
+            (mom.rolling_sum, np.nansum, 1),
+            ]
+        if np.__version__ >= LooseVersion('1.8.0'):
+            base_functions += [
+                (mom.rolling_mean, np.nanmean, 1),
+                (mom.rolling_std, lambda v: np.nanstd(v, ddof=1), 1),
+                (mom.rolling_var, lambda v: np.nanvar(v, ddof=1), 1),
+            ]
+            if np.__version__ >= LooseVersion('1.9.0'):
+                base_functions += [
+                    (mom.rolling_median, np.nanmedian, 1),
+                ]
+        no_nan_functions = [
+            (mom.rolling_max, np.max, None),
+            (mom.rolling_min, np.min, None),
+            (mom.rolling_sum, np.sum, None),
+            (mom.rolling_mean, np.mean, None),
+            (mom.rolling_std, lambda v: np.std(v, ddof=1), 1),
+            (mom.rolling_var, lambda v: np.var(v, ddof=1), 1),
+            (mom.rolling_median, np.median, None),
+            ]
+
+        for window in [1, 2, 3, 10, 20]:
+            for min_periods in set([0, 1, 2, 3, 4, window]):
+                if min_periods and (min_periods > window):
+                    continue
+                for center in [False, True]:
+
+                    # test consistency between different rolling_* moments
+                    self._test_moments_consistency(
+                        min_periods=min_periods,
+                        count=lambda x: mom.rolling_count(x, window=window, center=center),
+                        mean=lambda x: mom.rolling_mean(x, window=window, min_periods=min_periods, center=center),
+                        mock_mean=lambda x: mom.rolling_sum(x, window=window, min_periods=min_periods, center=center).divide(
+                                            mom.rolling_count(x, window=window, center=center)),
+                        corr=lambda x, y: mom.rolling_corr(x, y, window=window, min_periods=min_periods, center=center),
+                        var_unbiased=lambda x: mom.rolling_var(x, window=window, min_periods=min_periods, center=center),
+                        std_unbiased=lambda x: mom.rolling_std(x, window=window, min_periods=min_periods, center=center),
+                        cov_unbiased=lambda x, y: mom.rolling_cov(x, y, window=window, min_periods=min_periods, center=center),
+                        var_biased=lambda x: mom.rolling_var(x, window=window, min_periods=min_periods, center=center, ddof=0),
+                        std_biased=lambda x: mom.rolling_std(x, window=window, min_periods=min_periods, center=center, ddof=0),
+                        cov_biased=lambda x, y: mom.rolling_cov(x, y, window=window, min_periods=min_periods, center=center, ddof=0),
+                        var_debiasing_factors=lambda x: mom.rolling_count(x, window=window, center=center).divide(
+                                                        (mom.rolling_count(x, window=window, center=center) - 1.).replace(0., np.nan)),
+                        )
+
+                    # test consistency between rolling_xyz() and either (a) rolling_apply of Series.xyz(),
+                    #                                                or (b) rolling_apply of np.nanxyz()
+                    for (x, is_constant, no_nans) in self.data:
+
+                        assert_equal = assert_series_equal if isinstance(x, Series) else assert_frame_equal
+                        functions = base_functions
+                        # GH 8269
+                        if no_nans:
+                            functions = base_functions + no_nan_functions
+                        for (rolling_f, f, require_min_periods) in functions:
+                            if require_min_periods and (min_periods is not None) and (min_periods < require_min_periods):
+                                continue
+
+                            if rolling_f is mom.rolling_count:
+                                rolling_f_result = rolling_f(x, window=window, center=center)
+                                rolling_apply_f_result = mom.rolling_apply(x, window=window, func=f,
+                                                                           min_periods=0, center=center)
+                            else:
+                                if rolling_f in [mom.rolling_cov, mom.rolling_corr]:
+                                    rolling_f_result = rolling_f(x, window=window, min_periods=min_periods, center=center, pairwise=False)
+                                else:
+                                    rolling_f_result = rolling_f(x, window=window, min_periods=min_periods, center=center)
+                                rolling_apply_f_result = mom.rolling_apply(x, window=window, func=f,
+                                                                           min_periods=min_periods, center=center)
+                            assert_equal(rolling_f_result, rolling_apply_f_result)
+
+                            if (rolling_f in [mom.rolling_cov, mom.rolling_corr]) and isinstance(x, DataFrame):
+                                # test pairwise=True
+                                rolling_f_result = rolling_f(x, x, window=window, min_periods=min_periods,
+                                                             center=center, pairwise=True)
+                                expected = Panel(items=x.index, major_axis=x.columns, minor_axis=x.columns)
+                                for i, _ in enumerate(x.columns):
+                                    for j, _ in enumerate(x.columns):
+                                        expected.iloc[:, i, j] = rolling_f(x.iloc[:, i], x.iloc[:, j],
+                                                                           window=window, min_periods=min_periods, center=center)
+                                assert_panel_equal(rolling_f_result, expected)
 
     # binary moments
     def test_rolling_cov(self):
@@ -694,9 +1329,23 @@ class TestMoments(tm.TestCase):
         B[-10:] = np.NaN
 
         result = func(A, B, 20, min_periods=5)
+        self.assertTrue(np.isnan(result.values[:14]).all())
+        self.assertFalse(np.isnan(result.values[14:]).any())
 
-        self.assertTrue(np.isnan(result.values[:15]).all())
-        self.assertFalse(np.isnan(result.values[15:]).any())
+        # GH 7898
+        for min_periods in (0, 1, 2):
+            result = func(A, B, 20, min_periods=min_periods)
+            # binary functions (ewmcov, ewmcorr) with bias=False require at least two values
+            self.assertTrue(np.isnan(result.values[:11]).all())
+            self.assertFalse(np.isnan(result.values[11:]).any())
+
+            # check series of length 0
+            result = func(Series([]), Series([]), 50, min_periods=min_periods)
+            assert_series_equal(result, Series([]))
+
+            # check series of length 1
+            result = func(Series([1.]), Series([1.]), 50, min_periods=min_periods)
+            assert_series_equal(result, Series([np.NaN]))
 
         self.assertRaises(Exception, func, A, randn(50), 20, min_periods=5)
 
@@ -710,6 +1359,12 @@ class TestMoments(tm.TestCase):
                                        min_periods=min_periods,
                                        freq=freq)
         self._check_expanding(expanding_mean, np.mean)
+
+        # GH 8080
+        s = Series([None, None, None])
+        result = mom.expanding_apply(s, lambda x: len(x), min_periods=0)
+        expected = Series([1., 2., 3.])
+        assert_series_equal(result, expected)
 
     def test_expanding_apply_args_kwargs(self):
         def mean_w_arg(x, const):
@@ -841,6 +1496,122 @@ class TestMoments(tm.TestCase):
         result = mom.rolling_corr(s1, s2a, window=3, min_periods=2)
         assert_series_equal(result, expected)
 
+    def test_rolling_functions_window_non_shrinkage(self):
+        # GH 7764
+        s = Series(range(4))
+        s_expected = Series(np.nan, index=s.index)
+        df = DataFrame([[1,5], [3, 2], [3,9], [-1,0]], columns=['A','B'])
+        df_expected = DataFrame(np.nan, index=df.index, columns=df.columns)
+        df_expected_panel = Panel(items=df.index, major_axis=df.columns, minor_axis=df.columns)
+
+        functions = [lambda x: mom.rolling_cov(x, x, pairwise=False, window=10, min_periods=5),
+                     lambda x: mom.rolling_corr(x, x, pairwise=False, window=10, min_periods=5),
+                     lambda x: mom.rolling_max(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_min(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_sum(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_mean(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_std(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_var(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_skew(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_kurt(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_quantile(x, quantile=0.5, window=10, min_periods=5),
+                     lambda x: mom.rolling_median(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_apply(x, func=sum, window=10, min_periods=5),
+                     lambda x: mom.rolling_window(x, win_type='boxcar', window=10, min_periods=5),
+                    ]
+        for f in functions:
+            try:
+                s_result = f(s)
+                assert_series_equal(s_result, s_expected)
+
+                df_result = f(df)
+                assert_frame_equal(df_result, df_expected)
+            except (ImportError):
+
+                # scipy needed for rolling_window
+                continue
+
+        functions = [lambda x: mom.rolling_cov(x, x, pairwise=True, window=10, min_periods=5),
+                     lambda x: mom.rolling_corr(x, x, pairwise=True, window=10, min_periods=5),
+                     # rolling_corr_pairwise is depracated, so the following line should be deleted
+                     # when rolling_corr_pairwise is removed.
+                     lambda x: mom.rolling_corr_pairwise(x, x, window=10, min_periods=5),
+                    ]
+        for f in functions:
+            df_result_panel = f(df)
+            assert_panel_equal(df_result_panel, df_expected_panel)
+
+    def test_moment_functions_zero_length(self):
+        # GH 8056
+        s = Series()
+        s_expected = s
+        df1 = DataFrame()
+        df1_expected = df1
+        df1_expected_panel = Panel(items=df1.index, major_axis=df1.columns, minor_axis=df1.columns)
+        df2 = DataFrame(columns=['a'])
+        df2_expected = df2
+        df2_expected_panel = Panel(items=df2.index, major_axis=df2.columns, minor_axis=df2.columns)
+
+        functions = [lambda x: mom.expanding_count(x),
+                     lambda x: mom.expanding_cov(x, x, pairwise=False, min_periods=5),
+                     lambda x: mom.expanding_corr(x, x, pairwise=False, min_periods=5),
+                     lambda x: mom.expanding_max(x, min_periods=5),
+                     lambda x: mom.expanding_min(x, min_periods=5),
+                     lambda x: mom.expanding_sum(x, min_periods=5),
+                     lambda x: mom.expanding_mean(x, min_periods=5),
+                     lambda x: mom.expanding_std(x, min_periods=5),
+                     lambda x: mom.expanding_var(x, min_periods=5),
+                     lambda x: mom.expanding_skew(x, min_periods=5),
+                     lambda x: mom.expanding_kurt(x, min_periods=5),
+                     lambda x: mom.expanding_quantile(x, quantile=0.5, min_periods=5),
+                     lambda x: mom.expanding_median(x, min_periods=5),
+                     lambda x: mom.expanding_apply(x, func=sum, min_periods=5),
+                     lambda x: mom.rolling_count(x, window=10),
+                     lambda x: mom.rolling_cov(x, x, pairwise=False, window=10, min_periods=5),
+                     lambda x: mom.rolling_corr(x, x, pairwise=False, window=10, min_periods=5),
+                     lambda x: mom.rolling_max(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_min(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_sum(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_mean(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_std(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_var(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_skew(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_kurt(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_quantile(x, quantile=0.5, window=10, min_periods=5),
+                     lambda x: mom.rolling_median(x, window=10, min_periods=5),
+                     lambda x: mom.rolling_apply(x, func=sum, window=10, min_periods=5),
+                     lambda x: mom.rolling_window(x, win_type='boxcar', window=10, min_periods=5),
+                    ]
+        for f in functions:
+            try:
+                s_result = f(s)
+                assert_series_equal(s_result, s_expected)
+
+                df1_result = f(df1)
+                assert_frame_equal(df1_result, df1_expected)
+
+                df2_result = f(df2)
+                assert_frame_equal(df2_result, df2_expected)
+            except (ImportError):
+
+                # scipy needed for rolling_window
+                continue
+
+        functions = [lambda x: mom.expanding_cov(x, x, pairwise=True, min_periods=5),
+                     lambda x: mom.expanding_corr(x, x, pairwise=True, min_periods=5),
+                     lambda x: mom.rolling_cov(x, x, pairwise=True, window=10, min_periods=5),
+                     lambda x: mom.rolling_corr(x, x, pairwise=True, window=10, min_periods=5),
+                     # rolling_corr_pairwise is depracated, so the following line should be deleted
+                     # when rolling_corr_pairwise is removed.
+                     lambda x: mom.rolling_corr_pairwise(x, x, window=10, min_periods=5),
+                    ]
+        for f in functions:
+            df1_result_panel = f(df1)
+            assert_panel_equal(df1_result_panel, df1_expected_panel)
+
+            df2_result_panel = f(df2)
+            assert_panel_equal(df2_result_panel, df2_expected_panel)
+
     def test_expanding_cov_pairwise_diff_length(self):
         # GH 7512
         df1 = DataFrame([[1,5], [3, 2], [3,9]], columns=['A','B'])
@@ -856,7 +1627,7 @@ class TestMoments(tm.TestCase):
         assert_frame_equal(result2, expected)
         assert_frame_equal(result3, expected)
         assert_frame_equal(result4, expected)
-    
+
     def test_expanding_corr_pairwise_diff_length(self):
         # GH 7512
         df1 = DataFrame([[1,2], [3, 2], [3,4]], columns=['A','B'])
@@ -872,7 +1643,124 @@ class TestMoments(tm.TestCase):
         assert_frame_equal(result2, expected)
         assert_frame_equal(result3, expected)
         assert_frame_equal(result4, expected)
-    
+
+    def test_pairwise_stats_column_names_order(self):
+        # GH 7738
+        df1s = [DataFrame([[2,4],[1,2],[5,2],[8,1]], columns=[0,1]),
+                DataFrame([[2,4],[1,2],[5,2],[8,1]], columns=[1,0]),
+                DataFrame([[2,4],[1,2],[5,2],[8,1]], columns=[1,1]),
+                DataFrame([[2,4],[1,2],[5,2],[8,1]], columns=['C','C']),
+                DataFrame([[2,4],[1,2],[5,2],[8,1]], columns=[1.,0]),
+                DataFrame([[2,4],[1,2],[5,2],[8,1]], columns=[0.,1]),
+                DataFrame([[2,4],[1,2],[5,2],[8,1]], columns=['C',1]),
+                DataFrame([[2.,4.],[1.,2.],[5.,2.],[8.,1.]], columns=[1,0.]),
+                DataFrame([[2,4.],[1,2.],[5,2.],[8,1.]], columns=[0,1.]),
+                DataFrame([[2,4],[1,2],[5,2],[8,1.]], columns=[1.,'X']),
+               ]
+        df2 = DataFrame([[None,1,1],[None,1,2],[None,3,2],[None,8,1]], columns=['Y','Z','X'])
+        s = Series([1,1,3,8])
+
+        # suppress warnings about incomparable objects, as we are deliberately testing with such column labels
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*incomparable objects.*", category=RuntimeWarning)
+
+            # DataFrame methods (which do not call _flex_binary_moment())
+            for f in [lambda x: x.cov(),
+                      lambda x: x.corr(),
+                     ]:
+                results = [f(df) for df in df1s]
+                for (df, result) in zip(df1s, results):
+                    assert_index_equal(result.index, df.columns)
+                    assert_index_equal(result.columns, df.columns)
+                for i, result in enumerate(results):
+                    if i > 0:
+                        self.assert_numpy_array_equivalent(result, results[0])
+
+            # DataFrame with itself, pairwise=True
+            for f in [lambda x: mom.expanding_cov(x, pairwise=True),
+                      lambda x: mom.expanding_corr(x, pairwise=True),
+                      lambda x: mom.rolling_cov(x, window=3, pairwise=True),
+                      lambda x: mom.rolling_corr(x, window=3, pairwise=True),
+                      lambda x: mom.ewmcov(x, com=3, pairwise=True),
+                      lambda x: mom.ewmcorr(x, com=3, pairwise=True),
+                     ]:
+                results = [f(df) for df in df1s]
+                for (df, result) in zip(df1s, results):
+                    assert_index_equal(result.items, df.index)
+                    assert_index_equal(result.major_axis, df.columns)
+                    assert_index_equal(result.minor_axis, df.columns)
+                for i, result in enumerate(results):
+                    if i > 0:
+                        self.assert_numpy_array_equivalent(result, results[0])
+
+            # DataFrame with itself, pairwise=False
+            for f in [lambda x: mom.expanding_cov(x, pairwise=False),
+                      lambda x: mom.expanding_corr(x, pairwise=False),
+                      lambda x: mom.rolling_cov(x, window=3, pairwise=False),
+                      lambda x: mom.rolling_corr(x, window=3, pairwise=False),
+                      lambda x: mom.ewmcov(x, com=3, pairwise=False),
+                      lambda x: mom.ewmcorr(x, com=3, pairwise=False),
+                     ]:
+                results = [f(df) for df in df1s]
+                for (df, result) in zip(df1s, results):
+                    assert_index_equal(result.index, df.index)
+                    assert_index_equal(result.columns, df.columns)
+                for i, result in enumerate(results):
+                    if i > 0:
+                        self.assert_numpy_array_equivalent(result, results[0])
+
+            # DataFrame with another DataFrame, pairwise=True
+            for f in [lambda x, y: mom.expanding_cov(x, y, pairwise=True),
+                      lambda x, y: mom.expanding_corr(x, y, pairwise=True),
+                      lambda x, y: mom.rolling_cov(x, y, window=3, pairwise=True),
+                      lambda x, y: mom.rolling_corr(x, y, window=3, pairwise=True),
+                      lambda x, y: mom.ewmcov(x, y, com=3, pairwise=True),
+                      lambda x, y: mom.ewmcorr(x, y, com=3, pairwise=True),
+                     ]:
+                results = [f(df, df2) for df in df1s]
+                for (df, result) in zip(df1s, results):
+                    assert_index_equal(result.items, df.index)
+                    assert_index_equal(result.major_axis, df.columns)
+                    assert_index_equal(result.minor_axis, df2.columns)
+                for i, result in enumerate(results):
+                    if i > 0:
+                        self.assert_numpy_array_equivalent(result, results[0])
+
+            # DataFrame with another DataFrame, pairwise=False
+            for f in [lambda x, y: mom.expanding_cov(x, y, pairwise=False),
+                      lambda x, y: mom.expanding_corr(x, y, pairwise=False),
+                      lambda x, y: mom.rolling_cov(x, y, window=3, pairwise=False),
+                      lambda x, y: mom.rolling_corr(x, y, window=3, pairwise=False),
+                      lambda x, y: mom.ewmcov(x, y, com=3, pairwise=False),
+                      lambda x, y: mom.ewmcorr(x, y, com=3, pairwise=False),
+                     ]:
+                results = [f(df, df2) if df.columns.is_unique else None for df in df1s]
+                for (df, result) in zip(df1s, results):
+                    if result is not None:
+                        expected_index = df.index.union(df2.index)
+                        expected_columns = df.columns.union(df2.columns)
+                        assert_index_equal(result.index, expected_index)
+                        assert_index_equal(result.columns, expected_columns)
+                    else:
+                        tm.assertRaisesRegexp(ValueError, "'arg1' columns are not unique", f, df, df2)
+                        tm.assertRaisesRegexp(ValueError, "'arg2' columns are not unique", f, df2, df)
+
+            # DataFrame with a Series
+            for f in [lambda x, y: mom.expanding_cov(x, y),
+                      lambda x, y: mom.expanding_corr(x, y),
+                      lambda x, y: mom.rolling_cov(x, y, window=3),
+                      lambda x, y: mom.rolling_corr(x, y, window=3),
+                      lambda x, y: mom.ewmcov(x, y, com=3),
+                      lambda x, y: mom.ewmcorr(x, y, com=3),
+                     ]:
+                results = [f(df, s) for df in df1s] + [f(s, df) for df in df1s]
+                for (df, result) in zip(df1s, results):
+                    assert_index_equal(result.index, df.index)
+                    assert_index_equal(result.columns, df.columns)
+                for i, result in enumerate(results):
+                    if i > 0:
+                        self.assert_numpy_array_equivalent(result, results[0])
+
     def test_rolling_skew_edge_cases(self):
 
         all_nan = Series([np.NaN] * 5)

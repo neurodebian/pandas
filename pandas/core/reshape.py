@@ -513,9 +513,7 @@ def stack(frame, level=-1, dropna=True):
                    "names are not unique.".format(level))
             raise ValueError(msg)
 
-    if isinstance(level, int) and level < 0:
-        level += frame.columns.nlevels
-
+    # Will also convert negative level numbers and check if out of bounds.
     level = frame.columns._get_level_number(level)
 
     if isinstance(frame.columns, MultiIndex):
@@ -547,6 +545,45 @@ def stack(frame, level=-1, dropna=True):
     return Series(new_values, index=new_index)
 
 
+def stack_multiple(frame, level, dropna=True):
+    # If all passed levels match up to column names, no
+    # ambiguity about what to do
+    if all(lev in frame.columns.names for lev in level):
+        result = frame
+        for lev in level:
+            result = stack(result, lev, dropna=dropna)
+
+    # Otherwise, level numbers may change as each successive level is stacked
+    elif all(isinstance(lev, int) for lev in level):
+        # As each stack is done, the level numbers decrease, so we need
+        #  to account for that when level is a sequence of ints
+        result = frame
+        # _get_level_number() checks level numbers are in range and converts
+        # negative numbers to positive
+        level = [frame.columns._get_level_number(lev) for lev in level]
+
+        # Can't iterate directly through level as we might need to change
+        # values as we go
+        for index in range(len(level)):
+            lev = level[index]
+            result = stack(result, lev, dropna=dropna)
+            # Decrement all level numbers greater than current, as these
+            # have now shifted down by one
+            updated_level = []
+            for other in level:
+                if other > lev:
+                    updated_level.append(other - 1)
+                else:
+                    updated_level.append(other)
+            level = updated_level
+
+    else:
+        raise ValueError("level should contain all level names or all level numbers, "
+                         "not a mixture of the two.")
+
+    return result
+
+
 def _stack_multi_columns(frame, level=-1, dropna=True):
     this = frame.copy()
 
@@ -564,7 +601,7 @@ def _stack_multi_columns(frame, level=-1, dropna=True):
     # tuple list excluding level for grouping columns
     if len(frame.columns.levels) > 2:
         tuples = list(zip(*[
-            lev.values.take(lab) for lev, lab in
+            lev.take(lab) for lev, lab in
             zip(this.columns.levels[:-1], this.columns.labels[:-1])
         ]))
         unique_groups = [key for key, _ in itertools.groupby(tuples)]
@@ -811,7 +848,7 @@ def lreshape(data, groups, dropna=True, label=None):
         keys, values = zip(*groups)
 
     all_cols = list(set.union(*[set(x) for x in values]))
-    id_cols = list(data.columns.diff(all_cols))
+    id_cols = list(data.columns.difference(all_cols))
 
     K = len(values[0])
 
@@ -942,27 +979,42 @@ def convert_dummies(data, cat_variables, prefix_sep='_'):
     -------
     dummies : DataFrame
     """
+    import warnings
+
+    warnings.warn("'convert_dummies' is deprecated and will be removed "
+                  "in a future release. Use 'get_dummies' instead.",
+                  FutureWarning)
+
     result = data.drop(cat_variables, axis=1)
     for variable in cat_variables:
-        dummies = get_dummies(data[variable], prefix=variable,
-                              prefix_sep=prefix_sep)
+        dummies = _get_dummies_1d(data[variable], prefix=variable,
+                                  prefix_sep=prefix_sep)
         result = result.join(dummies)
     return result
 
 
-def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False):
+def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False,
+                columns=None):
     """
     Convert categorical variable into dummy/indicator variables
 
     Parameters
     ----------
-    data : array-like or Series
-    prefix : string, default None
+    data : array-like, Series, or DataFrame
+    prefix : string, list of strings, or dict of strings, default None
         String to append DataFrame column names
+        Pass a list with length equal to the number of columns
+        when calling get_dummies on a DataFrame. Alternativly, `prefix`
+        can be a dictionary mapping column names to prefixes.
     prefix_sep : string, default '_'
-        If appending prefix, separator/delimiter to use
+        If appending prefix, separator/delimiter to use. Or pass a
+        list or dictionary as with `prefix.`
     dummy_na : bool, default False
         Add a column to indicate NaNs, if False NaNs are ignored.
+    columns : list-like, default None
+        Column names in the DataFrame to be encoded.
+        If `columns` is None then all the columns with
+        `object` or `category` dtype will be converted.
 
     Returns
     -------
@@ -994,12 +1046,74 @@ def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False):
     1  0  1    0
     2  0  0    1
 
+    >>> df = DataFrame({'A': ['a', 'b', 'a'], 'B': ['b', 'a', 'c'],
+                        'C': [1, 2, 3]})
+
+    >>> get_dummies(df, prefix=['col1', 'col2']):
+       C  col1_a  col1_b  col2_a  col2_b  col2_c
+    0  1       1       0       0       1       0
+    1  2       0       1       1       0       0
+    2  3       1       0       0       0       1
+
     See also ``Series.str.get_dummies``.
 
     """
+    from pandas.tools.merge import concat
+    from itertools import cycle
+
+    if isinstance(data, DataFrame):
+        # determine columns being encoded
+
+        if columns is None:
+            columns_to_encode = data.select_dtypes(include=['object',
+                'category']).columns
+        else:
+            columns_to_encode = columns
+
+        # validate prefixes and separator to avoid silently dropping cols
+        def check_len(item, name):
+            length_msg = ("Length of '{0}' ({1}) did "
+                           "not match the length of the columns "
+                           "being encoded ({2}).")
+
+            if com.is_list_like(item):
+                if not len(item) == len(columns_to_encode):
+                    raise ValueError(length_msg.format(name, len(item),
+                                     len(columns_to_encode)))
+
+        check_len(prefix, 'prefix')
+        check_len(prefix_sep, 'prefix_sep')
+        if isinstance(prefix, compat.string_types):
+            prefix = cycle([prefix])
+        if isinstance(prefix, dict):
+            prefix = [prefix[col] for col in columns_to_encode]
+
+        if prefix is None:
+            prefix = columns_to_encode
+
+        # validate separators
+        if isinstance(prefix_sep, compat.string_types):
+            prefix_sep = cycle([prefix_sep])
+        elif isinstance(prefix_sep, dict):
+            prefix_sep = [prefix_sep[col] for col in columns_to_encode]
+
+        result = data.drop(columns_to_encode, axis=1)
+        with_dummies = [result]
+        for (col, pre, sep) in zip(columns_to_encode, prefix, prefix_sep):
+
+            dummy = _get_dummies_1d(data[col], prefix=pre,
+                                    prefix_sep=sep, dummy_na=dummy_na)
+            with_dummies.append(dummy)
+        result = concat(with_dummies, axis=1)
+    else:
+        result = _get_dummies_1d(data, prefix, prefix_sep, dummy_na)
+    return result
+
+
+def _get_dummies_1d(data, prefix, prefix_sep='_', dummy_na=False):
     # Series avoids inconsistent NaN handling
     cat = Categorical.from_array(Series(data))
-    levels = cat.levels
+    levels = cat.categories
 
     # if all NaN
     if not dummy_na and len(levels) == 0:
@@ -1013,13 +1127,13 @@ def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False):
     if dummy_na:
         number_of_cols += 1
 
-    dummy_mat = np.eye(number_of_cols).take(cat.labels, axis=0)
+    dummy_mat = np.eye(number_of_cols).take(cat.codes, axis=0)
 
     if dummy_na:
-        levels = np.append(cat.levels, np.nan)
+        levels = np.append(cat.categories, np.nan)
     else:
         # reset NaN GH4446
-        dummy_mat[cat.labels == -1] = 0
+        dummy_mat[cat.codes == -1] = 0
 
     if prefix is not None:
         dummy_cols = ['%s%s%s' % (prefix, prefix_sep, v)
@@ -1067,8 +1181,8 @@ def make_axis_dummies(frame, axis='minor', transform=None):
     if transform is not None:
         mapped_items = items.map(transform)
         cat = Categorical.from_array(mapped_items.take(labels))
-        labels = cat.labels
-        items = cat.levels
+        labels = cat.codes
+        items = cat.categories
 
     values = np.eye(len(items), dtype=float)
     values = values.take(labels, axis=0)

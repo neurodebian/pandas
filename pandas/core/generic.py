@@ -16,14 +16,14 @@ from pandas.tseries.period import PeriodIndex
 from pandas.core.internals import BlockManager
 import pandas.core.common as com
 import pandas.core.datetools as datetools
-from pandas import compat, _np_version_under1p7
+from pandas import compat
 from pandas.compat import map, zip, lrange, string_types, isidentifier, lmap
 from pandas.core.common import (isnull, notnull, is_list_like,
                                 _values_from_object, _maybe_promote,
                                 _maybe_box_datetimelike, ABCSeries,
                                 SettingWithCopyError, SettingWithCopyWarning)
 import pandas.core.nanops as nanops
-from pandas.util.decorators import Appender, Substitution
+from pandas.util.decorators import Appender, Substitution, deprecate_kwarg
 from pandas.core import config
 
 # goal is to be able to define the docs close to function, while still being
@@ -105,7 +105,7 @@ class NDFrame(PandasObject):
         """ validate the passed dtype """
 
         if dtype is not None:
-            dtype = np.dtype(dtype)
+            dtype = com._coerce_to_dtype(dtype)
 
             # a compound dtype
             if dtype.kind == 'V':
@@ -915,8 +915,8 @@ class NDFrame(PandasObject):
         from pandas.io import packers
         return packers.to_msgpack(path_or_buf, self, **kwargs)
 
-    def to_sql(self, name, con, flavor='sqlite', if_exists='fail', index=True,
-               index_label=None):
+    def to_sql(self, name, con, flavor='sqlite', schema=None, if_exists='fail',
+               index=True, index_label=None, chunksize=None):
         """
         Write records stored in a DataFrame to a SQL database.
 
@@ -932,6 +932,9 @@ class NDFrame(PandasObject):
             The flavor of SQL to use. Ignored when using SQLAlchemy engine.
             'mysql' is deprecated and will be removed in future versions, but it
             will be further supported through SQLAlchemy engines.
+        schema : string, default None
+            Specify the schema (if database flavor supports this). If None, use
+            default schema.
         if_exists : {'fail', 'replace', 'append'}, default 'fail'
             - fail: If table exists, do nothing.
             - replace: If table exists, drop it, recreate it, and insert data.
@@ -942,12 +945,15 @@ class NDFrame(PandasObject):
             Column label for index column(s). If None is given (default) and
             `index` is True, then the index names are used.
             A sequence should be given if the DataFrame uses MultiIndex.
+        chunksize : int, default None
+            If not None, then rows will be written in batches of this size at a
+            time.  If None, all rows will be written at once.
 
         """
         from pandas.io import sql
         sql.to_sql(
-            self, name, con, flavor=flavor, if_exists=if_exists, index=index,
-            index_label=index_label)
+            self, name, con, flavor=flavor, schema=schema, if_exists=if_exists,
+            index=index, index_label=index_label, chunksize=chunksize)
 
     def to_pickle(self, path):
         """
@@ -1038,7 +1044,7 @@ class NDFrame(PandasObject):
         """
         try:
             return self[key]
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, IndexError):
             return default
 
     def __getitem__(self, item):
@@ -1088,17 +1094,35 @@ class NDFrame(PandasObject):
     @property
     def _is_cached(self):
         """ boolean : return if I am cached """
+        return getattr(self, '_cacher', None) is not None
+
+    def _get_cacher(self):
+        """ return my cacher or None """
         cacher = getattr(self, '_cacher', None)
-        return cacher is not None
+        if cacher is not None:
+            cacher = cacher[1]()
+        return cacher
 
     @property
     def _is_view(self):
         """ boolean : return if I am a view of another array """
         return self._data.is_view
 
-    def _maybe_update_cacher(self, clear=False):
-        """ see if we need to update our parent cacher
-            if clear, then clear our cache """
+    def _maybe_update_cacher(self, clear=False, verify_is_copy=True):
+        """
+
+        see if we need to update our parent cacher
+        if clear, then clear our cache
+
+        Parameters
+        ----------
+        clear : boolean, default False
+            clear the item cache
+        verify_is_copy : boolean, default True
+            provide is_copy checks
+
+        """
+
         cacher = getattr(self, '_cacher', None)
         if cacher is not None:
             ref = cacher[1]()
@@ -1113,8 +1137,8 @@ class NDFrame(PandasObject):
                 except:
                     pass
 
-        # check if we are a copy
-        self._check_setitem_copy(stacklevel=5, t='referant')
+        if verify_is_copy:
+            self._check_setitem_copy(stacklevel=5, t='referant')
 
         if clear:
             self._clear_item_cache()
@@ -1133,7 +1157,13 @@ class NDFrame(PandasObject):
 
         """
         axis = self._get_block_manager_axis(axis)
-        return self._constructor(self._data.get_slice(slobj, axis=axis))
+        result = self._constructor(self._data.get_slice(slobj, axis=axis))
+
+        # this could be a view
+        # but only in a single-dtyped view slicable case
+        is_copy = axis!=0 or result._is_view
+        result._set_is_copy(self, copy=is_copy)
+        return result
 
     def _set_item(self, key, value):
         self._data.set(key, value)
@@ -1148,12 +1178,57 @@ class NDFrame(PandasObject):
             else:
                 self.is_copy = None
 
-    def _check_setitem_copy(self, stacklevel=4, t='setting'):
-        """ validate if we are doing a settitem on a chained copy.
+    def _check_is_chained_assignment_possible(self):
+        """
+        check if we are a view, have a cacher, and are of mixed type
+        if so, then force a setitem_copy check
+
+        should be called just near setting a value
+
+        will return a boolean if it we are a view and are cached, but a single-dtype
+        meaning that the cacher should be updated following setting
+        """
+        if self._is_view and self._is_cached:
+            ref = self._get_cacher()
+            if ref is not None and ref._is_mixed_type:
+                self._check_setitem_copy(stacklevel=4, t='referant', force=True)
+            return True
+        elif self.is_copy:
+            self._check_setitem_copy(stacklevel=4, t='referant')
+        return False
+
+    def _check_setitem_copy(self, stacklevel=4, t='setting', force=False):
+        """
+
+        Parameters
+        ----------
+        stacklevel : integer, default 4
+           the level to show of the stack when the error is output
+        t : string, the type of setting error
+        force : boolean, default False
+           if True, then force showing an error
+
+        validate if we are doing a settitem on a chained copy.
 
         If you call this function, be sure to set the stacklevel such that the
-        user will see the error *at the level of setting*"""
-        if self.is_copy:
+        user will see the error *at the level of setting*
+
+        It is technically possible to figure out that we are setting on
+        a copy even WITH a multi-dtyped pandas object. In other words, some blocks
+        may be views while other are not. Currently _is_view will ALWAYS return False
+        for multi-blocks to avoid having to handle this case.
+
+        df = DataFrame(np.arange(0,9), columns=['count'])
+        df['group'] = 'b'
+
+        # this technically need not raise SettingWithCopy if both are view (which is not
+        # generally guaranteed but is usually True
+        # however, this is in general not a good practice and we recommend using .loc
+        df.iloc[0:5]['group'] = 'a'
+
+        """
+
+        if force or self.is_copy:
 
             value = config.get_option('mode.chained_assignment')
             if value is None:
@@ -1169,13 +1244,25 @@ class NDFrame(PandasObject):
             except:
                 pass
 
-            if t == 'referant':
-                t = ("A value is trying to be set on a copy of a slice from a "
-                     "DataFrame")
+            # a custom message
+            if isinstance(self.is_copy, string_types):
+                t = self.is_copy
+
+            elif t == 'referant':
+                t = ("\n"
+                     "A value is trying to be set on a copy of a slice from a "
+                     "DataFrame\n\n"
+                     "See the the caveats in the documentation: "
+                     "http://pandas.pydata.org/pandas-docs/stable/indexing.html#indexing-view-versus-copy")
+
             else:
-                t = ("A value is trying to be set on a copy of a slice from a "
-                     "DataFrame.\nTry using .loc[row_index,col_indexer] = value "
-                     "instead")
+                t = ("\n"
+                     "A value is trying to be set on a copy of a slice from a "
+                     "DataFrame.\n"
+                     "Try using .loc[row_indexer,col_indexer] = value instead\n\n"
+                     "See the the caveats in the documentation: "
+                     "http://pandas.pydata.org/pandas-docs/stable/indexing.html#indexing-view-versus-copy")
+
             if value == 'raise':
                 raise SettingWithCopyError(t)
             elif value == 'warn':
@@ -1308,7 +1395,7 @@ class NDFrame(PandasObject):
         xs is only for getting, not setting values.
 
         MultiIndex Slicers is a generic way to get/set values on any level or levels
-        it is a superset of xs functionality, see :ref:`MultiIndex Slicers <indexing.mi_slicers>`
+        it is a superset of xs functionality, see :ref:`MultiIndex Slicers <advanced.mi_slicers>`
 
         """
         if copy is not None:
@@ -1474,7 +1561,7 @@ class NDFrame(PandasObject):
             if level is not None:
                 if not isinstance(axis, MultiIndex):
                     raise AssertionError('axis must be a MultiIndex')
-                indexer = ~lib.ismember(axis.get_level_values(level),
+                indexer = ~lib.ismember(axis.get_level_values(level).values,
                                         set(labels))
             else:
                 indexer = ~axis.isin(labels)
@@ -1489,14 +1576,23 @@ class NDFrame(PandasObject):
         else:
             return result
 
-    def _update_inplace(self, result):
-        "replace self internals with result."
+    def _update_inplace(self, result, verify_is_copy=True):
+        """
+        replace self internals with result.
+
+        Parameters
+        ----------
+        verify_is_copy : boolean, default True
+            provide is_copy checks
+
+        """
         # NOTE: This does *not* call __finalize__ and that's an explicit
         # decision that we may revisit in the future.
+
         self._reset_cache()
         self._clear_item_cache()
         self._data = getattr(result,'_data',result)
-        self._maybe_update_cacher()
+        self._maybe_update_cacher(verify_is_copy=verify_is_copy)
 
     def add_prefix(self, prefix):
         """
@@ -1553,6 +1649,7 @@ class NDFrame(PandasObject):
 
         new_axis = labels.take(sort_index)
         return self.reindex(**{axis_name: new_axis})
+
     _shared_docs['reindex'] = """
         Conform %(klass)s to new index with optional filling logic, placing
         NA/NaN in locations having no value in the previous index. A new object
@@ -1631,15 +1728,11 @@ class NDFrame(PandasObject):
             if labels is None:
                 continue
 
-            # convert to an index if we are not a multi-selection
             ax = self._get_axis(a)
-            if level is None:
-                labels = _ensure_index(labels)
-
-            axis = self._get_axis_number(a)
             new_index, indexer = ax.reindex(
                 labels, level=level, limit=limit, method=method)
 
+            axis = self._get_axis_number(a)
             obj = obj._reindex_with_indexers(
                 {axis: [new_index, indexer]}, method=method,
                 fill_value=fill_value, limit=limit, copy=copy,
@@ -1700,8 +1793,8 @@ class NDFrame(PandasObject):
         axis_name = self._get_axis_name(axis)
         axis_values = self._get_axis(axis_name)
         method = com._clean_fill_method(method)
-        new_index, indexer = axis_values.reindex(
-            labels, method, level, limit=limit, copy_if_needed=True)
+        new_index, indexer = axis_values.reindex(labels, method, level,
+                                                 limit=limit)
         return self._reindex_with_indexers(
             {axis: [new_index, indexer]}, method=method, fill_value=fill_value,
             limit=limit, copy=copy)
@@ -2104,16 +2197,14 @@ class NDFrame(PandasObject):
 
         Parameters
         ----------
-        deep : boolean, default True
+        deep : boolean or string, default True
             Make a deep copy, i.e. also copy data
 
         Returns
         -------
         copy : type of caller
         """
-        data = self._data
-        if deep:
-            data = data.copy()
+        data = self._data.copy(deep=deep)
         return self._constructor(data).__finalize__(self)
 
     def convert_objects(self, convert_dates=True, convert_numeric=False,
@@ -2157,10 +2248,10 @@ class NDFrame(PandasObject):
             Method to use for filling holes in reindexed Series
             pad / ffill: propagate last valid observation forward to next valid
             backfill / bfill: use NEXT valid observation to fill gap
-        value : scalar, dict, or Series
-            Value to use to fill holes (e.g. 0), alternately a dict/Series of
+        value : scalar, dict, Series, or DataFrame
+            Value to use to fill holes (e.g. 0), alternately a dict/Series/DataFrame of
             values specifying which value to use for each index (for a Series) or
-            column (for a DataFrame). (values not in the dict/Series will not be
+            column (for a DataFrame). (values not in the dict/Series/DataFrame will not be
             filled). This value cannot be a list.
         axis : {0, 1}, default 0
             * 0: fill column-by-column
@@ -2192,6 +2283,7 @@ class NDFrame(PandasObject):
         axis = self._get_axis_number(axis)
         method = com._clean_fill_method(method)
 
+        from pandas import DataFrame
         if value is None:
             if method is None:
                 raise ValueError('must specify a fill method or value')
@@ -2234,10 +2326,14 @@ class NDFrame(PandasObject):
             if len(self._get_axis(axis)) == 0:
                 return self
 
-            if self.ndim == 1 and value is not None:
+            if self.ndim == 1:
                 if isinstance(value, (dict, com.ABCSeries)):
                     from pandas import Series
                     value = Series(value)
+                elif not com.is_list_like(value):
+                    pass
+                else:
+                    raise ValueError("invalid fill value with a %s" % type(value))
 
                 new_data = self._data.fillna(value=value,
                                              limit=limit,
@@ -2257,11 +2353,15 @@ class NDFrame(PandasObject):
                     obj = result[k]
                     obj.fillna(v, limit=limit, inplace=True)
                 return result
-            else:
+            elif not com.is_list_like(value):
                 new_data = self._data.fillna(value=value,
                                              limit=limit,
                                              inplace=inplace,
                                              downcast=downcast)
+            elif isinstance(value, DataFrame) and self.ndim == 2:
+                new_data = self.where(self.notnull(), value)
+            else:
+                raise ValueError("invalid fill value with a %s" % type(value))
 
         if inplace:
             self._update_inplace(new_data)
@@ -3038,9 +3138,13 @@ class NDFrame(PandasObject):
                 raise ValueError('cannot align series to a series other than '
                                  'axis 0')
 
-            join_index, lidx, ridx = self.index.join(other.index, how=join,
-                                                     level=level,
-                                                     return_indexers=True)
+            # equal
+            if  self.index.equals(other.index):
+                join_index, lidx, ridx = None, None, None
+            else:
+                join_index, lidx, ridx = self.index.join(other.index, how=join,
+                                                         level=level,
+                                                         return_indexers=True)
 
             left_result = self._reindex_indexer(join_index, lidx, copy)
             right_result = other._reindex_indexer(join_index, ridx, copy)
@@ -3438,7 +3542,7 @@ class NDFrame(PandasObject):
 
         return result
 
-    def tz_convert(self, tz, axis=0, copy=True):
+    def tz_convert(self, tz, axis=0, level=None, copy=True):
         """
         Convert the axis to target time zone. If it is time zone naive, it
         will be localized to the passed time zone.
@@ -3446,6 +3550,10 @@ class NDFrame(PandasObject):
         Parameters
         ----------
         tz : string or pytz.timezone object
+        axis : the axis to convert
+        level : int, str, default None
+            If axis ia a MultiIndex, convert a specific level. Otherwise
+            must be None
         copy : boolean, default True
             Also make a copy of the underlying data
 
@@ -3455,31 +3563,57 @@ class NDFrame(PandasObject):
         axis = self._get_axis_number(axis)
         ax = self._get_axis(axis)
 
-        if not hasattr(ax, 'tz_convert'):
-            if len(ax) > 0:
-                ax_name = self._get_axis_name(axis)
-                raise TypeError('%s is not a valid DatetimeIndex or PeriodIndex' %
-                                ax_name)
+        def _tz_convert(ax, tz):
+            if not hasattr(ax, 'tz_convert'):
+                if len(ax) > 0:
+                    ax_name = self._get_axis_name(axis)
+                    raise TypeError('%s is not a valid DatetimeIndex or PeriodIndex' %
+                                    ax_name)
+                else:
+                    ax = DatetimeIndex([],tz=tz)
             else:
-                ax = DatetimeIndex([],tz=tz)
+                ax = ax.tz_convert(tz)
+            return ax
+
+        # if a level is given it must be a MultiIndex level or
+        # equivalent to the axis name
+        if isinstance(ax, MultiIndex):
+            level = ax._get_level_number(level)
+            new_level = _tz_convert(ax.levels[level], tz)
+            ax = ax.set_levels(new_level, level=level)
         else:
-            ax = ax.tz_convert(tz)
+            if level not in (None, 0, ax.name):
+                raise ValueError("The level {0} is not valid".format(level))
+            ax =  _tz_convert(ax, tz)
 
         result = self._constructor(self._data, copy=copy)
         result.set_axis(axis,ax)
         return result.__finalize__(self)
 
-    def tz_localize(self, tz, axis=0, copy=True, infer_dst=False):
+    @deprecate_kwarg(old_arg_name='infer_dst', new_arg_name='ambiguous',
+                     mapping={True: 'infer', False: 'raise'})
+    def tz_localize(self, tz, axis=0, level=None, copy=True,
+                    ambiguous='raise'):
         """
         Localize tz-naive TimeSeries to target time zone
 
         Parameters
         ----------
         tz : string or pytz.timezone object
+        axis : the axis to localize
+        level : int, str, default None
+            If axis ia a MultiIndex, localize a specific level. Otherwise
+            must be None
         copy : boolean, default True
             Also make a copy of the underlying data
-        infer_dst : boolean, default False
-            Attempt to infer fall dst-transition times based on order
+        ambiguous : 'infer', bool-ndarray, 'NaT', default 'raise'
+            - 'infer' will attempt to infer fall dst-transition hours based on order
+            - bool-ndarray where True signifies a DST time, False designates
+              a non-DST time (note that this flag is only applicable for ambiguous times)
+            - 'NaT' will return NaT where there are ambiguous times
+            - 'raise' will raise an AmbiguousTimeError if there are ambiguous times
+        infer_dst : boolean, default False (DEPRECATED)
+            Attempt to infer fall dst-transition hours based on order
 
         Returns
         -------
@@ -3487,15 +3621,28 @@ class NDFrame(PandasObject):
         axis = self._get_axis_number(axis)
         ax = self._get_axis(axis)
 
-        if not hasattr(ax, 'tz_localize'):
-            if len(ax) > 0:
-                ax_name = self._get_axis_name(axis)
-                raise TypeError('%s is not a valid DatetimeIndex or PeriodIndex' %
-                                ax_name)
+        def _tz_localize(ax, tz, ambiguous):
+            if not hasattr(ax, 'tz_localize'):
+                if len(ax) > 0:
+                    ax_name = self._get_axis_name(axis)
+                    raise TypeError('%s is not a valid DatetimeIndex or PeriodIndex' %
+                                    ax_name)
+                else:
+                    ax = DatetimeIndex([],tz=tz)
             else:
-                ax = DatetimeIndex([],tz=tz)
+                ax = ax.tz_localize(tz, ambiguous=ambiguous)
+            return ax
+
+        # if a level is given it must be a MultiIndex level or
+        # equivalent to the axis name
+        if isinstance(ax, MultiIndex):
+            level = ax._get_level_number(level)
+            new_level = _tz_localize(ax.levels[level], tz, ambiguous)
+            ax = ax.set_levels(new_level, level=level)
         else:
-            ax = ax.tz_localize(tz, infer_dst=infer_dst)
+            if level not in (None, 0, ax.name):
+                raise ValueError("The level {0} is not valid".format(level))
+            ax =  _tz_localize(ax, tz, ambiguous)
 
         result = self._constructor(self._data, copy=copy)
         result.set_axis(axis,ax)
@@ -3512,21 +3659,6 @@ class NDFrame(PandasObject):
         -------
         abs: type of caller
         """
-
-        # suprimo numpy 1.6 hacking
-        # for timedeltas
-        if _np_version_under1p7:
-
-            def _convert_timedeltas(x):
-                if x.dtype.kind == 'm':
-                    return np.abs(x.view('i8')).astype(x.dtype)
-                return np.abs(x)
-
-            if self.ndim == 1:
-                return _convert_timedeltas(self)
-            elif self.ndim == 2:
-                return  self.apply(_convert_timedeltas)
-
         return np.abs(self)
 
     _shared_docs['describe'] = """
@@ -3543,6 +3675,17 @@ class NDFrame(PandasObject):
             The percentiles to include in the output. Should all
             be in the interval [0, 1]. By default `percentiles` is
             [.25, .5, .75], returning the 25th, 50th, and 75th percentiles.
+        include, exclude : list-like, 'all', or None (default)
+            Specify the form of the returned result. Either:
+
+            - None to both (default). The result will include only numeric-typed
+              columns or, if none are, only categorical columns.
+            - A list of dtypes or strings to be included/excluded.
+              To select all numeric types use numpy numpy.number. To select
+              categorical objects use type object. See also the select_dtypes
+              documentation. eg. df.describe(include=['O'])
+            - If include is the string 'all', the output column-set will
+              match the input one.
 
         Returns
         -------
@@ -3550,20 +3693,33 @@ class NDFrame(PandasObject):
 
         Notes
         -----
-        For numeric dtypes the index includes: count, mean, std, min,
+        The output DataFrame index depends on the requested dtypes:
+
+        For numeric dtypes, it will include: count, mean, std, min,
         max, and lower, 50, and upper percentiles.
 
-        If self is of object dtypes (e.g. timestamps or strings), the output
+        For object dtypes (e.g. timestamps or strings), the index
         will include the count, unique, most common, and frequency of the
         most common. Timestamps also include the first and last items.
+
+        For mixed dtypes, the index will be the union of the corresponding
+        output types. Non-applicable entries will be filled with NaN.
+        Note that mixed-dtype outputs can only be returned from mixed-dtype
+        inputs and appropriate use of the include/exclude arguments.
 
         If multiple values have the highest count, then the
         `count` and `most common` pair will be arbitrarily chosen from
         among those with the highest count.
+
+        The include, exclude arguments are ignored for Series.
+
+        See also
+        --------
+        DataFrame.select_dtypes
         """
 
     @Appender(_shared_docs['describe'] % _shared_doc_kwargs)
-    def describe(self, percentile_width=None, percentiles=None):
+    def describe(self, percentile_width=None, percentiles=None, include=None, exclude=None ):
         if self.ndim >= 3:
             msg = "describe is not implemented on on Panel or PanelND objects."
             raise NotImplementedError(msg)
@@ -3600,16 +3756,6 @@ class NDFrame(PandasObject):
             uh = percentiles[percentiles > .5]
             percentiles = np.hstack([lh, 0.5, uh])
 
-        # dtypes: numeric only, numeric mixed, objects only
-        data = self._get_numeric_data()
-        if self.ndim > 1:
-            if len(data._info_axis) == 0:
-                is_object = True
-            else:
-                is_object = False
-        else:
-            is_object = not self._is_numeric_mixed_type
-
         def pretty_name(x):
             x *= 100
             if x == int(x):
@@ -3618,60 +3764,67 @@ class NDFrame(PandasObject):
                 return '%.1f%%' % x
 
         def describe_numeric_1d(series, percentiles):
-            return ([series.count(), series.mean(), series.std(),
-                     series.min()] +
-                    [series.quantile(x) for x in percentiles] +
-                    [series.max()])
+            stat_index = (['count', 'mean', 'std', 'min'] +
+                  [pretty_name(x) for x in percentiles] + ['max'])
+            d = ([series.count(), series.mean(), series.std(), series.min()] +
+                 [series.quantile(x) for x in percentiles] + [series.max()])
+            return pd.Series(d, index=stat_index, name=series.name)
+
 
         def describe_categorical_1d(data):
             names = ['count', 'unique']
             objcounts = data.value_counts()
-            result = [data.count(), len(objcounts)]
+            result = [data.count(), len(objcounts[objcounts!=0])]
             if result[1] > 0:
                 top, freq = objcounts.index[0], objcounts.iloc[0]
 
-                if data.dtype == object:
+                if data.dtype == object or com.is_categorical_dtype(data.dtype):
                     names += ['top', 'freq']
                     result += [top, freq]
 
-                elif issubclass(data.dtype.type, np.datetime64):
+                elif com.is_datetime64_dtype(data):
                     asint = data.dropna().values.view('i8')
-                    names += ['first', 'last', 'top', 'freq']
-                    result += [lib.Timestamp(asint.min()),
-                               lib.Timestamp(asint.max()),
-                               lib.Timestamp(top), freq]
+                    names += ['top', 'freq', 'first', 'last']
+                    result += [lib.Timestamp(top), freq,
+                               lib.Timestamp(asint.min()),
+                               lib.Timestamp(asint.max())]
 
-            return pd.Series(result, index=names)
+            return pd.Series(result, index=names, name=data.name)
 
-        if is_object:
-            if data.ndim == 1:
-                return describe_categorical_1d(self)
+        def describe_1d(data, percentiles):
+            if com.is_numeric_dtype(data):
+                return describe_numeric_1d(data, percentiles)
+            elif com.is_timedelta64_dtype(data):
+                return describe_numeric_1d(data, percentiles)
             else:
-                result = pd.DataFrame(dict((k, describe_categorical_1d(v))
-                                           for k, v in compat.iteritems(self)),
-                                      columns=self._info_axis,
-                                      index=['count', 'unique', 'first', 'last',
-                                             'top', 'freq'])
-                # just objects, no datime
-                if pd.isnull(result.loc['first']).all():
-                    result = result.drop(['first', 'last'], axis=0)
-                return result
+                return describe_categorical_1d(data)
+
+        if self.ndim == 1:
+            return describe_1d(self, percentiles)
+        elif (include is None) and (exclude is None):
+            if len(self._get_numeric_data()._info_axis) > 0:
+                # when some numerics are found, keep only numerics
+                data = self.select_dtypes(include=[np.number, np.bool])
+            else:
+                data = self
+        elif include == 'all':
+            if exclude != None:
+                msg = "exclude must be None when include is 'all'"
+                raise ValueError(msg)
+            data = self
         else:
-            stat_index = (['count', 'mean', 'std', 'min'] +
-                          [pretty_name(x) for x in percentiles] +
-                          ['max'])
-            if data.ndim == 1:
-                return pd.Series(describe_numeric_1d(data, percentiles),
-                                 index=stat_index)
-            else:
-                destat = []
-                for i in range(len(data._info_axis)):  # BAD
-                    series = data.iloc[:, i]
-                    destat.append(describe_numeric_1d(series, percentiles))
+            data = self.select_dtypes(include=include, exclude=exclude)
 
-                return self._constructor(lmap(list, zip(*destat)),
-                                         index=stat_index,
-                                         columns=data._info_axis)
+        ldesc = [describe_1d(s, percentiles) for _, s in data.iteritems()]
+        # set a convenient order for rows
+        names = []
+        ldesc_indexes = sorted([x.index for x in ldesc], key=len)
+        for idxnames in ldesc_indexes:
+            for name in idxnames:
+                if name not in names:
+                    names.append(name)
+        d = pd.concat(ldesc, join_axes=pd.Index([names]), axis=1)
+        return d
 
     _shared_docs['pct_change'] = """
         Percent change over given number of periods.
@@ -3782,7 +3935,8 @@ Returns
                     return self._agg_by_level(name, axis=axis, level=level,
                                               skipna=skipna)
                 return self._reduce(f, axis=axis,
-                                    skipna=skipna, numeric_only=numeric_only)
+                                    skipna=skipna, numeric_only=numeric_only,
+                                    name=name)
             stat_func.__name__ = name
             return stat_func
 
@@ -3838,60 +3992,42 @@ equivalent of the ``numpy.ndarray`` method ``argmin``.""", nanops.nanmin)
             return np.abs(demeaned).mean(axis=axis, skipna=skipna)
         cls.mad = mad
 
-        @Substitution(outname='variance',
-                      desc="Return unbiased variance over requested "
-                           "axis.\n\nNormalized by N-1 by default. "
-                           "This can be changed using the ddof argument")
-        @Appender(_num_doc)
-        def var(self, axis=None, skipna=None, level=None, ddof=1, **kwargs):
-            if skipna is None:
-                skipna = True
-            if axis is None:
-                axis = self._stat_axis_number
-            if level is not None:
-                return self._agg_by_level('var', axis=axis, level=level,
-                                          skipna=skipna, ddof=ddof)
+        def _make_stat_function_ddof(name, desc, f):
 
-            return self._reduce(nanops.nanvar, axis=axis, skipna=skipna,
-                                ddof=ddof)
-        cls.var = var
+            @Substitution(outname=name, desc=desc)
+            @Appender(_num_doc)
+            def stat_func(self, axis=None, skipna=None, level=None, ddof=1,
+                          **kwargs):
+                if skipna is None:
+                    skipna = True
+                if axis is None:
+                    axis = self._stat_axis_number
+                if level is not None:
+                    return self._agg_by_level(name, axis=axis, level=level,
+                                              skipna=skipna, ddof=ddof)
+                return self._reduce(f, axis=axis,
+                                    skipna=skipna, ddof=ddof)
+            stat_func.__name__ = name
+            return stat_func
 
-        @Substitution(outname='stdev',
-                      desc="Return unbiased standard deviation over requested "
-                           "axis.\n\nNormalized by N-1 by default. "
-                           "This can be changed using the ddof argument")
-        @Appender(_num_doc)
-        def std(self, axis=None, skipna=None, level=None, ddof=1, **kwargs):
-            if skipna is None:
-                skipna = True
-            if axis is None:
-                axis = self._stat_axis_number
-            if level is not None:
-                return self._agg_by_level('std', axis=axis, level=level,
-                                          skipna=skipna, ddof=ddof)
-            result = self.var(axis=axis, skipna=skipna, ddof=ddof)
-            if getattr(result, 'ndim', 0) > 0:
-                return result.apply(np.sqrt)
-            return np.sqrt(result)
-        cls.std = std
-
-        @Substitution(outname='standarderror',
-                      desc="Return unbiased standard error of the mean over "
-                           "requested axis.\n\nNormalized by N-1 by default. "
-                           "This can be changed using the ddof argument")
-        @Appender(_num_doc)
-        def sem(self, axis=None, skipna=None, level=None, ddof=1, **kwargs):
-            if skipna is None:
-                skipna = True
-            if axis is None:
-                axis = self._stat_axis_number
-            if level is not None:
-                return self._agg_by_level('sem', axis=axis, level=level,
-                                          skipna=skipna, ddof=ddof)
-
-            return self._reduce(nanops.nansem, axis=axis, skipna=skipna,
-                                ddof=ddof)
-        cls.sem = sem
+        cls.sem = _make_stat_function_ddof(
+            'sem',
+            "Return unbiased standard error of the mean over "
+            "requested axis.\n\nNormalized by N-1 by default. "
+            "This can be changed using the ddof argument",
+            nanops.nansem)
+        cls.var = _make_stat_function_ddof(
+            'var',
+            "Return unbiased variance over requested "
+            "axis.\n\nNormalized by N-1 by default. "
+            "This can be changed using the ddof argument",
+            nanops.nanvar)
+        cls.std = _make_stat_function_ddof(
+            'std',
+            "Return unbiased standard deviation over requested "
+            "axis.\n\nNormalized by N-1 by default. "
+            "This can be changed using the ddof argument",
+            nanops.nanstd)
 
         @Substitution(outname='compounded',
                       desc="Return the compound percentage of the values for "

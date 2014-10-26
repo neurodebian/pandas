@@ -3,15 +3,15 @@
 import nose
 import numpy as np
 
-from pandas import Index, MultiIndex, DataFrame, Series
+from pandas import Index, MultiIndex, DataFrame, Series, Categorical
 from pandas.compat import OrderedDict, lrange
 from pandas.sparse.array import SparseArray
 from pandas.core.internals import *
 import pandas.core.internals as internals
 import pandas.util.testing as tm
-
+import pandas as pd
 from pandas.util.testing import (
-    assert_almost_equal, assert_frame_equal, randn)
+    assert_almost_equal, assert_frame_equal, randn, assert_series_equal)
 from pandas.compat import zip, u
 
 
@@ -41,9 +41,11 @@ def create_block(typestr, placement, item_shape=None, num_offset=0):
         * complex, c16, c8
         * bool
         * object, string, O
-        * datetime, dt
+        * datetime, dt, M8[ns]
+        * timedelta, td, m8[ns]
         * sparse (SparseArray with fill_value=0.0)
         * sparse_na (SparseArray with fill_value=np.nan)
+        * category, category2
 
     """
     placement = BlockPlacement(placement)
@@ -67,8 +69,14 @@ def create_block(typestr, placement, item_shape=None, num_offset=0):
                             shape)
     elif typestr in ('bool'):
         values = np.ones(shape, dtype=np.bool_)
-    elif typestr in ('datetime', 'dt'):
+    elif typestr in ('datetime', 'dt', 'M8[ns]'):
         values = (mat * 1e9).astype('M8[ns]')
+    elif typestr in ('timedelta', 'td', 'm8[ns]'):
+        values = (mat * 1).astype('m8[ns]')
+    elif typestr in ('category'):
+        values = Categorical([1,1,2,2,3,3,3,3,4,4])
+    elif typestr in ('category2'):
+        values = Categorical(['a','a','a','a','b','b','c','c','c','d'])
     elif typestr in ('sparse', 'sparse_na'):
         # FIXME: doesn't support num_rows != 10
         assert shape[-1] == 10
@@ -174,12 +182,9 @@ class TestBlock(tm.TestCase):
         self.assertEqual(int32block.dtype, np.int32)
 
     def test_pickle(self):
-        import pickle
 
         def _check(blk):
-            pickled = pickle.dumps(blk)
-            unpickled = pickle.loads(pickled)
-            assert_block_equal(blk, unpickled)
+            assert_block_equal(self.round_trip_pickle(blk), blk)
 
         _check(self.fblock)
         _check(self.cblock)
@@ -333,12 +338,8 @@ class TestBlockManager(tm.TestCase):
         self.assertNotIn('baz', self.mgr)
 
     def test_pickle(self):
-        import pickle
 
-        pickled = pickle.dumps(self.mgr)
-        mgr2 = pickle.loads(pickled)
-
-        # same result
+        mgr2 = self.round_trip_pickle(self.mgr)
         assert_frame_equal(DataFrame(self.mgr), DataFrame(mgr2))
 
         # share ref_items
@@ -353,14 +354,23 @@ class TestBlockManager(tm.TestCase):
         self.assertFalse(mgr2._known_consolidated)
 
     def test_non_unique_pickle(self):
-        import pickle
+
         mgr = create_mgr('a,a,a:f8')
-        mgr2 = pickle.loads(pickle.dumps(mgr))
+        mgr2 = self.round_trip_pickle(mgr)
         assert_frame_equal(DataFrame(mgr), DataFrame(mgr2))
 
         mgr = create_mgr('a: f8; a: i8')
-        mgr2 = pickle.loads(pickle.dumps(mgr))
+        mgr2 = self.round_trip_pickle(mgr)
         assert_frame_equal(DataFrame(mgr), DataFrame(mgr2))
+
+    def test_categorical_block_pickle(self):
+        mgr = create_mgr('a: category')
+        mgr2 = self.round_trip_pickle(mgr)
+        assert_frame_equal(DataFrame(mgr), DataFrame(mgr2))
+
+        smgr = create_single_mgr('category')
+        smgr2 = self.round_trip_pickle(smgr)
+        assert_series_equal(Series(smgr), Series(smgr2))
 
     def test_get_scalar(self):
         for item in self.mgr.items:
@@ -556,7 +566,54 @@ class TestBlockManager(tm.TestCase):
         self.assertEqual(new_mgr.get('h').dtype, np.float16)
 
     def test_interleave(self):
-        pass
+
+
+        # self
+        for dtype in ['f8','i8','object','bool','complex','M8[ns]','m8[ns]']:
+            mgr = create_mgr('a: {0}'.format(dtype))
+            self.assertEqual(mgr.as_matrix().dtype,dtype)
+            mgr = create_mgr('a: {0}; b: {0}'.format(dtype))
+            self.assertEqual(mgr.as_matrix().dtype,dtype)
+
+        # will be converted according the actual dtype of the underlying
+        mgr = create_mgr('a: category')
+        self.assertEqual(mgr.as_matrix().dtype,'i8')
+        mgr = create_mgr('a: category; b: category')
+        self.assertEqual(mgr.as_matrix().dtype,'i8'),
+        mgr = create_mgr('a: category; b: category2')
+        self.assertEqual(mgr.as_matrix().dtype,'object')
+        mgr = create_mgr('a: category2')
+        self.assertEqual(mgr.as_matrix().dtype,'object')
+        mgr = create_mgr('a: category2; b: category2')
+        self.assertEqual(mgr.as_matrix().dtype,'object')
+
+        # combinations
+        mgr = create_mgr('a: f8')
+        self.assertEqual(mgr.as_matrix().dtype,'f8')
+        mgr = create_mgr('a: f8; b: i8')
+        self.assertEqual(mgr.as_matrix().dtype,'f8')
+        mgr = create_mgr('a: f4; b: i8')
+        self.assertEqual(mgr.as_matrix().dtype,'f4')
+        mgr = create_mgr('a: f4; b: i8; d: object')
+        self.assertEqual(mgr.as_matrix().dtype,'object')
+        mgr = create_mgr('a: bool; b: i8')
+        self.assertEqual(mgr.as_matrix().dtype,'object')
+        mgr = create_mgr('a: complex')
+        self.assertEqual(mgr.as_matrix().dtype,'complex')
+        mgr = create_mgr('a: f8; b: category')
+        self.assertEqual(mgr.as_matrix().dtype,'object')
+        mgr = create_mgr('a: M8[ns]; b: category')
+        self.assertEqual(mgr.as_matrix().dtype,'object')
+        mgr = create_mgr('a: M8[ns]; b: bool')
+        self.assertEqual(mgr.as_matrix().dtype,'object')
+        mgr = create_mgr('a: M8[ns]; b: i8')
+        self.assertEqual(mgr.as_matrix().dtype,'object')
+        mgr = create_mgr('a: m8[ns]; b: bool')
+        self.assertEqual(mgr.as_matrix().dtype,'object')
+        mgr = create_mgr('a: m8[ns]; b: i8')
+        self.assertEqual(mgr.as_matrix().dtype,'object')
+        mgr = create_mgr('a: M8[ns]; b: m8[ns]')
+        self.assertEqual(mgr.as_matrix().dtype,'object')
 
     def test_interleave_non_unique_cols(self):
         df = DataFrame([
