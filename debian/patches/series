@@ -1,4 +1,3 @@
-changeset_314012d.diff
 deb_disable_googleanalytics
 deb_skip_sequencelike_on_armel
 deb_skip_test_pytables_failure
