@@ -1,6 +1,9 @@
 pandas (0.15.0-1) unstable; urgency=medium
 
   * New upstream release
+  * debian/control
+    - restrict statsmodels and matplotlib from being required on the ports
+      which do not have them
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Sun, 26 Oct 2014 11:30:23 -0400
 
