@@ -1,9 +1,11 @@
-pandas (0.15.0-2) UNRELEASED; urgency=medium
+pandas (0.15.0-2) unstable; urgency=medium
 
   * debian/control
     - specify minimal numpy to be 1.7
+  * debian/patches
+    - deb_skip_stata_on_bigendians   skip test_stata again on BE platforms
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 30 Oct 2014 23:00:28 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 30 Oct 2014 23:09:13 -0400
 
 pandas (0.15.0-1) unstable; urgency=medium
 

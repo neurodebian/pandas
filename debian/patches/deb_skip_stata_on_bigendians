@@ -1,0 +1,12 @@
+--- a/pandas/io/tests/test_stata.py
++++ b/pandas/io/tests/test_stata.py
+@@ -22,6 +22,9 @@ from pandas.tslib import NaT
+ from pandas.util.misc import is_little_endian
+ from pandas import compat
+ 
++if not is_little_endian():
++    raise nose.SkipTest("known failure of test_stata on non-little endian")
++
+ class TestStata(tm.TestCase):
+ 
+     def setUp(self):
