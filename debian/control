@@ -7,7 +7,7 @@ Build-Depends: debhelper (>= 7.0.50),
                python-all-dev (>= 2.5),
                python-setuptools,
                cython (>= 0.17.1~),
-               python-numpy (>= 1:1.6.1~), python-dateutil,
+               python-numpy (>= 1:1.7~), python-dateutil,
                python-scipy,
                python-tz,
                python-tables,
@@ -23,7 +23,7 @@ Build-Depends: debhelper (>= 7.0.50),
                python3-all-dev,
                python3-setuptools,
                cython3 (>= 0.17.1~) | cython (<< 0.17.1~),
-               python3-numpy (>= 1:1.6.1~), python3-dateutil,
+               python3-numpy (>= 1:1.7~), python3-dateutil,
                python3-scipy,
                python3-tz,
                python3-sphinx (>= 1.0~),
@@ -44,7 +44,7 @@ XS-Testsuite: autopkgtest
 Package: python-pandas
 Architecture: all
 Depends: ${misc:Depends}, ${python:Depends},
-         python-numpy (>= 1:1.6~),
+         python-numpy (>= 1:1.7~),
          python-dateutil,
          python-pandas-lib(>= ${source:Version}),
          python-six,
@@ -83,7 +83,7 @@ Description: data structures for "relational" or "labeled" data
 Package: python3-pandas
 Architecture: all
 Depends: ${misc:Depends}, ${python3:Depends},
-         python3-numpy (>= 1:1.6~),
+         python3-numpy (>= 1:1.7~),
          python3-dateutil,
          python3-pandas-lib(>= ${source:Version})
 Recommends: python3-scipy,
@@ -127,7 +127,7 @@ Description: data structures for "relational" or "labeled" data - Python 3
 
 Package: python-pandas-lib
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, ${python:Depends}, python-numpy
+Depends: ${misc:Depends}, ${shlibs:Depends}, ${python:Depends}, python-numpy (>= 1:1.7~)
 Provides: ${python:Provides}
 XB-Python-Version: ${python:Versions}
 Description: low-level implementations and bindings for pandas
@@ -138,7 +138,7 @@ Description: low-level implementations and bindings for pandas
 
 Package: python3-pandas-lib
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, ${python3:Depends}, python3-numpy
+Depends: ${misc:Depends}, ${shlibs:Depends}, ${python3:Depends}, python3-numpy (>=1:1.7~)
 Description: low-level implementations and bindings for pandas - Python 3
  This is an add-on package for python-pandas providing
  architecture-dependent extensions.
