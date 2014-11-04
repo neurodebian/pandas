@@ -4,6 +4,7 @@ pandas (0.15.0-2) unstable; urgency=medium
     - specify minimal numpy to be 1.7
   * debian/patches
     - deb_skip_stata_on_bigendians   skip test_stata again on BE platforms
+    - deb_skip_test_precision_i386   skip test_precision_conversion on 32bit
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 30 Oct 2014 23:09:13 -0400
 
