@@ -1,3 +1,10 @@
+pandas (0.15.0+git87-gc3dd032-1) experimental; urgency=medium
+
+  * New upstream snapshot from v0.15.0-87-gc3dd032: primarily bug fix
+    changes since 0.15.0
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 04 Nov 2014 10:19:55 -0500
+
 pandas (0.15.0-2) unstable; urgency=medium
 
   * debian/control

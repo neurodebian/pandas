@@ -1112,6 +1112,10 @@ static void __Pyx_WriteUnraisable(const char *name, int clineno,
                                   int lineno, const char *filename,
                                   int full_traceback);
 
+static CYTHON_INLINE PyObject *__Pyx_GetAttr(PyObject *, PyObject *);
+
+static CYTHON_INLINE PyObject *__Pyx_GetAttr3(PyObject *, PyObject *, PyObject *);
+
 static CYTHON_INLINE void __Pyx_RaiseNoneNotIterableError(void);
 
 static int __Pyx_SetVtable(PyObject *dict, void *vtable);
@@ -1641,6 +1645,7 @@ static char __pyx_k_pop[] = "pop";
 static char __pyx_k_s_d[] = "%s.%d";
 static char __pyx_k_str[] = "str";
 static char __pyx_k_sys[] = "sys";
+static char __pyx_k_typ[] = "_typ";
 static char __pyx_k_val[] = "val";
 static char __pyx_k_NA_2[] = "#NA";
 static char __pyx_k_NULL[] = "NULL";
@@ -1709,6 +1714,7 @@ static char __pyx_k_mask_2[] = "_mask";
 static char __pyx_k_module[] = "__module__";
 static char __pyx_k_object[] = "object";
 static char __pyx_k_offset[] = "offset";
+static char __pyx_k_period[] = "period";
 static char __pyx_k_remove[] = "remove";
 static char __pyx_k_result[] = "result";
 static char __pyx_k_source[] = "source";
@@ -2098,6 +2104,7 @@ static PyObject *__pyx_n_s_owndata;
 static PyObject *__pyx_n_s_pandas_lib;
 static PyObject *__pyx_n_s_pandas_parser;
 static PyObject *__pyx_n_s_path;
+static PyObject *__pyx_n_s_period;
 static PyObject *__pyx_n_s_pop;
 static PyObject *__pyx_n_s_prepare;
 static PyObject *__pyx_n_s_print;
@@ -2138,6 +2145,7 @@ static PyObject *__pyx_n_s_tokenize_chunksize;
 static PyObject *__pyx_n_b_true;
 static PyObject *__pyx_n_s_true_values;
 static PyObject *__pyx_n_s_tupleize_cols;
+static PyObject *__pyx_n_s_typ;
 static PyObject *__pyx_n_s_type;
 static PyObject *__pyx_n_s_u;
 static PyObject *__pyx_n_s_uint16;
@@ -24267,8 +24275,8 @@ static PyObject *__pyx_pf_6pandas_6parser_14_maybe_encode(CYTHON_UNUSED PyObject
   return __pyx_r;
 }
 
-/* "util.pxd":26
- *     object sarr_from_data(cnp.dtype, int length, void* data)
+/* "util.pxd":27
+ *     inline object unbox_if_zerodim(object arr)
  * 
  * cdef inline object get_value_at(ndarray arr, object loc):             # <<<<<<<<<<<<<<
  *     cdef:
@@ -24291,7 +24299,7 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_get_value_at(PyArrayObject *__pyx_v
   __Pyx_RefNannySetupContext("get_value_at", 0);
   __Pyx_INCREF(__pyx_v_loc);
 
-  /* "util.pxd":30
+  /* "util.pxd":31
  *         Py_ssize_t i, sz
  *         void* data_ptr
  *     if is_float_object(loc):             # <<<<<<<<<<<<<<
@@ -24301,31 +24309,31 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_get_value_at(PyArrayObject *__pyx_v
   __pyx_t_1 = (is_float_object(__pyx_v_loc) != 0);
   if (__pyx_t_1) {
 
-    /* "util.pxd":31
+    /* "util.pxd":32
  *         void* data_ptr
  *     if is_float_object(loc):
  *         casted = int(loc)             # <<<<<<<<<<<<<<
  *         if casted == loc:
  *             loc = casted
  */
-    __pyx_t_2 = PyNumber_Int(__pyx_v_loc); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 31; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_2 = PyNumber_Int(__pyx_v_loc); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 32; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_2);
     __pyx_v_casted = __pyx_t_2;
     __pyx_t_2 = 0;
 
-    /* "util.pxd":32
+    /* "util.pxd":33
  *     if is_float_object(loc):
  *         casted = int(loc)
  *         if casted == loc:             # <<<<<<<<<<<<<<
  *             loc = casted
  *     i = <Py_ssize_t> loc
  */
-    __pyx_t_2 = PyObject_RichCompare(__pyx_v_casted, __pyx_v_loc, Py_EQ); __Pyx_XGOTREF(__pyx_t_2); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 32; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-    __pyx_t_1 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely(__pyx_t_1 < 0)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 32; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_2 = PyObject_RichCompare(__pyx_v_casted, __pyx_v_loc, Py_EQ); __Pyx_XGOTREF(__pyx_t_2); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 33; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_1 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely(__pyx_t_1 < 0)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 33; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
     if (__pyx_t_1) {
 
-      /* "util.pxd":33
+      /* "util.pxd":34
  *         casted = int(loc)
  *         if casted == loc:
  *             loc = casted             # <<<<<<<<<<<<<<
@@ -24341,17 +24349,17 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_get_value_at(PyArrayObject *__pyx_v
   }
   __pyx_L3:;
 
-  /* "util.pxd":34
+  /* "util.pxd":35
  *         if casted == loc:
  *             loc = casted
  *     i = <Py_ssize_t> loc             # <<<<<<<<<<<<<<
  *     sz = cnp.PyArray_SIZE(arr)
  * 
  */
-  __pyx_t_3 = __Pyx_PyIndex_AsSsize_t(__pyx_v_loc); if (unlikely((__pyx_t_3 == (Py_ssize_t)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 34; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_PyIndex_AsSsize_t(__pyx_v_loc); if (unlikely((__pyx_t_3 == (Py_ssize_t)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 35; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_v_i = ((Py_ssize_t)__pyx_t_3);
 
-  /* "util.pxd":35
+  /* "util.pxd":36
  *             loc = casted
  *     i = <Py_ssize_t> loc
  *     sz = cnp.PyArray_SIZE(arr)             # <<<<<<<<<<<<<<
@@ -24360,7 +24368,7 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_get_value_at(PyArrayObject *__pyx_v
  */
   __pyx_v_sz = PyArray_SIZE(__pyx_v_arr);
 
-  /* "util.pxd":37
+  /* "util.pxd":38
  *     sz = cnp.PyArray_SIZE(arr)
  * 
  *     if i < 0 and sz > 0:             # <<<<<<<<<<<<<<
@@ -24378,7 +24386,7 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_get_value_at(PyArrayObject *__pyx_v
   __pyx_L6_bool_binop_done:;
   if (__pyx_t_1) {
 
-    /* "util.pxd":38
+    /* "util.pxd":39
  * 
  *     if i < 0 and sz > 0:
  *         i += sz             # <<<<<<<<<<<<<<
@@ -24389,7 +24397,7 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_get_value_at(PyArrayObject *__pyx_v
     goto __pyx_L5;
   }
 
-  /* "util.pxd":39
+  /* "util.pxd":40
  *     if i < 0 and sz > 0:
  *         i += sz
  *     elif i >= sz or sz == 0:             # <<<<<<<<<<<<<<
@@ -24407,22 +24415,22 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_get_value_at(PyArrayObject *__pyx_v
   __pyx_L8_bool_binop_done:;
   if (__pyx_t_1) {
 
-    /* "util.pxd":40
+    /* "util.pxd":41
  *         i += sz
  *     elif i >= sz or sz == 0:
  *         raise IndexError('index out of bounds')             # <<<<<<<<<<<<<<
  * 
  *     return get_value_1d(arr, i)
  */
-    __pyx_t_2 = __Pyx_PyObject_Call(__pyx_builtin_IndexError, __pyx_tuple__37, NULL); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 40; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_2 = __Pyx_PyObject_Call(__pyx_builtin_IndexError, __pyx_tuple__37, NULL); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 41; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_2);
     __Pyx_Raise(__pyx_t_2, 0, 0, 0);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-    {__pyx_filename = __pyx_f[1]; __pyx_lineno = 40; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    {__pyx_filename = __pyx_f[1]; __pyx_lineno = 41; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   }
   __pyx_L5:;
 
-  /* "util.pxd":42
+  /* "util.pxd":43
  *         raise IndexError('index out of bounds')
  * 
  *     return get_value_1d(arr, i)             # <<<<<<<<<<<<<<
@@ -24430,14 +24438,14 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_get_value_at(PyArrayObject *__pyx_v
  * cdef inline set_value_at(ndarray arr, object loc, object value):
  */
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_2 = get_value_1d(__pyx_v_arr, __pyx_v_i); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 42; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = get_value_1d(__pyx_v_arr, __pyx_v_i); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 43; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_2);
   __pyx_r = __pyx_t_2;
   __pyx_t_2 = 0;
   goto __pyx_L0;
 
-  /* "util.pxd":26
- *     object sarr_from_data(cnp.dtype, int length, void* data)
+  /* "util.pxd":27
+ *     inline object unbox_if_zerodim(object arr)
  * 
  * cdef inline object get_value_at(ndarray arr, object loc):             # <<<<<<<<<<<<<<
  *     cdef:
@@ -24457,7 +24465,7 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_get_value_at(PyArrayObject *__pyx_v
   return __pyx_r;
 }
 
-/* "util.pxd":44
+/* "util.pxd":45
  *     return get_value_1d(arr, i)
  * 
  * cdef inline set_value_at(ndarray arr, object loc, object value):             # <<<<<<<<<<<<<<
@@ -24481,7 +24489,7 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_set_value_at(PyArrayObject *__pyx_v
   __Pyx_RefNannySetupContext("set_value_at", 0);
   __Pyx_INCREF(__pyx_v_loc);
 
-  /* "util.pxd":47
+  /* "util.pxd":48
  *     cdef:
  *         Py_ssize_t i, sz
  *     if is_float_object(loc):             # <<<<<<<<<<<<<<
@@ -24491,31 +24499,31 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_set_value_at(PyArrayObject *__pyx_v
   __pyx_t_1 = (is_float_object(__pyx_v_loc) != 0);
   if (__pyx_t_1) {
 
-    /* "util.pxd":48
+    /* "util.pxd":49
  *         Py_ssize_t i, sz
  *     if is_float_object(loc):
  *         casted = int(loc)             # <<<<<<<<<<<<<<
  *         if casted == loc:
  *             loc = casted
  */
-    __pyx_t_2 = PyNumber_Int(__pyx_v_loc); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 48; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_2 = PyNumber_Int(__pyx_v_loc); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 49; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_2);
     __pyx_v_casted = __pyx_t_2;
     __pyx_t_2 = 0;
 
-    /* "util.pxd":49
+    /* "util.pxd":50
  *     if is_float_object(loc):
  *         casted = int(loc)
  *         if casted == loc:             # <<<<<<<<<<<<<<
  *             loc = casted
  *     i = <Py_ssize_t> loc
  */
-    __pyx_t_2 = PyObject_RichCompare(__pyx_v_casted, __pyx_v_loc, Py_EQ); __Pyx_XGOTREF(__pyx_t_2); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 49; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-    __pyx_t_1 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely(__pyx_t_1 < 0)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 49; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_2 = PyObject_RichCompare(__pyx_v_casted, __pyx_v_loc, Py_EQ); __Pyx_XGOTREF(__pyx_t_2); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 50; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_1 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely(__pyx_t_1 < 0)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 50; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
     if (__pyx_t_1) {
 
-      /* "util.pxd":50
+      /* "util.pxd":51
  *         casted = int(loc)
  *         if casted == loc:
  *             loc = casted             # <<<<<<<<<<<<<<
@@ -24531,17 +24539,17 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_set_value_at(PyArrayObject *__pyx_v
   }
   __pyx_L3:;
 
-  /* "util.pxd":51
+  /* "util.pxd":52
  *         if casted == loc:
  *             loc = casted
  *     i = <Py_ssize_t> loc             # <<<<<<<<<<<<<<
  *     sz = cnp.PyArray_SIZE(arr)
  * 
  */
-  __pyx_t_3 = __Pyx_PyIndex_AsSsize_t(__pyx_v_loc); if (unlikely((__pyx_t_3 == (Py_ssize_t)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 51; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_PyIndex_AsSsize_t(__pyx_v_loc); if (unlikely((__pyx_t_3 == (Py_ssize_t)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 52; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_v_i = ((Py_ssize_t)__pyx_t_3);
 
-  /* "util.pxd":52
+  /* "util.pxd":53
  *             loc = casted
  *     i = <Py_ssize_t> loc
  *     sz = cnp.PyArray_SIZE(arr)             # <<<<<<<<<<<<<<
@@ -24550,7 +24558,7 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_set_value_at(PyArrayObject *__pyx_v
  */
   __pyx_v_sz = PyArray_SIZE(__pyx_v_arr);
 
-  /* "util.pxd":54
+  /* "util.pxd":55
  *     sz = cnp.PyArray_SIZE(arr)
  * 
  *     if i < 0:             # <<<<<<<<<<<<<<
@@ -24560,7 +24568,7 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_set_value_at(PyArrayObject *__pyx_v
   __pyx_t_1 = ((__pyx_v_i < 0) != 0);
   if (__pyx_t_1) {
 
-    /* "util.pxd":55
+    /* "util.pxd":56
  * 
  *     if i < 0:
  *         i += sz             # <<<<<<<<<<<<<<
@@ -24571,7 +24579,7 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_set_value_at(PyArrayObject *__pyx_v
     goto __pyx_L5;
   }
 
-  /* "util.pxd":56
+  /* "util.pxd":57
  *     if i < 0:
  *         i += sz
  *     elif i >= sz:             # <<<<<<<<<<<<<<
@@ -24581,31 +24589,31 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_set_value_at(PyArrayObject *__pyx_v
   __pyx_t_1 = ((__pyx_v_i >= __pyx_v_sz) != 0);
   if (__pyx_t_1) {
 
-    /* "util.pxd":57
+    /* "util.pxd":58
  *         i += sz
  *     elif i >= sz:
  *         raise IndexError('index out of bounds')             # <<<<<<<<<<<<<<
  * 
  *     assign_value_1d(arr, i, value)
  */
-    __pyx_t_2 = __Pyx_PyObject_Call(__pyx_builtin_IndexError, __pyx_tuple__38, NULL); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 57; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_2 = __Pyx_PyObject_Call(__pyx_builtin_IndexError, __pyx_tuple__38, NULL); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 58; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_2);
     __Pyx_Raise(__pyx_t_2, 0, 0, 0);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-    {__pyx_filename = __pyx_f[1]; __pyx_lineno = 57; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    {__pyx_filename = __pyx_f[1]; __pyx_lineno = 58; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   }
   __pyx_L5:;
 
-  /* "util.pxd":59
+  /* "util.pxd":60
  *         raise IndexError('index out of bounds')
  * 
  *     assign_value_1d(arr, i, value)             # <<<<<<<<<<<<<<
  * 
  * cdef inline int is_contiguous(ndarray arr):
  */
-  __pyx_t_4 = assign_value_1d(__pyx_v_arr, __pyx_v_i, __pyx_v_value); if (unlikely(__pyx_t_4 == -1)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 59; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_4 = assign_value_1d(__pyx_v_arr, __pyx_v_i, __pyx_v_value); if (unlikely(__pyx_t_4 == -1)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 60; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
 
-  /* "util.pxd":44
+  /* "util.pxd":45
  *     return get_value_1d(arr, i)
  * 
  * cdef inline set_value_at(ndarray arr, object loc, object value):             # <<<<<<<<<<<<<<
@@ -24628,7 +24636,7 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_set_value_at(PyArrayObject *__pyx_v
   return __pyx_r;
 }
 
-/* "util.pxd":61
+/* "util.pxd":62
  *     assign_value_1d(arr, i, value)
  * 
  * cdef inline int is_contiguous(ndarray arr):             # <<<<<<<<<<<<<<
@@ -24641,7 +24649,7 @@ static CYTHON_INLINE int __pyx_f_4util_is_contiguous(PyArrayObject *__pyx_v_arr)
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("is_contiguous", 0);
 
-  /* "util.pxd":62
+  /* "util.pxd":63
  * 
  * cdef inline int is_contiguous(ndarray arr):
  *     return cnp.PyArray_CHKFLAGS(arr, cnp.NPY_C_CONTIGUOUS)             # <<<<<<<<<<<<<<
@@ -24651,7 +24659,7 @@ static CYTHON_INLINE int __pyx_f_4util_is_contiguous(PyArrayObject *__pyx_v_arr)
   __pyx_r = PyArray_CHKFLAGS(__pyx_v_arr, NPY_C_CONTIGUOUS);
   goto __pyx_L0;
 
-  /* "util.pxd":61
+  /* "util.pxd":62
  *     assign_value_1d(arr, i, value)
  * 
  * cdef inline int is_contiguous(ndarray arr):             # <<<<<<<<<<<<<<
@@ -24665,7 +24673,7 @@ static CYTHON_INLINE int __pyx_f_4util_is_contiguous(PyArrayObject *__pyx_v_arr)
   return __pyx_r;
 }
 
-/* "util.pxd":64
+/* "util.pxd":65
  *     return cnp.PyArray_CHKFLAGS(arr, cnp.NPY_C_CONTIGUOUS)
  * 
  * cdef inline is_array(object o):             # <<<<<<<<<<<<<<
@@ -24682,21 +24690,21 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_is_array(PyObject *__pyx_v_o) {
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("is_array", 0);
 
-  /* "util.pxd":65
+  /* "util.pxd":66
  * 
  * cdef inline is_array(object o):
  *     return cnp.PyArray_Check(o)             # <<<<<<<<<<<<<<
  * 
- * 
+ * cdef inline bint _checknull(object val):
  */
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_1 = __Pyx_PyBool_FromLong(PyArray_Check(__pyx_v_o)); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 65; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyBool_FromLong(PyArray_Check(__pyx_v_o)); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 66; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_r = __pyx_t_1;
   __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "util.pxd":64
+  /* "util.pxd":65
  *     return cnp.PyArray_CHKFLAGS(arr, cnp.NPY_C_CONTIGUOUS)
  * 
  * cdef inline is_array(object o):             # <<<<<<<<<<<<<<
@@ -24716,7 +24724,7 @@ static CYTHON_INLINE PyObject *__pyx_f_4util_is_array(PyObject *__pyx_v_o) {
 }
 
 /* "util.pxd":68
- * 
+ *     return cnp.PyArray_Check(o)
  * 
  * cdef inline bint _checknull(object val):             # <<<<<<<<<<<<<<
  *     try:
@@ -24836,7 +24844,7 @@ static CYTHON_INLINE int __pyx_f_4util__checknull(PyObject *__pyx_v_val) {
   }
 
   /* "util.pxd":68
- * 
+ *     return cnp.PyArray_Check(o)
  * 
  * cdef inline bint _checknull(object val):             # <<<<<<<<<<<<<<
  *     try:
@@ -24915,7 +24923,7 @@ static CYTHON_INLINE int __pyx_f_4util__checknull_old(PyObject *__pyx_v_val) {
  *     cdef double INF = <double> np.inf
  *     cdef double NEGINF = -INF             # <<<<<<<<<<<<<<
  *     try:
- *         return val is None or val != val or val == INF or val == NEGINF
+ *         return val is None or (cpython.PyFloat_Check(val) and (val != val or val == INF or val == NEGINF))
  */
   __pyx_v_NEGINF = (-__pyx_v_INF);
 
@@ -24923,7 +24931,7 @@ static CYTHON_INLINE int __pyx_f_4util__checknull_old(PyObject *__pyx_v_val) {
  *     cdef double INF = <double> np.inf
  *     cdef double NEGINF = -INF
  *     try:             # <<<<<<<<<<<<<<
- *         return val is None or val != val or val == INF or val == NEGINF
+ *         return val is None or (cpython.PyFloat_Check(val) and (val != val or val == INF or val == NEGINF))
  *     except ValueError:
  */
   {
@@ -24936,13 +24944,19 @@ static CYTHON_INLINE int __pyx_f_4util__checknull_old(PyObject *__pyx_v_val) {
       /* "util.pxd":79
  *     cdef double NEGINF = -INF
  *     try:
- *         return val is None or val != val or val == INF or val == NEGINF             # <<<<<<<<<<<<<<
+ *         return val is None or (cpython.PyFloat_Check(val) and (val != val or val == INF or val == NEGINF))             # <<<<<<<<<<<<<<
  *     except ValueError:
  *         return False
  */
       __pyx_t_7 = (__pyx_v_val == Py_None);
       __pyx_t_8 = (__pyx_t_7 != 0);
       if (!__pyx_t_8) {
+      } else {
+        __pyx_t_6 = __pyx_t_8;
+        goto __pyx_L11_bool_binop_done;
+      }
+      __pyx_t_8 = (PyFloat_Check(__pyx_v_val) != 0);
+      if (__pyx_t_8) {
       } else {
         __pyx_t_6 = __pyx_t_8;
         goto __pyx_L11_bool_binop_done;
@@ -24983,7 +24997,7 @@ static CYTHON_INLINE int __pyx_f_4util__checknull_old(PyObject *__pyx_v_val) {
 
     /* "util.pxd":80
  *     try:
- *         return val is None or val != val or val == INF or val == NEGINF
+ *         return val is None or (cpython.PyFloat_Check(val) and (val != val or val == INF or val == NEGINF))
  *     except ValueError:             # <<<<<<<<<<<<<<
  *         return False
  * 
@@ -24997,7 +25011,7 @@ static CYTHON_INLINE int __pyx_f_4util__checknull_old(PyObject *__pyx_v_val) {
       __Pyx_GOTREF(__pyx_t_11);
 
       /* "util.pxd":81
- *         return val is None or val != val or val == INF or val == NEGINF
+ *         return val is None or (cpython.PyFloat_Check(val) and (val != val or val == INF or val == NEGINF))
  *     except ValueError:
  *         return False             # <<<<<<<<<<<<<<
  * 
@@ -25056,6 +25070,7 @@ static CYTHON_INLINE int __pyx_f_4util__checknull_old(PyObject *__pyx_v_val) {
  * 
  * cdef inline bint _checknan(object val):             # <<<<<<<<<<<<<<
  *     return not cnp.PyArray_Check(val) and val != val
+ * 
  */
 
 static CYTHON_INLINE int __pyx_f_4util__checknan(PyObject *__pyx_v_val) {
@@ -25073,6 +25088,8 @@ static CYTHON_INLINE int __pyx_f_4util__checknan(PyObject *__pyx_v_val) {
  * 
  * cdef inline bint _checknan(object val):
  *     return not cnp.PyArray_Check(val) and val != val             # <<<<<<<<<<<<<<
+ * 
+ * cdef inline bint is_period_object(object val):
  */
   __pyx_t_2 = ((!(PyArray_Check(__pyx_v_val) != 0)) != 0);
   if (__pyx_t_2) {
@@ -25093,12 +25110,63 @@ static CYTHON_INLINE int __pyx_f_4util__checknan(PyObject *__pyx_v_val) {
  * 
  * cdef inline bint _checknan(object val):             # <<<<<<<<<<<<<<
  *     return not cnp.PyArray_Check(val) and val != val
+ * 
  */
 
   /* function exit code */
   __pyx_L1_error:;
   __Pyx_XDECREF(__pyx_t_3);
   __Pyx_WriteUnraisable("util._checknan", __pyx_clineno, __pyx_lineno, __pyx_filename, 0);
+  __pyx_r = 0;
+  __pyx_L0:;
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+/* "util.pxd":86
+ *     return not cnp.PyArray_Check(val) and val != val
+ * 
+ * cdef inline bint is_period_object(object val):             # <<<<<<<<<<<<<<
+ *     return getattr(val,'_typ','_typ') == 'period'
+ */
+
+static CYTHON_INLINE int __pyx_f_4util_is_period_object(PyObject *__pyx_v_val) {
+  int __pyx_r;
+  __Pyx_RefNannyDeclarations
+  PyObject *__pyx_t_1 = NULL;
+  PyObject *__pyx_t_2 = NULL;
+  int __pyx_t_3;
+  int __pyx_lineno = 0;
+  const char *__pyx_filename = NULL;
+  int __pyx_clineno = 0;
+  __Pyx_RefNannySetupContext("is_period_object", 0);
+
+  /* "util.pxd":87
+ * 
+ * cdef inline bint is_period_object(object val):
+ *     return getattr(val,'_typ','_typ') == 'period'             # <<<<<<<<<<<<<<
+ */
+  __pyx_t_1 = __Pyx_GetAttr3(__pyx_v_val, __pyx_n_s_typ, __pyx_n_s_typ); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 87; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_2 = PyObject_RichCompare(__pyx_t_1, __pyx_n_s_period, Py_EQ); __Pyx_XGOTREF(__pyx_t_2); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 87; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_3 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 87; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  __pyx_r = __pyx_t_3;
+  goto __pyx_L0;
+
+  /* "util.pxd":86
+ *     return not cnp.PyArray_Check(val) and val != val
+ * 
+ * cdef inline bint is_period_object(object val):             # <<<<<<<<<<<<<<
+ *     return getattr(val,'_typ','_typ') == 'period'
+ */
+
+  /* function exit code */
+  __pyx_L1_error:;
+  __Pyx_XDECREF(__pyx_t_1);
+  __Pyx_XDECREF(__pyx_t_2);
+  __Pyx_WriteUnraisable("util.is_period_object", __pyx_clineno, __pyx_lineno, __pyx_filename, 0);
   __pyx_r = 0;
   __pyx_L0:;
   __Pyx_RefNannyFinishContext();
@@ -28133,6 +28201,7 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_n_s_pandas_lib, __pyx_k_pandas_lib, sizeof(__pyx_k_pandas_lib), 0, 0, 1, 1},
   {&__pyx_n_s_pandas_parser, __pyx_k_pandas_parser, sizeof(__pyx_k_pandas_parser), 0, 0, 1, 1},
   {&__pyx_n_s_path, __pyx_k_path, sizeof(__pyx_k_path), 0, 0, 1, 1},
+  {&__pyx_n_s_period, __pyx_k_period, sizeof(__pyx_k_period), 0, 0, 1, 1},
   {&__pyx_n_s_pop, __pyx_k_pop, sizeof(__pyx_k_pop), 0, 0, 1, 1},
   {&__pyx_n_s_prepare, __pyx_k_prepare, sizeof(__pyx_k_prepare), 0, 0, 1, 1},
   {&__pyx_n_s_print, __pyx_k_print, sizeof(__pyx_k_print), 0, 0, 1, 1},
@@ -28173,6 +28242,7 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_n_b_true, __pyx_k_true, sizeof(__pyx_k_true), 0, 0, 0, 1},
   {&__pyx_n_s_true_values, __pyx_k_true_values, sizeof(__pyx_k_true_values), 0, 0, 1, 1},
   {&__pyx_n_s_tupleize_cols, __pyx_k_tupleize_cols, sizeof(__pyx_k_tupleize_cols), 0, 0, 1, 1},
+  {&__pyx_n_s_typ, __pyx_k_typ, sizeof(__pyx_k_typ), 0, 0, 1, 1},
   {&__pyx_n_s_type, __pyx_k_type, sizeof(__pyx_k_type), 0, 0, 1, 1},
   {&__pyx_n_s_u, __pyx_k_u, sizeof(__pyx_k_u), 0, 0, 1, 1},
   {&__pyx_n_s_uint16, __pyx_k_uint16, sizeof(__pyx_k_uint16), 0, 0, 1, 1},
@@ -28215,7 +28285,7 @@ static int __Pyx_InitCachedBuiltins(void) {
   __pyx_builtin_NotImplementedError = __Pyx_GetBuiltinName(__pyx_n_s_NotImplementedError); if (!__pyx_builtin_NotImplementedError) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1067; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_builtin_TypeError = __Pyx_GetBuiltinName(__pyx_n_s_TypeError); if (!__pyx_builtin_TypeError) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1094; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_builtin_object = __Pyx_GetBuiltinName(__pyx_n_s_object); if (!__pyx_builtin_object) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1237; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  __pyx_builtin_IndexError = __Pyx_GetBuiltinName(__pyx_n_s_IndexError); if (!__pyx_builtin_IndexError) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 40; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_builtin_IndexError = __Pyx_GetBuiltinName(__pyx_n_s_IndexError); if (!__pyx_builtin_IndexError) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 41; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_builtin_RuntimeError = __Pyx_GetBuiltinName(__pyx_n_s_RuntimeError); if (!__pyx_builtin_RuntimeError) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 803; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   return 0;
   __pyx_L1_error:;
@@ -28554,25 +28624,25 @@ static int __Pyx_InitCachedConstants(void) {
   __Pyx_GOTREF(__pyx_tuple__36);
   __Pyx_GIVEREF(__pyx_tuple__36);
 
-  /* "util.pxd":40
+  /* "util.pxd":41
  *         i += sz
  *     elif i >= sz or sz == 0:
  *         raise IndexError('index out of bounds')             # <<<<<<<<<<<<<<
  * 
  *     return get_value_1d(arr, i)
  */
-  __pyx_tuple__37 = PyTuple_Pack(1, __pyx_kp_s_index_out_of_bounds); if (unlikely(!__pyx_tuple__37)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 40; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_tuple__37 = PyTuple_Pack(1, __pyx_kp_s_index_out_of_bounds); if (unlikely(!__pyx_tuple__37)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 41; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_tuple__37);
   __Pyx_GIVEREF(__pyx_tuple__37);
 
-  /* "util.pxd":57
+  /* "util.pxd":58
  *         i += sz
  *     elif i >= sz:
  *         raise IndexError('index out of bounds')             # <<<<<<<<<<<<<<
  * 
  *     assign_value_1d(arr, i, value)
  */
-  __pyx_tuple__38 = PyTuple_Pack(1, __pyx_kp_s_index_out_of_bounds); if (unlikely(!__pyx_tuple__38)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 57; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_tuple__38 = PyTuple_Pack(1, __pyx_kp_s_index_out_of_bounds); if (unlikely(!__pyx_tuple__38)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 58; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_tuple__38);
   __Pyx_GIVEREF(__pyx_tuple__38);
 
@@ -31301,6 +31371,32 @@ static void __Pyx_WriteUnraisable(const char *name, CYTHON_UNUSED int clineno,
         PyErr_WriteUnraisable(ctx);
         Py_DECREF(ctx);
     }
+}
+
+static CYTHON_INLINE PyObject *__Pyx_GetAttr(PyObject *o, PyObject *n) {
+#if CYTHON_COMPILING_IN_CPYTHON
+#if PY_MAJOR_VERSION >= 3
+    if (likely(PyUnicode_Check(n)))
+#else
+    if (likely(PyString_Check(n)))
+#endif
+        return __Pyx_PyObject_GetAttrStr(o, n);
+#endif
+    return PyObject_GetAttr(o, n);
+}
+
+static CYTHON_INLINE PyObject *__Pyx_GetAttr3(PyObject *o, PyObject *n, PyObject *d) {
+    PyObject *r = __Pyx_GetAttr(o, n);
+    if (unlikely(!r)) {
+        if (!PyErr_ExceptionMatches(PyExc_AttributeError))
+            goto bad;
+        PyErr_Clear();
+        r = d;
+        Py_INCREF(d);
+    }
+    return r;
+bad:
+    return NULL;
 }
 
 static CYTHON_INLINE void __Pyx_RaiseNoneNotIterableError(void) {
