@@ -7,6 +7,7 @@ from pandas.compat import range, zip, lrange, lzip, u, reduce
 from pandas import compat
 import numpy as np
 
+from sys import getsizeof
 import pandas.tslib as tslib
 import pandas.lib as lib
 import pandas.algos as _algos
@@ -17,7 +18,7 @@ from pandas.util.decorators import Appender, cache_readonly, deprecate
 from pandas.core.common import isnull, array_equivalent
 import pandas.core.common as com
 from pandas.core.common import (_values_from_object, is_float, is_integer,
-                                ABCSeries, _ensure_object)
+                                ABCSeries, _ensure_object, _ensure_int64)
 from pandas.core.config import get_option
 
 # simplify
@@ -572,8 +573,22 @@ class Index(IndexOpsMixin, PandasObject):
 
     @property
     def is_monotonic(self):
-        """ return if the index has monotonic (only equaly or increasing) values """
-        return self._engine.is_monotonic
+        """ alias for is_monotonic_increasing (deprecated) """
+        return self._engine.is_monotonic_increasing
+
+    @property
+    def is_monotonic_increasing(self):
+        """ return if the index is monotonic increasing (only equal or
+        increasing) values
+        """
+        return self._engine.is_monotonic_increasing
+
+    @property
+    def is_monotonic_decreasing(self):
+        """ return if the index is monotonic decreasing (only equal or
+        decreasing values
+        """
+        return self._engine.is_monotonic_decreasing
 
     def is_lexsorted_for_tuple(self, tup):
         return True
@@ -1147,20 +1162,20 @@ class Index(IndexOpsMixin, PandasObject):
                           "use '|' or .union()",FutureWarning)
             return self.union(other)
         return Index(np.array(self) + other)
-
     __iadd__ = __add__
-    __eq__ = _indexOp('__eq__')
-    __ne__ = _indexOp('__ne__')
-    __lt__ = _indexOp('__lt__')
-    __gt__ = _indexOp('__gt__')
-    __le__ = _indexOp('__le__')
-    __ge__ = _indexOp('__ge__')
 
     def __sub__(self, other):
         if isinstance(other, Index):
             warnings.warn("using '-' to provide set differences with Indexes is deprecated, "
                           "use .difference()",FutureWarning)
         return self.difference(other)
+
+    __eq__ = _indexOp('__eq__')
+    __ne__ = _indexOp('__ne__')
+    __lt__ = _indexOp('__lt__')
+    __gt__ = _indexOp('__gt__')
+    __le__ = _indexOp('__le__')
+    __ge__ = _indexOp('__ge__')
 
     def __and__(self, other):
         return self.intersection(other)
@@ -1987,16 +2002,12 @@ class Index(IndexOpsMixin, PandasObject):
                     slc += offset
 
             except KeyError:
-                if self.is_monotonic:
-
-                    # we are duplicated but non-unique
-                    # so if we have an indexer then we are done
-                    # else search for it (GH 7523)
-                    if not is_unique and is_integer(search_value):
-                        slc = search_value
-                    else:
-                        slc = self.searchsorted(search_value,
-                                                side=search_side)
+                if self.is_monotonic_increasing:
+                    slc = self.searchsorted(search_value, side=search_side)
+                elif self.is_monotonic_decreasing:
+                    search_side = 'right' if search_side == 'left' else 'left'
+                    slc = len(self) - self[::-1].searchsorted(search_value,
+                                                              side=search_side)
                 else:
                     raise
             return slc
@@ -2098,7 +2109,7 @@ class Index(IndexOpsMixin, PandasObject):
     def _add_numeric_methods(cls):
         """ add in numeric methods """
 
-        def _make_evaluate_binop(op, opstr):
+        def _make_evaluate_binop(op, opstr, reversed=False):
 
             def _evaluate_numeric_binop(self, other):
                 import pandas.tseries.offsets as offsets
@@ -2128,7 +2139,13 @@ class Index(IndexOpsMixin, PandasObject):
                 else:
                     if not (com.is_float(other) or com.is_integer(other)):
                         raise TypeError("can only perform ops with scalar values")
-                return self._shallow_copy(op(self.values, other))
+
+                # if we are a reversed non-communative op
+                values = self.values
+                if reversed:
+                    values, other = other, values
+
+                return self._shallow_copy(op(values, other))
 
             return _evaluate_numeric_binop
 
@@ -2145,15 +2162,22 @@ class Index(IndexOpsMixin, PandasObject):
 
             return _evaluate_numeric_unary
 
+        cls.__add__ = cls.__radd__ = _make_evaluate_binop(operator.add,'__add__')
+        cls.__sub__ = _make_evaluate_binop(operator.sub,'__sub__')
+        cls.__rsub__ = _make_evaluate_binop(operator.sub,'__sub__',reversed=True)
         cls.__mul__ = cls.__rmul__ = _make_evaluate_binop(operator.mul,'__mul__')
-        cls.__floordiv__ = cls.__rfloordiv__ = _make_evaluate_binop(operator.floordiv,'__floordiv__')
-        cls.__truediv__ = cls.__rtruediv__ = _make_evaluate_binop(operator.truediv,'__truediv__')
+        cls.__floordiv__ = _make_evaluate_binop(operator.floordiv,'__floordiv__')
+        cls.__rfloordiv__ = _make_evaluate_binop(operator.floordiv,'__floordiv__',reversed=True)
+        cls.__truediv__ = _make_evaluate_binop(operator.truediv,'__truediv__')
+        cls.__rtruediv__ = _make_evaluate_binop(operator.truediv,'__truediv__',reversed=True)
         if not compat.PY3:
-            cls.__div__ = cls.__rdiv__ = _make_evaluate_binop(operator.div,'__div__')
+            cls.__div__ = _make_evaluate_binop(operator.div,'__div__')
+            cls.__rdiv__ = _make_evaluate_binop(operator.div,'__div__',reversed=True)
         cls.__neg__ = _make_evaluate_unary(lambda x: -x,'__neg__')
         cls.__pos__ = _make_evaluate_unary(lambda x: x,'__pos__')
         cls.__abs__ = _make_evaluate_unary(lambda x: np.abs(x),'__abs__')
         cls.__inv__ = _make_evaluate_unary(lambda x: -x,'__inv__')
+
 
 Index._add_numeric_methods_disabled()
 
@@ -2165,7 +2189,6 @@ class NumericIndex(Index):
 
     """
     _is_numeric_dtype = True
-
 
 class Int64Index(NumericIndex):
 
@@ -2418,10 +2441,13 @@ class Float64Index(NumericIndex):
     def get_loc(self, key):
         try:
             if np.all(np.isnan(key)):
+                nan_idxs = self._nan_idxs
                 try:
-                    return self._nan_idxs.item()
-                except ValueError:
-                    return self._nan_idxs
+                    return nan_idxs.item()
+                except (ValueError, IndexError):
+                    # should only need to catch ValueError here but on numpy
+                    # 1.7 .item() can raise IndexError when NaNs are present
+                    return nan_idxs
         except (TypeError, NotImplementedError):
             pass
         return super(Float64Index, self).get_loc(key)
@@ -2668,13 +2694,13 @@ class MultiIndex(Index):
             raise ValueError('Length of labels must match length of levels.')
 
         if level is None:
-            new_labels = FrozenList(_ensure_frozen(v, copy=copy)._shallow_copy()
-                                    for v in labels)
+            new_labels = FrozenList(_ensure_frozen(lab, lev, copy=copy)._shallow_copy()
+                                    for lev, lab in zip(self.levels, labels))
         else:
             level = [self._get_level_number(l) for l in level]
             new_labels = list(self._labels)
-            for l, v in zip(level, labels):
-                new_labels[l] = _ensure_frozen(v, copy=copy)._shallow_copy()
+            for l, lev, lab in zip(level, self.levels, labels):
+                new_labels[l] = _ensure_frozen(lab, lev, copy=copy)._shallow_copy()
             new_labels = FrozenList(new_labels)
 
         self._labels = new_labels
@@ -2811,6 +2837,14 @@ class MultiIndex(Index):
     @cache_readonly
     def dtype(self):
         return np.dtype('O')
+
+    @cache_readonly
+    def nbytes(self):
+        """ return the number of bytes in the underlying data """
+        level_nbytes = sum(( i.nbytes for i in self.levels ))
+        label_nbytes = sum(( i.nbytes for i in self.labels ))
+        names_nbytes = sum(( getsizeof(i) for i in self.names ))
+        return level_nbytes + label_nbytes + names_nbytes
 
     def __repr__(self):
         encoding = get_option('display.encoding')
@@ -4349,7 +4383,7 @@ class MultiIndex(Index):
                 lev_loc = level.get_loc(k)
 
             new_levels.append(level)
-            new_labels.append(np.insert(labels, loc, lev_loc))
+            new_labels.append(np.insert(_ensure_int64(labels), loc, lev_loc))
 
         return MultiIndex(levels=new_levels, labels=new_labels,
                           names=self.names, verify_integrity=False)
@@ -4462,8 +4496,8 @@ def _ensure_index(index_like, copy=False):
     return Index(index_like)
 
 
-def _ensure_frozen(array_like, copy=False):
-    array_like = np.asanyarray(array_like, dtype=np.int_)
+def _ensure_frozen(array_like, categories, copy=False):
+    array_like = com._coerce_indexer_dtype(array_like, categories)
     array_like = array_like.view(FrozenNDArray)
     if copy:
         array_like = array_like.copy()

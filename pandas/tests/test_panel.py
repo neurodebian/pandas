@@ -1,6 +1,7 @@
 # pylint: disable=W0612,E1101
 
 from datetime import datetime
+from inspect import getargspec
 import operator
 import nose
 
@@ -168,6 +169,11 @@ class SafeForLongAndSparse(object):
             assert_frame_equal(result, obj.apply(skipna_wrapper, axis=i))
 
         self.assertRaises(Exception, f, axis=obj.ndim)
+
+        # Unimplemented numeric_only parameter.
+        if 'numeric_only' in getargspec(f).args:
+            self.assertRaisesRegexp(NotImplementedError, name, f,
+                                    numeric_only=True)
 
 
 class SafeForSparse(object):
@@ -1494,6 +1500,18 @@ class TestPanel(tm.TestCase, PanelTests, CheckIndexing,
         self.assertEqual(wp['bool'].values.dtype, np.bool_)
         # Previously, this was mutating the underlying index and changing its name
         assert_frame_equal(wp['bool'], panel['bool'], check_names=False)
+
+        # GH 8704
+        # with categorical
+        df = panel.to_frame()
+        df['category'] = df['str'].astype('category')
+
+        # to_panel
+        # TODO: this converts back to object
+        p = df.to_panel()
+        expected = panel.copy()
+        expected['category'] = 'foo'
+        assert_panel_equal(p,expected)
 
     def test_to_frame_multi_major(self):
         idx = MultiIndex.from_tuples([(1, 'one'), (1, 'two'), (2, 'one'),

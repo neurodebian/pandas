@@ -14,7 +14,7 @@ from pandas import compat
 from pandas.tseries.index import DatetimeIndex
 from pandas.tools.merge import merge, concat, ordered_merge, MergeError
 from pandas.util.testing import (assert_frame_equal, assert_series_equal,
-                                 assert_almost_equal, rands,
+                                 assert_almost_equal,
                                  makeCustomDataframe as mkdf,
                                  assertRaisesRegexp)
 from pandas import isnull, DataFrame, Index, MultiIndex, Panel, Series, date_range, read_table, read_csv
@@ -913,7 +913,7 @@ class TestMergeMulti(tm.TestCase):
     def test_compress_group_combinations(self):
 
         # ~ 40000000 possible unique groups
-        key1 = np.array([rands(10) for _ in range(10000)], dtype='O')
+        key1 = tm.rands_array(10, 10000)
         key1 = np.tile(key1, 2)
         key2 = key1[::-1]
 
@@ -2202,6 +2202,33 @@ class TestConcatenate(tm.TestCase):
 
         result = concat([s1, s2], axis=1, ignore_index=True)
         self.assertTrue(np.array_equal(result.columns, [0, 1]))
+
+    def test_concat_iterables(self):
+        from collections import deque, Iterable
+
+        # GH8645 check concat works with tuples, list, generators, and weird
+        # stuff like deque and custom iterables
+        df1 = DataFrame([1, 2, 3])
+        df2 = DataFrame([4, 5, 6])
+        expected = DataFrame([1, 2, 3, 4, 5, 6])
+        assert_frame_equal(pd.concat((df1, df2), ignore_index=True), expected)
+        assert_frame_equal(pd.concat([df1, df2], ignore_index=True), expected)
+        assert_frame_equal(pd.concat((df for df in (df1, df2)), ignore_index=True), expected)
+        assert_frame_equal(pd.concat(deque((df1, df2)), ignore_index=True), expected)
+        class CustomIterator1(object):
+            def __len__(self):
+                return 2
+            def __getitem__(self, index):
+                try:
+                    return {0: df1, 1: df2}[index]
+                except KeyError:
+                    raise IndexError
+        assert_frame_equal(pd.concat(CustomIterator1(), ignore_index=True), expected)
+        class CustomIterator2(Iterable):
+            def __iter__(self):
+                yield df1
+                yield df2
+        assert_frame_equal(pd.concat(CustomIterator2(), ignore_index=True), expected)
 
     def test_concat_invalid(self):
 

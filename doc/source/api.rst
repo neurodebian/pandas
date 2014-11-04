@@ -190,6 +190,8 @@ Standard moving window functions
    rolling_quantile
    rolling_window
 
+.. _api.functions_expanding:
+
 Standard expanding window functions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1164,6 +1166,8 @@ Attributes
 
    Index.values
    Index.is_monotonic
+   Index.is_monotonic_increasing
+   Index.is_monotonic_decreasing
    Index.is_unique
    Index.dtype
    Index.inferred_type

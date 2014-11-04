@@ -866,7 +866,7 @@ class CheckIndexing(object):
         assert_frame_equal(result2, expected)
 
         # non-monotonic, raise KeyError
-        df2 = df[::-1]
+        df2 = df.iloc[lrange(5) + lrange(5, 10)[::-1]]
         self.assertRaises(KeyError, df2.ix.__getitem__, slice(3, 11))
         self.assertRaises(KeyError, df2.ix.__setitem__, slice(3, 11), 0)
 
@@ -1000,7 +1000,10 @@ class CheckIndexing(object):
         tmp = df.copy()
         exp = df.copy()
         tmp.ix[:, 2] = 5
-        exp.values[:, 2] = 5
+
+        # tmp correctly sets the dtype
+        # so match the exp way
+        exp[2] = 5
         assert_frame_equal(tmp, exp)
 
     def test_fancy_getitem_int_labels(self):
@@ -2622,7 +2625,7 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         with assertRaisesRegexp(ValueError, "Shape of passed values is \(3, 2\), indices imply \(2, 2\)"):
             DataFrame(np.random.rand(2,3), columns=['A', 'B'], index=[1, 2])
 
-        with assertRaisesRegexp(ValueError, 'If using all scalar values, you must must pass an index'):
+        with assertRaisesRegexp(ValueError, 'If using all scalar values, you must pass an index'):
             DataFrame({'a': False, 'b': True})
 
     def test_constructor_with_embedded_frames(self):
@@ -4155,6 +4158,10 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
 
         tm.assert_almost_equal(recons_data, expected_records)
 
+    def test_to_dict_invalid_orient(self):
+        df = DataFrame({'A':[0, 1]})
+        self.assertRaises(ValueError, df.to_dict, orient='invalid')
+
     def test_to_records_dt64(self):
         df = DataFrame([["one", "two", "three"],
                         ["four", "five", "six"]],
@@ -4734,7 +4741,7 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
 
     def test_very_wide_info_repr(self):
         df = DataFrame(np.random.randn(10, 20),
-                       columns=[tm.rands(10) for _ in range(20)])
+                       columns=tm.rands_array(10, 20))
         repr(df)
 
     def test_repr_column_name_unicode_truncation_bug(self):
@@ -6732,6 +6739,21 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         res = buf.getvalue().splitlines()
         self.assertTrue("memory usage: " not in res[-1])
 
+        df.info(buf=buf, memory_usage=True)
+        res = buf.getvalue().splitlines()
+        # memory usage is a lower bound, so print it as XYZ+ MB
+        self.assertTrue(re.match(r"memory usage: [^+]+\+", res[-1]))
+
+        df.iloc[:, :5].info(buf=buf, memory_usage=True)
+        res = buf.getvalue().splitlines()
+        # excluded column with object dtype, so estimate is accurate
+        self.assertFalse(re.match(r"memory usage: [^+]+\+", res[-1]))
+
+        df_with_object_index = pd.DataFrame({'a': [1]}, index=['foo'])
+        df_with_object_index.info(buf=buf, memory_usage=True)
+        res = buf.getvalue().splitlines()
+        self.assertTrue(re.match(r"memory usage: [^+]+\+", res[-1]))
+
         # Test a DataFrame with duplicate columns
         dtypes = ['int64', 'int64', 'int64', 'float64']
         data = {}
@@ -6748,6 +6770,15 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         size_df = np.size(df.columns.values)  # index=False; default
         self.assertEqual(size_df, np.size(df.memory_usage()))
 
+        # test for validity
+        DataFrame(1,index=['a'],columns=['A']).memory_usage(index=True)
+        DataFrame(1,index=['a'],columns=['A']).index.nbytes
+        DataFrame(1,index=pd.MultiIndex.from_product([['a'],range(1000)]),columns=['A']).index.nbytes
+        DataFrame(1,index=pd.MultiIndex.from_product([['a'],range(1000)]),columns=['A']).index.values.nbytes
+        DataFrame(1,index=pd.MultiIndex.from_product([['a'],range(1000)]),columns=['A']).memory_usage(index=True)
+        DataFrame(1,index=pd.MultiIndex.from_product([['a'],range(1000)]),columns=['A']).index.nbytes
+        DataFrame(1,index=pd.MultiIndex.from_product([['a'],range(1000)]),columns=['A']).index.values.nbytes
+
     def test_dtypes(self):
         self.mixed_frame['bool'] = self.mixed_frame['A'] > 0
         result = self.mixed_frame.dtypes
@@ -6755,6 +6786,12 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
                                for k, v in compat.iteritems(self.mixed_frame)),
                           index=result.index)
         assert_series_equal(result, expected)
+
+        # compat, GH 8722
+        with option_context('use_inf_as_null',True):
+            df = DataFrame([[1]])
+            result = df.dtypes
+            assert_series_equal(result,Series({0:np.dtype('int64')}))
 
     def test_convert_objects(self):
 

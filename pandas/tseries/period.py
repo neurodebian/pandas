@@ -63,6 +63,7 @@ class Period(PandasObject):
     """
     __slots__ = ['freq', 'ordinal']
     _comparables = ['name','freqstr']
+    _typ = 'period'
 
     @classmethod
     def _from_ordinal(cls, ordinal, freq):
@@ -497,7 +498,6 @@ class Period(PandasObject):
         """
         base, mult = _gfc(self.freq)
         return tslib.period_format(self.ordinal, base, fmt)
-
 
 def _get_ordinals(data, freq):
     f = lambda x: Period(x, freq=freq).ordinal
@@ -1263,6 +1263,7 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
         raise NotImplementedError("Not yet implemented for PeriodIndex")
 
 PeriodIndex._add_numeric_methods_disabled()
+PeriodIndex._add_datetimelike_methods()
 
 def _get_ordinal_range(start, end, periods, freq):
     if com._count_not_none(start, end, periods) < 2:

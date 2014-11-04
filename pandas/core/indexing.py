@@ -355,7 +355,7 @@ class _NDFrameIndexer(object):
             # if we have a partial multiindex, then need to adjust the plane
             # indexer here
             if (len(labels) == 1 and
-                    isinstance(self.obj[labels[0]].index, MultiIndex)):
+                    isinstance(self.obj[labels[0]].axes[0], MultiIndex)):
                 item = labels[0]
                 obj = self.obj[item]
                 index = obj.index
@@ -481,6 +481,14 @@ class _NDFrameIndexer(object):
         else:
             if isinstance(indexer, tuple):
                 indexer = _maybe_convert_ix(*indexer)
+
+                # if we are setting on the info axis ONLY
+                # set using those methods to avoid block-splitting
+                # logic here
+                if len(indexer) > info_axis and com.is_integer(indexer[info_axis]) and all(
+                    _is_null_slice(idx) for i, idx in enumerate(indexer) if i != info_axis):
+                    self.obj[item_labels[indexer[info_axis]]] = value
+                    return
 
             if isinstance(value, ABCSeries):
                 value = self._align_series(indexer, value)

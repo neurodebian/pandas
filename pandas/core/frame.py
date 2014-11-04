@@ -26,7 +26,8 @@ import numpy.ma as ma
 from pandas.core.common import (isnull, notnull, PandasError, _try_sort,
                                 _default_index, _maybe_upcast, _is_sequence,
                                 _infer_dtype_from_scalar, _values_from_object,
-                                is_list_like, _get_dtype, _maybe_box_datetimelike)
+                                is_list_like, _get_dtype, _maybe_box_datetimelike,
+                                is_categorical_dtype)
 from pandas.core.generic import NDFrame, _shared_docs
 from pandas.core.index import Index, MultiIndex, _ensure_index
 from pandas.core.indexing import (_maybe_droplevels,
@@ -240,15 +241,19 @@ class DataFrame(NDFrame):
             if isinstance(data, types.GeneratorType):
                 data = list(data)
             if len(data) > 0:
-                if index is None and isinstance(data[0], Series):
-                    index = _get_names_from_index(data)
-
                 if is_list_like(data[0]) and getattr(data[0], 'ndim', 1) == 1:
                     arrays, columns = _to_arrays(data, columns, dtype=dtype)
                     columns = _ensure_index(columns)
 
+                    # set the index
                     if index is None:
-                        index = _default_index(len(data))
+                        if isinstance(data[0], Series):
+                            index = _get_names_from_index(data)
+                        elif isinstance(data[0], Categorical):
+                            index = _default_index(len(data[0]))
+                        else:
+                            index = _default_index(len(data))
+
                     mgr = _arrays_to_mgr(arrays, columns, index, columns,
                                          dtype=dtype)
                 else:
@@ -332,6 +337,8 @@ class DataFrame(NDFrame):
 
     def _init_ndarray(self, values, index, columns, dtype=None,
                       copy=False):
+        # input must be a ndarray, list, Series, index
+
         if isinstance(values, Series):
             if columns is None:
                 if values.name is not None:
@@ -345,9 +352,41 @@ class DataFrame(NDFrame):
             if not len(values) and columns is not None and len(columns):
                 values = np.empty((0, 1), dtype=object)
 
+        # helper to create the axes as indexes
+        def _get_axes(N, K, index=index, columns=columns):
+            # return axes or defaults
+
+            if index is None:
+                index = _default_index(N)
+            else:
+                index = _ensure_index(index)
+
+            if columns is None:
+                columns = _default_index(K)
+            else:
+                columns = _ensure_index(columns)
+            return index, columns
+
+        # we could have a categorical type passed or coerced to 'category'
+        # recast this to an _arrays_to_mgr
+        if is_categorical_dtype(getattr(values,'dtype',None)) or is_categorical_dtype(dtype):
+
+            if not hasattr(values,'dtype'):
+                values = _prep_ndarray(values, copy=copy)
+                values = values.ravel()
+            elif copy:
+                values = values.copy()
+
+            index, columns = _get_axes(len(values),1)
+            return _arrays_to_mgr([ values ], columns, index, columns,
+                                  dtype=dtype)
+
+        # by definition an array here
+        # the dtypes will be coerced to a single dtype
         values = _prep_ndarray(values, copy=copy)
 
         if dtype is not None:
+
             if values.dtype != dtype:
                 try:
                     values = values.astype(dtype)
@@ -356,18 +395,7 @@ class DataFrame(NDFrame):
                                    % (dtype, orig))
                     raise_with_traceback(e)
 
-        N, K = values.shape
-
-        if index is None:
-            index = _default_index(N)
-        else:
-            index = _ensure_index(index)
-
-        if columns is None:
-            columns = _default_index(K)
-        else:
-            columns = _ensure_index(columns)
-
+        index, columns = _get_axes(*values.shape)
         return create_block_manager_from_blocks([values.T], [columns, index])
 
     @property
@@ -680,8 +708,8 @@ class DataFrame(NDFrame):
         elif orient.lower().startswith('r'):
             return [dict((k, v) for k, v in zip(self.columns, row))
                     for row in self.values]
-        else:  # pragma: no cover
-            raise ValueError("outtype %s not understood" % outtype)
+        else:
+            raise ValueError("orient '%s' not understood" % orient)
 
     def to_gbq(self, destination_table, project_id=None, chunksize=10000,
                verbose=True, reauth=False):
@@ -877,7 +905,7 @@ class DataFrame(NDFrame):
                 else:
                     ix_vals = [self.index.values]
 
-            arrays = ix_vals + [self[c].values for c in self.columns]
+            arrays = ix_vals + [self[c].get_values() for c in self.columns]
 
             count = 0
             index_names = list(self.index.names)
@@ -890,7 +918,7 @@ class DataFrame(NDFrame):
                 index_names = ['index']
             names = index_names + lmap(str, self.columns)
         else:
-            arrays = [self[c].values for c in self.columns]
+            arrays = [self[c].get_values() for c in self.columns]
             names = lmap(str, self.columns)
 
         dtype = np.dtype([(x, v.dtype) for x, v in zip(names, arrays)])
@@ -1029,7 +1057,6 @@ class DataFrame(NDFrame):
         panel : Panel
         """
         from pandas.core.panel import Panel
-        from pandas.core.reshape import block2d_to_blocknd
 
         # only support this kind for now
         if (not isinstance(self.index, MultiIndex) or  # pragma: no cover
@@ -1049,19 +1076,8 @@ class DataFrame(NDFrame):
             selfsorted = self
 
         major_axis, minor_axis = selfsorted.index.levels
-
         major_labels, minor_labels = selfsorted.index.labels
-
         shape = len(major_axis), len(minor_axis)
-
-        new_blocks = []
-        for block in selfsorted._data.blocks:
-            newb = block2d_to_blocknd(
-                values=block.values.T,
-                placement=block.mgr_locs, shape=shape,
-                labels=[major_labels, minor_labels],
-                ref_items=selfsorted.columns)
-            new_blocks.append(newb)
 
         # preserve names, if any
         major_axis = major_axis.copy()
@@ -1070,8 +1086,14 @@ class DataFrame(NDFrame):
         minor_axis = minor_axis.copy()
         minor_axis.name = self.index.names[1]
 
+        # create new axes
         new_axes = [selfsorted.columns, major_axis, minor_axis]
-        new_mgr = create_block_manager_from_blocks(new_blocks, new_axes)
+
+        # create new manager
+        new_mgr = selfsorted._data.reshape_nd(axes=new_axes,
+                                              labels=[major_labels, minor_labels],
+                                              shape=shape,
+                                              ref_items=selfsorted.columns)
 
         return Panel(new_mgr)
 
@@ -1400,7 +1422,7 @@ class DataFrame(NDFrame):
         if buf is None:
             return formatter.buf.getvalue()
 
-    def info(self, verbose=None, buf=None, max_cols=None, memory_usage=None):
+    def info(self, verbose=None, buf=None, max_cols=None, memory_usage=None, null_counts=None):
         """
         Concise summary of a DataFrame.
 
@@ -1420,6 +1442,12 @@ class DataFrame(NDFrame):
             the `display.memory_usage` setting. True or False overrides
             the `display.memory_usage` setting. Memory usage is shown in
             human-readable units (base-2 representation).
+        null_counts : boolean, default None
+            Whether to show the non-null counts
+            If None, then only show if the frame is smaller than max_info_rows and max_info_columns.
+            If True, always show counts.
+            If False, never show counts.
+
         """
         from pandas.core.format import _put_lines
 
@@ -1445,8 +1473,11 @@ class DataFrame(NDFrame):
 
         max_rows = get_option('display.max_info_rows', len(self) + 1)
 
-        show_counts = ((len(self.columns) <= max_cols) and
-                       (len(self) < max_rows))
+        if null_counts is None:
+            show_counts = ((len(self.columns) <= max_cols) and
+                           (len(self) < max_rows))
+        else:
+            show_counts = null_counts
         exceeds_info_cols = len(self.columns) > max_cols
 
         def _verbose_repr():
@@ -1478,13 +1509,13 @@ class DataFrame(NDFrame):
         def _non_verbose_repr():
             lines.append(self.columns.summary(name='Columns'))
 
-        def _sizeof_fmt(num):
+        def _sizeof_fmt(num, size_qualifier):
             # returns size in human readable format
             for x in ['bytes', 'KB', 'MB', 'GB', 'TB']:
                 if num < 1024.0:
-                    return "%3.1f %s" % (num, x)
+                    return "%3.1f%s %s" % (num, size_qualifier, x)
                 num /= 1024.0
-            return "%3.1f %s" % (num, 'PB')
+            return "%3.1f%s %s" % (num, size_qualifier, 'PB')
 
         if verbose:
             _verbose_repr()
@@ -1502,8 +1533,14 @@ class DataFrame(NDFrame):
         if memory_usage is None:
             memory_usage = get_option('display.memory_usage')
         if memory_usage:  # append memory usage of df to display
+            # size_qualifier is just a best effort; not guaranteed to catch all
+            # cases (e.g., it misses categorical data even with object
+            # categories)
+            size_qualifier = ('+' if 'object' in counts
+                              or self.index.dtype.kind == 'O' else '')
+            mem_usage = self.memory_usage(index=True).sum()
             lines.append("memory usage: %s\n" %
-                            _sizeof_fmt(self.memory_usage(index=True).sum()))
+                            _sizeof_fmt(mem_usage, size_qualifier))
         _put_lines(buf, lines)
 
     def memory_usage(self, index=False):
@@ -1534,7 +1571,7 @@ class DataFrame(NDFrame):
         result = Series([ c.values.nbytes for col, c in self.iteritems() ],
                         index=self.columns)
         if index:
-             result = Series(self.index.values.nbytes,
+             result = Series(self.index.nbytes,
                         index=['Index']).append(result)
         return result
 
@@ -2702,19 +2739,20 @@ class DataFrame(NDFrame):
                 return x.view(np.int64)
             return x
 
+        # if we are only duplicating on Categoricals this can be much faster
         if subset is None:
-            values = list(_m8_to_i8(self.values.T))
+            values = list(_m8_to_i8(self.get_values().T))
         else:
             if np.iterable(subset) and not isinstance(subset, compat.string_types):
                 if isinstance(subset, tuple):
                     if subset in self.columns:
-                        values = [self[subset].values]
+                        values = [self[subset].get_values()]
                     else:
-                        values = [_m8_to_i8(self[x].values) for x in subset]
+                        values = [_m8_to_i8(self[x].get_values()) for x in subset]
                 else:
-                    values = [_m8_to_i8(self[x].values) for x in subset]
+                    values = [_m8_to_i8(self[x].get_values()) for x in subset]
             else:
-                values = [self[subset].values]
+                values = [self[subset].get_values()]
 
         keys = lib.fast_zip_fillna(values)
         duplicated = lib.duplicated(keys, take_last=take_last)
@@ -4123,7 +4161,7 @@ class DataFrame(NDFrame):
         if level is not None:
             return self._agg_by_level('any', axis=axis, level=level,
                                       skipna=skipna)
-        return self._reduce(nanops.nanany, axis=axis, skipna=skipna,
+        return self._reduce(nanops.nanany, 'any', axis=axis, skipna=skipna,
                             numeric_only=bool_only, filter_type='bool')
 
     def all(self, axis=None, bool_only=None, skipna=True, level=None,
@@ -4154,11 +4192,11 @@ class DataFrame(NDFrame):
         if level is not None:
             return self._agg_by_level('all', axis=axis, level=level,
                                       skipna=skipna)
-        return self._reduce(nanops.nanall, axis=axis, skipna=skipna,
+        return self._reduce(nanops.nanall, 'all', axis=axis, skipna=skipna,
                             numeric_only=bool_only, filter_type='bool')
 
-    def _reduce(self, op, axis=0, skipna=True, numeric_only=None,
-                filter_type=None, name=None, **kwds):
+    def _reduce(self, op, name, axis=0, skipna=True, numeric_only=None,
+                filter_type=None, **kwds):
         axis = self._get_axis_number(axis)
         f = lambda x: op(x, axis=axis, skipna=skipna, **kwds)
         labels = self._get_agg_axis(axis)
@@ -4677,7 +4715,7 @@ def extract_index(data):
                 raw_lengths.append(len(v))
 
         if not indexes and not raw_lengths:
-            raise ValueError('If using all scalar values, you must must pass'
+            raise ValueError('If using all scalar values, you must pass'
                              ' an index')
 
         if have_series or have_dicts:
@@ -4723,6 +4761,7 @@ def _prep_ndarray(values, copy=True):
             values = convert(values)
 
     else:
+
         # drop subclass info, do not copy data
         values = np.asarray(values)
         if copy:
@@ -4767,6 +4806,10 @@ def _to_arrays(data, columns, coerce_float=False, dtype=None):
         return _list_of_series_to_arrays(data, columns,
                                          coerce_float=coerce_float,
                                          dtype=dtype)
+    elif isinstance(data[0], Categorical):
+        if columns is None:
+            columns = _default_index(len(data))
+        return data, columns
     elif (isinstance(data, (np.ndarray, Series, Index))
           and data.dtype.names is not None):
 

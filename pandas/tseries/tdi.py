@@ -307,10 +307,7 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, Int64Index):
 
                 i8 = self.asi8
                 result = i8/float(other.value)
-                if self.hasnans:
-                    mask = i8 == tslib.iNaT
-                    result = result.astype('float64')
-                    result[mask] = np.nan
+                result = self._maybe_mask_results(result,convert='float64')
                 return Index(result,name=self.name,copy=False)
 
         raise TypeError("can only perform ops with timedelta like values")
@@ -322,9 +319,7 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, Int64Index):
         other = Timestamp(other)
         i8 = self.asi8
         result = i8 + other.value
-        if self.hasnans:
-            mask = i8 == tslib.iNaT
-            result[mask] = tslib.iNaT
+        result = self._maybe_mask_results(result,fill_value=tslib.iNaT)
         return DatetimeIndex(result,name=self.name,copy=False)
 
     def _sub_datelike(self, other):
@@ -455,9 +450,7 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, Int64Index):
             # return an index (essentially this is division)
             result = self.values.astype(dtype)
             if self.hasnans:
-                result = result.astype('float64')
-                result[self.asi8 == tslib.iNaT] = np.nan
-                return Index(result,name=self.name)
+                return Index(self._maybe_mask_results(result,convert='float64'),name=self.name)
 
             return Index(result.astype('i8'),name=self.name)
 
@@ -898,6 +891,7 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, Int64Index):
         return TimedeltaIndex(new_tds, name=self.name, freq=freq)
 
 TimedeltaIndex._add_numeric_methods()
+TimedeltaIndex._add_datetimelike_methods()
 
 def _is_convertible_to_index(other):
     """ return a boolean whether I can attempt conversion to a TimedeltaIndex """
@@ -978,5 +972,3 @@ def timedelta_range(start=None, end=None, periods=None, freq='D',
     return TimedeltaIndex(start=start, end=end, periods=periods,
                           freq=freq, name=name,
                           closed=closed)
-
-

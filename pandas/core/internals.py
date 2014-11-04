@@ -11,7 +11,7 @@ from pandas.core.base import PandasObject
 from pandas.core.common import (_possibly_downcast_to_dtype, isnull,
                                 _NS_DTYPE, _TD_DTYPE, ABCSeries, is_list_like,
                                 ABCSparseSeries, _infer_dtype_from_scalar,
-                                _is_null_datelike_scalar,
+                                _is_null_datelike_scalar, _maybe_promote,
                                 is_timedelta64_dtype, is_datetime64_dtype,
                                 _possibly_infer_to_datetimelike, array_equivalent)
 from pandas.core.index import Index, MultiIndex, _ensure_index
@@ -58,6 +58,7 @@ class Block(PandasObject):
     _verify_integrity = True
     _validate_ndim = True
     _ftype = 'dense'
+    _holder = None
 
     def __init__(self, values, placement, ndim=None, fastpath=False):
         if ndim is None:
@@ -91,6 +92,21 @@ class Block(PandasObject):
     def is_datelike(self):
         """ return True if I am a non-datelike """
         return self.is_datetime or self.is_timedelta
+
+    def is_categorical_astype(self, dtype):
+        """
+        validate that we have a astypeable to categorical,
+        returns a boolean if we are a categorical
+        """
+        if com.is_categorical_dtype(dtype):
+            if dtype == com.CategoricalDtype():
+                return True
+
+            # this is a pd.Categorical, but is not
+            # a valid type for astypeing
+            raise TypeError("invalid type {0} for astype".format(dtype))
+
+        return False
 
     def to_dense(self):
         return self.values.view()
@@ -160,6 +176,24 @@ class Block(PandasObject):
     def _slice(self, slicer):
         """ return a slice of my values """
         return self.values[slicer]
+
+    def reshape_nd(self, labels, shape, ref_items):
+        """
+        Parameters
+        ----------
+        labels : list of new axis labels
+        shape : new shape
+        ref_items : new ref_items
+
+        return a new block that is transformed to a nd block
+        """
+
+        return _block2d_to_blocknd(
+            values=self.get_values().T,
+            placement=self.mgr_locs,
+            shape=shape,
+            labels=labels,
+            ref_items=ref_items)
 
     def getitem_block(self, slicer, new_mgr_locs=None):
         """
@@ -345,7 +379,7 @@ class Block(PandasObject):
 
         # may need to convert to categorical
         # this is only called for non-categoricals
-        if com.is_categorical_dtype(dtype):
+        if self.is_categorical_astype(dtype):
             return make_block(Categorical(self.values),
                               ndim=self.ndim,
                               placement=self.mgr_locs)
@@ -461,6 +495,14 @@ class Block(PandasObject):
 
     def _concat_blocks(self, blocks, values):
         """ return the block concatenation """
+
+        # dispatch to a categorical to handle the concat
+        if self._holder is None:
+
+            for b in blocks:
+                if b.is_categorical:
+                    return b._concat_blocks(blocks,values)
+
         return self._holder(values[0])
 
     # block actions ####
@@ -534,10 +576,33 @@ class Block(PandasObject):
                                      "different length than the value")
 
         try:
+
+            def _is_scalar_indexer(indexer):
+                # return True if we are all scalar indexers
+
+                if arr_value.ndim == 1:
+                    if not isinstance(indexer, tuple):
+                        indexer = tuple([indexer])
+                    return all([ np.isscalar(idx) for idx in indexer ])
+                return False
+
+            def _is_empty_indexer(indexer):
+                # return a boolean if we have an empty indexer
+
+                if arr_value.ndim == 1:
+                    if not isinstance(indexer, tuple):
+                        indexer = tuple([indexer])
+                    return all([ isinstance(idx, np.ndarray) and len(idx) == 0 for idx in indexer ])
+                return False
+
+            # empty indexers
+            # 8669 (empty)
+            if _is_empty_indexer(indexer):
+                pass
+
             # setting a single element for each dim and with a rhs that could be say a list
             # GH 6043
-            if arr_value.ndim == 1 and (
-                np.isscalar(indexer) or (isinstance(indexer, tuple) and all([ np.isscalar(idx) for idx in indexer ]))):
+            elif _is_scalar_indexer(indexer):
                 values[indexer] = value
 
             # if we are an exact match (ex-broadcasting),
@@ -1682,7 +1747,7 @@ class CategoricalBlock(NonConsolidatableMixIn, ObjectBlock):
         raise on an except if raise == True
         """
 
-        if dtype == com.CategoricalDtype():
+        if self.is_categorical_astype(dtype):
             values = self.values
         else:
             values = np.array(self.values).astype(dtype)
@@ -1701,10 +1766,24 @@ class CategoricalBlock(NonConsolidatableMixIn, ObjectBlock):
         return the block concatenation
         """
 
-        categories = self.values.categories
-        for b in blocks:
+        # we could have object blocks and categorical's here
+        # if we only have a single cateogoricals then combine everything
+        # else its a non-compat categorical
+
+        categoricals = [ b for b in blocks if b.is_categorical ]
+        objects = [ b for b in blocks if not b.is_categorical and b.is_object ]
+
+        # convert everything to object and call it a day
+        if len(objects) + len(categoricals) != len(blocks):
+            raise ValueError("try to combine non-object blocks and categoricals")
+
+        # validate the categories
+        categories = None
+        for b in categoricals:
+            if categories is None:
+                categories = b.values.categories
             if not categories.equals(b.values.categories):
-                raise ValueError("incompatible levels in categorical block merge")
+                raise ValueError("incompatible categories in categorical block merge")
 
         return self._holder(values[0], categories=categories)
 
@@ -2511,6 +2590,10 @@ class BlockManager(PandasObject):
         bm = self.__class__(result_blocks, self.axes)
         bm._consolidate_inplace()
         return bm
+
+    def reshape_nd(self, axes, **kwargs):
+        """ a 2d-nd reshape operation on a BlockManager """
+        return self.apply('reshape_nd', axes=axes, **kwargs)
 
     def is_consolidated(self):
         """
@@ -3833,6 +3916,43 @@ def _possibly_compare(a, b, op):
 def _concat_indexes(indexes):
     return indexes[0].append(indexes[1:])
 
+
+def _block2d_to_blocknd(values, placement, shape, labels, ref_items):
+    """ pivot to the labels shape """
+    from pandas.core.internals import make_block
+
+    panel_shape = (len(placement),) + shape
+
+    # TODO: lexsort depth needs to be 2!!
+
+    # Create observation selection vector using major and minor
+    # labels, for converting to panel format.
+    selector = _factor_indexer(shape[1:], labels)
+    mask = np.zeros(np.prod(shape), dtype=bool)
+    mask.put(selector, True)
+
+    if mask.all():
+        pvalues = np.empty(panel_shape, dtype=values.dtype)
+    else:
+        dtype, fill_value = _maybe_promote(values.dtype)
+        pvalues = np.empty(panel_shape, dtype=dtype)
+        pvalues.fill(fill_value)
+
+    values = values
+    for i in range(len(placement)):
+        pvalues[i].flat[mask] = values[:, i]
+
+    return make_block(pvalues, placement=placement)
+
+
+def _factor_indexer(shape, labels):
+    """
+    given a tuple of shape and a list of Categorical labels, return the
+    expanded label indexer
+    """
+    mult = np.array(shape)[::-1].cumprod()[::-1]
+    return com._ensure_platform_int(
+        np.sum(np.array(labels).T * np.append(mult, [1]), axis=1).T)
 
 def _get_blkno_placements(blknos, blk_count, group=True):
     """

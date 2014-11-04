@@ -605,7 +605,8 @@ class TestIndexing(tm.TestCase):
         expected = Series([0,1,0],index=[4,5,6])
         assert_series_equal(s, expected)
 
-    def test_loc_setitem(self):
+    def test_ix_loc_setitem(self):
+
         # GH 5771
         # loc with slice and series
         s = Series(0,index=[4,5,6])
@@ -626,6 +627,31 @@ class TestIndexing(tm.TestCase):
         df['a'].ix[[0,1,2]] = -df['a'].ix[[0,1,2]].astype('float64') + 0.5
         expected = DataFrame({'a' : [0.5,-0.5,-1.5], 'b' : [0,1,2] })
         assert_frame_equal(df,expected)
+
+        # GH 8607
+        # ix setitem consistency
+        df = DataFrame(
+            {'timestamp':[1413840976, 1413842580, 1413760580],
+             'delta':[1174, 904, 161],
+             'elapsed':[7673, 9277, 1470]
+             })
+        expected = DataFrame(
+            {'timestamp':pd.to_datetime([1413840976, 1413842580, 1413760580], unit='s'),
+             'delta':[1174, 904, 161],
+             'elapsed':[7673, 9277, 1470]
+             })
+
+        df2 = df.copy()
+        df2['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+        assert_frame_equal(df2,expected)
+
+        df2 = df.copy()
+        df2.loc[:,'timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+        assert_frame_equal(df2,expected)
+
+        df2 = df.copy()
+        df2.ix[:,2] = pd.to_datetime(df['timestamp'], unit='s')
+        assert_frame_equal(df2,expected)
 
     def test_loc_setitem_multiindex(self):
 
@@ -1017,6 +1043,13 @@ class TestIndexing(tm.TestCase):
         expected = DataFrame(dict(A = Series(val1,index=keys1), B = Series(val2,index=keys2))).reindex(index=index)
         assert_frame_equal(df, expected)
 
+        # GH 8669
+        # invalid coercion of nan -> int
+        df = DataFrame({'A' : [1,2,3], 'B' : np.nan })
+        df.loc[df.B > df.A, 'B'] = df.A
+        expected = DataFrame({'A' : [1,2,3], 'B' : np.nan})
+        assert_frame_equal(df, expected)
+
         # GH 6546
         # setting with mixed labels
         df = DataFrame({1:[1,2],2:[3,4],'a':['a','b']})
@@ -1028,7 +1061,6 @@ class TestIndexing(tm.TestCase):
         expected = DataFrame({1:[5,2],2:[6,4],'a':['a','b']})
         df.loc[0,[1,2]] = [5,6]
         assert_frame_equal(df, expected)
-
 
     def test_loc_setitem_frame_multiples(self):
         # multiple setting
@@ -2292,6 +2324,30 @@ class TestIndexing(tm.TestCase):
         test2 = panel.ix[:, "2002":"2002-12-31"]
         test1 = panel.ix[:, "2002"]
         tm.assert_panel_equal(test1,test2)
+
+        # GH8710
+        # multi-element getting with a list
+        panel = tm.makePanel()
+
+        expected = panel.iloc[[0,1]]
+
+        result = panel.loc[['ItemA','ItemB']]
+        tm.assert_panel_equal(result,expected)
+
+        result = panel.loc[['ItemA','ItemB'],:,:]
+        tm.assert_panel_equal(result,expected)
+
+        result = panel[['ItemA','ItemB']]
+        tm.assert_panel_equal(result,expected)
+
+        result = panel.loc['ItemA':'ItemB']
+        tm.assert_panel_equal(result,expected)
+
+        result = panel.ix['ItemA':'ItemB']
+        tm.assert_panel_equal(result,expected)
+
+        result = panel.ix[['ItemA','ItemB']]
+        tm.assert_panel_equal(result,expected)
 
     def test_panel_setitem(self):
 
