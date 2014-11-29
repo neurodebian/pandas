@@ -271,14 +271,15 @@ class NDFrame(PandasObject):
         return axes, kwargs
 
     @classmethod
-    def _from_axes(cls, data, axes):
+    def _from_axes(cls, data, axes, **kwargs):
         # for construction from BlockManager
         if isinstance(data, BlockManager):
-            return cls(data)
+            return cls(data, **kwargs)
         else:
             if cls._AXIS_REVERSED:
                 axes = axes[::-1]
             d = cls._construct_axes_dict_from(cls, axes, copy=False)
+            d.update(kwargs)
             return cls(data, **d)
 
     def _get_axis_number(self, axis):
@@ -379,6 +380,11 @@ class NDFrame(PandasObject):
     def ndim(self):
         "Number of axes / array dimensions"
         return self._data.ndim
+
+    @property
+    def size(self):
+        "number of elements in the NDFrame"
+        return np.prod(self.shape)
 
     def _expand_axes(self, key):
         new_axes = []
@@ -1461,7 +1467,7 @@ class NDFrame(PandasObject):
                             name=self.index[loc])
 
         else:
-            result = self[loc]
+            result = self.iloc[loc]
             result.index = new_index
 
         # this could be a view
@@ -3887,6 +3893,7 @@ class NDFrame(PandasObject):
         ])
         name = (cls._constructor_sliced.__name__
                 if cls._AXIS_LEN > 1 else 'scalar')
+
         _num_doc = """
 
 %(desc)s
@@ -3903,6 +3910,27 @@ level : int or level name, default None
 numeric_only : boolean, default None
     Include only float, int, boolean data. If None, will attempt to use
     everything, then use only numeric data
+
+Returns
+-------
+%(outname)s : """ + name + " or " + cls.__name__ + " (if level specified)\n"
+
+        _bool_doc = """
+
+%(desc)s
+
+Parameters
+----------
+axis : """ + axis_descr + """
+skipna : boolean, default True
+    Exclude NA/null values. If an entire row/column is NA, the result
+    will be NA
+level : int or level name, default None
+        If the axis is a MultiIndex (hierarchical), count along a
+        particular level, collapsing into a """ + name + """
+bool_only : boolean, default None
+    Include only boolean data. If None, will attempt to use everything,
+    then use only boolean data
 
 Returns
 -------
@@ -3934,9 +3962,8 @@ Returns
                 if level is not None:
                     return self._agg_by_level(name, axis=axis, level=level,
                                               skipna=skipna)
-                return self._reduce(f, axis=axis,
-                                    skipna=skipna, numeric_only=numeric_only,
-                                    name=name)
+                return self._reduce(f, name, axis=axis,
+                                    skipna=skipna, numeric_only=numeric_only)
             stat_func.__name__ = name
             return stat_func
 
@@ -3970,6 +3997,36 @@ equivalent of the ``numpy.ndarray`` method ``argmax``.""", nanops.nanmax)
 This method returns the minimum of the values in the object. If you
 want the *index* of the minimum, use ``idxmin``. This is the
 equivalent of the ``numpy.ndarray`` method ``argmin``.""", nanops.nanmin)
+
+        def _make_logical_function(name, desc, f):
+
+            @Substitution(outname=name, desc=desc)
+            @Appender(_bool_doc)
+            def logical_func(self, axis=None, bool_only=None, skipna=None,
+                             level=None, **kwargs):
+                if skipna is None:
+                    skipna = True
+                if axis is None:
+                    axis = self._stat_axis_number
+                if level is not None:
+                    if bool_only is not None:
+                        raise NotImplementedError(
+                            "Option bool_only is not implemented with option "
+                            "level.")
+                    return self._agg_by_level(name, axis=axis, level=level,
+                                              skipna=skipna)
+                return self._reduce(f, axis=axis, skipna=skipna,
+                                    numeric_only=bool_only, filter_type='bool',
+                                    name=name)
+            logical_func.__name__ = name
+            return logical_func
+
+        cls.any = _make_logical_function(
+            'any', 'Return whether any element is True over requested axis',
+            nanops.nanany)
+        cls.all = _make_logical_function(
+            'all', 'Return whether all elements are True over requested axis',
+            nanops.nanall)
 
         @Substitution(outname='mad',
                       desc="Return the mean absolute deviation of the values "
@@ -4005,7 +4062,7 @@ equivalent of the ``numpy.ndarray`` method ``argmin``.""", nanops.nanmin)
                 if level is not None:
                     return self._agg_by_level(name, axis=axis, level=level,
                                               skipna=skipna, ddof=ddof)
-                return self._reduce(f, axis=axis,
+                return self._reduce(f, name, axis=axis,
                                     skipna=skipna, ddof=ddof)
             stat_func.__name__ = name
             return stat_func

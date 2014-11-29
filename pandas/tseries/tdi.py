@@ -76,6 +76,7 @@ def _td_index_cmp(opname, nat_result=False):
 
     return wrapper
 
+
 class TimedeltaIndex(DatetimeIndexOpsMixin, Int64Index):
     """
     Immutable ndarray of timedelta64 data, represented internally as int64, and
@@ -307,13 +308,10 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, Int64Index):
 
                 i8 = self.asi8
                 result = i8/float(other.value)
-                if self.hasnans:
-                    mask = i8 == tslib.iNaT
-                    result = result.astype('float64')
-                    result[mask] = np.nan
+                result = self._maybe_mask_results(result,convert='float64')
                 return Index(result,name=self.name,copy=False)
 
-        raise TypeError("can only perform ops with timedelta like values")
+        return NotImplemented
 
     def _add_datelike(self, other):
 
@@ -322,9 +320,7 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, Int64Index):
         other = Timestamp(other)
         i8 = self.asi8
         result = i8 + other.value
-        if self.hasnans:
-            mask = i8 == tslib.iNaT
-            result[mask] = tslib.iNaT
+        result = self._maybe_mask_results(result,fill_value=tslib.iNaT)
         return DatetimeIndex(result,name=self.name,copy=False)
 
     def _sub_datelike(self, other):
@@ -455,9 +451,7 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, Int64Index):
             # return an index (essentially this is division)
             result = self.values.astype(dtype)
             if self.hasnans:
-                result = result.astype('float64')
-                result[self.asi8 == tslib.iNaT] = np.nan
-                return Index(result,name=self.name)
+                return Index(self._maybe_mask_results(result,convert='float64'),name=self.name)
 
             return Index(result.astype('i8'),name=self.name)
 
@@ -712,6 +706,31 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, Int64Index):
             except (KeyError, ValueError):
                 raise KeyError(key)
 
+    def _maybe_cast_slice_bound(self, label, side):
+        """
+        If label is a string, cast it to timedelta according to resolution.
+
+
+        Parameters
+        ----------
+        label : object
+        side : {'left', 'right'}
+
+        Returns
+        -------
+        bound : Timedelta or object
+
+        """
+        if isinstance(label, compat.string_types):
+            parsed = _coerce_scalar_to_timedelta_type(label, box=True)
+            lbound = parsed.round(parsed.resolution)
+            if side == 'left':
+                return lbound
+            else:
+                return (lbound + _resolution_map[parsed.resolution]() -
+                        Timedelta(1, 'ns'))
+        return label
+
     def _get_string_slice(self, key, use_lhs=True, use_rhs=True):
         freq = getattr(self, 'freqstr',
                        getattr(self, 'inferred_freq', None))
@@ -897,7 +916,11 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, Int64Index):
 
         return TimedeltaIndex(new_tds, name=self.name, freq=freq)
 
+
 TimedeltaIndex._add_numeric_methods()
+TimedeltaIndex._add_logical_methods_disabled()
+TimedeltaIndex._add_datetimelike_methods()
+
 
 def _is_convertible_to_index(other):
     """ return a boolean whether I can attempt conversion to a TimedeltaIndex """
@@ -978,5 +1001,3 @@ def timedelta_range(start=None, end=None, periods=None, freq='D',
     return TimedeltaIndex(start=start, end=end, periods=periods,
                           freq=freq, name=name,
                           closed=closed)
-
-

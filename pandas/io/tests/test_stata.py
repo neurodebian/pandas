@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from pandas.compat import iterkeys
 from pandas.core.frame import DataFrame, Series
+from pandas.core.common import is_categorical_dtype
 from pandas.io.parsers import read_csv
 from pandas.io.stata import (read_stata, StataReader, InvalidColumnName,
     PossiblePrecisionLoss, StataMissingValue)
@@ -81,6 +82,11 @@ class TestStata(tm.TestCase):
         self.dta18_115 = os.path.join(self.dirpath, 'stata9_115.dta')
         self.dta18_117 = os.path.join(self.dirpath, 'stata9_117.dta')
 
+        self.dta19_115 = os.path.join(self.dirpath, 'stata10_115.dta')
+        self.dta19_117 = os.path.join(self.dirpath, 'stata10_117.dta')
+
+        self.dta20_115 = os.path.join(self.dirpath, 'stata11_115.dta')
+        self.dta20_117 = os.path.join(self.dirpath, 'stata11_117.dta')
 
     def read_dta(self, file):
         # Legacy default reader configuration
@@ -164,8 +170,9 @@ class TestStata(tm.TestCase):
             parsed_117 = self.read_dta(self.dta2_117)
             # 113 is buggy due ot limits date format support in Stata
             # parsed_113 = self.read_dta(self.dta2_113)
-            tm.assert_equal(
-                len(w), 1)  # should get a warning for that format.
+
+            # should get a warning for that format.
+            tm.assert_equal(len(w), 1)
 
         # buggy test because of the NaT comparison on certain platforms
         # Format 113 test fails since it does not support tc and tC formats
@@ -214,7 +221,7 @@ class TestStata(tm.TestCase):
                      'labeled_with_missings', 'float_labelled'])
 
         # these are all categoricals
-        expected = pd.concat([ Series(pd.Categorical(value)) for col, value in compat.iteritems(expected)],axis=1)
+        expected = pd.concat([expected[col].astype('category') for col in expected], axis=1)
 
         tm.assert_frame_equal(parsed_113, expected)
         tm.assert_frame_equal(parsed_114, expected)
@@ -720,11 +727,166 @@ class TestStata(tm.TestCase):
 
         tm.assert_frame_equal(expected, conversion)
 
+    def test_drop_column(self):
+        expected = self.read_csv(self.csv15)
+        expected['byte_'] = expected['byte_'].astype(np.int8)
+        expected['int_'] = expected['int_'].astype(np.int16)
+        expected['long_'] = expected['long_'].astype(np.int32)
+        expected['float_'] = expected['float_'].astype(np.float32)
+        expected['double_'] = expected['double_'].astype(np.float64)
+        expected['date_td'] = expected['date_td'].apply(datetime.strptime,
+                                                        args=('%Y-%m-%d',))
+
+        columns = ['byte_', 'int_', 'long_']
+        expected = expected[columns]
+        dropped = read_stata(self.dta15_117, convert_dates=True,
+                             columns=columns)
+
+        tm.assert_frame_equal(expected, dropped)
+        with tm.assertRaises(ValueError):
+            columns = ['byte_', 'byte_']
+            read_stata(self.dta15_117, convert_dates=True, columns=columns)
+
+        with tm.assertRaises(ValueError):
+            columns = ['byte_', 'int_', 'long_', 'not_found']
+            read_stata(self.dta15_117, convert_dates=True, columns=columns)
+
+    def test_categorical_writing(self):
+        original = DataFrame.from_records(
+            [
+                ["one", "ten", "one", "one", "one", 1],
+                ["two", "nine", "two", "two", "two", 2],
+                ["three", "eight", "three", "three", "three", 3],
+                ["four", "seven", 4, "four", "four", 4],
+                ["five", "six", 5, np.nan, "five", 5],
+                ["six", "five", 6, np.nan, "six", 6],
+                ["seven", "four", 7, np.nan, "seven", 7],
+                ["eight", "three", 8, np.nan, "eight", 8],
+                ["nine", "two", 9, np.nan, "nine", 9],
+                ["ten", "one", "ten", np.nan, "ten", 10]
+            ],
+            columns=['fully_labeled', 'fully_labeled2', 'incompletely_labeled',
+                     'labeled_with_missings', 'float_labelled', 'unlabeled'])
+        expected = original.copy()
+
+        # these are all categoricals
+        original = pd.concat([original[col].astype('category') for col in original], axis=1)
+
+        expected['incompletely_labeled'] = expected['incompletely_labeled'].apply(str)
+        expected['unlabeled'] = expected['unlabeled'].apply(str)
+        expected = pd.concat([expected[col].astype('category') for col in expected], axis=1)
+        expected.index.name = 'index'
+
+        with tm.ensure_clean() as path:
+            with warnings.catch_warnings(record=True) as w:
+                # Silence warnings
+                original.to_stata(path)
+                written_and_read_again = self.read_dta(path)
+                tm.assert_frame_equal(written_and_read_again.set_index('index'), expected)
 
 
+    def test_categorical_warnings_and_errors(self):
+        # Warning for non-string labels
+        # Error for labels too long
+        original = pd.DataFrame.from_records(
+            [['a' * 10000],
+             ['b' * 10000],
+             ['c' * 10000],
+             ['d' * 10000]],
+            columns=['Too_long'])
 
+        original = pd.concat([original[col].astype('category') for col in original], axis=1)
+        with tm.ensure_clean() as path:
+            tm.assertRaises(ValueError, original.to_stata, path)
 
+        original = pd.DataFrame.from_records(
+            [['a'],
+             ['b'],
+             ['c'],
+             ['d'],
+             [1]],
+            columns=['Too_long'])
+        original = pd.concat([original[col].astype('category') for col in original], axis=1)
 
+        with warnings.catch_warnings(record=True) as w:
+            original.to_stata(path)
+            tm.assert_equal(len(w), 1)  # should get a warning for mixed content
+
+    def test_categorical_with_stata_missing_values(self):
+        values = [['a' + str(i)] for i in range(120)]
+        values.append([np.nan])
+        original = pd.DataFrame.from_records(values, columns=['many_labels'])
+        original = pd.concat([original[col].astype('category') for col in original], axis=1)
+        original.index.name = 'index'
+        with tm.ensure_clean() as path:
+            original.to_stata(path)
+            written_and_read_again = self.read_dta(path)
+            tm.assert_frame_equal(written_and_read_again.set_index('index'), original)
+
+    def test_categorical_order(self):
+        # Directly construct using expected codes
+        # Format is is_cat, col_name, labels (in order), underlying data
+        expected = [(True, 'ordered', ['a', 'b', 'c', 'd', 'e'], np.arange(5)),
+                    (True, 'reverse', ['a', 'b', 'c', 'd', 'e'], np.arange(5)[::-1]),
+                    (True, 'noorder', ['a', 'b', 'c', 'd', 'e'], np.array([2, 1, 4, 0, 3])),
+                    (True, 'floating', ['a', 'b', 'c', 'd', 'e'], np.arange(0, 5)),
+                    (True, 'float_missing', ['a', 'd', 'e'], np.array([0, 1, 2, -1, -1])),
+                    (False, 'nolabel', [1.0, 2.0, 3.0, 4.0, 5.0], np.arange(5)),
+                    (True, 'int32_mixed', ['d', 2, 'e', 'b', 'a'], np.arange(5))]
+        cols = []
+        for is_cat, col, labels, codes in expected:
+            if is_cat:
+                cols.append((col, pd.Categorical.from_codes(codes, labels)))
+            else:
+                cols.append((col, pd.Series(labels, dtype=np.float32)))
+        expected = DataFrame.from_items(cols)
+
+        # Read with and with out categoricals, ensure order is identical
+        parsed_115 = read_stata(self.dta19_115)
+        parsed_117 = read_stata(self.dta19_117)
+        tm.assert_frame_equal(expected, parsed_115)
+        tm.assert_frame_equal(expected, parsed_117)
+
+        # Check identity of codes
+        for col in expected:
+            if is_categorical_dtype(expected[col]):
+                print(col)
+                tm.assert_series_equal(expected[col].cat.codes,
+                                       parsed_115[col].cat.codes)
+                tm.assert_index_equal(expected[col].cat.categories,
+                                      parsed_115[col].cat.categories)
+
+    def test_categorical_sorting(self):
+        parsed_115 = read_stata(self.dta20_115)
+        parsed_117 = read_stata(self.dta20_117)
+        # Sort based on codes, not strings
+        parsed_115 = parsed_115.sort("srh")
+        parsed_117 = parsed_117.sort("srh")
+        # Don't sort index
+        parsed_115.index = np.arange(parsed_115.shape[0])
+        parsed_117.index = np.arange(parsed_117.shape[0])
+        codes = [-1, -1, 0, 1, 1, 1, 2, 2, 3, 4]
+        categories = ["Poor", "Fair", "Good", "Very good", "Excellent"]
+        expected = pd.Series(pd.Categorical.from_codes(codes=codes,
+                                                       categories=categories))
+        tm.assert_series_equal(expected, parsed_115["srh"])
+        tm.assert_series_equal(expected, parsed_117["srh"])
+
+    def test_categorical_ordering(self):
+        parsed_115 = read_stata(self.dta19_115)
+        parsed_117 = read_stata(self.dta19_117)
+
+        parsed_115_unordered = read_stata(self.dta19_115,
+                                          order_categoricals=False)
+        parsed_117_unordered = read_stata(self.dta19_117,
+                                          order_categoricals=False)
+        for col in parsed_115:
+            if not is_categorical_dtype(parsed_115[col]):
+                continue
+            tm.assert_equal(True, parsed_115[col].cat.ordered)
+            tm.assert_equal(True, parsed_117[col].cat.ordered)
+            tm.assert_equal(False, parsed_115_unordered[col].cat.ordered)
+            tm.assert_equal(False, parsed_117_unordered[col].cat.ordered)
 
 
 if __name__ == '__main__':

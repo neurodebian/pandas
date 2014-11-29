@@ -59,7 +59,12 @@ class _Unstacker(object):
     """
 
     def __init__(self, values, index, level=-1, value_columns=None):
+
+        self.is_categorical = None
         if values.ndim == 1:
+            if isinstance(values, Categorical):
+                self.is_categorical = values
+                values = np.array(values)
             values = values[:, np.newaxis]
         self.values = values
         self.value_columns = value_columns
@@ -174,6 +179,12 @@ class _Unstacker(object):
                     values[j] = orig_values[i]
             else:
                 index = index.take(self.unique_groups)
+
+        # may need to coerce categoricals here
+        if self.is_categorical is not None:
+            values = [ Categorical.from_array(values[:,i],
+                                              categories=self.is_categorical.categories)
+                       for i in range(values.shape[-1]) ]
 
         return DataFrame(values, index=index, columns=columns)
 
@@ -514,10 +525,10 @@ def stack(frame, level=-1, dropna=True):
             raise ValueError(msg)
 
     # Will also convert negative level numbers and check if out of bounds.
-    level = frame.columns._get_level_number(level)
+    level_num = frame.columns._get_level_number(level)
 
     if isinstance(frame.columns, MultiIndex):
-        return _stack_multi_columns(frame, level=level, dropna=dropna)
+        return _stack_multi_columns(frame, level_num=level_num, dropna=dropna)
     elif isinstance(frame.index, MultiIndex):
         new_levels = list(frame.index.levels)
         new_levels.append(frame.columns)
@@ -584,19 +595,43 @@ def stack_multiple(frame, level, dropna=True):
     return result
 
 
-def _stack_multi_columns(frame, level=-1, dropna=True):
+def _stack_multi_columns(frame, level_num=-1, dropna=True):
+    def _convert_level_number(level_num, columns):
+        """
+        Logic for converting the level number to something
+        we can safely pass to swaplevel:
+
+        We generally want to convert the level number into
+        a level name, except when columns do not have names,
+        in which case we must leave as a level number
+        """
+        if level_num in columns.names:
+            return columns.names[level_num]
+        else:
+            if columns.names[level_num] is None:
+                return level_num
+            else:
+                return columns.names[level_num]
+
     this = frame.copy()
 
     # this makes life much simpler
-    if level != frame.columns.nlevels - 1:
+    if level_num != frame.columns.nlevels - 1:
         # roll levels to put selected level at end
         roll_columns = this.columns
-        for i in range(level, frame.columns.nlevels - 1):
-            roll_columns = roll_columns.swaplevel(i, i + 1)
+        for i in range(level_num, frame.columns.nlevels - 1):
+            # Need to check if the ints conflict with level names
+            lev1 = _convert_level_number(i, roll_columns)
+            lev2 = _convert_level_number(i + 1, roll_columns)
+            roll_columns = roll_columns.swaplevel(lev1, lev2)
         this.columns = roll_columns
 
     if not this.columns.is_lexsorted():
-        this = this.sortlevel(0, axis=1)
+        # Workaround the edge case where 0 is one of the column names,
+        # which interferes with trying to sort based on the first
+        # level
+        level_to_sort = _convert_level_number(0, this.columns)
+        this = this.sortlevel(level_to_sort, axis=1)
 
     # tuple list excluding level for grouping columns
     if len(frame.columns.levels) > 2:
@@ -649,9 +684,9 @@ def _stack_multi_columns(frame, level=-1, dropna=True):
         new_labels = [np.arange(N).repeat(levsize)]
         new_names = [this.index.name]  # something better?
 
-    new_levels.append(frame.columns.levels[level])
+    new_levels.append(frame.columns.levels[level_num])
     new_labels.append(np.tile(np.arange(levsize), N))
-    new_names.append(frame.columns.names[level])
+    new_names.append(frame.columns.names[level_num])
 
     new_index = MultiIndex(levels=new_levels, labels=new_labels,
                            names=new_names, verify_integrity=False)
@@ -1188,40 +1223,3 @@ def make_axis_dummies(frame, axis='minor', transform=None):
     values = values.take(labels, axis=0)
 
     return DataFrame(values, columns=items, index=frame.index)
-
-
-def block2d_to_blocknd(values, placement, shape, labels, ref_items):
-    """ pivot to the labels shape """
-    from pandas.core.internals import make_block
-
-    panel_shape = (len(placement),) + shape
-
-    # TODO: lexsort depth needs to be 2!!
-
-    # Create observation selection vector using major and minor
-    # labels, for converting to panel format.
-    selector = factor_indexer(shape[1:], labels)
-    mask = np.zeros(np.prod(shape), dtype=bool)
-    mask.put(selector, True)
-
-    if mask.all():
-        pvalues = np.empty(panel_shape, dtype=values.dtype)
-    else:
-        dtype, fill_value = _maybe_promote(values.dtype)
-        pvalues = np.empty(panel_shape, dtype=dtype)
-        pvalues.fill(fill_value)
-
-    values = values
-    for i in range(len(placement)):
-        pvalues[i].flat[mask] = values[:, i]
-
-    return make_block(pvalues, placement=placement)
-
-
-def factor_indexer(shape, labels):
-    """ given a tuple of shape and a list of Categorical labels, return the
-    expanded label indexer
-    """
-    mult = np.array(shape)[::-1].cumprod()[::-1]
-    return com._ensure_platform_int(
-        np.sum(np.array(labels).T * np.append(mult, [1]), axis=1).T)

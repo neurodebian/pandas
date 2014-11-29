@@ -86,6 +86,7 @@ cdef extern from "parser/tokenizer.h":
         EAT_COMMENT
         EAT_LINE_COMMENT
         WHITESPACE_LINE
+        SKIP_LINE
         FINISHED
 
     enum: ERROR_OVERFLOW
@@ -158,6 +159,7 @@ cdef extern from "parser/tokenizer.h":
         int header_end # header row end
 
         void *skipset
+        int64_t skip_first_N_rows
         int skip_footer
         double (*converter)(const char *, char **, char, char, char, int)
 
@@ -180,6 +182,8 @@ cdef extern from "parser/tokenizer.h":
     int parser_init(parser_t *self) nogil
     void parser_free(parser_t *self) nogil
     int parser_add_skiprow(parser_t *self, int64_t row)
+
+    int parser_set_skipfirstnrows(parser_t *self, int64_t nrows)
 
     void parser_set_default_options(parser_t *self)
 
@@ -524,10 +528,10 @@ cdef class TextReader:
 
     cdef _make_skiprow_set(self):
         if isinstance(self.skiprows, (int, np.integer)):
-            self.skiprows = range(self.skiprows)
-
-        for i in self.skiprows:
-            parser_add_skiprow(self.parser, i)
+            parser_set_skipfirstnrows(self.parser, self.skiprows)
+        else:
+            for i in self.skiprows:
+                parser_add_skiprow(self.parser, i)
 
     cdef _setup_parser_source(self, source):
         cdef:
@@ -1002,8 +1006,12 @@ cdef class TextReader:
                     else:
                         col_dtype = np.dtype(col_dtype).str
 
-                return self._convert_with_dtype(col_dtype, i, start, end,
-                                                na_filter, 1, na_hashset, na_flist)
+                col_res, na_count = self._convert_with_dtype(col_dtype, i, start, end,
+                                                             na_filter, 1, na_hashset, na_flist)
+
+                # fallback on the parse (e.g. we requested int dtype, but its actually a float)
+                if col_res is not None:
+                    return col_res, na_count
 
         if i in self.noconvert:
             return self._string_convert(i, start, end, na_filter, na_hashset)
@@ -1020,6 +1028,25 @@ cdef class TextReader:
                 if col_res is not None:
                     break
 
+        # we had a fallback parse on the dtype, so now try to cast
+        # only allow safe casts, eg. with a nan you cannot safely cast to int
+        if col_res is not None and col_dtype is not None:
+            try:
+                col_res = col_res.astype(col_dtype,casting='safe')
+            except TypeError:
+
+                # float -> int conversions can fail the above
+                # even with no nans
+                col_res_orig = col_res
+                col_res = col_res.astype(col_dtype)
+                if (col_res != col_res_orig).any():
+                    raise ValueError("cannot safely convert passed user dtype of "
+                                     "{col_dtype} for {col_res} dtyped data in "
+                                     "column {column}".format(col_dtype=col_dtype,
+                                                              col_res=col_res_orig.dtype.name,
+                                                              column=i))
+
+
         return col_res, na_count
 
     cdef _convert_with_dtype(self, object dtype, Py_ssize_t i,
@@ -1033,10 +1060,11 @@ cdef class TextReader:
         if dtype[1] == 'i' or dtype[1] == 'u':
             result, na_count = _try_int64(self.parser, i, start, end,
                                           na_filter, na_hashset)
-            if user_dtype and na_count > 0:
-                raise Exception('Integer column has NA values')
+            if user_dtype and na_count is not None:
+                if na_count > 0:
+                    raise Exception('Integer column has NA values')
 
-            if dtype[1:] != 'i8':
+            if result is not None and dtype[1:] != 'i8':
                 result = result.astype(dtype)
 
             return result, na_count
@@ -1045,7 +1073,7 @@ cdef class TextReader:
             result, na_count = _try_double(self.parser, i, start, end,
                           na_filter, na_hashset, na_flist)
 
-            if dtype[1:] != 'f8':
+            if result is not None and dtype[1:] != 'f8':
                 result = result.astype(dtype)
             return result, na_count
 

@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame, Timestamp
 from pandas.io import data as web
-from pandas.io.data import DataReader, SymbolWarning, RemoteDataError
+from pandas.io.data import DataReader, SymbolWarning, RemoteDataError, _yahoo_codes
 from pandas.util.testing import (assert_series_equal, assert_produces_warning,
                                  network, assert_frame_equal)
 import pandas.util.testing as tm
@@ -95,6 +95,12 @@ class TestGoogle(tm.TestCase):
                 self.assertRaises(AttributeError, lambda: pan.Close)
 
     @network
+    def test_get_multi_invalid(self):
+        sl = ['AAPL', 'AMZN', 'INVALID']
+        pan = web.get_data_google(sl, '2012')
+        self.assertIn('INVALID', pan.minor_axis)
+
+    @network
     def test_get_multi2(self):
         with warnings.catch_warnings(record=True) as w:
             for locale in self.locales:
@@ -111,6 +117,14 @@ class TestGoogle(tm.TestCase):
                 self.assertEqual((4, 3), result.shape)
                 assert_n_failed_equals_n_null_columns(w, result)
 
+    def test_dtypes(self):
+        #GH3995
+        data = web.get_data_google('MSFT', 'JAN-01-12', 'JAN-31-12')
+        assert np.issubdtype(data.Open.dtype, np.number)
+        assert np.issubdtype(data.Close.dtype, np.number)
+        assert np.issubdtype(data.Low.dtype, np.number)
+        assert np.issubdtype(data.High.dtype, np.number)
+        assert np.issubdtype(data.Volume.dtype, np.number)
 
 class TestYahoo(tm.TestCase):
     @classmethod
@@ -144,6 +158,12 @@ class TestYahoo(tm.TestCase):
     @network
     def test_get_quote_string(self):
         df = web.get_quote_yahoo('GOOG')
+
+    @network
+    def test_get_quote_string(self):
+        _yahoo_codes.update({'MarketCap': 'j1'})
+        df = web.get_quote_yahoo('GOOG')
+        self.assertFalse(pd.isnull(df['MarketCap'][0]))
 
     @network
     def test_get_quote_stringlist(self):
@@ -239,20 +259,16 @@ class TestYahooOptions(tm.TestCase):
         # aapl has monthlies
         cls.aapl = web.Options('aapl', 'yahoo')
         today = datetime.today()
-        year = today.year
-        month = today.month + 1
-        if month > 12:
-            year = year + 1
-            month = 1
-        cls.expiry = datetime(year, month, 1)
+        cls.year = today.year
+        cls.month = today.month + 1
+        if cls.month > 12:
+            cls.year = cls.year + 1
+            cls.month = 1
+        cls.expiry = datetime(cls.year, cls.month, 1)
         cls.dirpath = tm.get_data_path()
         cls.html1 = os.path.join(cls.dirpath, 'yahoo_options1.html')
         cls.html2 = os.path.join(cls.dirpath, 'yahoo_options2.html')
-        cls.root1 = cls.aapl._parse_url(cls.html1)
-        cls.root2 = cls.aapl._parse_url(cls.html2)
-        cls.tables1 = cls.aapl._parse_option_page_from_yahoo(cls.root1)
-        cls.unprocessed_data1 = web._parse_options_data(cls.tables1[cls.aapl._TABLE_LOC['puts']])
-        cls.data1 = cls.aapl._process_data(cls.unprocessed_data1, 'put')
+        cls.data1 = cls.aapl._option_frames_from_url(cls.html1)['puts']
 
     @classmethod
     def tearDownClass(cls):
@@ -297,9 +313,9 @@ class TestYahooOptions(tm.TestCase):
         self.assertTrue(len(puts) > 1)
 
     @network
-    def test_get_expiry_months(self):
+    def test_get_expiry_dates(self):
         try:
-            dates = self.aapl._get_expiry_months()
+            dates, _ = self.aapl._get_expiry_dates_and_links()
         except RemoteDataError as e:
             raise nose.SkipTest(e)
         self.assertTrue(len(dates) > 1)
@@ -308,6 +324,14 @@ class TestYahooOptions(tm.TestCase):
     def test_get_all_data(self):
         try:
             data = self.aapl.get_all_data(put=True)
+        except RemoteDataError as e:
+            raise nose.SkipTest(e)
+        self.assertTrue(len(data) > 1)
+
+    @network
+    def test_get_data_with_list(self):
+        try:
+            data = self.aapl.get_call_data(expiry=self.aapl.expiry_dates)
         except RemoteDataError as e:
             raise nose.SkipTest(e)
         self.assertTrue(len(data) > 1)
@@ -323,21 +347,30 @@ class TestYahooOptions(tm.TestCase):
     @network
     def test_sample_page_price_quote_time1(self):
         #Tests the weekend quote time format
-        price, quote_time = self.aapl._get_underlying_price(self.root1)
+        price, quote_time = self.aapl._get_underlying_price(self.html1)
         self.assertIsInstance(price, (int, float, complex))
         self.assertIsInstance(quote_time, (datetime, Timestamp))
 
     def test_chop(self):
         #regression test for #7625
         self.aapl.chop_data(self.data1, above_below=2, underlying_price=np.nan)
-        chopped = self.aapl.chop_data(self.data1, above_below=2, underlying_price=300)
+        chopped = self.aapl.chop_data(self.data1, above_below=2, underlying_price=100)
         self.assertIsInstance(chopped, DataFrame)
         self.assertTrue(len(chopped) > 1)
 
+    def test_chop_out_of_strike_range(self):
+        #regression test for #7625
+        self.aapl.chop_data(self.data1, above_below=2, underlying_price=np.nan)
+        chopped = self.aapl.chop_data(self.data1, above_below=2, underlying_price=100000)
+        self.assertIsInstance(chopped, DataFrame)
+        self.assertTrue(len(chopped) > 1)
+
+
     @network
     def test_sample_page_price_quote_time2(self):
-        #Tests the weekday quote time format
-        price, quote_time = self.aapl._get_underlying_price(self.root2)
+        #Tests the EDT page format
+        #regression test for #8741
+        price, quote_time = self.aapl._get_underlying_price(self.html2)
         self.assertIsInstance(price, (int, float, complex))
         self.assertIsInstance(quote_time, (datetime, Timestamp))
 
@@ -346,62 +379,29 @@ class TestYahooOptions(tm.TestCase):
         #Tests that numeric columns with comma's are appropriately dealt with
         self.assertEqual(self.data1['Chg'].dtype, 'float64')
 
+    @network
+    def test_month_year(self):
+        try:
+            data = self.aapl.get_call_data(month=self.month, year=self.year)
+        except RemoteDataError as e:
+            raise nose.SkipTest(e)
+
+        self.assertTrue(len(data) > 1)
+
 
 class TestOptionsWarnings(tm.TestCase):
     @classmethod
     def setUpClass(cls):
         super(TestOptionsWarnings, cls).setUpClass()
-        _skip_if_no_lxml()
-
-        with assert_produces_warning(FutureWarning):
-            cls.aapl = web.Options('aapl')
-
-        today = datetime.today()
-        cls.year = today.year
-        cls.month = today.month + 1
-        if cls.month > 12:
-            cls.year += 1
-            cls.month = 1
 
     @classmethod
     def tearDownClass(cls):
         super(TestOptionsWarnings, cls).tearDownClass()
-        del cls.aapl, cls.year, cls.month
 
     @network
-    def test_get_options_data_warning(self):
+    def test_options_source_warning(self):
         with assert_produces_warning():
-            try:
-                self.aapl.get_options_data(month=self.month, year=self.year)
-            except RemoteDataError as e:
-                raise nose.SkipTest(e)
-
-    @network
-    def test_get_near_stock_price_warning(self):
-        with assert_produces_warning():
-            try:
-                options_near = self.aapl.get_near_stock_price(call=True,
-                                                              put=True,
-                                                              month=self.month,
-                                                              year=self.year)
-            except RemoteDataError as e:
-                raise nose.SkipTest(e)
-
-    @network
-    def test_get_call_data_warning(self):
-        with assert_produces_warning():
-            try:
-                self.aapl.get_call_data(month=self.month, year=self.year)
-            except RemoteDataError as e:
-                raise nose.SkipTest(e)
-
-    @network
-    def test_get_put_data_warning(self):
-        with assert_produces_warning():
-            try:
-                self.aapl.get_put_data(month=self.month, year=self.year)
-            except RemoteDataError as e:
-                raise nose.SkipTest(e)
+            aapl = web.Options('aapl')
 
 
 class TestDataReader(tm.TestCase):

@@ -1992,6 +1992,27 @@ indices to be parsed.
 
    read_excel('path_to_file.xls', 'Sheet1', parse_cols=[0, 2, 3])
 
+.. note::
+
+   It is possible to transform the contents of Excel cells via the `converters`
+   option. For instance, to convert a column to boolean:
+
+   .. code-block:: python
+
+      read_excel('path_to_file.xls', 'Sheet1', converters={'MyBools': bool})
+
+   This options handles missing values and treats exceptions in the converters
+   as missing data. Transformations are applied cell by cell rather than to the
+   column as a whole, so the array dtype is not guaranteed. For instance, a
+   column of integers with missing values cannot be transformed to an array
+   with integer dtype, because NaN is strictly a float. You can manually mask
+   missing data to recover integer dtype:
+
+   .. code-block:: python
+
+      cfun = lambda x: int(x) if x else -1
+      read_excel('path_to_file.xls', 'Sheet1', converters={'MyInts': cfun})
+
 To write a DataFrame object to a sheet of an Excel file, you can use the
 ``to_excel`` instance method.  The arguments are largely the same as ``to_csv``
 described above, the first argument being the name of the excel file, and the
@@ -3070,6 +3091,53 @@ conversion may not be necessary in future versions of pandas)
        df
        df.dtypes
 
+.. _io.hdf5-categorical:
+
+Categorical Data
+~~~~~~~~~~~~~~~~
+
+.. versionadded:: 0.15.2
+
+Writing data to a ``HDFStore`` that contains a ``category`` dtype was implemented
+in 0.15.2. Queries work the same as if it was an object array. However, the ``category`` dtyped data is
+stored in a more efficient manner.
+
+.. ipython:: python
+
+   dfcat = DataFrame({ 'A' : Series(list('aabbcdba')).astype('category'),
+                       'B' : np.random.randn(8) })
+   dfcat
+   dfcat.dtypes
+   cstore = pd.HDFStore('cats.h5', mode='w')
+   cstore.append('dfcat', dfcat, format='table', data_columns=['A'])
+   result = cstore.select('dfcat', where="A in ['b','c']")
+   result
+   result.dtypes
+
+.. warning::
+
+   The format of the ``Categorical`` is readable by prior versions of pandas (< 0.15.2), but will retrieve
+   the data as an integer based column (e.g. the ``codes``). However, the ``categories`` *can* be retrieved
+   but require the user to select them manually using the explicit meta path.
+
+   The data is stored like so:
+
+   .. ipython:: python
+
+      cstore
+
+      # to get the categories
+      cstore.select('dfcat/meta/A/meta')
+
+.. ipython:: python
+   :suppress:
+   :okexcept:
+
+   cstore.close()
+   import os
+   os.remove('cats.h5')
+
+
 String Columns
 ~~~~~~~~~~~~~~
 
@@ -3136,8 +3204,8 @@ format store like this:
      .. ipython:: python
 
         store_export = HDFStore('export.h5')
-	    store_export.append('df_dc', df_dc, data_columns=df_dc.columns)
-	    store_export
+        store_export.append('df_dc', df_dc, data_columns=df_dc.columns)
+        store_export
 
      .. ipython:: python
         :suppress:
@@ -3172,8 +3240,8 @@ number of options, please see the docstring.
         legacy_store
 
         # copy (and return the new handle)
-	    new_store = legacy_store.copy('store_new.h5')
-	    new_store
+        new_store = legacy_store.copy('store_new.h5')
+        new_store
         new_store.close()
 
      .. ipython:: python
@@ -3337,6 +3405,14 @@ With some databases, writing large DataFrames can result in errors due to packet
     flavors, columns with type ``timedelta64`` will be written as integer
     values as nanoseconds to the database and a warning will be raised.
 
+.. note::
+
+    Columns of ``category`` dtype will be converted to the dense representation
+    as you would get with ``np.asarray(categorical)`` (e.g. for string categories
+    this gives an array of strings).
+    Because of this, reading the database table back in does **not** generate
+    a categorical.
+
 
 Reading Tables
 ~~~~~~~~~~~~~~
@@ -3411,7 +3487,7 @@ Of course, you can specify a more "complex" query.
 
    pd.read_sql_query("SELECT id, Col_1, Col_2 FROM data WHERE id = 42;", engine)
 
-The func:`~pandas.read_sql_query` function supports a ``chunksize`` argument.
+The :func:`~pandas.read_sql_query` function supports a ``chunksize`` argument.
 Specifying this will return an iterator through chunks of the query result:
 
 .. ipython:: python
@@ -3575,14 +3651,14 @@ You can access the management console to determine project id's by:
 
 .. _io.stata:
 
-STATA Format
+Stata Format
 ------------
 
 .. versionadded:: 0.12.0
 
 .. _io.stata_writer:
 
-Writing to STATA format
+Writing to Stata format
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 The method :func:`~pandas.core.frame.DataFrame.to_stata` will write a DataFrame
@@ -3594,22 +3670,27 @@ into a .dta file. The format version of this file is always 115 (Stata 12).
    df.to_stata('stata.dta')
 
 *Stata* data files have limited data type support; only strings with 244 or
-fewer characters, ``int8``, ``int16``, ``int32`` and ``float64`` can be stored
-in ``.dta`` files.  *Stata* reserves certain values to represent
-missing data. Furthermore, when a value is encountered outside of the
-permitted range, the data type is upcast to the next larger size.  For
-example, ``int8`` values are restricted to lie between -127 and 100, and so
-variables with values above 100 will trigger a conversion to ``int16``. ``nan``
-values in floating points data types are stored as the basic missing data type
-(``.`` in *Stata*).  It is not possible to indicate missing data values for
-integer data types.
+fewer characters, ``int8``, ``int16``, ``int32``, ``float32` and ``float64``
+can be stored
+in ``.dta`` files.  Additionally, *Stata* reserves certain values to represent
+missing data. Exporting a non-missing value that is outside of the
+permitted range in Stata for a particular data type will retype the variable
+to the next larger size.  For example, ``int8`` values are restricted to lie
+between -127 and 100 in Stata, and so variables with values above 100 will
+trigger a conversion to ``int16``. ``nan`` values in floating points data
+types are stored as the basic missing data type (``.`` in *Stata*).
+
+.. note::
+
+    It is not possible to export missing data values for integer data types.
+
 
 The *Stata* writer gracefully handles other data types including ``int64``,
-``bool``, ``uint8``, ``uint16``, ``uint32`` and ``float32`` by upcasting to
+``bool``, ``uint8``, ``uint16``, ``uint32`` by casting to
 the smallest supported type that can represent the data.  For example, data
 with a type of ``uint8`` will be cast to ``int8`` if all values are less than
 100 (the upper bound for non-missing ``int8`` data in *Stata*), or, if values are
-outside of this range, the data is cast to ``int16``.
+outside of this range, the variable is cast to ``int16``.
 
 
 .. warning::
@@ -3618,49 +3699,48 @@ outside of this range, the data is cast to ``int16``.
    if ``int64`` values are larger than 2**53.
 
 .. warning::
+
   :class:`~pandas.io.stata.StataWriter`` and
   :func:`~pandas.core.frame.DataFrame.to_stata` only support fixed width
   strings containing up to 244 characters, a limitation imposed by the version
   115 dta file format. Attempting to write *Stata* dta files with strings
   longer than 244 characters raises a ``ValueError``.
 
-
 .. _io.stata_reader:
 
-Reading from STATA format
+Reading from Stata format
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The top-level function ``read_stata`` will read a dta format file
-and return a DataFrame:
-The class :class:`~pandas.io.stata.StataReader` will read the header of the
-given dta file at initialization. Its method
-:func:`~pandas.io.stata.StataReader.data` will read the observations,
-converting them to a DataFrame which is returned:
+The top-level function ``read_stata`` will read a dta files
+and return a DataFrame.  Alternatively,  the class :class:`~pandas.io.stata.StataReader`
+can be used if more granular access is required. :class:`~pandas.io.stata.StataReader`
+reads the header of the dta file at initialization. The method
+:func:`~pandas.io.stata.StataReader.data` reads and converts observations to a DataFrame.
 
 .. ipython:: python
 
    pd.read_stata('stata.dta')
 
-Currently the ``index`` is retrieved as a column on read back.
+Currently the ``index`` is retrieved as a column.
 
 The parameter ``convert_categoricals`` indicates whether value labels should be
 read and used to create a ``Categorical`` variable from them. Value labels can
 also be retrieved by the function ``variable_labels``, which requires data to be
-called before (see ``pandas.io.stata.StataReader``).
+called before use (see ``pandas.io.stata.StataReader``).
 
 The parameter ``convert_missing`` indicates whether missing value
 representations in Stata should be preserved.  If ``False`` (the default),
 missing values are represented as ``np.nan``.  If ``True``, missing values are
 represented using ``StataMissingValue`` objects, and columns containing missing
-values will have ``dtype`` set to ``object``.
+values will have ```object`` data type.
 
-The StataReader supports .dta Formats 104, 105, 108, 113-115 and 117.
-Alternatively, the function :func:`~pandas.io.stata.read_stata` can be used
+:func:`~pandas.read_stata` and :class:`~pandas.io.stata.StataReader` supports .dta
+formats 104, 105, 108, 113-115 (Stata 10-12) and 117 (Stata 13+).
 
 .. note::
 
-   Setting ``preserve_dtypes=False`` will upcast all integer data types to
-   ``int64`` and all floating point data types to ``float64``.  By default,
+   Setting ``preserve_dtypes=False`` will upcast to the standard pandas data types:
+   ``int64`` for all integer types and ``float64`` for floating poitn data.  By default,
    the Stata data types are preserved when importing.
 
 .. ipython:: python
@@ -3668,6 +3748,52 @@ Alternatively, the function :func:`~pandas.io.stata.read_stata` can be used
 
    import os
    os.remove('stata.dta')
+
+.. _io.stata-categorical:
+
+Categorical Data
+~~~~~~~~~~~~~~~~
+
+.. versionadded:: 0.15.2
+
+``Categorical`` data can be exported to *Stata* data files as value labeled data.
+The exported data consists of the underlying category codes as integer data values
+and the categories as value labels.  *Stata* does not have an explicit equivalent
+to a ``Categorical`` and information about *whether* the variable is ordered
+is lost when exporting.
+
+.. warning::
+
+    *Stata* only supports string value labels, and so ``str`` is called on the
+    categories when exporting data.  Exporting ``Categorical`` variables with
+    non-string categories produces a warning, and can result a loss of 
+    information if the ``str`` representations of the categories are not unique.
+
+Labeled data can similarly be imported from *Stata* data files as ``Categorical``
+variables using the keyword argument ``convert_categoricals`` (``True`` by default).  
+The keyword argument ``order_categoricals`` (``True`` by default) determines
+ whether imported ``Categorical`` variables are ordered.
+
+.. note::
+
+    When importing categorical data, the values of the variables in the *Stata*
+    data file are not preserved since ``Categorical`` variables always
+    use integer data types between ``-1`` and ``n-1`` where ``n`` is the number
+    of categories. If the original values in the *Stata* data file are required,
+    these can be imported by setting ``convert_categoricals=False``, which will
+    import original data (but not the variable labels). The original values can
+    be matched to the imported categorical data since there is a simple mapping
+    between the original *Stata* data values and the category codes of imported
+    Categorical variables: missing values are assigned code ``-1``, and the
+    smallest original value is assigned ``0``, the second smallest is assigned
+    ``1`` and so on until the largest original value is assigned the code ``n-1``.
+
+.. note::
+
+    *Stata* supports partially labeled series.  These series have value labels for
+    some but not all data values. Importing a partially labeled series will produce
+    a ``Categorial`` with string categories for the values that are labeled and
+    numeric categories for values with no label.
 
 .. _io.perf:
 

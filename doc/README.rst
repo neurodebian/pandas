@@ -88,13 +88,12 @@ Furthermore, it is recommended to have all `optional dependencies
 installed. This is not needed, but be aware that you will see some error
 messages. Because all the code in the documentation is executed during the doc
 build, the examples using this optional dependencies will generate errors.
-Run ``pd.show_version()`` to get an overview of the installed version of all
+Run ``pd.show_versions()`` to get an overview of the installed version of all
 dependencies.
 
 .. warning::
 
-   Building the docs with Sphinx version 1.2 is broken. Use the
-   latest stable version (1.2.1) or the older 1.1.3.
+   Sphinx version >= 1.2.2 or the older 1.1.3 is required.
 
 Building pandas
 ^^^^^^^^^^^^^^^
@@ -133,7 +132,7 @@ If you want to do a full clean build, do::
     python make.py build
 
 
-Staring with 0.13.1 you can tell ``make.py`` to compile only a single section
+Starting with 0.13.1 you can tell ``make.py`` to compile only a single section
 of the docs, greatly reducing the turn-around time for checking your changes.
 You will be prompted to delete `.rst` files that aren't required, since the
 last committed version can always be restored from git.

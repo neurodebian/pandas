@@ -8,7 +8,7 @@ common_setup = """from pandas_vb_common import *
 # read_csv
 
 setup1 = common_setup + """
-index = [rands(10) for _ in xrange(10000)]
+index = tm.makeStringIndex(10000)
 df = DataFrame({'float1' : randn(10000),
                 'float2' : randn(10000),
                 'string1' : ['foo'] * 10000,
@@ -21,12 +21,28 @@ df.to_csv('__test__.csv')
 read_csv_standard = Benchmark("read_csv('__test__.csv')", setup1,
                               start_date=datetime(2011, 9, 15))
 
+#----------------------------------
+# skiprows
+
+setup1 = common_setup + """
+index = tm.makeStringIndex(20000)
+df = DataFrame({'float1' : randn(20000),
+                'float2' : randn(20000),
+                'string1' : ['foo'] * 20000,
+                'bool1' : [True] * 20000,
+                'int1' : np.random.randint(0, 200000, size=20000)},
+               index=index)
+df.to_csv('__test__.csv')
+"""
+
+read_csv_skiprows = Benchmark("read_csv('__test__.csv', skiprows=10000)", setup1,
+                              start_date=datetime(2011, 9, 15))
 
 #----------------------------------------------------------------------
 # write_csv
 
 setup2 = common_setup + """
-index = [rands(10) for _ in xrange(10000)]
+index = tm.makeStringIndex(10000)
 df = DataFrame({'float1' : randn(10000),
                 'float2' : randn(10000),
                 'string1' : ['foo'] * 10000,

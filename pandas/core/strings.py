@@ -621,7 +621,7 @@ def str_center(arr, width):
     return str_pad(arr, width, side='both')
 
 
-def str_split(arr, pat=None, n=None):
+def str_split(arr, pat=None, n=None, return_type='series'):
     """
     Split each string (a la re.split) in array by given pattern, propagating NA
     values
@@ -631,6 +631,9 @@ def str_split(arr, pat=None, n=None):
     pat : string, default None
         String or regular expression to split on. If None, splits on whitespace
     n : int, default None (all)
+    return_type : {'series', 'frame'}, default 'series
+        If frame, returns a DataFrame (elements are strings)
+        If series, returns an Series (elements are lists of strings).
 
     Notes
     -----
@@ -640,6 +643,8 @@ def str_split(arr, pat=None, n=None):
     -------
     split : array
     """
+    if return_type not in ('series', 'frame'):
+        raise ValueError("return_type must be {'series', 'frame'}")
     if pat is None:
         if n is None or n == 0:
             n = -1
@@ -654,11 +659,14 @@ def str_split(arr, pat=None, n=None):
                 n = 0
             regex = re.compile(pat)
             f = lambda x: regex.split(x, maxsplit=n)
+    if return_type == 'frame':
+        res = DataFrame((Series(x) for x in _na_map(f, arr)), index=arr.index)
+    else:
+        res = _na_map(f, arr)
+    return res
 
-    return _na_map(f, arr)
 
-
-def str_slice(arr, start=None, stop=None, step=1):
+def str_slice(arr, start=None, stop=None, step=None):
     """
     Slice substrings from each element in array
 
@@ -666,6 +674,7 @@ def str_slice(arr, start=None, stop=None, step=1):
     ----------
     start : int or None
     stop : int or None
+    step : int or None
 
     Returns
     -------
@@ -937,8 +946,8 @@ class StringMethods(object):
         return self._wrap_result(result)
 
     @copy(str_split)
-    def split(self, pat=None, n=-1):
-        result = str_split(self.series, pat, n=n)
+    def split(self, pat=None, n=-1, return_type='series'):
+        result = str_split(self.series, pat, n=n, return_type=return_type)
         return self._wrap_result(result)
 
     @copy(str_get)
@@ -985,8 +994,8 @@ class StringMethods(object):
         return self._wrap_result(result)
 
     @copy(str_slice)
-    def slice(self, start=None, stop=None, step=1):
-        result = str_slice(self.series, start, stop)
+    def slice(self, start=None, stop=None, step=None):
+        result = str_slice(self.series, start, stop, step)
         return self._wrap_result(result)
 
     @copy(str_slice)

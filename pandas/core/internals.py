@@ -11,7 +11,7 @@ from pandas.core.base import PandasObject
 from pandas.core.common import (_possibly_downcast_to_dtype, isnull,
                                 _NS_DTYPE, _TD_DTYPE, ABCSeries, is_list_like,
                                 ABCSparseSeries, _infer_dtype_from_scalar,
-                                _is_null_datelike_scalar,
+                                _is_null_datelike_scalar, _maybe_promote,
                                 is_timedelta64_dtype, is_datetime64_dtype,
                                 _possibly_infer_to_datetimelike, array_equivalent)
 from pandas.core.index import Index, MultiIndex, _ensure_index
@@ -58,6 +58,7 @@ class Block(PandasObject):
     _verify_integrity = True
     _validate_ndim = True
     _ftype = 'dense'
+    _holder = None
 
     def __init__(self, values, placement, ndim=None, fastpath=False):
         if ndim is None:
@@ -91,6 +92,21 @@ class Block(PandasObject):
     def is_datelike(self):
         """ return True if I am a non-datelike """
         return self.is_datetime or self.is_timedelta
+
+    def is_categorical_astype(self, dtype):
+        """
+        validate that we have a astypeable to categorical,
+        returns a boolean if we are a categorical
+        """
+        if com.is_categorical_dtype(dtype):
+            if dtype == com.CategoricalDtype():
+                return True
+
+            # this is a pd.Categorical, but is not
+            # a valid type for astypeing
+            raise TypeError("invalid type {0} for astype".format(dtype))
+
+        return False
 
     def to_dense(self):
         return self.values.view()
@@ -160,6 +176,24 @@ class Block(PandasObject):
     def _slice(self, slicer):
         """ return a slice of my values """
         return self.values[slicer]
+
+    def reshape_nd(self, labels, shape, ref_items):
+        """
+        Parameters
+        ----------
+        labels : list of new axis labels
+        shape : new shape
+        ref_items : new ref_items
+
+        return a new block that is transformed to a nd block
+        """
+
+        return _block2d_to_blocknd(
+            values=self.get_values().T,
+            placement=self.mgr_locs,
+            shape=shape,
+            labels=labels,
+            ref_items=ref_items)
 
     def getitem_block(self, slicer, new_mgr_locs=None):
         """
@@ -345,7 +379,7 @@ class Block(PandasObject):
 
         # may need to convert to categorical
         # this is only called for non-categoricals
-        if com.is_categorical_dtype(dtype):
+        if self.is_categorical_astype(dtype):
             return make_block(Categorical(self.values),
                               ndim=self.ndim,
                               placement=self.mgr_locs)
@@ -459,10 +493,6 @@ class Block(PandasObject):
         values[mask] = na_rep
         return values.tolist()
 
-    def _concat_blocks(self, blocks, values):
-        """ return the block concatenation """
-        return self._holder(values[0])
-
     # block actions ####
     def copy(self, deep=True):
         values = self.values
@@ -534,10 +564,33 @@ class Block(PandasObject):
                                      "different length than the value")
 
         try:
+
+            def _is_scalar_indexer(indexer):
+                # return True if we are all scalar indexers
+
+                if arr_value.ndim == 1:
+                    if not isinstance(indexer, tuple):
+                        indexer = tuple([indexer])
+                    return all([ np.isscalar(idx) for idx in indexer ])
+                return False
+
+            def _is_empty_indexer(indexer):
+                # return a boolean if we have an empty indexer
+
+                if arr_value.ndim == 1:
+                    if not isinstance(indexer, tuple):
+                        indexer = tuple([indexer])
+                    return all([ isinstance(idx, np.ndarray) and len(idx) == 0 for idx in indexer ])
+                return False
+
+            # empty indexers
+            # 8669 (empty)
+            if _is_empty_indexer(indexer):
+                pass
+
             # setting a single element for each dim and with a rhs that could be say a list
             # GH 6043
-            if arr_value.ndim == 1 and (
-                np.isscalar(indexer) or (isinstance(indexer, tuple) and all([ np.isscalar(idx) for idx in indexer ]))):
+            elif _is_scalar_indexer(indexer):
                 values[indexer] = value
 
             # if we are an exact match (ex-broadcasting),
@@ -1682,7 +1735,7 @@ class CategoricalBlock(NonConsolidatableMixIn, ObjectBlock):
         raise on an except if raise == True
         """
 
-        if dtype == com.CategoricalDtype():
+        if self.is_categorical_astype(dtype):
             values = self.values
         else:
             values = np.array(self.values).astype(dtype)
@@ -1693,20 +1746,6 @@ class CategoricalBlock(NonConsolidatableMixIn, ObjectBlock):
         return make_block(values,
                           ndim=self.ndim,
                           placement=self.mgr_locs)
-
-    def _concat_blocks(self, blocks, values):
-        """
-        validate that we can merge these blocks
-
-        return the block concatenation
-        """
-
-        categories = self.values.categories
-        for b in blocks:
-            if not categories.equals(b.values.categories):
-                raise ValueError("incompatible levels in categorical block merge")
-
-        return self._holder(values[0], categories=categories)
 
     def to_native_types(self, slicer=None, na_rep='', **kwargs):
         """ convert to our native types format, slicing if desired """
@@ -2512,6 +2551,10 @@ class BlockManager(PandasObject):
         bm._consolidate_inplace()
         return bm
 
+    def reshape_nd(self, axes, **kwargs):
+        """ a 2d-nd reshape operation on a BlockManager """
+        return self.apply('reshape_nd', axes=axes, **kwargs)
+
     def is_consolidated(self):
         """
         Return True if more than one block with the same dtype
@@ -2942,7 +2985,7 @@ class BlockManager(PandasObject):
             loc = [loc]
 
         blknos = self._blknos[loc]
-        blklocs = self._blklocs[loc]
+        blklocs = self._blklocs[loc].copy()
 
         unfit_mgr_locs = []
         unfit_val_locs = []
@@ -3214,7 +3257,9 @@ class BlockManager(PandasObject):
         Take items along any axis.
         """
         self._consolidate_inplace()
-        indexer = np.asanyarray(indexer, dtype=np.int_)
+        indexer = np.arange(indexer.start, indexer.stop, indexer.step,
+                            dtype='int64') if isinstance(indexer, slice) \
+                                    else np.asanyarray(indexer, dtype='int64')
 
         n = self.shape[axis]
         if convert:
@@ -3834,6 +3879,43 @@ def _concat_indexes(indexes):
     return indexes[0].append(indexes[1:])
 
 
+def _block2d_to_blocknd(values, placement, shape, labels, ref_items):
+    """ pivot to the labels shape """
+    from pandas.core.internals import make_block
+
+    panel_shape = (len(placement),) + shape
+
+    # TODO: lexsort depth needs to be 2!!
+
+    # Create observation selection vector using major and minor
+    # labels, for converting to panel format.
+    selector = _factor_indexer(shape[1:], labels)
+    mask = np.zeros(np.prod(shape), dtype=bool)
+    mask.put(selector, True)
+
+    if mask.all():
+        pvalues = np.empty(panel_shape, dtype=values.dtype)
+    else:
+        dtype, fill_value = _maybe_promote(values.dtype)
+        pvalues = np.empty(panel_shape, dtype=dtype)
+        pvalues.fill(fill_value)
+
+    values = values
+    for i in range(len(placement)):
+        pvalues[i].flat[mask] = values[:, i]
+
+    return make_block(pvalues, placement=placement)
+
+
+def _factor_indexer(shape, labels):
+    """
+    given a tuple of shape and a list of Categorical labels, return the
+    expanded label indexer
+    """
+    mult = np.array(shape)[::-1].cumprod()[::-1]
+    return com._ensure_platform_int(
+        np.sum(np.array(labels).T * np.append(mult, [1]), axis=1).T)
+
 def _get_blkno_placements(blknos, blk_count, group=True):
     """
 
@@ -3982,21 +4064,14 @@ def get_empty_dtype_and_na(join_units):
         blk = join_units[0].block
         if blk is None:
             return np.float64, np.nan
-        else:
-            return blk.dtype, None
 
     has_none_blocks = False
     dtypes = [None] * len(join_units)
-
     for i, unit in enumerate(join_units):
         if unit.block is None:
             has_none_blocks = True
         else:
             dtypes[i] = unit.dtype
-
-    if not has_none_blocks and len(set(dtypes)) == 1:
-        # Unanimous decision, nothing to upcast.
-        return dtypes[0], None
 
     # dtypes = set()
     upcast_classes = set()
@@ -4007,7 +4082,9 @@ def get_empty_dtype_and_na(join_units):
 
         if com.is_categorical_dtype(dtype):
             upcast_cls = 'category'
-        elif issubclass(dtype.type, (np.object_, np.bool_)):
+        elif issubclass(dtype.type, np.bool_):
+            upcast_cls = 'bool'
+        elif issubclass(dtype.type, np.object_):
             upcast_cls = 'object'
         elif is_datetime64_dtype(dtype):
             upcast_cls = 'datetime'
@@ -4030,6 +4107,11 @@ def get_empty_dtype_and_na(join_units):
     # create the result
     if 'object' in upcast_classes:
         return np.dtype(np.object_), np.nan
+    elif 'bool' in upcast_classes:
+        if has_none_blocks:
+            return np.dtype(np.object_), np.nan
+        else:
+            return np.dtype(np.bool_), None
     elif 'category' in upcast_classes:
         return com.CategoricalDtype(), np.nan
     elif 'float' in upcast_classes:
@@ -4064,14 +4146,7 @@ def concatenate_join_units(join_units, concat_axis, copy):
     else:
         concat_values = com._concat_compat(to_concat, axis=concat_axis)
 
-    if any(unit.needs_block_conversion for unit in join_units):
-
-        # need to ask the join unit block to convert to the underlying repr for us
-        blocks = [ unit.block for unit in join_units if unit.block is not None ]
-        return blocks[0]._concat_blocks(blocks, concat_values)
-    else:
-        return concat_values
-
+    return concat_values
 
 def get_mgr_concatenation_plan(mgr, indexers):
     """
@@ -4111,6 +4186,7 @@ def get_mgr_concatenation_plan(mgr, indexers):
     plan = []
     for blkno, placements in _get_blkno_placements(blknos, len(mgr.blocks),
                                                    group=False):
+
         assert placements.is_slice_like
 
         join_unit_indexers = indexers.copy()
@@ -4307,7 +4383,7 @@ class JoinUnit(object):
         else:
             fill_value = upcasted_na
 
-            if self.is_null:
+            if self.is_null and not getattr(self.block,'is_categorical',None):
                 missing_arr = np.empty(self.shape, dtype=empty_dtype)
                 if np.prod(self.shape):
                     # NumPy 1.6 workaround: this statement gets strange if all
@@ -4322,6 +4398,14 @@ class JoinUnit(object):
                     missing_arr.fill(fill_value)
                 return missing_arr
 
+            if not self.indexers:
+                if self.block.is_categorical:
+                    # preserve the categoricals for validation in _concat_compat
+                    return self.block.values
+                elif self.block.is_sparse:
+                    # preserve the sparse array for validation in _concat_compat
+                    return self.block.values
+
             if self.block.is_bool:
                 # External code requested filling/upcasting, bool values must
                 # be upcasted to object to avoid being upcasted to numeric.
@@ -4335,13 +4419,14 @@ class JoinUnit(object):
             # If there's no indexing to be done, we want to signal outside
             # code that this array must be copied explicitly.  This is done
             # by returning a view and checking `retval.base`.
-            return values.view()
+            values = values.view()
+
         else:
             for ax, indexer in self.indexers.items():
                 values = com.take_nd(values, indexer, axis=ax,
                                      fill_value=fill_value)
 
-            return values
+        return values
 
 
 def _fast_count_smallints(arr):

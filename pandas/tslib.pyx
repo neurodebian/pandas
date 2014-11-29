@@ -37,7 +37,7 @@ from datetime import time as datetime_time
 from dateutil.tz import (tzoffset, tzlocal as _dateutil_tzlocal, tzfile as _dateutil_tzfile,
                          tzutc as _dateutil_tzutc, gettz as _dateutil_gettz)
 from pytz.tzinfo import BaseTzInfo as _pytz_BaseTzInfo
-from pandas.compat import parse_date, string_types, PY3
+from pandas.compat import parse_date, string_types, PY3, iteritems
 
 from sys import version_info
 import operator
@@ -228,6 +228,17 @@ class Timestamp(_Timestamp):
     def utcnow(cls):
         return cls.now('UTC')
 
+    @classmethod
+    def utcfromtimestamp(cls, ts):
+        return cls(datetime.utcfromtimestamp(ts))
+
+    @classmethod
+    def fromtimestamp(cls, ts):
+        return cls(datetime.fromtimestamp(ts))
+
+    @classmethod
+    def combine(cls, date, time):
+        return cls(datetime.combine(date, time))
 
     def __new__(cls, object ts_input, object offset=None, tz=None, unit=None):
         cdef _TSObject ts
@@ -289,8 +300,7 @@ class Timestamp(_Timestamp):
         result = '%.2d:%.2d:%.2d' % (self.hour, self.minute, self.second)
 
         if self.nanosecond != 0:
-            nanos = self.nanosecond + 1000 * self.microsecond
-            result += '.%.9d' % nanos
+            result += '.%.9d' % (self.nanosecond + 1000 * self.microsecond)
         elif self.microsecond != 0:
             result += '.%.6d' % self.microsecond
 
@@ -344,6 +354,10 @@ class Timestamp(_Timestamp):
         return self._get_field('woy')
 
     weekofyear = week
+
+    @property
+    def microsecond(self):
+        return self._get_field('us')
 
     @property
     def quarter(self):
@@ -517,6 +531,12 @@ class Timestamp(_Timestamp):
                  self.nanosecond/3600.0/1e+9
                 )/24.0)
 
+    def __radd__(self, other):
+        # __radd__ on cython extension types like _Timestamp is not used, so
+        # define it here instead
+        return self + other
+
+
 _nat_strings = set(['NaT','nat','NAT','nan','NaN','NAN'])
 class NaTType(_NaT):
     """(N)ot-(A)-(T)ime, the time equivalent of NaN"""
@@ -546,7 +566,7 @@ class NaTType(_NaT):
         return NPY_NAT
 
     def weekday(self):
-        return -1
+        return np.nan
 
     def toordinal(self):
         return -1
@@ -555,10 +575,10 @@ class NaTType(_NaT):
         return (__nat_unpickle, (None, ))
 
 fields = ['year', 'quarter', 'month', 'day', 'hour',
-          'minute', 'second', 'microsecond', 'nanosecond',
+          'minute', 'second', 'millisecond', 'microsecond', 'nanosecond',
           'week', 'dayofyear']
 for field in fields:
-    prop = property(fget=lambda self: -1)
+    prop = property(fget=lambda self: np.nan)
     setattr(NaTType, field, prop)
 
 def __nat_unpickle(*args):
@@ -1616,6 +1636,7 @@ class Timedelta(_Timedelta):
         Denote the unit of the input, if input is an integer. Default 'ns'.
     days, seconds, microseconds, milliseconds, minutes, hours, weeks : numeric, optional
         Values for construction in compat with datetime.timedelta.
+        np ints and floats will be coereced to python ints and floats.
 
     Notes
     -----
@@ -1629,9 +1650,19 @@ class Timedelta(_Timedelta):
         if value is None:
             if not len(kwargs):
                 raise ValueError("cannot construct a TimeDelta without a value/unit or descriptive keywords (days,seconds....)")
+
+            def _to_py_int_float(v):
+                if is_integer_object(v):
+                    return int(v)
+                elif is_float_object(v):
+                    return float(v)
+                raise TypeError("Invalid type {0}. Must be int or float.".format(type(v)))
+
+            kwargs = dict([ (k, _to_py_int_float(v)) for k, v in iteritems(kwargs) ])
+
             try:
                 value = timedelta(**kwargs)
-            except (TypeError):
+            except TypeError as e:
                 raise ValueError("cannot construct a TimeDelta from the passed arguments, allowed keywords are "
                                  "[days, seconds, microseconds, milliseconds, minutes, hours, weeks]")
 
@@ -1858,8 +1889,12 @@ class Timedelta(_Timedelta):
         """ array view compat """
         return np.timedelta64(self.value).view(dtype)
 
-    def _validate_ops_compat(self, other, op):
-        # return a boolean if we are compat with operating
+    def to_timedelta64(self):
+        """ Returns a numpy.timedelta64 object with 'ns' precision """
+        return np.timedelta64(self.value, 'ns')
+
+    def _validate_ops_compat(self, other):
+        # return True if we are compat with operating
         if _checknull_with_nat(other):
              return True
         elif isinstance(other, (Timedelta, timedelta, np.timedelta64)):
@@ -1868,55 +1903,58 @@ class Timedelta(_Timedelta):
              return True
         elif hasattr(other,'delta'):
              return True
-        raise TypeError("cannot operate add a Timedelta with op {op} for {typ}".format(op=op,typ=type(other)))
+        return False
 
-    def __add__(self, other):
+    # higher than np.ndarray and np.matrix
+    __array_priority__ = 100
 
-        # a Timedelta with Series/Index like
-        if hasattr(other,'_typ'):
-            return other + self
+    def _binary_op_method_timedeltalike(op, name):
+        # define a binary operation that only works if the other argument is
+        # timedelta like or an array of timedeltalike
+        def f(self, other):
+            # an offset
+            if hasattr(other, 'delta') and not isinstance(other, Timedelta):
+                return op(self, other.delta)
 
-        # an offset
-        elif hasattr(other,'delta') and not isinstance(other, Timedelta):
-            return self + other.delta
+            # a datetimelike
+            if (isinstance(other, (datetime, np.datetime64))
+                    and not isinstance(other, (Timestamp, NaTType))):
+                return op(self, Timestamp(other))
 
-        # a datetimelike
-        elif isinstance(other, (Timestamp, datetime, np.datetime64)):
-            return Timestamp(other) + self
+            # nd-array like
+            if hasattr(other, 'dtype'):
+                if other.dtype.kind not in ['m', 'M']:
+                    # raise rathering than letting numpy return wrong answer
+                    return NotImplemented
+                return op(self.to_timedelta64(), other)
 
-        self._validate_ops_compat(other,'__add__')
+            if not self._validate_ops_compat(other):
+                return NotImplemented
 
-        other = Timedelta(other)
-        if other is NaT:
-            return NaT
-        return Timedelta(self.value + other.value, unit='ns')
+            other = Timedelta(other)
+            if other is NaT:
+                return NaT
+            return Timedelta(op(self.value, other.value), unit='ns')
+        f.__name__ = name
+        return f
 
-    def __sub__(self, other):
-
-        # a Timedelta with Series/Index like
-        if hasattr(other,'_typ'):
-            neg_other = -other
-            return neg_other + self
-
-        # an offset
-        elif hasattr(other,'delta') and not isinstance(other, Timedelta):
-            return self - other.delta
-
-        self._validate_ops_compat(other,'__sub__')
-
-        other = Timedelta(other)
-        if other is NaT:
-            return NaT
-        return Timedelta(self.value - other.value, unit='ns')
+    __add__ = _binary_op_method_timedeltalike(lambda x, y: x + y, '__add__')
+    __radd__ = _binary_op_method_timedeltalike(lambda x, y: x + y, '__radd__')
+    __sub__ = _binary_op_method_timedeltalike(lambda x, y: x - y, '__sub__')
+    __rsub__ = _binary_op_method_timedeltalike(lambda x, y: y - x, '__rsub__')
 
     def __mul__(self, other):
+
+        # nd-array like
+        if hasattr(other, 'dtype'):
+            return other * self.to_timedelta64()
 
         if other is NaT:
             return NaT
 
         # only integers allowed
         if not is_integer_object(other):
-           raise TypeError("cannot multiply a Timedelta with {typ}".format(typ=type(other)))
+           return NotImplemented
 
         return Timedelta(other*self.value, unit='ns')
 
@@ -1924,35 +1962,42 @@ class Timedelta(_Timedelta):
 
     def __truediv__(self, other):
 
-        # a timedelta64 IS an integer object as well
-        if is_timedelta64_object(other):
-           return self.value/float(_delta_to_nanoseconds(other))
+        if hasattr(other, 'dtype'):
+            return self.to_timedelta64() / other
 
         # pure integers
-        elif is_integer_object(other):
+        if is_integer_object(other):
            return Timedelta(self.value/other, unit='ns')
 
-        self._validate_ops_compat(other,'__div__')
+        if not self._validate_ops_compat(other):
+            return NotImplemented
 
         other = Timedelta(other)
         if other is NaT:
             return NaT
-
         return self.value/float(other.value)
 
-    def _make_invalid(opstr):
+    def __rtruediv__(self, other):
+        if hasattr(other, 'dtype'):
+            return other / self.to_timedelta64()
 
-        def _invalid(other):
-             raise TypeError("cannot perform {opstr} with {typ}".format(opstr=opstr,typ=type(other)))
+        if not self._validate_ops_compat(other):
+            return NotImplemented
 
-    __rtruediv__ = _make_invalid('__rtruediv__')
+        other = Timedelta(other)
+        if other is NaT:
+            return NaT
+        return float(other.value) / self.value
 
     if not PY3:
        __div__ = __truediv__
-       __rdiv__ = _make_invalid('__rtruediv__')
+       __rdiv__ = __rtruediv__
 
-    __floordiv__  = _make_invalid('__floordiv__')
-    __rfloordiv__ = _make_invalid('__rfloordiv__')
+    def _not_implemented(self, *args, **kwargs):
+        return NotImplemented
+
+    __floordiv__  = _not_implemented
+    __rfloordiv__ = _not_implemented
 
     def _op_unary_method(func, name):
 
@@ -2739,8 +2784,7 @@ def tz_localize_to_utc(ndarray[int64_t] vals, object tz, object ambiguous=None):
     result_b.fill(NPY_NAT)
 
     # left side
-    idx_shifted = ensure_int64(
-        np.maximum(0, trans.searchsorted(vals - DAY_NS, side='right') - 1))
+    idx_shifted = (np.maximum(0, trans.searchsorted(vals - DAY_NS, side='right') - 1)).astype(np.int64)
 
     for i in range(n):
         v = vals[i] - deltas[idx_shifted[i]]
@@ -2751,8 +2795,7 @@ def tz_localize_to_utc(ndarray[int64_t] vals, object tz, object ambiguous=None):
             result_a[i] = v
 
     # right side
-    idx_shifted = ensure_int64(
-        np.maximum(0, trans.searchsorted(vals + DAY_NS, side='right') - 1))
+    idx_shifted = (np.maximum(0, trans.searchsorted(vals + DAY_NS, side='right') - 1)).astype(np.int64)
 
     for i in range(n):
         v = vals[i] - deltas[idx_shifted[i]]
@@ -2835,10 +2878,6 @@ def tz_localize_to_utc(ndarray[int64_t] vals, object tz, object ambiguous=None):
             raise pytz.NonExistentTimeError(stamp)
 
     return result
-
-import pandas.algos as algos
-ensure_int64 = algos.ensure_int64
-
 
 cdef inline bisect_right_i8(int64_t *data, int64_t val, Py_ssize_t n):
     cdef Py_ssize_t pivot, left = 0, right = n
@@ -3002,6 +3041,7 @@ def get_date_field(ndarray[int64_t] dtindex, object field):
             pandas_datetime_to_datetimestruct(dtindex[i], PANDAS_FR_ns, &dts)
             out[i] = dts.us
         return out
+
     elif field == 'ns':
         for i in range(count):
             if dtindex[i] == NPY_NAT: out[i] = -1; continue
@@ -3855,7 +3895,7 @@ def get_period_field(int code, int64_t value, int freq):
     if f is NULL:
         raise ValueError('Unrecognized period code: %d' % code)
     if value == iNaT:
-        return -1
+        return np.nan
     return f(value, freq)
 
 def get_period_field_arr(int code, ndarray[int64_t] arr, int freq):

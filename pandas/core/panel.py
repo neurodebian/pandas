@@ -29,7 +29,7 @@ import pandas.core.common as com
 import pandas.core.ops as ops
 import pandas.core.nanops as nanops
 import pandas.computation.expressions as expressions
-
+from pandas import lib
 
 _shared_doc_kwargs = dict(
     axes='items, major_axis, minor_axis',
@@ -253,7 +253,9 @@ class Panel(NDFrame):
     def __getitem__(self, key):
         if isinstance(self._info_axis, MultiIndex):
             return self._getitem_multilevel(key)
-        return super(Panel, self).__getitem__(key)
+        if lib.isscalar(key):
+            return super(Panel, self).__getitem__(key)
+        return self.ix[key]
 
     def _getitem_multilevel(self, key):
         info = self._info_axis
@@ -1045,8 +1047,12 @@ class Panel(NDFrame):
 
         return self._construct_return_type(dict(results))
 
-    def _reduce(self, op, axis=0, skipna=True, numeric_only=None,
-                filter_type=None, name=None, **kwds):
+    def _reduce(self, op, name, axis=0, skipna=True, numeric_only=None,
+                filter_type=None, **kwds):
+        if numeric_only:
+            raise NotImplementedError(
+                'Panel.{0} does not implement numeric_only.'.format(name))
+
         axis_name = self._get_axis_name(axis)
         axis_number = self._get_axis_number(axis_name)
         f = lambda x: op(x, axis=axis_number, skipna=skipna, **kwds)

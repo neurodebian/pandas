@@ -569,6 +569,16 @@ class TestSeriesPlots(TestPlotBase):
             ax = _check_plot_works(d.plot, kind='area', stacked=False)
             self.assert_numpy_array_equal(ax.lines[0].get_ydata(), expected)
 
+    def test_line_use_index_false(self):
+        s = Series([1, 2, 3], index=['a', 'b', 'c'])
+        s.index.name = 'The Index'
+        ax = s.plot(use_index=False)
+        label = ax.get_xlabel()
+        self.assertEqual(label, '')
+        ax2 = s.plot(kind='bar', use_index=False)
+        label2 = ax2.get_xlabel()
+        self.assertEqual(label2, '')
+
     @slow
     def test_bar_log(self):
         expected = np.array([1., 10., 100., 1000.])
@@ -1057,6 +1067,14 @@ class TestDataFramePlots(TestPlotBase):
         df = DataFrame(randn(10, 3), columns=['a', 'b', 'c'])
         ax = df.plot(x='a', y='b', label='LABEL')
         self._check_text_labels(ax.xaxis.get_label(), 'LABEL')
+
+    @slow
+    def test_donot_overwrite_index_name(self):
+        # GH 8494
+        df = DataFrame(randn(2, 2), columns=['a', 'b'])
+        df.index.name = 'NAME'
+        df.plot(y='b', label='LABEL')
+        self.assertEqual(df.index.name, 'NAME')
 
     @slow
     def test_plot_xy(self):
@@ -2033,6 +2051,9 @@ class TestDataFramePlots(TestPlotBase):
 
     @slow
     def test_hist_df(self):
+        if self.mpl_le_1_2_1:
+            raise nose.SkipTest("not supported in matplotlib <= 1.2.x")
+
         df = DataFrame(randn(100, 4))
         series = df[0]
 

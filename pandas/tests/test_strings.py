@@ -628,6 +628,7 @@ class TestStringMethods(tm.TestCase):
         tm.assert_series_equal(empty_str, empty.str.center(42))
         tm.assert_series_equal(empty_list, empty.str.split('a'))
         tm.assert_series_equal(empty_str, empty.str.slice(stop=1))
+        tm.assert_series_equal(empty_str, empty.str.slice(step=1))
         tm.assert_series_equal(empty_str, empty.str.strip())
         tm.assert_series_equal(empty_str, empty.str.lstrip())
         tm.assert_series_equal(empty_str, empty.str.rstrip())
@@ -873,6 +874,34 @@ class TestStringMethods(tm.TestCase):
         expected = Series({0: ['split', 'once'], 1: ['split', 'once too!']})
         tm.assert_series_equal(expected, result)
 
+    def test_split_to_dataframe(self):
+        s = Series(['nosplit', 'alsonosplit'])
+        result = s.str.split('_', return_type='frame')
+        exp = DataFrame({0: Series(['nosplit', 'alsonosplit'])})
+        tm.assert_frame_equal(result, exp)
+
+        s = Series(['some_equal_splits', 'with_no_nans'])
+        result = s.str.split('_', return_type='frame')
+        exp = DataFrame({0: ['some', 'with'], 1: ['equal', 'no'],
+                         2: ['splits', 'nans']})
+        tm.assert_frame_equal(result, exp)
+
+        s = Series(['some_unequal_splits', 'one_of_these_things_is_not'])
+        result = s.str.split('_', return_type='frame')
+        exp = DataFrame({0: ['some', 'one'], 1: ['unequal', 'of'],
+                         2: ['splits', 'these'], 3: [NA, 'things'],
+                         4: [NA, 'is'], 5: [NA, 'not']})
+        tm.assert_frame_equal(result, exp)
+
+        s = Series(['some_splits', 'with_index'], index=['preserve', 'me'])
+        result = s.str.split('_', return_type='frame')
+        exp = DataFrame({0: ['some', 'with'], 1: ['splits', 'index']},
+                        index=['preserve', 'me'])
+        tm.assert_frame_equal(result, exp)
+
+        with tm.assertRaisesRegexp(ValueError, "return_type must be"):
+            s.str.split('_', return_type="some_invalid_type")
+
     def test_pipe_failures(self):
         # #2119
         s = Series(['A|B|C'])
@@ -894,6 +923,17 @@ class TestStringMethods(tm.TestCase):
         exp = Series(['foo', 'bar', NA, 'baz'])
         tm.assert_series_equal(result, exp)
 
+        for start, stop, step in [(0, 3, -1), (None, None, -1),
+                                  (3, 10, 2), (3, 0, -1)]:
+            try:
+                result = values.str.slice(start, stop, step)
+                expected = Series([s[start:stop:step] if not isnull(s) else NA for s in
+                                   values])
+                tm.assert_series_equal(result, expected)
+            except:
+                print('failed on %s:%s:%s' % (start, stop, step))
+                raise
+
         # mixed
         mixed = Series(['aafootwo', NA, 'aabartwo', True, datetime.today(),
                         None, 1, 2.])
@@ -905,12 +945,20 @@ class TestStringMethods(tm.TestCase):
         tm.assert_isinstance(rs, Series)
         tm.assert_almost_equal(rs, xp)
 
+        rs = Series(mixed).str.slice(2, 5, -1)
+        xp = Series(['oof', NA, 'rab', NA, NA,
+                     NA, NA, NA])
+
         # unicode
         values = Series([u('aafootwo'), u('aabartwo'), NA,
                          u('aabazqux')])
 
         result = values.str.slice(2, 5)
         exp = Series([u('foo'), u('bar'), NA, u('baz')])
+        tm.assert_series_equal(result, exp)
+
+        result = values.str.slice(0, -1, 2)
+        exp = Series([u('afow'), u('abrw'), NA, u('abzu')])
         tm.assert_series_equal(result, exp)
 
     def test_slice_replace(self):
@@ -1121,6 +1169,10 @@ class TestStringMethods(tm.TestCase):
 
         result = s.str[:3]
         expected = s.str.slice(stop=3)
+        assert_series_equal(result, expected)
+
+        result = s.str[2::-1]
+        expected = s.str.slice(start=2, step=-1)
         assert_series_equal(result, expected)
 
     def test_string_slice_out_of_bounds(self):

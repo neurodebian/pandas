@@ -1,4 +1,5 @@
 # pylint: disable-msg=W0612,E1101
+import sys
 import nose
 import itertools
 import warnings
@@ -19,6 +20,7 @@ from pandas.util.testing import (assert_almost_equal, assert_series_equal,
                                  assert_frame_equal, assert_panel_equal,
                                  assert_attr_equal)
 from pandas import concat
+from pandas.io.common import PerformanceWarning
 
 import pandas.util.testing as tm
 from pandas import date_range
@@ -605,7 +607,8 @@ class TestIndexing(tm.TestCase):
         expected = Series([0,1,0],index=[4,5,6])
         assert_series_equal(s, expected)
 
-    def test_loc_setitem(self):
+    def test_ix_loc_setitem(self):
+
         # GH 5771
         # loc with slice and series
         s = Series(0,index=[4,5,6])
@@ -626,6 +629,31 @@ class TestIndexing(tm.TestCase):
         df['a'].ix[[0,1,2]] = -df['a'].ix[[0,1,2]].astype('float64') + 0.5
         expected = DataFrame({'a' : [0.5,-0.5,-1.5], 'b' : [0,1,2] })
         assert_frame_equal(df,expected)
+
+        # GH 8607
+        # ix setitem consistency
+        df = DataFrame(
+            {'timestamp':[1413840976, 1413842580, 1413760580],
+             'delta':[1174, 904, 161],
+             'elapsed':[7673, 9277, 1470]
+             })
+        expected = DataFrame(
+            {'timestamp':pd.to_datetime([1413840976, 1413842580, 1413760580], unit='s'),
+             'delta':[1174, 904, 161],
+             'elapsed':[7673, 9277, 1470]
+             })
+
+        df2 = df.copy()
+        df2['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+        assert_frame_equal(df2,expected)
+
+        df2 = df.copy()
+        df2.loc[:,'timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+        assert_frame_equal(df2,expected)
+
+        df2 = df.copy()
+        df2.ix[:,2] = pd.to_datetime(df['timestamp'], unit='s')
+        assert_frame_equal(df2,expected)
 
     def test_loc_setitem_multiindex(self):
 
@@ -1017,6 +1045,13 @@ class TestIndexing(tm.TestCase):
         expected = DataFrame(dict(A = Series(val1,index=keys1), B = Series(val2,index=keys2))).reindex(index=index)
         assert_frame_equal(df, expected)
 
+        # GH 8669
+        # invalid coercion of nan -> int
+        df = DataFrame({'A' : [1,2,3], 'B' : np.nan })
+        df.loc[df.B > df.A, 'B'] = df.A
+        expected = DataFrame({'A' : [1,2,3], 'B' : np.nan})
+        assert_frame_equal(df, expected)
+
         # GH 6546
         # setting with mixed labels
         df = DataFrame({1:[1,2],2:[3,4],'a':['a','b']})
@@ -1028,7 +1063,6 @@ class TestIndexing(tm.TestCase):
         expected = DataFrame({1:[5,2],2:[6,4],'a':['a','b']})
         df.loc[0,[1,2]] = [5,6]
         assert_frame_equal(df, expected)
-
 
     def test_loc_setitem_frame_multiples(self):
         # multiple setting
@@ -1456,6 +1490,91 @@ class TestIndexing(tm.TestCase):
         result = s.loc[2:4:2, 'a':'c']
         assert_series_equal(result, expected)
 
+    def test_multiindex_perf_warn(self):
+
+        if sys.version_info < (2, 7):
+            raise nose.SkipTest('python version < 2.7')
+
+        df = DataFrame({'jim':[0, 0, 1, 1],
+                        'joe':['x', 'x', 'z', 'y'],
+                        'jolie':np.random.rand(4)}).set_index(['jim', 'joe'])
+
+        with tm.assert_produces_warning(PerformanceWarning, clear=[pd.core.index]):
+            _ = df.loc[(1, 'z')]
+
+        df = df.iloc[[2,1,3,0]]
+        with tm.assert_produces_warning(PerformanceWarning):
+            _ = df.loc[(0,)]
+
+    def test_multiindex_get_loc(self):  # GH7724, GH2646
+
+        # ignore the warning here
+        warnings.simplefilter('ignore', PerformanceWarning)
+
+        # test indexing into a multi-index before & past the lexsort depth
+        from numpy.random import randint, choice, randn
+        cols = ['jim', 'joe', 'jolie', 'joline', 'jolia']
+
+        def validate(mi, df, key):
+            mask = np.ones(len(df)).astype('bool')
+
+            # test for all partials of this key
+            for i, k in enumerate(key):
+                mask &= df.iloc[:, i] == k
+
+                if not mask.any():
+                    self.assertNotIn(key[:i+1], mi.index)
+                    continue
+
+                self.assertIn(key[:i+1], mi.index)
+                right = df[mask].copy()
+
+                if i + 1 != len(key):  # partial key
+                    right.drop(cols[:i+1], axis=1, inplace=True)
+                    right.set_index(cols[i+1:-1], inplace=True)
+                    assert_frame_equal(mi.loc[key[:i+1]], right)
+
+                else:  # full key
+                    right.set_index(cols[:-1], inplace=True)
+                    if len(right) == 1:  # single hit
+                        right = Series(right['jolia'].values,
+                                name=right.index[0], index=['jolia'])
+                        assert_series_equal(mi.loc[key[:i+1]], right)
+                    else:  # multi hit
+                        assert_frame_equal(mi.loc[key[:i+1]], right)
+
+        def loop(mi, df, keys):
+            for key in keys:
+                validate(mi, df, key)
+
+        n, m = 1000, 50
+
+        vals = [randint(0, 10, n), choice(list('abcdefghij'), n),
+                choice(pd.date_range('20141009', periods=10).tolist(), n),
+                choice(list('ZYXWVUTSRQ'), n), randn(n)]
+        vals = list(map(tuple, zip(*vals)))
+
+        # bunch of keys for testing
+        keys = [randint(0, 11, m), choice(list('abcdefghijk'), m),
+                choice(pd.date_range('20141009', periods=11).tolist(), m),
+                choice(list('ZYXWVUTSRQP'), m)]
+        keys = list(map(tuple, zip(*keys)))
+        keys += list(map(lambda t: t[:-1], vals[::n//m]))
+
+        # covers both unique index and non-unique index
+        df = pd.DataFrame(vals, columns=cols)
+        a, b = pd.concat([df, df]), df.drop_duplicates(subset=cols[:-1])
+
+        for frame in a, b:
+            for i in range(5):  # lexsort depth
+                df = frame.copy() if i == 0 else frame.sort(columns=cols[:i])
+                mi = df.set_index(cols[:-1])
+                assert not mi.index.lexsort_depth < i
+                loop(mi, df, keys)
+
+        # restore
+        warnings.simplefilter('always', PerformanceWarning)
+
     def test_series_getitem_multiindex(self):
 
         # GH 6018
@@ -1510,9 +1629,8 @@ class TestIndexing(tm.TestCase):
         df = DataFrame(data).set_index(keys=['col', 'year'])
         key = 4.0, 2012
 
-        # this should raise correct error
-        with tm.assertRaises(KeyError):
-            df.ix[key]
+        # emits a PerformanceWarning, ok
+        tm.assert_frame_equal(df.ix[key], df.iloc[2:])
 
         # this is ok
         df.sortlevel(inplace=True)
@@ -2101,6 +2219,18 @@ class TestIndexing(tm.TestCase):
         result = s.loc[idx[:,['foo','bah']]]
         assert_series_equal(result,expected)
 
+        # GH 8737
+        # empty indexer
+        multi_index = pd.MultiIndex.from_product((['foo', 'bar', 'baz'], ['alpha', 'beta']))
+        df = DataFrame(np.random.randn(5, 6), index=range(5), columns=multi_index)
+        df = df.sortlevel(0, axis=1)
+
+        result1 = df.loc[:, ([], slice(None))]
+        result2 = df.loc[:, (['foo'], [])]
+        expected = DataFrame(index=range(5),columns=multi_index.reindex([])[0])
+        assert_frame_equal(result1, expected)
+        assert_frame_equal(result2, expected)
+
         # regression from < 0.14.0
         # GH 7914
         df = DataFrame([[np.mean, np.median],['mean','median']],
@@ -2292,6 +2422,30 @@ class TestIndexing(tm.TestCase):
         test2 = panel.ix[:, "2002":"2002-12-31"]
         test1 = panel.ix[:, "2002"]
         tm.assert_panel_equal(test1,test2)
+
+        # GH8710
+        # multi-element getting with a list
+        panel = tm.makePanel()
+
+        expected = panel.iloc[[0,1]]
+
+        result = panel.loc[['ItemA','ItemB']]
+        tm.assert_panel_equal(result,expected)
+
+        result = panel.loc[['ItemA','ItemB'],:,:]
+        tm.assert_panel_equal(result,expected)
+
+        result = panel[['ItemA','ItemB']]
+        tm.assert_panel_equal(result,expected)
+
+        result = panel.loc['ItemA':'ItemB']
+        tm.assert_panel_equal(result,expected)
+
+        result = panel.ix['ItemA':'ItemB']
+        tm.assert_panel_equal(result,expected)
+
+        result = panel.ix[['ItemA','ItemB']]
+        tm.assert_panel_equal(result,expected)
 
     def test_panel_setitem(self):
 
@@ -4072,6 +4226,64 @@ class TestIndexing(tm.TestCase):
             frame['jolie'] = frame['jolie'].map('@{0}'.format)
 
         run_tests(df, rhs, right)
+
+    def test_str_label_slicing_with_negative_step(self):
+        SLC = pd.IndexSlice
+
+        def assert_slices_equivalent(l_slc, i_slc):
+            assert_series_equal(s.loc[l_slc], s.iloc[i_slc])
+
+            if not idx.is_integer:
+                # For integer indices, ix and plain getitem are position-based.
+                assert_series_equal(s[l_slc], s.iloc[i_slc])
+                assert_series_equal(s.ix[l_slc], s.iloc[i_slc])
+
+        for idx in [_mklbl('A', 20), np.arange(20) + 100,
+                    np.linspace(100, 150, 20)]:
+            idx = Index(idx)
+            s = Series(np.arange(20), index=idx)
+            assert_slices_equivalent(SLC[idx[9]::-1], SLC[9::-1])
+            assert_slices_equivalent(SLC[:idx[9]:-1], SLC[:8:-1])
+            assert_slices_equivalent(SLC[idx[13]:idx[9]:-1], SLC[13:8:-1])
+            assert_slices_equivalent(SLC[idx[9]:idx[13]:-1], SLC[:0])
+
+    def test_multiindex_label_slicing_with_negative_step(self):
+        s = Series(np.arange(20),
+                   MultiIndex.from_product([list('abcde'), np.arange(4)]))
+        SLC = pd.IndexSlice
+
+        def assert_slices_equivalent(l_slc, i_slc):
+            assert_series_equal(s.loc[l_slc], s.iloc[i_slc])
+            assert_series_equal(s[l_slc], s.iloc[i_slc])
+            assert_series_equal(s.ix[l_slc], s.iloc[i_slc])
+
+        assert_slices_equivalent(SLC[::-1], SLC[::-1])
+
+        assert_slices_equivalent(SLC['d'::-1], SLC[15::-1])
+        assert_slices_equivalent(SLC[('d',)::-1], SLC[15::-1])
+
+        assert_slices_equivalent(SLC[:'d':-1], SLC[:11:-1])
+        assert_slices_equivalent(SLC[:('d',):-1], SLC[:11:-1])
+
+        assert_slices_equivalent(SLC['d':'b':-1], SLC[15:3:-1])
+        assert_slices_equivalent(SLC[('d',):'b':-1], SLC[15:3:-1])
+        assert_slices_equivalent(SLC['d':('b',):-1], SLC[15:3:-1])
+        assert_slices_equivalent(SLC[('d',):('b',):-1], SLC[15:3:-1])
+        assert_slices_equivalent(SLC['b':'d':-1], SLC[:0])
+
+        assert_slices_equivalent(SLC[('c', 2)::-1], SLC[10::-1])
+        assert_slices_equivalent(SLC[:('c', 2):-1], SLC[:9:-1])
+        assert_slices_equivalent(SLC[('e', 0):('c', 2):-1], SLC[16:9:-1])
+
+    def test_slice_with_zero_step_raises(self):
+        s = Series(np.arange(20), index=_mklbl('A', 20))
+        self.assertRaisesRegexp(ValueError, 'slice step cannot be zero',
+                                lambda: s[::0])
+        self.assertRaisesRegexp(ValueError, 'slice step cannot be zero',
+                                lambda: s.loc[::0])
+        self.assertRaisesRegexp(ValueError, 'slice step cannot be zero',
+                                lambda: s.ix[::0])
+
 
 class TestSeriesNoneCoercion(tm.TestCase):
     EXPECTED_RESULTS = [

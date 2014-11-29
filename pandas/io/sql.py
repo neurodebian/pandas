@@ -621,7 +621,7 @@ class SQLTable(PandasObject):
 
     def sql_schema(self):
         from sqlalchemy.schema import CreateTable
-        return str(CreateTable(self.table))
+        return str(CreateTable(self.table).compile(self.pd_sql.engine))
 
     def _execute_create(self):
         # Inserting table into database, add to MetaData object
@@ -670,7 +670,7 @@ class SQLTable(PandasObject):
                 # datetime.datetime
                 d = b.values.astype('M8[us]').astype(object)
             else:
-                d = np.array(b.values, dtype=object)
+                d = np.array(b.get_values(), dtype=object)
 
             # replace NaN with None
             if b._can_hold_na:

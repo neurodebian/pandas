@@ -49,14 +49,16 @@ _TD_DTYPE = np.dtype('m8[ns]')
 _INT64_DTYPE = np.dtype(np.int64)
 _DATELIKE_DTYPES = set([np.dtype(t) for t in ['M8[ns]', '<M8[ns]', '>M8[ns]',
                                               'm8[ns]', '<m8[ns]', '>m8[ns]']])
-
+_int8_max = np.iinfo(np.int8).max
+_int16_max = np.iinfo(np.int16).max
+_int32_max = np.iinfo(np.int32).max
 
 # define abstract base classes to enable isinstance type checking on our
 # objects
 def create_pandas_abc_type(name, attr, comp):
     @classmethod
     def _check(cls, inst):
-        return getattr(inst, attr, None) in comp
+        return getattr(inst, attr, '_typ') in comp
     dct = dict(__instancecheck__=_check,
                __subclasscheck__=_check)
     meta = type("ABCBase", (type,), dct)
@@ -78,7 +80,8 @@ ABCSparseSeries = create_pandas_abc_type("ABCSparseSeries", "_subtyp",
                                           'sparse_time_series'))
 ABCSparseArray = create_pandas_abc_type("ABCSparseArray", "_subtyp",
                                         ('sparse_array', 'sparse_series'))
-
+ABCCategorical = create_pandas_abc_type("ABCCategorical","_typ",("categorical"))
+ABCPeriod = create_pandas_abc_type("ABCPeriod", "_typ", ("period",))
 
 class _ABCGeneric(type):
 
@@ -719,6 +722,7 @@ def _get_take_nd_function(ndim, arr_dtype, out_dtype, axis=0, mask_info=None):
             return func
 
     def func(arr, indexer, out, fill_value=np.nan):
+        indexer = _ensure_int64(indexer)
         _take_nd_generic(arr, indexer, out, axis=axis,
                          fill_value=fill_value, mask_info=mask_info)
     return func
@@ -811,6 +815,7 @@ def take_nd(arr, indexer, axis=0, out=None, fill_value=np.nan,
     func = _get_take_nd_function(arr.ndim, arr.dtype, out.dtype,
                                  axis=axis, mask_info=mask_info)
 
+    indexer = _ensure_int64(indexer)
     func(arr, indexer, out, fill_value)
 
     if flip_order:
@@ -957,6 +962,16 @@ def diff(arr, n, axis=0):
 
     return out_arr
 
+def _coerce_indexer_dtype(indexer, categories):
+    """ coerce the indexer input array to the smallest dtype possible """
+    l = len(categories)
+    if l < _int8_max:
+        return _ensure_int8(indexer)
+    elif l < _int16_max:
+        return _ensure_int16(indexer)
+    elif l < _int32_max:
+        return _ensure_int32(indexer)
+    return _ensure_int64(indexer)
 
 def _coerce_to_dtypes(result, dtypes):
     """ given a dtypes and a result set, coerce the result elements to the
@@ -2110,11 +2125,6 @@ def _count_not_none(*args):
 # miscellaneous python tools
 
 
-def rands(n):
-    """Generates a random alphanumeric string of length *n*"""
-    from random import Random
-    import string
-    return ''.join(Random().sample(string.ascii_letters + string.digits, n))
 
 
 def adjoin(space, *lists):
@@ -2758,9 +2768,62 @@ else:
             self.queue.truncate(0)
 
 
+def get_dtype_kinds(l):
+    """
+    Parameters
+    ----------
+    l : list of arrays
+
+    Returns
+    -------
+    a set of kinds that exist in this list of arrays
+    """
+
+    typs = set()
+    for arr in l:
+
+        dtype = arr.dtype
+        if is_categorical_dtype(dtype):
+            typ = 'category'
+        elif isinstance(arr, ABCSparseArray):
+            typ = 'sparse'
+        elif is_datetime64_dtype(dtype):
+            typ = 'datetime'
+        elif is_timedelta64_dtype(dtype):
+            typ = 'timedelta'
+        elif is_object_dtype(dtype):
+            typ = 'object'
+        elif is_bool_dtype(dtype):
+            typ = 'bool'
+        else:
+            typ = dtype.kind
+        typs.add(typ)
+    return typs
+
 def _concat_compat(to_concat, axis=0):
+    """
+    provide concatenation of an array of arrays each of which is a single
+    'normalized' dtypes (in that for example, if its object, then it is a non-datetimelike
+    provde a combined dtype for the resulting array the preserves the overall dtype if possible)
+
+    Parameters
+    ----------
+    to_concat : array of arrays
+    axis : axis to provide concatenation
+
+    Returns
+    -------
+    a single array, preserving the combined dtypes
+    """
+
     # filter empty arrays
-    nonempty = [x for x in to_concat if x.shape[axis] > 0]
+    # 1-d dtypes always are included here
+    def is_nonempty(x):
+        try:
+            return x.shape[axis] > 0
+        except Exception:
+            return True
+    nonempty = [x for x in to_concat if is_nonempty(x)]
 
     # If all arrays are empty, there's nothing to convert, just short-cut to
     # the concatenation, #3121.
@@ -2768,38 +2831,37 @@ def _concat_compat(to_concat, axis=0):
     # Creating an empty array directly is tempting, but the winnings would be
     # marginal given that it would still require shape & dtype calculation and
     # np.concatenate which has them both implemented is compiled.
-    if nonempty:
 
-        is_datetime64 = [x.dtype == _NS_DTYPE for x in nonempty]
-        is_timedelta64 = [x.dtype == _TD_DTYPE for x in nonempty]
+    typs = get_dtype_kinds(to_concat)
 
-        if all(is_datetime64):
-            new_values = np.concatenate([x.view(np.int64) for x in nonempty],
-                                        axis=axis)
-            return new_values.view(_NS_DTYPE)
-        elif all(is_timedelta64):
-            new_values = np.concatenate([x.view(np.int64) for x in nonempty],
-                                        axis=axis)
-            return new_values.view(_TD_DTYPE)
-        elif any(is_datetime64) or any(is_timedelta64):
-            to_concat = [_to_pydatetime(x) for x in nonempty]
+    # these are mandated to handle empties as well
+    if 'datetime' in typs or 'timedelta' in typs:
+        from pandas.tseries.common import _concat_compat
+        return _concat_compat(to_concat, axis=axis)
 
-    return np.concatenate(to_concat, axis=axis)
+    elif 'sparse' in typs:
+        from pandas.sparse.array import _concat_compat
+        return _concat_compat(to_concat, axis=axis)
 
+    elif 'category' in typs:
+        from pandas.core.categorical import _concat_compat
+        return _concat_compat(to_concat, axis=axis)
 
-def _to_pydatetime(x):
-    # coerce to an object dtyped
+    if not nonempty:
 
-    if x.dtype == _NS_DTYPE:
-        shape = x.shape
-        x = tslib.ints_to_pydatetime(x.view(np.int64).ravel())
-        x = x.reshape(shape)
-    elif x.dtype == _TD_DTYPE:
-        shape = x.shape
-        x = tslib.ints_to_pytimedelta(x.view(np.int64).ravel())
-        x = x.reshape(shape)
+        # we have all empties, but may need to coerce the result dtype to object if we
+        # have non-numeric type operands (numpy would otherwise cast this to float)
+        typs = get_dtype_kinds(to_concat)
+        if len(typs) != 1:
 
-    return x
+            if not len(typs-set(['i','u','f'])) or not len(typs-set(['bool','i','u'])):
+                # let numpy coerce
+                pass
+            else:
+                # coerce to object
+                to_concat = [ x.astype('object') for x in to_concat ]
+
+    return np.concatenate(to_concat,axis=axis)
 
 def _where_compat(mask, arr1, arr2):
     if arr1.dtype == _NS_DTYPE and arr2.dtype == _NS_DTYPE:

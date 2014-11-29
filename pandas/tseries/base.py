@@ -114,52 +114,6 @@ class DatetimeIndexOpsMixin(object):
             return self[maybe_slice]
         return super(DatetimeIndexOpsMixin, self).take(indices, axis)
 
-    def slice_locs(self, start=None, end=None):
-        """
-        Index.slice_locs, customized to handle partial ISO-8601 string slicing
-        """
-        if isinstance(start, compat.string_types) or isinstance(end, compat.string_types):
-
-            if self.is_monotonic:
-                try:
-                    if start:
-                        start_loc = self._get_string_slice(start).start
-                    else:
-                        start_loc = 0
-
-                    if end:
-                        end_loc = self._get_string_slice(end).stop
-                    else:
-                        end_loc = len(self)
-
-                    return start_loc, end_loc
-                except KeyError:
-                    pass
-
-            else:
-                # can't use a slice indexer because we are not sorted!
-                # so create an indexer directly
-                try:
-                    if start:
-                        start_loc = self._get_string_slice(start,
-                                                           use_rhs=False)
-                    else:
-                        start_loc = np.arange(len(self))
-
-                    if end:
-                        end_loc = self._get_string_slice(end, use_lhs=False)
-                    else:
-                        end_loc = np.arange(len(self))
-
-                    return start_loc, end_loc
-                except KeyError:
-                    pass
-
-        if isinstance(start, time) or isinstance(end, time):
-            raise KeyError('Cannot use slice_locs with time slice keys')
-
-        return Index.slice_locs(self, start, end)
-
     def get_duplicates(self):
         values = Index.get_duplicates(self)
         return self._simple_new(values)
@@ -173,6 +127,31 @@ class DatetimeIndexOpsMixin(object):
     def asobject(self):
         from pandas.core.index import Index
         return Index(self._box_values(self.asi8), name=self.name, dtype=object)
+
+    def _maybe_mask_results(self, result, fill_value=None, convert=None):
+        """
+        Parameters
+        ----------
+        result : a ndarray
+        convert : string/dtype or None
+
+        Returns
+        -------
+        result : ndarray with values replace by the fill_value
+
+        mask the result if needed, convert to the provided dtype if its not None
+
+        This is an internal routine
+        """
+
+        if self.hasnans:
+            mask = self.asi8 == tslib.iNaT
+            if convert:
+                result = result.astype(convert)
+            if fill_value is None:
+                fill_value = np.nan
+            result[mask] = fill_value
+        return result
 
     def tolist(self):
         """
@@ -317,50 +296,61 @@ class DatetimeIndexOpsMixin(object):
     def _sub_datelike(self, other):
         raise NotImplementedError
 
-    def __add__(self, other):
-        from pandas.core.index import Index
-        from pandas.tseries.tdi import TimedeltaIndex
-        from pandas.tseries.offsets import DateOffset
-        if isinstance(other, TimedeltaIndex):
-            return self._add_delta(other)
-        elif isinstance(self, TimedeltaIndex) and isinstance(other, Index):
-            if hasattr(other,'_add_delta'):
-                return other._add_delta(self)
-            raise TypeError("cannot add TimedeltaIndex and {typ}".format(typ=type(other)))
-        elif isinstance(other, Index):
-            return self.union(other)
-        elif isinstance(other, (DateOffset, timedelta, np.timedelta64, tslib.Timedelta)):
-            return self._add_delta(other)
-        elif com.is_integer(other):
-            return self.shift(other)
-        elif isinstance(other, (tslib.Timestamp, datetime)):
-            return self._add_datelike(other)
-        else:  # pragma: no cover
-            return NotImplemented
+    @classmethod
+    def _add_datetimelike_methods(cls):
+        """ add in the datetimelike methods (as we may have to override the superclass) """
 
-    def __sub__(self, other):
-        from pandas.core.index import Index
-        from pandas.tseries.tdi import TimedeltaIndex
-        from pandas.tseries.offsets import DateOffset
-        if isinstance(other, TimedeltaIndex):
-            return self._add_delta(-other)
-        elif isinstance(self, TimedeltaIndex) and isinstance(other, Index):
-            if not isinstance(other, TimedeltaIndex):
-                raise TypeError("cannot subtract TimedeltaIndex and {typ}".format(typ=type(other)))
-            return self._add_delta(-other)
-        elif isinstance(other, Index):
-            return self.difference(other)
-        elif isinstance(other, (DateOffset, timedelta, np.timedelta64, tslib.Timedelta)):
-            return self._add_delta(-other)
-        elif com.is_integer(other):
-            return self.shift(-other)
-        elif isinstance(other, (tslib.Timestamp, datetime)):
-            return self._sub_datelike(other)
-        else:  # pragma: no cover
-            return NotImplemented
+        def __add__(self, other):
+            from pandas.core.index import Index
+            from pandas.tseries.tdi import TimedeltaIndex
+            from pandas.tseries.offsets import DateOffset
+            if isinstance(other, TimedeltaIndex):
+                return self._add_delta(other)
+            elif isinstance(self, TimedeltaIndex) and isinstance(other, Index):
+                if hasattr(other,'_add_delta'):
+                    return other._add_delta(self)
+                raise TypeError("cannot add TimedeltaIndex and {typ}".format(typ=type(other)))
+            elif isinstance(other, Index):
+                return self.union(other)
+            elif isinstance(other, (DateOffset, timedelta, np.timedelta64, tslib.Timedelta)):
+                return self._add_delta(other)
+            elif com.is_integer(other):
+                return self.shift(other)
+            elif isinstance(other, (tslib.Timestamp, datetime)):
+                return self._add_datelike(other)
+            else:  # pragma: no cover
+                return NotImplemented
+        cls.__add__ = __add__
+        cls.__radd__ = __add__
 
-    __iadd__ = __add__
-    __isub__ = __sub__
+        def __sub__(self, other):
+            from pandas.core.index import Index
+            from pandas.tseries.tdi import TimedeltaIndex
+            from pandas.tseries.offsets import DateOffset
+            if isinstance(other, TimedeltaIndex):
+                return self._add_delta(-other)
+            elif isinstance(self, TimedeltaIndex) and isinstance(other, Index):
+                if not isinstance(other, TimedeltaIndex):
+                    raise TypeError("cannot subtract TimedeltaIndex and {typ}".format(typ=type(other)))
+                return self._add_delta(-other)
+            elif isinstance(other, Index):
+                return self.difference(other)
+            elif isinstance(other, (DateOffset, timedelta, np.timedelta64, tslib.Timedelta)):
+                return self._add_delta(-other)
+            elif com.is_integer(other):
+                return self.shift(-other)
+            elif isinstance(other, (tslib.Timestamp, datetime)):
+                return self._sub_datelike(other)
+            else:  # pragma: no cover
+                return NotImplemented
+        cls.__sub__ = __sub__
+
+        def __rsub__(self, other):
+            return -self + other
+        cls.__rsub__ = __rsub__
+
+        cls.__iadd__ = __add__
+        cls.__isub__ = __sub__
 
     def _add_delta(self, other):
         return NotImplemented
@@ -469,5 +459,3 @@ class DatetimeIndexOpsMixin(object):
         """
         return self._simple_new(self.values.repeat(repeats),
                                 name=self.name)
-
-

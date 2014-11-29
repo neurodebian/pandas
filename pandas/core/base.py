@@ -232,7 +232,6 @@ class FrozenList(PandasObject, list):
     __setitem__ = __setslice__ = __delitem__ = __delslice__ = _disabled
     pop = append = extend = remove = sort = insert = _disabled
 
-
 class FrozenNDArray(PandasObject, np.ndarray):
 
     # no __array_finalize__ for now because no metadata
@@ -269,18 +268,6 @@ class FrozenNDArray(PandasObject, np.ndarray):
                                  quote_strings=True)
         return "%s(%s, dtype='%s')" % (type(self).__name__, prepr, self.dtype)
 
-def _unbox(func):
-    @Appender(func.__doc__)
-    def f(self, *args, **kwargs):
-        result = func(self.values, *args, **kwargs)
-        from pandas.core.index import Index
-        if isinstance(result, (np.ndarray, com.ABCSeries, Index)) and result.ndim == 0:
-            # return NumPy type
-            return result.dtype.type(result.item())
-        else:  # pragma: no cover
-            return result
-    f.__name__ = func.__name__
-    return f
 
 class IndexOpsMixin(object):
     """ common ops mixin to support a unified inteface / docs for Series / Index """
@@ -297,7 +284,7 @@ class IndexOpsMixin(object):
     @property
     def shape(self):
         """ return a tuple of the shape of the underlying data """
-        return self._data.shape
+        return self.values.shape
 
     @property
     def ndim(self):
@@ -530,14 +517,7 @@ class IndexOpsMixin(object):
             return Index(duplicated)
 
     #----------------------------------------------------------------------
-    # unbox reductions
-
-    all = _unbox(np.ndarray.all)
-    any = _unbox(np.ndarray.any)
-
-    #----------------------------------------------------------------------
     # abstracts
 
     def _update_inplace(self, result, **kwargs):
         raise NotImplementedError
-

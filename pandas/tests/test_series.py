@@ -5,6 +5,7 @@ import sys
 from datetime import datetime, timedelta
 import operator
 import string
+from inspect import getargspec
 from itertools import product, starmap
 from distutils.version import LooseVersion
 
@@ -207,6 +208,29 @@ class CheckNameIntegration(object):
                 s.dt.hour[0] = 5
             self.assertRaises(com.SettingWithCopyError, f)
 
+    def test_valid_dt_with_missing_values(self):
+
+        from datetime import date, time
+
+        # GH 8689
+        s = Series(date_range('20130101',periods=5,freq='D'))
+        s_orig = s.copy()
+        s.iloc[2] = pd.NaT
+
+        for attr in ['microsecond','nanosecond','second','minute','hour','day']:
+            expected = getattr(s.dt,attr).copy()
+            expected.iloc[2] = np.nan
+            result = getattr(s.dt,attr)
+            tm.assert_series_equal(result, expected)
+
+        result = s.dt.date
+        expected = Series([date(2013,1,1),date(2013,1,2),np.nan,date(2013,1,4),date(2013,1,5)],dtype='object')
+        tm.assert_series_equal(result, expected)
+
+        result = s.dt.time
+        expected = Series([time(0),time(0),np.nan,time(0),time(0)],dtype='object')
+        tm.assert_series_equal(result, expected)
+
     def test_binop_maybe_preserve_name(self):
 
         # names match, preserve
@@ -327,8 +351,7 @@ class CheckNameIntegration(object):
         self.assertTrue((result == 5).all())
 
     def test_getitem_negative_out_of_bounds(self):
-        s = Series([tm.rands(5) for _ in range(10)],
-                   index=[tm.rands(10) for _ in range(10)])
+        s = Series(tm.rands_array(5, 10), index=tm.rands_array(10, 10))
 
         self.assertRaises(IndexError, s.__getitem__, -11)
         self.assertRaises(IndexError, s.__setitem__, -11, 'foo')
@@ -1521,7 +1544,7 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
     def test_ix_getitem_not_monotonic(self):
         d1, d2 = self.ts.index[[5, 15]]
 
-        ts2 = self.ts[::2][::-1]
+        ts2 = self.ts[::2][[1, 2, 0]]
 
         self.assertRaises(KeyError, ts2.ix.__getitem__, slice(d1, d2))
         self.assertRaises(KeyError, ts2.ix.__setitem__, slice(d1, d2), 0)
@@ -1547,7 +1570,7 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         assert_series_equal(result2, expected)
 
         # non-monotonic, raise KeyError
-        s2 = s[::-1]
+        s2 = s.iloc[lrange(5) + lrange(5, 10)[::-1]]
         self.assertRaises(KeyError, s2.ix.__getitem__, slice(3, 11))
         self.assertRaises(KeyError, s2.ix.__setitem__, slice(3, 11), 0)
 
@@ -2339,6 +2362,14 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
                 exp = alternate(s)
                 self.assertEqual(res, exp)
 
+            # Invalid axis.
+            self.assertRaises(ValueError, f, self.series, axis=1)
+
+            # Unimplemented numeric_only parameter.
+            if 'numeric_only' in getargspec(f).args:
+                self.assertRaisesRegexp(NotImplementedError, name, f,
+                                        self.series, numeric_only=True)
+
         testit()
 
         try:
@@ -2442,6 +2473,33 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         bool_series = ts > 0
         self.assertFalse(bool_series.all())
         self.assertTrue(bool_series.any())
+
+        # Alternative types, with implicit 'object' dtype.
+        s = Series(['abc', True])
+        self.assertEquals('abc', s.any())  # 'abc' || True => 'abc'
+
+    def test_all_any_params(self):
+        # Check skipna, with implicit 'object' dtype.
+        s1 = Series([np.nan, True])
+        s2 = Series([np.nan, False])
+        self.assertTrue(s1.all(skipna=False))  # nan && True => True
+        self.assertTrue(s1.all(skipna=True))
+        self.assertTrue(np.isnan(s2.any(skipna=False)))  # nan || False => nan
+        self.assertFalse(s2.any(skipna=True))
+
+        # Check level.
+        s = pd.Series([False, False, True, True, False, True],
+                      index=[0, 0, 1, 1, 2, 2])
+        assert_series_equal(s.all(level=0), Series([False, True, False]))
+        assert_series_equal(s.any(level=0), Series([False, True, True]))
+
+        # bool_only is not implemented with level option.
+        self.assertRaises(NotImplementedError, s.any, bool_only=True, level=0)
+        self.assertRaises(NotImplementedError, s.all, bool_only=True, level=0)
+
+        # bool_only is not implemented alone.
+        self.assertRaises(NotImplementedError, s.any, bool_only=True)
+        self.assertRaises(NotImplementedError, s.all, bool_only=True)
 
     def test_op_method(self):
         def check(series, other, check_reverse=False):
@@ -3852,11 +3910,10 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         _check_op(arr, operator.floordiv)
 
     def test_series_frame_radd_bug(self):
-        from pandas.util.testing import rands
         import operator
 
         # GH 353
-        vals = Series([rands(5) for _ in range(10)])
+        vals = Series(tm.rands_array(5, 10))
         result = 'foo_' + vals
         expected = vals.map(lambda x: 'foo_' + x)
         assert_series_equal(result, expected)
@@ -6168,13 +6225,93 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         # it works!
         result = np.unique(self.ts)
 
-    def test_concat_empty_series_dtypes(self):
-        self.assertEqual(pd.concat([Series(dtype=np.float64)]).dtype, np.float64)
-        self.assertEqual(pd.concat([Series(dtype=np.int8)]).dtype, np.int8)
-        self.assertEqual(pd.concat([Series(dtype=np.bool_)]).dtype, np.bool_)
+    def test_concat_empty_series_dtypes_roundtrips(self):
 
+        # round-tripping with self & like self
+        dtypes = map(np.dtype,['float64','int8','uint8','bool','m8[ns]','M8[ns]'])
+
+        for dtype in dtypes:
+            self.assertEqual(pd.concat([Series(dtype=dtype)]).dtype, dtype)
+            self.assertEqual(pd.concat([Series(dtype=dtype),
+                                        Series(dtype=dtype)]).dtype, dtype)
+
+        def int_result_type(dtype, dtype2):
+            typs = set([dtype.kind,dtype2.kind])
+            if not len(typs-set(['i','u','b'])) and (dtype.kind == 'i' or dtype2.kind == 'i'):
+                return 'i'
+            elif not len(typs-set(['u','b'])) and (dtype.kind == 'u' or dtype2.kind == 'u'):
+                 return 'u'
+            return None
+
+        def float_result_type(dtype, dtype2):
+            typs = set([dtype.kind,dtype2.kind])
+            if not len(typs-set(['f','i','u'])) and (dtype.kind == 'f' or dtype2.kind == 'f'):
+                return 'f'
+            return None
+
+        def get_result_type(dtype, dtype2):
+            result = float_result_type(dtype, dtype2)
+            if result is not None:
+                return result
+            result = int_result_type(dtype, dtype2)
+            if result is not None:
+                return result
+            return 'O'
+
+        for dtype in dtypes:
+            for dtype2 in dtypes:
+                if dtype == dtype2:
+                    continue
+
+                expected = get_result_type(dtype, dtype2)
+                result = pd.concat([Series(dtype=dtype),
+                                    Series(dtype=dtype2)]).dtype
+                self.assertEqual(result.kind, expected)
+
+    def test_concat_empty_series_dtypes(self):
+
+        # bools
         self.assertEqual(pd.concat([Series(dtype=np.bool_),
                                     Series(dtype=np.int32)]).dtype, np.int32)
+        self.assertEqual(pd.concat([Series(dtype=np.bool_),
+                                    Series(dtype=np.float32)]).dtype, np.object_)
+
+        # datetimelike
+        self.assertEqual(pd.concat([Series(dtype='m8[ns]'),
+                                    Series(dtype=np.bool)]).dtype, np.object_)
+        self.assertEqual(pd.concat([Series(dtype='m8[ns]'),
+                                    Series(dtype=np.int64)]).dtype, np.object_)
+        self.assertEqual(pd.concat([Series(dtype='M8[ns]'),
+                                    Series(dtype=np.bool)]).dtype, np.object_)
+        self.assertEqual(pd.concat([Series(dtype='M8[ns]'),
+                                    Series(dtype=np.int64)]).dtype, np.object_)
+        self.assertEqual(pd.concat([Series(dtype='M8[ns]'),
+                                    Series(dtype=np.bool_),
+                                    Series(dtype=np.int64)]).dtype, np.object_)
+
+        # categorical
+        self.assertEqual(pd.concat([Series(dtype='category'),
+                                    Series(dtype='category')]).dtype, 'category')
+        self.assertEqual(pd.concat([Series(dtype='category'),
+                                    Series(dtype='float64')]).dtype, np.object_)
+        self.assertEqual(pd.concat([Series(dtype='category'),
+                                    Series(dtype='object')]).dtype, 'category')
+
+        # sparse
+        result = pd.concat([Series(dtype='float64').to_sparse(),
+                            Series(dtype='float64').to_sparse()])
+        self.assertEqual(result.dtype,np.float64)
+        self.assertEqual(result.ftype,'float64:sparse')
+
+        result = pd.concat([Series(dtype='float64').to_sparse(),
+                            Series(dtype='float64')])
+        self.assertEqual(result.dtype,np.float64)
+        self.assertEqual(result.ftype,'float64:sparse')
+
+        result = pd.concat([Series(dtype='float64').to_sparse(),
+                            Series(dtype='object')])
+        self.assertEqual(result.dtype,np.object_)
+        self.assertEqual(result.ftype,'object:dense')
 
     def test_searchsorted_numeric_dtypes_scalar(self):
         s = Series([1, 2, 90, 1000, 3e9])

@@ -236,7 +236,7 @@ which are removed are replaced by ``np.nan``.:
     s = s.cat.remove_categories([4])
     s
 
-Renaming unused categories
+Removing unused categories
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Removing unused categories can also be done:
@@ -541,8 +541,13 @@ The same applies to ``df.append(df_different)``.
 Getting Data In/Out
 -------------------
 
-Writing data (`Series`, `Frames`) to a HDF store that contains a ``category`` dtype will currently
-raise ``NotImplementedError``.
+.. versionadded:: 0.15.2
+
+Writing data (`Series`, `Frames`) to a HDF store that contains a ``category`` dtype was implemented
+in 0.15.2. See :ref:`here <io.hdf5-categorical>` for an example and caveats.
+
+Writing data to and reading data from *Stata* format files was implemented in
+0.15.2. See :ref:`here <io.stata-categorical>` for an example and caveats.
 
 Writing to a CSV file will convert the data, effectively removing any information about the
 categorical (categories and ordering). So if you read back the CSV file you have to convert the
@@ -573,6 +578,7 @@ relevant columns back to `category` and assign the right categories and categori
     df2.dtypes
     df2["cats"]
 
+The same holds for writing to a SQL database with ``to_sql``.
 
 Missing Data
 ------------
@@ -804,4 +810,3 @@ Use ``copy=True`` to prevent such a behaviour or simply don't reuse `Categorical
     This also happens in some cases when you supply a `numpy` array instead of a `Categorical`:
     using an int array (e.g. ``np.array([1,2,3,4])``) will exhibit the same behaviour, while using
     a string array (e.g. ``np.array(["a","b","c","a"])``) will not.
-

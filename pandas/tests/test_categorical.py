@@ -912,6 +912,17 @@ class TestCategorical(tm.TestCase):
 
         self.assertFalse(LooseVersion(pd.__version__) >= '0.18')
 
+    def test_datetime_categorical_comparison(self):
+        dt_cat = pd.Categorical(pd.date_range('2014-01-01', periods=3))
+        self.assert_numpy_array_equal(dt_cat > dt_cat[0], [False, True, True])
+        self.assert_numpy_array_equal(dt_cat[0] < dt_cat, [False, True, True])
+
+    def test_reflected_comparison_with_scalars(self):
+        # GH8658
+        cat = pd.Categorical([1, 2, 3])
+        self.assert_numpy_array_equal(cat > cat[0], [False, True, True])
+        self.assert_numpy_array_equal(cat[0] < cat, [False, True, True])
+
 
 class TestCategoricalAsBlock(tm.TestCase):
     _multiprocess_can_split_ = True
@@ -1025,6 +1036,21 @@ class TestCategoricalAsBlock(tm.TestCase):
         str(df.values)
         str(df)
 
+        # GH8623
+        x = pd.DataFrame([[1,'John P. Doe'],[2,'Jane Dove'],[1,'John P. Doe']],
+                         columns=['person_id','person_name'])
+        x['person_name'] = pd.Categorical(x.person_name) # doing this breaks transform
+
+        expected = x.iloc[0].person_name
+        result = x.person_name.iloc[0]
+        self.assertEqual(result,expected)
+
+        result = x.person_name[0]
+        self.assertEqual(result,expected)
+
+        result = x.person_name.loc[0]
+        self.assertEqual(result,expected)
+
     def test_creation_astype(self):
         l = ["a","b","c","a"]
         s = pd.Series(l)
@@ -1071,6 +1097,68 @@ class TestCategoricalAsBlock(tm.TestCase):
         expected = DataFrame({'x': expected})
         df = DataFrame({'x': Series(['a', 'b', 'c'],dtype='category')}, index=index)
         tm.assert_frame_equal(df, expected)
+
+    def test_construction_frame(self):
+
+        # GH8626
+
+        # dict creation
+        df = DataFrame({ 'A' : list('abc') },dtype='category')
+        expected = Series(list('abc'),dtype='category')
+        tm.assert_series_equal(df['A'],expected)
+
+        # to_frame
+        s = Series(list('abc'),dtype='category')
+        result = s.to_frame()
+        expected = Series(list('abc'),dtype='category')
+        tm.assert_series_equal(result[0],expected)
+        result = s.to_frame(name='foo')
+        expected = Series(list('abc'),dtype='category')
+        tm.assert_series_equal(result['foo'],expected)
+
+        # list-like creation
+        df = DataFrame(list('abc'),dtype='category')
+        expected = Series(list('abc'),dtype='category')
+        tm.assert_series_equal(df[0],expected)
+
+        # ndim != 1
+        df = DataFrame([pd.Categorical(list('abc'))])
+        expected = DataFrame({ 0 : Series(list('abc'),dtype='category')})
+        tm.assert_frame_equal(df,expected)
+
+        df = DataFrame([pd.Categorical(list('abc')),pd.Categorical(list('abd'))])
+        expected = DataFrame({ 0 : Series(list('abc'),dtype='category'),
+                               1 : Series(list('abd'),dtype='category')},columns=[0,1])
+        tm.assert_frame_equal(df,expected)
+
+        # mixed
+        df = DataFrame([pd.Categorical(list('abc')),list('def')])
+        expected = DataFrame({ 0 : Series(list('abc'),dtype='category'),
+                               1 : list('def')},columns=[0,1])
+        tm.assert_frame_equal(df,expected)
+
+        # invalid (shape)
+        self.assertRaises(ValueError, lambda : DataFrame([pd.Categorical(list('abc')),pd.Categorical(list('abdefg'))]))
+
+        # ndim > 1
+        self.assertRaises(NotImplementedError, lambda : pd.Categorical(np.array([list('abcd')])))
+
+    def test_reshaping(self):
+
+        p = tm.makePanel()
+        p['str'] = 'foo'
+        df = p.to_frame()
+        df['category'] = df['str'].astype('category')
+        result = df['category'].unstack()
+
+        c = Categorical(['foo']*len(p.major_axis))
+        expected = DataFrame({'A' : c.copy(),
+                              'B' : c.copy(),
+                              'C' : c.copy(),
+                              'D' : c.copy()},
+                             columns=Index(list('ABCD'),name='minor'),
+                             index=p.major_axis.set_names('major'))
+        tm.assert_frame_equal(result, expected)
 
     def test_reindex(self):
 
@@ -1435,6 +1523,28 @@ class TestCategoricalAsBlock(tm.TestCase):
                                }).sortlevel()
         expected.iloc[[1,2,7,8],0] = [1,2,3,4]
         result = gb.sum()
+        tm.assert_frame_equal(result, expected)
+
+        # GH 8623
+        x=pd.DataFrame([[1,'John P. Doe'],[2,'Jane Dove'],[1,'John P. Doe']],
+                       columns=['person_id','person_name'])
+        x['person_name'] = pd.Categorical(x.person_name)
+
+        g = x.groupby(['person_id'])
+        result = g.transform(lambda x:x)
+        tm.assert_frame_equal(result, x[['person_name']])
+
+        result = x.drop_duplicates('person_name')
+        expected = x.iloc[[0,1]]
+        tm.assert_frame_equal(result, expected)
+
+        def f(x):
+            return x.drop_duplicates('person_name').iloc[0]
+
+        result = g.apply(f)
+        expected = x.iloc[[0,1]].copy()
+        expected.index = Index([1,2],name='person_id')
+        expected['person_name'] = expected['person_name'].astype('object')
         tm.assert_frame_equal(result, expected)
 
     def test_pivot_table(self):
@@ -2136,6 +2246,23 @@ class TestCategoricalAsBlock(tm.TestCase):
         dfx['grade'].cat.categories
         self.assert_numpy_array_equal(df['grade'].cat.categories, dfx['grade'].cat.categories)
 
+        # GH 8641
+        # series concat not preserving category dtype
+        s = Series(list('abc'),dtype='category')
+        s2 = Series(list('abd'),dtype='category')
+
+        def f():
+            pd.concat([s,s2])
+        self.assertRaises(ValueError, f)
+
+        result = pd.concat([s,s],ignore_index=True)
+        expected = Series(list('abcabc')).astype('category')
+        tm.assert_series_equal(result, expected)
+
+        result = pd.concat([s,s])
+        expected = Series(list('abcabc'),index=[0,1,2,0,1,2]).astype('category')
+        tm.assert_series_equal(result, expected)
+
     def test_append(self):
         cat = pd.Categorical(["a","b"], categories=["a","b"])
         vals = [1,2]
@@ -2223,6 +2350,42 @@ class TestCategoricalAsBlock(tm.TestCase):
         # array conversion
         tm.assert_almost_equal(np.array(s),np.array(s.values))
 
+        # valid conversion
+        for valid in [lambda x: x.astype('category'),
+                      lambda x: x.astype(com.CategoricalDtype()),
+                      lambda x: x.astype('object').astype('category'),
+                      lambda x: x.astype('object').astype(com.CategoricalDtype())]:
+
+            result = valid(s)
+            tm.assert_series_equal(result,s)
+
+        # invalid conversion (these are NOT a dtype)
+        for invalid in [lambda x: x.astype(pd.Categorical),
+                        lambda x: x.astype('object').astype(pd.Categorical)]:
+            self.assertRaises(TypeError, lambda : invalid(s))
+
+
+    def test_to_records(self):
+
+        # GH8626
+
+        # dict creation
+        df = DataFrame({ 'A' : list('abc') },dtype='category')
+        expected = Series(list('abc'),dtype='category')
+        tm.assert_series_equal(df['A'],expected)
+
+        # list-like creation
+        df = DataFrame(list('abc'),dtype='category')
+        expected = Series(list('abc'),dtype='category')
+        tm.assert_series_equal(df[0],expected)
+
+        # to record array
+        # this coerces
+        result = df.to_records()
+        expected = np.rec.array([(0, 'a'), (1, 'b'), (2, 'c')],
+                                dtype=[('index', '<i8'), ('0', 'O')])
+        tm.assert_almost_equal(result,expected)
+
     def test_numeric_like_ops(self):
 
         # numeric ops should not succeed
@@ -2262,7 +2425,7 @@ class TestCategoricalAsBlock(tm.TestCase):
 
     def test_pickle_v0_14_1(self):
         cat = pd.Categorical(values=['a', 'b', 'c'],
-                             levels=['a', 'b', 'c', 'd'],
+                             categories=['a', 'b', 'c', 'd'],
                              name='foobar', ordered=False)
         pickle_path = os.path.join(tm.get_data_path(),
                                    'categorical_0_14_1.pickle')

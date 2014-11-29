@@ -27,6 +27,8 @@ from pandas.core.config import (set_option, get_option,
                                 option_context, reset_option)
 from datetime import datetime
 
+import nose
+
 _frame = DataFrame(tm.getSeriesData())
 
 
@@ -116,6 +118,26 @@ class TestDataFrameFormatting(tm.TestCase):
         fmt.set_eng_float_format(accuracy=0)
         repr(self.frame)
         self.reset_display_options()
+
+    def test_show_null_counts(self):
+
+        df = DataFrame(1,columns=range(10),index=range(10))
+        df.iloc[1,1] = np.nan
+
+        def check(null_counts, result):
+            buf = StringIO()
+            r = df.info(buf=buf,null_counts=null_counts)
+            self.assertTrue(('non-null' in buf.getvalue()) is result)
+
+        with option_context('display.max_info_rows',20,'display.max_info_columns',20):
+            check(None, True)
+            check(True, True)
+            check(False, False)
+
+        with option_context('display.max_info_rows',5,'display.max_info_columns',5):
+            check(None, False)
+            check(True, False)
+            check(False, False)
 
     def test_repr_tuples(self):
         buf = StringIO()
@@ -1170,7 +1192,6 @@ class TestDataFrameFormatting(tm.TestCase):
         fmt.set_option('display.max_rows', 200)
 
     def test_pprint_thing(self):
-        import nose
         from pandas.core.common import pprint_thing as pp_t
 
         if PY3:
@@ -1201,9 +1222,8 @@ class TestDataFrameFormatting(tm.TestCase):
 
     def test_wide_repr(self):
         with option_context('mode.sim_interactive', True, 'display.show_dimensions', True):
-            col = lambda l, k: [tm.rands(k) for _ in range(l)]
             max_cols = get_option('display.max_columns')
-            df = DataFrame([col(max_cols - 1, 25) for _ in range(10)])
+            df = DataFrame(tm.rands_array(25, size=(10, max_cols - 1)))
             set_option('display.expand_frame_repr', False)
             rep_str = repr(df)
 
@@ -1227,9 +1247,8 @@ class TestDataFrameFormatting(tm.TestCase):
 
     def test_wide_repr_named(self):
         with option_context('mode.sim_interactive', True):
-            col = lambda l, k: [tm.rands(k) for _ in range(l)]
             max_cols = get_option('display.max_columns')
-            df = DataFrame([col(max_cols-1, 25) for _ in range(10)])
+            df = DataFrame(tm.rands_array(25, size=(10, max_cols - 1)))
             df.index.name = 'DataFrame Index'
             set_option('display.expand_frame_repr', False)
 
@@ -1249,11 +1268,10 @@ class TestDataFrameFormatting(tm.TestCase):
 
     def test_wide_repr_multiindex(self):
         with option_context('mode.sim_interactive', True):
-            col = lambda l, k: [tm.rands(k) for _ in range(l)]
-            midx = pandas.MultiIndex.from_arrays([np.array(col(10, 5)),
-                                                  np.array(col(10, 5))])
+            midx = pandas.MultiIndex.from_arrays(
+                tm.rands_array(5, size=(2, 10)))
             max_cols = get_option('display.max_columns')
-            df = DataFrame([col(max_cols-1, 25) for _ in range(10)],
+            df = DataFrame(tm.rands_array(25, size=(10, max_cols - 1)),
                            index=midx)
             df.index.names = ['Level 0', 'Level 1']
             set_option('display.expand_frame_repr', False)
@@ -1274,12 +1292,11 @@ class TestDataFrameFormatting(tm.TestCase):
     def test_wide_repr_multiindex_cols(self):
         with option_context('mode.sim_interactive', True):
             max_cols = get_option('display.max_columns')
-            col = lambda l, k: [tm.rands(k) for _ in range(l)]
-            midx = pandas.MultiIndex.from_arrays([np.array(col(10, 5)),
-                                                  np.array(col(10, 5))])
-            mcols = pandas.MultiIndex.from_arrays([np.array(col(max_cols-1, 3)),
-                                                   np.array(col(max_cols-1, 3))])
-            df = DataFrame([col(max_cols-1, 25) for _ in range(10)],
+            midx = pandas.MultiIndex.from_arrays(
+                tm.rands_array(5, size=(2, 10)))
+            mcols = pandas.MultiIndex.from_arrays(
+                tm.rands_array(3, size=(2, max_cols - 1)))
+            df = DataFrame(tm.rands_array(25, (10, max_cols - 1)),
                            index=midx, columns=mcols)
             df.index.names = ['Level 0', 'Level 1']
             set_option('display.expand_frame_repr', False)
@@ -1296,9 +1313,8 @@ class TestDataFrameFormatting(tm.TestCase):
 
     def test_wide_repr_unicode(self):
         with option_context('mode.sim_interactive', True):
-            col = lambda l, k: [tm.randu(k) for _ in range(l)]
             max_cols = get_option('display.max_columns')
-            df = DataFrame([col(max_cols-1, 25) for _ in range(10)])
+            df = DataFrame(tm.rands_array(25, size=(10, max_cols - 1)))
             set_option('display.expand_frame_repr', False)
             rep_str = repr(df)
             set_option('display.expand_frame_repr', True)
@@ -1877,30 +1893,31 @@ c  10  11  12  13  14\
         self.reset_display_options()
 
     def test_repr_html_wide(self):
-        row = lambda l, k: [tm.rands(k) for _ in range(l)]
         max_cols = get_option('display.max_columns')
-        df = DataFrame([row(max_cols-1, 25) for _ in range(10)])
+        df = DataFrame(tm.rands_array(25, size=(10, max_cols - 1)))
         reg_repr = df._repr_html_()
         assert "..." not in reg_repr
 
-        wide_df = DataFrame([row(max_cols+1, 25) for _ in range(10)])
+        wide_df = DataFrame(tm.rands_array(25, size=(10, max_cols + 1)))
         wide_repr = wide_df._repr_html_()
         assert "..." in wide_repr
 
     def test_repr_html_wide_multiindex_cols(self):
-        row = lambda l, k: [tm.rands(k) for _ in range(l)]
         max_cols = get_option('display.max_columns')
 
-        tuples = list(itertools.product(np.arange(max_cols//2), ['foo', 'bar']))
-        mcols = pandas.MultiIndex.from_tuples(tuples, names=['first', 'second'])
-        df = DataFrame([row(len(mcols), 25) for _ in range(10)], columns=mcols)
+        mcols = pandas.MultiIndex.from_product([np.arange(max_cols//2),
+                                                ['foo', 'bar']],
+                                               names=['first', 'second'])
+        df = DataFrame(tm.rands_array(25, size=(10, len(mcols))),
+                       columns=mcols)
         reg_repr = df._repr_html_()
         assert '...' not in reg_repr
 
-
-        tuples = list(itertools.product(np.arange(1+(max_cols//2)), ['foo', 'bar']))
-        mcols = pandas.MultiIndex.from_tuples(tuples, names=['first', 'second'])
-        df = DataFrame([row(len(mcols), 25) for _ in range(10)], columns=mcols)
+        mcols = pandas.MultiIndex.from_product((np.arange(1+(max_cols//2)),
+                                                ['foo', 'bar']),
+                                               names=['first', 'second'])
+        df = DataFrame(tm.rands_array(25, size=(10, len(mcols))),
+                       columns=mcols)
         wide_repr = df._repr_html_()
         assert '...' in wide_repr
 
@@ -3020,6 +3037,5 @@ class TestStringRepTimestamp(tm.TestCase):
         self.assertEqual(str(dt_datetime_us), str(Timestamp(dt_datetime_us)))
 
 if __name__ == '__main__':
-    import nose
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
                    exit=False)

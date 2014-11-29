@@ -190,6 +190,8 @@ Standard moving window functions
    rolling_quantile
    rolling_window
 
+.. _api.functions_expanding:
+
 Standard expanding window functions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -248,9 +250,9 @@ Attributes
    Series.dtype
    Series.ftype
    Series.shape
-   Series.size
    Series.nbytes
    Series.ndim
+   Series.size
    Series.strides
    Series.itemsize
    Series.base
@@ -392,6 +394,8 @@ Reindexing / Selection / Label manipulation
    Series.take
    Series.tail
    Series.truncate
+   Series.where
+   Series.mask
 
 Missing data handling
 ~~~~~~~~~~~~~~~~~~~~~
@@ -652,6 +656,7 @@ Attributes and underlying data
    DataFrame.values
    DataFrame.axes
    DataFrame.ndim
+   DataFrame.size
    DataFrame.shape
 
 Conversion
@@ -686,6 +691,8 @@ Indexing, iteration
    DataFrame.tail
    DataFrame.xs
    DataFrame.isin
+   DataFrame.where
+   DataFrame.mask
    DataFrame.query
 
 For more information on ``.at``, ``.iat``, ``.ix``, ``.loc``, and
@@ -919,6 +926,7 @@ Attributes and underlying data
    Panel.values
    Panel.axes
    Panel.ndim
+   Panel.size
    Panel.shape
    Panel.dtypes
    Panel.ftypes
@@ -1126,6 +1134,7 @@ Attributes and underlying data
    Panel4D.values
    Panel4D.axes
    Panel4D.ndim
+   Panel4D.size
    Panel4D.shape
    Panel4D.dtypes
    Panel4D.ftypes
@@ -1164,14 +1173,16 @@ Attributes
 
    Index.values
    Index.is_monotonic
+   Index.is_monotonic_increasing
+   Index.is_monotonic_decreasing
    Index.is_unique
    Index.dtype
    Index.inferred_type
    Index.is_all_dates
    Index.shape
-   Index.size
    Index.nbytes
    Index.ndim
+   Index.size
    Index.strides
    Index.itemsize
    Index.base

@@ -7,18 +7,21 @@ from pandas.compat import range, zip, lrange, lzip, u, reduce
 from pandas import compat
 import numpy as np
 
+from sys import getsizeof
 import pandas.tslib as tslib
 import pandas.lib as lib
 import pandas.algos as _algos
 import pandas.index as _index
 from pandas.lib import Timestamp, Timedelta, is_datetime_array
 from pandas.core.base import PandasObject, FrozenList, FrozenNDArray, IndexOpsMixin, _shared_docs
-from pandas.util.decorators import Appender, cache_readonly, deprecate
+from pandas.util.decorators import (Appender, Substitution, cache_readonly,
+                                    deprecate)
 from pandas.core.common import isnull, array_equivalent
 import pandas.core.common as com
 from pandas.core.common import (_values_from_object, is_float, is_integer,
-                                ABCSeries, _ensure_object)
+                                ABCSeries, _ensure_object, _ensure_int64)
 from pandas.core.config import get_option
+from pandas.io.common import PerformanceWarning
 
 # simplify
 default_pprint = lambda x: com.pprint_thing(x, escape_chars=('\t', '\r', '\n'),
@@ -572,8 +575,22 @@ class Index(IndexOpsMixin, PandasObject):
 
     @property
     def is_monotonic(self):
-        """ return if the index has monotonic (only equaly or increasing) values """
-        return self._engine.is_monotonic
+        """ alias for is_monotonic_increasing (deprecated) """
+        return self._engine.is_monotonic_increasing
+
+    @property
+    def is_monotonic_increasing(self):
+        """ return if the index is monotonic increasing (only equal or
+        increasing) values
+        """
+        return self._engine.is_monotonic_increasing
+
+    @property
+    def is_monotonic_decreasing(self):
+        """ return if the index is monotonic decreasing (only equal or
+        decreasing values
+        """
+        return self._engine.is_monotonic_decreasing
 
     def is_lexsorted_for_tuple(self, tup):
         return True
@@ -1147,20 +1164,20 @@ class Index(IndexOpsMixin, PandasObject):
                           "use '|' or .union()",FutureWarning)
             return self.union(other)
         return Index(np.array(self) + other)
-
     __iadd__ = __add__
-    __eq__ = _indexOp('__eq__')
-    __ne__ = _indexOp('__ne__')
-    __lt__ = _indexOp('__lt__')
-    __gt__ = _indexOp('__gt__')
-    __le__ = _indexOp('__le__')
-    __ge__ = _indexOp('__ge__')
 
     def __sub__(self, other):
         if isinstance(other, Index):
             warnings.warn("using '-' to provide set differences with Indexes is deprecated, "
                           "use .difference()",FutureWarning)
         return self.difference(other)
+
+    __eq__ = _indexOp('__eq__')
+    __ne__ = _indexOp('__ne__')
+    __lt__ = _indexOp('__lt__')
+    __gt__ = _indexOp('__gt__')
+    __le__ = _indexOp('__le__')
+    __ge__ = _indexOp('__ge__')
 
     def __and__(self, other):
         return self.intersection(other)
@@ -1539,6 +1556,20 @@ class Index(IndexOpsMixin, PandasObject):
         return self, other
 
     def groupby(self, to_groupby):
+        """
+        Group the index labels by a given array of values.
+
+        Parameters
+        ----------
+        to_groupby : array
+            Values used to determine the groups.
+
+        Returns
+        -------
+        groups : dict
+            {group name -> group labels}
+
+        """
         return self._groupby(self.values, _values_from_object(to_groupby))
 
     def map(self, mapper):
@@ -1929,23 +1960,99 @@ class Index(IndexOpsMixin, PandasObject):
         -----
         This function assumes that the data is sorted, so use at your own peril
         """
-        start_slice, end_slice = self.slice_locs(start, end)
+        start_slice, end_slice = self.slice_locs(start, end, step=step)
 
         # return a slice
-        if np.isscalar(start_slice) and np.isscalar(end_slice):
+        if not lib.isscalar(start_slice):
+            raise AssertionError("Start slice bound is non-scalar")
+        if not lib.isscalar(end_slice):
+            raise AssertionError("End slice bound is non-scalar")
 
-            # degenerate cases
-            if start is None and end is None:
-                return slice(None, None, step)
+        return slice(start_slice, end_slice, step)
 
-            return slice(start_slice, end_slice, step)
-
-        # loc indexers
-        return (Index(start_slice) & Index(end_slice)).values
-
-    def slice_locs(self, start=None, end=None):
+    def _maybe_cast_slice_bound(self, label, side):
         """
-        For an ordered Index, compute the slice locations for input labels
+        This function should be overloaded in subclasses that allow non-trivial
+        casting on label-slice bounds, e.g. datetime-like indices allowing
+        strings containing formatted datetimes.
+
+        Parameters
+        ----------
+        label : object
+        side : {'left', 'right'}
+
+        Notes
+        -----
+        Value of `side` parameter should be validated in caller.
+
+        """
+        return label
+
+    def get_slice_bound(self, label, side):
+        """
+        Calculate slice bound that corresponds to given label.
+
+        Returns leftmost (one-past-the-rightmost if ``side=='right'``) position
+        of given label.
+
+        Parameters
+        ----------
+        label : object
+        side : {'left', 'right'}
+
+        """
+        if side not in ('left', 'right'):
+            raise ValueError(
+                "Invalid value for side kwarg,"
+                " must be either 'left' or 'right': %s" % (side,))
+
+        original_label = label
+        # For datetime indices label may be a string that has to be converted
+        # to datetime boundary according to its resolution.
+        label = self._maybe_cast_slice_bound(label, side)
+
+        try:
+            slc = self.get_loc(label)
+        except KeyError:
+            if self.is_monotonic_increasing:
+                return self.searchsorted(label, side=side)
+            elif self.is_monotonic_decreasing:
+                # np.searchsorted expects ascending sort order, have to reverse
+                # everything for it to work (element ordering, search side and
+                # resulting value).
+                pos = self[::-1].searchsorted(
+                    label, side='right' if side == 'left' else 'right')
+                return len(self) - pos
+
+            # In all other cases, just re-raise the KeyError
+            raise
+
+        if isinstance(slc, np.ndarray):
+            # get_loc may return a boolean array or an array of indices, which
+            # is OK as long as they are representable by a slice.
+            if com.is_bool_dtype(slc):
+                slc = lib.maybe_booleans_to_slice(slc.view('u1'))
+            else:
+                slc = lib.maybe_indices_to_slice(slc.astype('i8'))
+            if isinstance(slc, np.ndarray):
+                raise KeyError(
+                    "Cannot get %s slice bound for non-unique label:"
+                    " %r" % (side, original_label))
+
+        if isinstance(slc, slice):
+            if side == 'left':
+                return slc.start
+            else:
+                return slc.stop
+        else:
+            if side == 'right':
+                return slc + 1
+            else:
+                return slc
+
+    def slice_locs(self, start=None, end=None, step=None):
+        """
+        Compute slice locations for input labels.
 
         Parameters
         ----------
@@ -1956,55 +2063,51 @@ class Index(IndexOpsMixin, PandasObject):
 
         Returns
         -------
-        (start, end) : (int, int)
+        start, end : int
 
-        Notes
-        -----
-        This function assumes that the data is sorted, so use at your own peril
         """
+        inc = (step is None or step >= 0)
 
-        is_unique = self.is_unique
+        if not inc:
+            # If it's a reverse slice, temporarily swap bounds.
+            start, end = end, start
 
-        def _get_slice(starting_value, offset, search_side, slice_property,
-                       search_value):
-            if search_value is None:
-                return starting_value
+        start_slice = None
+        if start is not None:
+            start_slice = self.get_slice_bound(start, 'left')
+        if start_slice is None:
+            start_slice = 0
 
-            try:
-                slc = self.get_loc(search_value)
+        end_slice = None
+        if end is not None:
+            end_slice = self.get_slice_bound(end, 'right')
+        if end_slice is None:
+            end_slice = len(self)
 
-                if not is_unique:
+        if not inc:
+            # Bounds at this moment are swapped, swap them back and shift by 1.
+            #
+            # slice_locs('B', 'A', step=-1): s='B', e='A'
+            #
+            #              s='A'                 e='B'
+            # AFTER SWAP:    |                     |
+            #                v ------------------> V
+            #           -----------------------------------
+            #           | | |A|A|A|A| | | | | |B|B| | | | |
+            #           -----------------------------------
+            #              ^ <------------------ ^
+            # SHOULD BE:   |                     |
+            #           end=s-1              start=e-1
+            #
+            end_slice, start_slice = start_slice - 1, end_slice - 1
 
-                    # get_loc will return a boolean array for non_uniques
-                    # if we are not monotonic
-                    if isinstance(slc, (np.ndarray, Index)):
-                        raise KeyError("cannot peform a slice operation "
-                                       "on a non-unique non-monotonic index")
-
-                if isinstance(slc, slice):
-                    slc = getattr(slc, slice_property)
-                else:
-                    slc += offset
-
-            except KeyError:
-                if self.is_monotonic:
-
-                    # we are duplicated but non-unique
-                    # so if we have an indexer then we are done
-                    # else search for it (GH 7523)
-                    if not is_unique and is_integer(search_value):
-                        slc = search_value
-                    else:
-                        slc = self.searchsorted(search_value,
-                                                side=search_side)
-                else:
-                    raise
-            return slc
-
-        start_slice = _get_slice(0, offset=0, search_side='left',
-                                 slice_property='start', search_value=start)
-        end_slice = _get_slice(len(self), offset=1, search_side='right',
-                               slice_property='stop', search_value=end)
+            # i == -1 triggers ``len(self) + i`` selection that points to the
+            # last element, not before-the-first one, subtracting len(self)
+            # compensates that.
+            if end_slice == -1:
+                end_slice -= len(self)
+            if start_slice == -1:
+                start_slice -= len(self)
 
         return start_slice, end_slice
 
@@ -2077,12 +2180,13 @@ class Index(IndexOpsMixin, PandasObject):
     def _add_numeric_methods_disabled(cls):
         """ add in numeric methods to disable """
 
-        def _make_invalid_op(opstr):
+        def _make_invalid_op(name):
 
-            def _invalid_op(self, other=None):
-                raise TypeError("cannot perform {opstr} with this index type: {typ}".format(opstr=opstr,
-                                                                                            typ=type(self)))
-            return _invalid_op
+            def invalid_op(self, other=None):
+                raise TypeError("cannot perform {name} with this index type: {typ}".format(name=name,
+                                                                                           typ=type(self)))
+            invalid_op.__name__ = name
+            return invalid_op
 
         cls.__mul__ = cls.__rmul__ = _make_invalid_op('__mul__')
         cls.__floordiv__ = cls.__rfloordiv__ = _make_invalid_op('__floordiv__')
@@ -2098,7 +2202,7 @@ class Index(IndexOpsMixin, PandasObject):
     def _add_numeric_methods(cls):
         """ add in numeric methods """
 
-        def _make_evaluate_binop(op, opstr):
+        def _make_evaluate_binop(op, opstr, reversed=False):
 
             def _evaluate_numeric_binop(self, other):
                 import pandas.tseries.offsets as offsets
@@ -2128,7 +2232,13 @@ class Index(IndexOpsMixin, PandasObject):
                 else:
                     if not (com.is_float(other) or com.is_integer(other)):
                         raise TypeError("can only perform ops with scalar values")
-                return self._shallow_copy(op(self.values, other))
+
+                # if we are a reversed non-communative op
+                values = self.values
+                if reversed:
+                    values, other = other, values
+
+                return self._shallow_copy(op(values, other))
 
             return _evaluate_numeric_binop
 
@@ -2145,17 +2255,78 @@ class Index(IndexOpsMixin, PandasObject):
 
             return _evaluate_numeric_unary
 
+        cls.__add__ = cls.__radd__ = _make_evaluate_binop(operator.add,'__add__')
+        cls.__sub__ = _make_evaluate_binop(operator.sub,'__sub__')
+        cls.__rsub__ = _make_evaluate_binop(operator.sub,'__sub__',reversed=True)
         cls.__mul__ = cls.__rmul__ = _make_evaluate_binop(operator.mul,'__mul__')
-        cls.__floordiv__ = cls.__rfloordiv__ = _make_evaluate_binop(operator.floordiv,'__floordiv__')
-        cls.__truediv__ = cls.__rtruediv__ = _make_evaluate_binop(operator.truediv,'__truediv__')
+        cls.__floordiv__ = _make_evaluate_binop(operator.floordiv,'__floordiv__')
+        cls.__rfloordiv__ = _make_evaluate_binop(operator.floordiv,'__floordiv__',reversed=True)
+        cls.__truediv__ = _make_evaluate_binop(operator.truediv,'__truediv__')
+        cls.__rtruediv__ = _make_evaluate_binop(operator.truediv,'__truediv__',reversed=True)
         if not compat.PY3:
-            cls.__div__ = cls.__rdiv__ = _make_evaluate_binop(operator.div,'__div__')
+            cls.__div__ = _make_evaluate_binop(operator.div,'__div__')
+            cls.__rdiv__ = _make_evaluate_binop(operator.div,'__div__',reversed=True)
         cls.__neg__ = _make_evaluate_unary(lambda x: -x,'__neg__')
         cls.__pos__ = _make_evaluate_unary(lambda x: x,'__pos__')
         cls.__abs__ = _make_evaluate_unary(lambda x: np.abs(x),'__abs__')
         cls.__inv__ = _make_evaluate_unary(lambda x: -x,'__inv__')
 
+    @classmethod
+    def _add_logical_methods(cls):
+        """ add in logical methods """
+
+        _doc = """
+
+        %(desc)s
+
+        Parameters
+        ----------
+        All arguments to numpy.%(outname)s are accepted.
+
+        Returns
+        -------
+        %(outname)s : bool or array_like (if axis is specified)
+            A single element array_like may be converted to bool."""
+
+        def _make_logical_function(name, desc, f):
+
+            @Substitution(outname=name, desc=desc)
+            @Appender(_doc)
+            def logical_func(self, *args, **kwargs):
+                result = f(self.values)
+                if isinstance(result, (np.ndarray, com.ABCSeries, Index)) \
+                   and result.ndim == 0:
+                    # return NumPy type
+                    return result.dtype.type(result.item())
+                else:  # pragma: no cover
+                    return result
+            logical_func.__name__ = name
+            return logical_func
+
+        cls.all = _make_logical_function(
+            'all', 'Return whether all elements are True', np.all)
+        cls.any = _make_logical_function(
+            'any', 'Return whether any element is True', np.any)
+
+    @classmethod
+    def _add_logical_methods_disabled(cls):
+        """ add in logical methods to disable """
+
+        def _make_invalid_op(name):
+
+            def invalid_op(self, other=None):
+                raise TypeError("cannot perform {name} with this index type: {typ}".format(name=name,
+                                                                                           typ=type(self)))
+            invalid_op.__name__ = name
+            return invalid_op
+
+        cls.all = _make_invalid_op('all')
+        cls.any = _make_invalid_op('any')
+
+
 Index._add_numeric_methods_disabled()
+Index._add_logical_methods()
+
 
 class NumericIndex(Index):
     """
@@ -2165,7 +2336,6 @@ class NumericIndex(Index):
 
     """
     _is_numeric_dtype = True
-
 
 class Int64Index(NumericIndex):
 
@@ -2268,7 +2438,11 @@ class Int64Index(NumericIndex):
     def _wrap_joined_index(self, joined, other):
         name = self.name if self.name == other.name else None
         return Int64Index(joined, name=name)
+
+
 Int64Index._add_numeric_methods()
+Int64Index._add_logical_methods()
+
 
 class Float64Index(NumericIndex):
 
@@ -2418,10 +2592,13 @@ class Float64Index(NumericIndex):
     def get_loc(self, key):
         try:
             if np.all(np.isnan(key)):
+                nan_idxs = self._nan_idxs
                 try:
-                    return self._nan_idxs.item()
-                except ValueError:
-                    return self._nan_idxs
+                    return nan_idxs.item()
+                except (ValueError, IndexError):
+                    # should only need to catch ValueError here but on numpy
+                    # 1.7 .item() can raise IndexError when NaNs are present
+                    return nan_idxs
         except (TypeError, NotImplementedError):
             pass
         return super(Float64Index, self).get_loc(key)
@@ -2457,7 +2634,10 @@ class Float64Index(NumericIndex):
             self._validate_index_level(level)
         return lib.ismember_nans(self._array_values(), value_set,
                                  isnull(list(value_set)).any())
+
+
 Float64Index._add_numeric_methods()
+Float64Index._add_logical_methods_disabled()
 
 
 class MultiIndex(Index):
@@ -2668,13 +2848,13 @@ class MultiIndex(Index):
             raise ValueError('Length of labels must match length of levels.')
 
         if level is None:
-            new_labels = FrozenList(_ensure_frozen(v, copy=copy)._shallow_copy()
-                                    for v in labels)
+            new_labels = FrozenList(_ensure_frozen(lab, lev, copy=copy)._shallow_copy()
+                                    for lev, lab in zip(self.levels, labels))
         else:
             level = [self._get_level_number(l) for l in level]
             new_labels = list(self._labels)
-            for l, v in zip(level, labels):
-                new_labels[l] = _ensure_frozen(v, copy=copy)._shallow_copy()
+            for l, lev, lab in zip(level, self.levels, labels):
+                new_labels[l] = _ensure_frozen(lab, lev, copy=copy)._shallow_copy()
             new_labels = FrozenList(new_labels)
 
         self._labels = new_labels
@@ -2811,6 +2991,14 @@ class MultiIndex(Index):
     @cache_readonly
     def dtype(self):
         return np.dtype('O')
+
+    @cache_readonly
+    def nbytes(self):
+        """ return the number of bytes in the underlying data """
+        level_nbytes = sum(( i.nbytes for i in self.levels ))
+        label_nbytes = sum(( i.nbytes for i in self.labels ))
+        names_nbytes = sum(( getsizeof(i) for i in self.names ))
+        return level_nbytes + label_nbytes + names_nbytes
 
     def __repr__(self):
         encoding = get_option('display.encoding')
@@ -3776,7 +3964,12 @@ class MultiIndex(Index):
         """
         return Index(self.values)
 
-    def slice_locs(self, start=None, end=None, strict=False):
+    def get_slice_bound(self, label, side):
+        if not isinstance(label, tuple):
+            label = label,
+        return self._partial_tup_index(label, side=side)
+
+    def slice_locs(self, start=None, end=None, step=None):
         """
         For an ordered MultiIndex, compute the slice locations for input
         labels. They can be tuples representing partial levels, e.g. for a
@@ -3789,7 +3982,8 @@ class MultiIndex(Index):
             If None, defaults to the beginning
         end : label or tuple
             If None, defaults to the end
-        strict : boolean,
+        step : int or None
+            Slice step
 
         Returns
         -------
@@ -3799,21 +3993,9 @@ class MultiIndex(Index):
         -----
         This function assumes that the data is sorted by the first level
         """
-        if start is None:
-            start_slice = 0
-        else:
-            if not isinstance(start, tuple):
-                start = start,
-            start_slice = self._partial_tup_index(start, side='left')
-
-        if end is None:
-            end_slice = len(self)
-        else:
-            if not isinstance(end, tuple):
-                end = end,
-            end_slice = self._partial_tup_index(end, side='right')
-
-        return start_slice, end_slice
+        # This function adds nothing to its parent implementation (the magic
+        # happens in get_slice_bound method), but it adds meaningful doc.
+        return super(MultiIndex, self).slice_locs(start, end, step)
 
     def _partial_tup_index(self, tup, side='left'):
         if len(tup) > self.lexsort_depth:
@@ -3846,7 +4028,9 @@ class MultiIndex(Index):
 
     def get_loc(self, key):
         """
-        Get integer location slice for requested label or tuple
+        Get integer location, slice or boolean mask for requested label or tuple
+        If the key is past the lexsort depth, the return may be a boolean mask
+        array, otherwise it is always a slice or int.
 
         Parameters
         ----------
@@ -3854,22 +4038,73 @@ class MultiIndex(Index):
 
         Returns
         -------
-        loc : int or slice object
+        loc : int, slice object or boolean mask
         """
-        if isinstance(key, tuple):
-            if len(key) == self.nlevels:
-                if self.is_unique:
-                    return self._engine.get_loc(_values_from_object(key))
-                else:
-                    return slice(*self.slice_locs(key, key))
-            else:
-                # partial selection
-                result = slice(*self.slice_locs(key, key))
-                if result.start == result.stop:
-                    raise KeyError(key)
-                return result
-        else:
-            return self._get_level_indexer(key, level=0)
+        def _maybe_to_slice(loc):
+            '''convert integer indexer to boolean mask or slice if possible'''
+            if not isinstance(loc, np.ndarray) or loc.dtype != 'int64':
+                return loc
+
+            loc = lib.maybe_indices_to_slice(loc)
+            if isinstance(loc, slice):
+                return loc
+
+            mask = np.empty(len(self), dtype='bool')
+            mask.fill(False)
+            mask[loc] = True
+            return mask
+
+        if not isinstance(key, tuple):
+            loc = self._get_level_indexer(key, level=0)
+            return _maybe_to_slice(loc)
+
+        keylen = len(key)
+        if self.nlevels < keylen:
+            raise KeyError('Key length ({0}) exceeds index depth ({1})'
+                    ''.format(keylen, self.nlevels))
+
+        if keylen == self.nlevels and self.is_unique:
+            def _maybe_str_to_time_stamp(key, lev):
+                if lev.is_all_dates and not isinstance(key, Timestamp):
+                    try:
+                        return Timestamp(key, tz=getattr(lev, 'tz', None))
+                    except Exception:
+                        pass
+                return key
+            key = _values_from_object(key)
+            key = tuple(map(_maybe_str_to_time_stamp, key, self.levels))
+            return self._engine.get_loc(key)
+
+        # -- partial selection or non-unique index
+        # break the key into 2 parts based on the lexsort_depth of the index;
+        # the first part returns a continuous slice of the index; the 2nd part
+        # needs linear search within the slice
+        i = self.lexsort_depth
+        lead_key, follow_key = key[:i], key[i:]
+        start, stop = self.slice_locs(lead_key, lead_key) \
+                if lead_key else (0, len(self))
+
+        if start == stop:
+            raise KeyError(key)
+
+        if not follow_key:
+            return slice(start, stop)
+
+        warnings.warn('indexing past lexsort depth may impact performance.',
+                PerformanceWarning)
+
+        loc = np.arange(start, stop, dtype='int64')
+
+        for i, k in enumerate(follow_key, len(lead_key)):
+            mask = self.labels[i][loc] == self.levels[i].get_loc(k)
+            if not mask.all():
+                loc = loc[mask]
+            if not len(loc):
+                raise KeyError(key)
+
+        return _maybe_to_slice(loc) \
+                if len(loc) != stop - start \
+                else slice(start, stop)
 
     def get_loc_level(self, key, level=0, drop_level=True):
         """
@@ -3934,10 +4169,10 @@ class MultiIndex(Index):
             if not any(isinstance(k, slice) for k in key):
 
                 # partial selection
-                def partial_selection(key):
-                    indexer = slice(*self.slice_locs(key, key))
-                    if indexer.start == indexer.stop:
-                        raise KeyError(key)
+                # optionally get indexer to avoid re-calculation
+                def partial_selection(key, indexer=None):
+                    if indexer is None:
+                        indexer = self.get_loc(key)
                     ilevels = [i for i in range(len(key))
                                if key[i] != slice(None, None)]
                     return indexer, _maybe_drop_levels(indexer, ilevels,
@@ -3958,11 +4193,12 @@ class MultiIndex(Index):
                         if any([
                             l.is_all_dates for k, l in zip(key, self.levels)
                         ]) and not can_index_exactly:
-                            indexer = slice(*self.slice_locs(key, key))
+                            indexer = self.get_loc(key)
 
                             # we have a multiple selection here
-                            if not indexer.stop - indexer.start == 1:
-                                return partial_selection(key)
+                            if not isinstance(indexer, slice) \
+                                    or indexer.stop - indexer.start != 1:
+                                return partial_selection(key, indexer)
 
                             key = tuple(self[indexer].tolist()[0])
 
@@ -4113,8 +4349,10 @@ class MultiIndex(Index):
 
                         # ignore not founds
                         continue
-
-                ranges.append(reduce(np.logical_or,indexers))
+                if len(k):
+                    ranges.append(reduce(np.logical_or, indexers))
+                else:
+                    ranges.append(np.zeros(self.labels[i].shape, dtype=bool))
 
             elif _is_null_slice(k):
                 # empty slice
@@ -4349,7 +4587,7 @@ class MultiIndex(Index):
                 lev_loc = level.get_loc(k)
 
             new_levels.append(level)
-            new_labels.append(np.insert(labels, loc, lev_loc))
+            new_labels.append(np.insert(_ensure_int64(labels), loc, lev_loc))
 
         return MultiIndex(levels=new_levels, labels=new_labels,
                           names=self.names, verify_integrity=False)
@@ -4400,7 +4638,11 @@ class MultiIndex(Index):
                 return np.zeros(len(labs), dtype=np.bool_)
             else:
                 return np.lib.arraysetops.in1d(labs, sought_labels)
+
+
 MultiIndex._add_numeric_methods_disabled()
+MultiIndex._add_logical_methods_disabled()
+
 
 # For utility purposes
 
@@ -4462,8 +4704,8 @@ def _ensure_index(index_like, copy=False):
     return Index(index_like)
 
 
-def _ensure_frozen(array_like, copy=False):
-    array_like = np.asanyarray(array_like, dtype=np.int_)
+def _ensure_frozen(array_like, categories, copy=False):
+    array_like = com._coerce_indexer_dtype(array_like, categories)
     array_like = array_like.view(FrozenNDArray)
     if copy:
         array_like = array_like.copy()

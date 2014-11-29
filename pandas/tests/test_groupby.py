@@ -8,7 +8,6 @@ from numpy import nan
 
 from pandas import date_range,bdate_range, Timestamp
 from pandas.core.index import Index, MultiIndex, Int64Index
-from pandas.core.common import rands
 from pandas.core.api import Categorical, DataFrame
 from pandas.core.groupby import (SpecificationError, DataError,
                                  _nargsort, _lexsort_indexer)
@@ -1500,6 +1499,24 @@ class TestGroupBy(tm.TestCase):
         result3 = grouped['C'].agg({'Q': np.sum})
         assert_frame_equal(result3, expected3)
 
+        # GH7115 & GH8112 & GH8582
+        df = DataFrame(np.random.randint(0, 100, (50, 3)),
+                       columns=['jim', 'joe', 'jolie'])
+        ts = Series(np.random.randint(5, 10, 50), name='jim')
+
+        gr = df.groupby(ts)
+        _ = gr.nth(0)  # invokes _set_selection_from_grouper internally
+        assert_frame_equal(gr.apply(sum), df.groupby(ts).apply(sum))
+
+        for attr in ['mean', 'max', 'count', 'idxmax', 'cumsum', 'all']:
+            gr = df.groupby(ts, as_index=False)
+            left = getattr(gr, attr)()
+
+            gr = df.groupby(ts.values, as_index=True)
+            right = getattr(gr, attr)().reset_index(drop=True)
+
+            assert_frame_equal(left, right)
+
     def test_mulitindex_passthru(self):
 
         # GH 7997
@@ -1670,11 +1687,11 @@ class TestGroupBy(tm.TestCase):
                                 lambda x: x.month,
                                 lambda x: x.day], axis=1)
 
-        agged = grouped.agg(lambda x: x.sum(1))
+        agged = grouped.agg(lambda x: x.sum())
         self.assertTrue(agged.index.equals(df.columns))
         assert_almost_equal(df.T.values, agged.values)
 
-        agged = grouped.agg(lambda x: x.sum(1))
+        agged = grouped.agg(lambda x: x.sum())
         assert_almost_equal(df.T.values, agged.values)
 
     def test_groupby_multi_corner(self):
@@ -1709,7 +1726,7 @@ class TestGroupBy(tm.TestCase):
         # won't work with axis = 1
         grouped = df.groupby({'A': 0, 'C': 0, 'D': 1, 'E': 1}, axis=1)
         result = self.assertRaises(TypeError, grouped.agg,
-                                   lambda x: x.sum(1, numeric_only=False))
+                                   lambda x: x.sum(0, numeric_only=False))
 
     def test_omit_nuisance_python_multiple(self):
         grouped = self.three_group.groupby(['A', 'B'])
@@ -2566,7 +2583,6 @@ class TestGroupBy(tm.TestCase):
         grouped = df.groupby(0)
         result = grouped.mean()
         expected = df.groupby(df[0]).mean()
-        del expected[0]
         assert_frame_equal(result, expected)
 
     def test_cython_grouper_series_bug_noncontig(self):
@@ -2579,7 +2595,7 @@ class TestGroupBy(tm.TestCase):
         self.assertTrue(result.isnull().all())
 
     def test_series_grouper_noncontig_index(self):
-        index = Index([tm.rands(10) for _ in range(100)])
+        index = Index(tm.rands_array(10, 100))
 
         values = Series(np.random.randn(50), index=index[::2])
         labels = np.random.randint(0, 5, 50)
@@ -2869,8 +2885,8 @@ class TestGroupBy(tm.TestCase):
         assert_frame_equal(result, expected)
 
     def test_rank_apply(self):
-        lev1 = np.array([rands(10) for _ in range(100)], dtype=object)
-        lev2 = np.array([rands(10) for _ in range(130)], dtype=object)
+        lev1 = tm.rands_array(10, 100)
+        lev2 = tm.rands_array(10, 130)
         lab1 = np.random.randint(0, 100, size=500)
         lab2 = np.random.randint(0, 130, size=500)
 
@@ -4399,6 +4415,26 @@ class TestGroupBy(tm.TestCase):
                 expected = getattr(frame,op)(level=level,axis=axis)
                 assert_frame_equal(result, expected)
 
+    def test_regression_kwargs_whitelist_methods(self):
+        # GH8733
+
+        index = MultiIndex(levels=[['foo', 'bar', 'baz', 'qux'],
+                                   ['one', 'two', 'three']],
+                           labels=[[0, 0, 0, 1, 1, 2, 2, 3, 3, 3],
+                                   [0, 1, 2, 0, 1, 1, 2, 0, 1, 2]],
+                           names=['first', 'second'])
+        raw_frame = DataFrame(np.random.randn(10, 3), index=index,
+                               columns=Index(['A', 'B', 'C'], name='exp'))
+
+        grouped = raw_frame.groupby(level=0, axis=1)
+        grouped.all(test_kwargs='Test kwargs')
+        grouped.any(test_kwargs='Test kwargs')
+        grouped.cumcount(test_kwargs='Test kwargs')
+        grouped.mad(test_kwargs='Test kwargs')
+        grouped.cummin(test_kwargs='Test kwargs')
+        grouped.skew(test_kwargs='Test kwargs')
+        grouped.cumprod(test_kwargs='Test kwargs')
+
     def test_groupby_blacklist(self):
         from string import ascii_lowercase
         letters = np.array(list(ascii_lowercase))
@@ -4443,6 +4479,9 @@ class TestGroupBy(tm.TestCase):
         weight.groupby(gender).plot()
         tm.close()
         height.groupby(gender).hist()
+        tm.close()
+        #Regression test for GH8733
+        height.groupby(gender).plot(alpha=0.5)
         tm.close()
 
     def test_plotting_with_float_index_works(self):

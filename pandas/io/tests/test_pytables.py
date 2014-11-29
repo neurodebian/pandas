@@ -11,6 +11,14 @@ import numpy as np
 import pandas
 from pandas import (Series, DataFrame, Panel, MultiIndex, Categorical, bdate_range,
                     date_range, Index, DatetimeIndex, isnull)
+
+from pandas.io.pytables import _tables
+try:
+    _tables()
+except ImportError as e:
+    raise nose.SkipTest(e)
+
+
 from pandas.io.pytables import (HDFStore, get_store, Term, read_hdf,
                                 IncompatibilityWarning, PerformanceWarning,
                                 AttributeConflictWarning, DuplicateWarning,
@@ -198,8 +206,8 @@ class TestHDFStore(tm.TestCase):
         # GH6166
         # unconversion of long strings was being chopped in earlier
         # versions of numpy < 1.7.2
-        df = DataFrame({'a': [tm.rands(100) for _ in range(10)]},
-                       index=[tm.rands(100) for _ in range(10)])
+        df = DataFrame({'a': tm.rands_array(100, size=10)},
+                       index=tm.rands_array(100, size=10))
 
         with ensure_clean_store(self.path) as store:
             store.append('df', df, data_columns=['a'])
@@ -290,7 +298,7 @@ class TestHDFStore(tm.TestCase):
 
         #File path doesn't exist
         path = ""
-        self.assertRaises(IOError, read_hdf, path, 'df') 
+        self.assertRaises(IOError, read_hdf, path, 'df')
 
     def test_api_default_format(self):
 
@@ -420,9 +428,9 @@ class TestHDFStore(tm.TestCase):
             _maybe_remove(store, 'df1')
             store.append('df1', df[:10])
             store.append('df1', df[10:])
-            self.assertEqual(store.root.a._v_attrs.pandas_version, '0.10.1')
-            self.assertEqual(store.root.b._v_attrs.pandas_version, '0.10.1')
-            self.assertEqual(store.root.df1._v_attrs.pandas_version, '0.10.1')
+            self.assertEqual(store.root.a._v_attrs.pandas_version, '0.15.2')
+            self.assertEqual(store.root.b._v_attrs.pandas_version, '0.15.2')
+            self.assertEqual(store.root.df1._v_attrs.pandas_version, '0.15.2')
 
             # write a file and wipe its versioning
             _maybe_remove(store, 'df2')
@@ -2038,6 +2046,28 @@ class TestHDFStore(tm.TestCase):
             store.append('df',df)
             result = store.select('df')
             assert_frame_equal(result,df)
+
+    def test_calendar_roundtrip_issue(self):
+
+        # 8591
+        # doc example from tseries holiday section
+        weekmask_egypt = 'Sun Mon Tue Wed Thu'
+        holidays = ['2012-05-01', datetime.datetime(2013, 5, 1), np.datetime64('2014-05-01')]
+        bday_egypt = pandas.offsets.CustomBusinessDay(holidays=holidays, weekmask=weekmask_egypt)
+        dt = datetime.datetime(2013, 4, 30)
+        dts = date_range(dt, periods=5, freq=bday_egypt)
+
+        s = (Series(dts.weekday, dts).map(Series('Mon Tue Wed Thu Fri Sat Sun'.split())))
+
+        with ensure_clean_store(self.path) as store:
+
+            store.put('fixed',s)
+            result = store.select('fixed')
+            assert_series_equal(result, s)
+
+            store.append('table',s)
+            result = store.select('table')
+            assert_series_equal(result, s)
 
     def test_append_with_timezones_dateutil(self):
 
@@ -4541,29 +4571,83 @@ class TestHDFStore(tm.TestCase):
         tm.assert_frame_equal(expected, result)
 
     def test_categorical(self):
-        # FIXME
 
         with ensure_clean_store(self.path) as store:
 
             s = Series(Categorical(['a', 'b', 'b', 'a', 'a', 'c'], categories=['a','b','c','d']))
 
-            self.assertRaises(NotImplementedError, store.put, 's_fixed', s, format='fixed')
-            self.assertRaises(NotImplementedError, store.append, 's_table', s, format='table')
-            #store.append('s', s, format='table')
-            #result = store.select('s')
-            #tm.assert_series_equal(s, result)
+            store.append('s', s, format='table')
+            result = store.select('s')
+            tm.assert_series_equal(s, result)
 
             df = DataFrame({"s":s, "vals":[1,2,3,4,5,6]})
-            self.assertRaises(NotImplementedError, store.put, 'df_fixed', df, format='fixed')
-            self.assertRaises(NotImplementedError, store.append, 'df_table', df, format='table')
-            #store.append('df', df, format='table')
-            #result = store.select('df')
-            #tm.assert_frame_equal(df, df2)
+            store.append('df', df, format='table')
+            result = store.select('df')
+            tm.assert_frame_equal(result, df)
 
-            # Ok, this doesn't work yet
-            # FIXME: TypeError: cannot pass a where specification when reading from a Fixed format store. this store must be selected in its entirety
-            #result = store.select('df', where = ['index>2'])
-            #tm.assert_frame_equal(df[df.index>2],result)
+            # dtypes
+            s = Series([1,1,2,2,3,4,5]).astype('category')
+            store.append('si',s)
+            result = store.select('si')
+            tm.assert_series_equal(result, s)
+
+            s = Series([1,1,np.nan,2,3,4,5]).astype('category')
+            store.append('si2',s)
+            result = store.select('si2')
+            tm.assert_series_equal(result, s)
+
+            # multiple
+            df2 = df.copy()
+            df2['s2'] = Series(list('abcdefg')).astype('category')
+            store.append('df2',df2)
+            result = store.select('df2')
+            tm.assert_frame_equal(result, df2)
+
+            # make sure the metadata is ok
+            self.assertTrue('/df2   ' in str(store))
+            self.assertTrue('/df2/meta/values_block_0/meta' in str(store))
+            self.assertTrue('/df2/meta/values_block_1/meta' in str(store))
+
+            # unordered
+            s = Series(Categorical(['a', 'b', 'b', 'a', 'a', 'c'], categories=['a','b','c','d'],ordered=False))
+            store.append('s2', s, format='table')
+            result = store.select('s2')
+            tm.assert_series_equal(result, s)
+
+            # query
+            store.append('df3', df, data_columns=['s'])
+            expected = df[df.s.isin(['b','c'])]
+            result = store.select('df3', where = ['s in ["b","c"]'])
+            tm.assert_frame_equal(result, expected)
+
+            expected = df[df.s.isin(['d'])]
+            result = store.select('df3', where = ['s in ["d"]'])
+            tm.assert_frame_equal(result, expected)
+
+            expected = df[df.s.isin(['f'])]
+            result = store.select('df3', where = ['s in ["f"]'])
+            tm.assert_frame_equal(result, expected)
+
+            # appending with same categories is ok
+            store.append('df3', df)
+
+            df = concat([df,df])
+            expected = df[df.s.isin(['b','c'])]
+            result = store.select('df3', where = ['s in ["b","c"]'])
+            tm.assert_frame_equal(result, expected)
+
+            # appending must have the same categories
+            df3 = df.copy()
+            df3['s'].cat.remove_unused_categories(inplace=True)
+
+            self.assertRaises(ValueError, lambda : store.append('df3', df3))
+
+            # remove
+            # make sure meta data is removed (its a recursive removal so should be)
+            result = store.select('df3/meta/s/meta')
+            self.assertIsNotNone(result)
+            store.remove('df3')
+            self.assertRaises(KeyError, lambda : store.select('df3/meta/s/meta'))
 
     def test_duplicate_column_name(self):
         df = DataFrame(columns=["a", "a"], data=[[0, 0]])
