@@ -6,7 +6,7 @@ Uploaders: Yaroslav Halchenko <debian@onerussian.com>, Michael Hanke <michael.ha
 Build-Depends: debhelper (>= 7.0.50),
                python-all-dev (>= 2.5),
                python-setuptools,
-               cython (>= 0.17.1~),
+               cython,
                python-numpy (>= 1:1.7~), python-dateutil,
                python-scipy,
                python-tz,
@@ -32,7 +32,7 @@ Build-Depends: debhelper (>= 7.0.50),
                python3-tk,
                python3-bs4,
                python3-six,
-			   xvfb, xauth, xclip,
+               xvfb, xauth, xclip,
 X-Python-Version: >= 2.7
 X-Python3-Version: >= 3.2
 Standards-Version: 3.9.5

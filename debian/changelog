@@ -1,8 +1,13 @@
-pandas (0.15.0+git108-ge9ee47c-1) unstable; urgency=medium
+pandas (0.15.1+git108-ge9ee47c-1) unstable; urgency=medium
 
   * New upstream snapshot from v0.15.1-108-ge9ee47c.
   * Upload to unstable during freeze since previous one in sid didn't make it
     to jessie anyways
+  * debian/control
+    - remove versioning demand for cython (it would use pre-cythonized code on
+      older ones and there is no longer need in sid/jessie to enforce version).
+      As a consecuence -- removed all dsc patches pointing to
+      nocython3-dsc-patch, since no longer needed
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Sat, 29 Nov 2014 12:15:33 -0500
 
