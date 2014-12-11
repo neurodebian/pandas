@@ -632,6 +632,19 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         exp.index = lrange(10, 20)
         assert_series_equal(result, exp)
 
+    def test_constructor_map(self):
+        # GH8909
+        m = map(lambda x: x, range(10))
+
+        result = Series(m)
+        exp = Series(lrange(10))
+        assert_series_equal(result, exp)
+
+        m = map(lambda x: x, range(10))
+        result = Series(m, index=lrange(10, 20))
+        exp.index = lrange(10, 20)
+        assert_series_equal(result, exp)
+
     def test_constructor_categorical(self):
         cat = pd.Categorical([0, 1, 2, 0, 1, 2], ['a', 'b', 'c'], fastpath=True)
         cat.name = 'foo'
@@ -2308,6 +2321,62 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         expected = np.maximum.accumulate(ts.valid())
 
         self.assert_numpy_array_equal(result, expected)
+
+    def test_cummin_datetime64(self):
+        s = pd.Series(pd.to_datetime(
+            ['NaT', '2000-1-2', 'NaT', '2000-1-1', 'NaT', '2000-1-3']))
+
+        expected = pd.Series(pd.to_datetime(
+            ['NaT', '2000-1-2', 'NaT', '2000-1-1', 'NaT', '2000-1-1']))
+        result = s.cummin(skipna=True)
+        self.assert_series_equal(expected, result)
+
+        expected = pd.Series(pd.to_datetime(
+            ['NaT', '2000-1-2', '2000-1-2', '2000-1-1', '2000-1-1', '2000-1-1']))
+        result = s.cummin(skipna=False)
+        self.assert_series_equal(expected, result)
+
+    def test_cummax_datetime64(self):
+        s = pd.Series(pd.to_datetime(
+            ['NaT', '2000-1-2', 'NaT', '2000-1-1', 'NaT', '2000-1-3']))
+
+        expected = pd.Series(pd.to_datetime(
+            ['NaT', '2000-1-2', 'NaT', '2000-1-2', 'NaT', '2000-1-3']))
+        result = s.cummax(skipna=True)
+        self.assert_series_equal(expected, result)
+
+        expected = pd.Series(pd.to_datetime(
+            ['NaT', '2000-1-2', '2000-1-2', '2000-1-2', '2000-1-2', '2000-1-3']))
+        result = s.cummax(skipna=False)
+        self.assert_series_equal(expected, result)
+
+    def test_cummin_timedelta64(self):
+        s = pd.Series(pd.to_timedelta(
+            ['NaT', '2 min', 'NaT', '1 min', 'NaT', '3 min', ]))
+
+        expected = pd.Series(pd.to_timedelta(
+            ['NaT', '2 min', 'NaT', '1 min', 'NaT', '1 min', ]))
+        result = s.cummin(skipna=True)
+        self.assert_series_equal(expected, result)
+
+        expected = pd.Series(pd.to_timedelta(
+            ['NaT', '2 min', '2 min', '1 min', '1 min', '1 min', ]))
+        result = s.cummin(skipna=False)
+        self.assert_series_equal(expected, result)
+
+    def test_cummax_timedelta64(self):
+        s = pd.Series(pd.to_timedelta(
+            ['NaT', '2 min', 'NaT', '1 min', 'NaT', '3 min', ]))
+
+        expected = pd.Series(pd.to_timedelta(
+            ['NaT', '2 min', 'NaT', '2 min', 'NaT', '3 min', ]))
+        result = s.cummax(skipna=True)
+        self.assert_series_equal(expected, result)
+
+        expected = pd.Series(pd.to_timedelta(
+            ['NaT', '2 min', '2 min', '2 min', '2 min', '3 min', ]))
+        result = s.cummax(skipna=False)
+        self.assert_series_equal(expected, result)
 
     def test_npdiff(self):
         raise nose.SkipTest("skipping due to Series no longer being an "
@@ -4951,7 +5020,8 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
 
     def test_getitem_setitem_datetime_tz_dateutil(self):
         tm._skip_if_no_dateutil();
-        from dateutil.tz import gettz, tzutc
+        from dateutil.tz import tzutc
+        from dateutil.zoneinfo import gettz
         tz = lambda x: tzutc() if x == 'UTC' else gettz(x)  # handle special case for utc in dateutil
 
         from pandas import date_range

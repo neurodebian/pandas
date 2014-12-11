@@ -959,6 +959,10 @@ class HTMLFormatter(TableFormatter):
                 name = self.columns.names[lnum]
                 row = [''] * (row_levels - 1) + ['' if name is None
                                                  else com.pprint_thing(name)]
+
+                if row == [""] and self.fmt.index is False:
+                    row = []
+
                 tags = {}
                 j = len(row)
                 for i, v in enumerate(values):
@@ -1247,7 +1251,7 @@ class CSVFormatter(object):
         self.data = [None] * ncols
 
         if chunksize is None:
-            chunksize = (100000 / (len(self.cols) or 1)) or 1
+            chunksize = (100000 // (len(self.cols) or 1)) or 1
         self.chunksize = int(chunksize)
 
         self.data_index = obj.index

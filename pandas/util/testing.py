@@ -24,7 +24,7 @@ import numpy as np
 from numpy.testing import assert_array_equal
 
 import pandas as pd
-from pandas.core.common import _is_sequence, array_equivalent, is_list_like
+from pandas.core.common import is_sequence, array_equivalent, is_list_like
 import pandas.core.index as index
 import pandas.core.series as series
 import pandas.core.frame as frame
@@ -170,6 +170,12 @@ def close(fignum=None):
     else:
         _close(fignum)
 
+
+def _skip_if_32bit():
+    import nose
+    import struct
+    if struct.calcsize("P") * 8 < 64:
+        raise nose.SkipTest("skipping for 32 bit")
 
 def mplskip(cls):
     """Skip a TestCase instance if matplotlib isn't installed"""
@@ -945,7 +951,7 @@ def makeCustomIndex(nentries, nlevels, prefix='#', names=False, ndupe_l=None,
 
     if ndupe_l is None:
         ndupe_l = [1] * nlevels
-    assert (_is_sequence(ndupe_l) and len(ndupe_l) <= nlevels)
+    assert (is_sequence(ndupe_l) and len(ndupe_l) <= nlevels)
     assert (names is None or names is False
             or names is True or len(names) is nlevels)
     assert idx_type is None or \
@@ -1290,6 +1296,7 @@ _network_error_messages = (
 # or this e.errno/e.reason.errno
 _network_errno_vals = (
     101, # Network is unreachable
+    111, # Connection refused
     110, # Connection timed out
     104, # Connection reset Error
     54,  # Connection reset by peer
@@ -1761,4 +1768,3 @@ def use_numexpr(use, min_elements=expr._MIN_ELEMENTS):
 for name, obj in inspect.getmembers(sys.modules[__name__]):
     if inspect.isfunction(obj) and name.startswith('assert'):
         setattr(TestCase, name, staticmethod(obj))
-

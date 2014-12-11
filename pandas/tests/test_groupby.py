@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import print_function
 import nose
 
@@ -371,6 +372,39 @@ class TestGroupBy(tm.TestCase):
         result = df.groupby([pd.Grouper(level=0, freq='W'),
                              pd.Grouper(level=1, freq='W')]).sum()
         assert_frame_equal(result, expected)
+
+    def test_grouper_creation_bug(self):
+
+        # GH 8795
+        df = DataFrame({'A':[0,0,1,1,2,2], 'B':[1,2,3,4,5,6]})
+        g = df.groupby('A')
+        expected = g.sum()
+
+        g = df.groupby(pd.Grouper(key='A'))
+        result = g.sum()
+        assert_frame_equal(result, expected)
+
+        result = g.apply(lambda x: x.sum())
+        assert_frame_equal(result, expected)
+
+        g = df.groupby(pd.Grouper(key='A',axis=0))
+        result = g.sum()
+        assert_frame_equal(result, expected)
+
+        # GH8866
+        s = Series(np.arange(8,dtype='int64'),
+                   index=pd.MultiIndex.from_product([list('ab'),
+                                                     range(2),
+                                                     date_range('20130101',periods=2)],
+                                                    names=['one','two','three']))
+        result = s.groupby(pd.Grouper(level='three',freq='M')).sum()
+        expected = Series([28],index=Index([Timestamp('2013-01-31')],freq='M',name='three'))
+        assert_series_equal(result, expected)
+
+        # just specifying a level breaks
+        result = s.groupby(pd.Grouper(level='one')).sum()
+        expected = s.groupby(level='one').sum()
+        assert_series_equal(result, expected)
 
     def test_grouper_iter(self):
         self.assertEqual(sorted(self.df.groupby('A').grouper), ['bar', 'foo'])
@@ -1961,6 +1995,9 @@ class TestGroupBy(tm.TestCase):
         # raise exception for non-MultiIndex
         self.assertRaises(ValueError, self.df.groupby, level=1)
 
+
+
+
     def test_groupby_level_index_names(self):
         ## GH4014 this used to raise ValueError since 'exp'>1 (in py2)
         df = DataFrame({'exp' : ['A']*3 + ['B']*3, 'var1' : lrange(6),}).set_index('exp')
@@ -1998,6 +2035,17 @@ class TestGroupBy(tm.TestCase):
 
         result = frame['A'].groupby(level=0).count()
         self.assertEqual(result.index.name, 'first')
+
+    def test_groupby_args(self):
+        #PR8618 and issue 8015
+        frame = self.mframe
+        def j():
+             frame.groupby()
+        self.assertRaisesRegexp(TypeError, "You have to supply one of 'by' and 'level'", j)
+
+        def k():
+            frame.groupby(by=None, level=None)
+        self.assertRaisesRegexp(TypeError,  "You have to supply one of 'by' and 'level'", k)
 
     def test_groupby_level_mapper(self):
         frame = self.mframe
@@ -3689,8 +3737,8 @@ class TestGroupBy(tm.TestCase):
         assert_series_equal(expected, sg.cumcount())
 
     def test_cumcount_empty(self):
-        ge = DataFrame().groupby()
-        se = Series().groupby()
+        ge = DataFrame().groupby(level=0)
+        se = Series().groupby(level=0)
 
         e = Series(dtype='int64')  # edge case, as this is usually considered float
 
