@@ -1,6 +1,6 @@
 --- a/pandas/io/tests/test_parsers.py
 +++ b/pandas/io/tests/test_parsers.py
-@@ -3256,6 +3256,9 @@ class TestCParserLowMemory(ParserTests,
+@@ -3304,6 +3304,9 @@ class TestCParserLowMemory(ParserTests,
          self.assertEqual(result.dtype, ex_dtype)
  
      def test_precise_conversion(self):

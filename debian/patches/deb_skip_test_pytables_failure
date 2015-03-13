@@ -11,7 +11,7 @@ Last-Update: 2014-02-04
 
 --- a/pandas/io/tests/test_pytables.py
 +++ b/pandas/io/tests/test_pytables.py
-@@ -3240,7 +3240,12 @@ class TestHDFStore(tm.TestCase):
+@@ -3289,7 +3289,12 @@ class TestHDFStore(tm.TestCase):
  
              # big selector along the columns
              selector = [ 'a','b','c' ] + [ 'a%03d' % i for i in range(60) ]

@@ -1,7 +1,7 @@
 --- a/pandas/io/tests/test_stata.py
 +++ b/pandas/io/tests/test_stata.py
-@@ -22,6 +22,9 @@ from pandas.tslib import NaT
- from pandas.util.misc import is_little_endian
+@@ -22,6 +22,9 @@ import pandas.util.testing as tm
+ from pandas.tslib import NaT
  from pandas import compat
  
 +if not is_little_endian():
