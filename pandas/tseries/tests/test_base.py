@@ -39,9 +39,9 @@ class TestDatetimeIndexOps(Ops):
 
         # attribute access should still work!
         s = Series(dict(year=2000,month=1,day=10))
-        self.assertEquals(s.year,2000)
-        self.assertEquals(s.month,1)
-        self.assertEquals(s.day,10)
+        self.assertEqual(s.year,2000)
+        self.assertEqual(s.month,1)
+        self.assertEqual(s.day,10)
         self.assertRaises(AttributeError, lambda : s.weekday)
 
     def test_asobject_tolist(self):
@@ -143,6 +143,34 @@ Length: 3, Freq: None, Timezone: US/Eastern"""
                 result = getattr(idx, func)()
                 self.assertEqual(result, expected)
 
+    def test_summary(self):
+        # GH9116
+        idx1 = DatetimeIndex([], freq='D')
+        idx2 = DatetimeIndex(['2011-01-01'], freq='D')
+        idx3 = DatetimeIndex(['2011-01-01', '2011-01-02'], freq='D')
+        idx4 = DatetimeIndex(['2011-01-01', '2011-01-02', '2011-01-03'], freq='D')
+        idx5 = DatetimeIndex(['2011-01-01 09:00', '2011-01-01 10:00', '2011-01-01 11:00'],
+                             freq='H', tz='Asia/Tokyo')
+        idx6 = DatetimeIndex(['2011-01-01 09:00', '2011-01-01 10:00', pd.NaT],
+                             tz='US/Eastern')
+
+        exp1 = """DatetimeIndex: 0 entries
+Freq: D"""
+        exp2 = """DatetimeIndex: 1 entries, 2011-01-01 to 2011-01-01
+Freq: D"""
+        exp3 = """DatetimeIndex: 2 entries, 2011-01-01 to 2011-01-02
+Freq: D"""
+        exp4 = """DatetimeIndex: 3 entries, 2011-01-01 to 2011-01-03
+Freq: D"""
+        exp5 = """DatetimeIndex: 3 entries, 2011-01-01 09:00:00+09:00 to 2011-01-01 11:00:00+09:00
+Freq: H"""
+        exp6 = """DatetimeIndex: 3 entries, 2011-01-01 09:00:00-05:00 to NaT"""
+
+        for idx, expected in zip([idx1, idx2, idx3, idx4, idx5, idx6],
+                                 [exp1, exp2, exp3, exp4, exp5, exp6]):
+            result = idx.summary()
+            self.assertEqual(result, expected)
+
     def test_resolution(self):
         for freq, expected in zip(['A', 'Q', 'M', 'D', 'H', 'T', 'S', 'L', 'U'],
                                   ['day', 'day', 'day', 'day',
@@ -168,12 +196,16 @@ Length: 3, Freq: None, Timezone: US/Eastern"""
 
             for rng, other, expected in [(rng1, other1, expected1), (rng2, other2, expected2),
                                          (rng3, other3, expected3)]:
-                result_add = rng + other
+                # GH9094
+                with tm.assert_produces_warning(FutureWarning):
+                    result_add = rng + other
                 result_union = rng.union(other)
 
                 tm.assert_index_equal(result_add, expected)
                 tm.assert_index_equal(result_union, expected)
-                rng += other
+                # GH9094
+                with tm.assert_produces_warning(FutureWarning):
+                    rng += other
                 tm.assert_index_equal(rng, expected)
 
             # offset
@@ -264,6 +296,12 @@ Length: 3, Freq: None, Timezone: US/Eastern"""
 
             tm.assert_index_equal(idx.unique(), exp_idx)
 
+    def test_nonunique_contains(self):
+        # GH 9512
+        for idx in map(DatetimeIndex, ([0, 1, 0], [0, 0, -1], [0, -1, -1],
+                                       ['2015', '2015', '2016'], ['2015', '2015', '2014'])):
+            tm.assertIn(idx[0], idx)
+
 
 class TestTimedeltaIndexOps(Ops):
 
@@ -336,16 +374,16 @@ class TestTimedeltaIndexOps(Ops):
 
 
         exp1 = """<class 'pandas.tseries.tdi.TimedeltaIndex'>
-Length: 0, Freq: <Day>"""
+Length: 0, Freq: D"""
         exp2 = """<class 'pandas.tseries.tdi.TimedeltaIndex'>
 ['1 days']
-Length: 1, Freq: <Day>"""
+Length: 1, Freq: D"""
         exp3 = """<class 'pandas.tseries.tdi.TimedeltaIndex'>
 ['1 days', '2 days']
-Length: 2, Freq: <Day>"""
+Length: 2, Freq: D"""
         exp4 = """<class 'pandas.tseries.tdi.TimedeltaIndex'>
 ['1 days', ..., '3 days']
-Length: 3, Freq: <Day>"""
+Length: 3, Freq: D"""
         exp5 = """<class 'pandas.tseries.tdi.TimedeltaIndex'>
 ['1 days 00:00:01', ..., '3 days 00:00:00']
 Length: 3, Freq: None"""
@@ -355,6 +393,29 @@ Length: 3, Freq: None"""
             for func in ['__repr__', '__unicode__', '__str__']:
                 result = getattr(idx, func)()
                 self.assertEqual(result, expected)
+
+    def test_summary(self):
+        # GH9116
+        idx1 = TimedeltaIndex([], freq='D')
+        idx2 = TimedeltaIndex(['1 days'], freq='D')
+        idx3 = TimedeltaIndex(['1 days', '2 days'], freq='D')
+        idx4 = TimedeltaIndex(['1 days', '2 days', '3 days'], freq='D')
+        idx5 = TimedeltaIndex(['1 days 00:00:01', '2 days', '3 days'])
+
+        exp1 = """TimedeltaIndex: 0 entries
+Freq: D"""
+        exp2 = """TimedeltaIndex: 1 entries, '1 days' to '1 days'
+Freq: D"""
+        exp3 = """TimedeltaIndex: 2 entries, '1 days' to '2 days'
+Freq: D"""
+        exp4 = """TimedeltaIndex: 3 entries, '1 days' to '3 days'
+Freq: D"""
+        exp5 = """TimedeltaIndex: 3 entries, '1 days 00:00:01' to '3 days 00:00:00'"""
+
+        for idx, expected in zip([idx1, idx2, idx3, idx4, idx5],
+                                 [exp1, exp2, exp3, exp4, exp5]):
+            result = idx.summary()
+            self.assertEqual(result, expected)
 
     def test_add_iadd(self):
 
@@ -536,6 +597,50 @@ Length: 3, Freq: None"""
         expected = DatetimeIndex(['20121231','20130101','20130102'],tz='US/Eastern')
         tm.assert_index_equal(result,expected)
 
+    def test_dti_dti_deprecated_ops(self):
+
+        # deprecated in 0.16.0 (GH9094)
+        # change to return subtraction -> TimeDeltaIndex in 0.17.0
+        # shoudl move to the appropriate sections above
+
+        dti = date_range('20130101',periods=3)
+        dti_tz = date_range('20130101',periods=3).tz_localize('US/Eastern')
+
+        with tm.assert_produces_warning(FutureWarning):
+            result = dti-dti
+            expected = Index([])
+            tm.assert_index_equal(result,expected)
+
+        with tm.assert_produces_warning(FutureWarning):
+            result = dti+dti
+            expected = dti
+            tm.assert_index_equal(result,expected)
+
+        with tm.assert_produces_warning(FutureWarning):
+            result = dti_tz-dti_tz
+            expected = Index([])
+            tm.assert_index_equal(result,expected)
+
+        with tm.assert_produces_warning(FutureWarning):
+            result = dti_tz+dti_tz
+            expected = dti_tz
+            tm.assert_index_equal(result,expected)
+
+        with tm.assert_produces_warning(FutureWarning):
+            result = dti_tz-dti
+            expected = dti_tz
+            tm.assert_index_equal(result,expected)
+
+        with tm.assert_produces_warning(FutureWarning):
+            result = dti-dti_tz
+            expected = dti
+            tm.assert_index_equal(result,expected)
+
+        with tm.assert_produces_warning(FutureWarning):
+            self.assertRaises(TypeError, lambda : dti_tz+dti)
+        with tm.assert_produces_warning(FutureWarning):
+            self.assertRaises(TypeError, lambda : dti+dti_tz)
+
     def test_dti_tdi_numeric_ops(self):
 
         # These are normally union/diff set-like ops
@@ -632,6 +737,14 @@ Length: 3, Freq: None"""
         tm.assert_series_equal(idx.value_counts(dropna=False), expected)
 
         tm.assert_index_equal(idx.unique(), exp_idx)
+
+    def test_nonunique_contains(self):
+        # GH 9512
+        for idx in map(TimedeltaIndex, ([0, 1, 0], [0, 0, -1], [0, -1, -1],
+                                        ['00:01:00', '00:01:00', '00:02:00'],
+                                        ['00:01:00', '00:01:00', '00:00:01'])):
+            tm.assertIn(idx[0], idx)
+
 
 class TestPeriodIndexOps(Ops):
 
@@ -755,6 +868,43 @@ Length: 3, Freq: Q-DEC"""
                 result = getattr(idx, func)()
                 self.assertEqual(result, expected)
 
+    def test_summary(self):
+        # GH9116
+        idx1 = PeriodIndex([], freq='D')
+        idx2 = PeriodIndex(['2011-01-01'], freq='D')
+        idx3 = PeriodIndex(['2011-01-01', '2011-01-02'], freq='D')
+        idx4 = PeriodIndex(['2011-01-01', '2011-01-02', '2011-01-03'], freq='D')
+        idx5 = PeriodIndex(['2011', '2012', '2013'], freq='A')
+        idx6 = PeriodIndex(['2011-01-01 09:00', '2012-02-01 10:00', 'NaT'], freq='H')
+
+        idx7 = pd.period_range('2013Q1', periods=1, freq="Q")
+        idx8 = pd.period_range('2013Q1', periods=2, freq="Q")
+        idx9 = pd.period_range('2013Q1', periods=3, freq="Q")
+
+        exp1 = """PeriodIndex: 0 entries
+Freq: D"""
+        exp2 = """PeriodIndex: 1 entries, 2011-01-01 to 2011-01-01
+Freq: D"""
+        exp3 = """PeriodIndex: 2 entries, 2011-01-01 to 2011-01-02
+Freq: D"""
+        exp4 = """PeriodIndex: 3 entries, 2011-01-01 to 2011-01-03
+Freq: D"""
+        exp5 = """PeriodIndex: 3 entries, 2011 to 2013
+Freq: A-DEC"""
+        exp6 = """PeriodIndex: 3 entries, 2011-01-01 09:00 to NaT
+Freq: H"""
+        exp7 = """PeriodIndex: 1 entries, 2013Q1 to 2013Q1
+Freq: Q-DEC"""
+        exp8 = """PeriodIndex: 2 entries, 2013Q1 to 2013Q2
+Freq: Q-DEC"""
+        exp9 = """PeriodIndex: 3 entries, 2013Q1 to 2013Q3
+Freq: Q-DEC"""
+
+        for idx, expected in zip([idx1, idx2, idx3, idx4, idx5, idx6, idx7, idx8, idx9],
+                                 [exp1, exp2, exp3, exp4, exp5, exp6, exp7, exp8, exp9]):
+            result = idx.summary()
+            self.assertEqual(result, expected)
+
     def test_resolution(self):
         for freq, expected in zip(['A', 'Q', 'M', 'D', 'H', 'T', 'S', 'L', 'U'],
                                   ['day', 'day', 'day', 'day',
@@ -807,13 +957,19 @@ Length: 3, Freq: Q-DEC"""
                                      (rng5, other5, expected5), (rng6, other6, expected6),
                                      (rng7, other7, expected7)]:
 
-            result_add = rng + other
+            # GH9094
+            with tm.assert_produces_warning(FutureWarning):
+                result_add = rng + other
+
             result_union = rng.union(other)
 
             tm.assert_index_equal(result_add, expected)
             tm.assert_index_equal(result_union, expected)
+
             # GH 6527
-            rng += other
+            # GH9094
+            with tm.assert_produces_warning(FutureWarning):
+                rng += other
             tm.assert_index_equal(rng, expected)
 
         # offset

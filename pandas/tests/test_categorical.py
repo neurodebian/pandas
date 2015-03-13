@@ -22,7 +22,7 @@ class TestCategorical(tm.TestCase):
 
     def setUp(self):
         self.factor = Categorical.from_array(['a', 'b', 'b', 'a',
-                                              'a', 'c', 'c', 'c'])
+                                              'a', 'c', 'c', 'c'], ordered=True)
 
     def test_getitem(self):
         self.assertEqual(self.factor[0], 'a')
@@ -34,12 +34,59 @@ class TestCategorical(tm.TestCase):
         subf = self.factor[np.asarray(self.factor) == 'c']
         tm.assert_almost_equal(subf._codes, [2, 2, 2])
 
+    def test_getitem_listlike(self):
+
+        # GH 9469
+        # properly coerce the input indexers
+        np.random.seed(1)
+        c = Categorical(np.random.randint(0, 5, size=150000).astype(np.int8))
+        result = c.codes[np.array([100000]).astype(np.int64)]
+        expected = c[np.array([100000]).astype(np.int64)].codes
+        self.assert_numpy_array_equal(result, expected)
+
+    def test_setitem(self):
+
+        # int/positional
+        c = self.factor.copy()
+        c[0] = 'b'
+        self.assertEqual(c[0], 'b')
+        c[-1] = 'a'
+        self.assertEqual(c[-1], 'a')
+
+        # boolean
+        c = self.factor.copy()
+        indexer = np.zeros(len(c),dtype='bool')
+        indexer[0] = True
+        indexer[-1] = True
+        c[indexer] = 'c'
+        expected = Categorical.from_array(['c', 'b', 'b', 'a',
+                                           'a', 'c', 'c', 'c'], ordered=True)
+
+        self.assert_categorical_equal(c, expected)
+
+    def test_setitem_listlike(self):
+
+        # GH 9469
+        # properly coerce the input indexers
+        np.random.seed(1)
+        c = Categorical(np.random.randint(0, 5, size=150000).astype(np.int8)).add_categories([-1000])
+        indexer = np.array([100000]).astype(np.int64)
+        c[indexer] = -1000
+
+        # we are asserting the code result here
+        # which maps to the -1000 category
+        result = c.codes[np.array([100000]).astype(np.int64)]
+        self.assertEqual(result, np.array([5], dtype='int8'))
+
     def test_constructor_unsortable(self):
 
         # it works!
         arr = np.array([1, 2, 3, datetime.now()], dtype='O')
-        factor = Categorical.from_array(arr)
+        factor = Categorical.from_array(arr, ordered=False)
         self.assertFalse(factor.ordered)
+
+        # this however will raise as cannot be sorted
+        self.assertRaises(TypeError, lambda :  Categorical.from_array(arr, ordered=True))
 
     def test_constructor(self):
 
@@ -224,6 +271,7 @@ class TestCategorical(tm.TestCase):
             pd.Categorical.from_codes(codes, categories=["train", "test"])
 
     def test_comparisons(self):
+
         result = self.factor[self.factor == 'a']
         expected = self.factor[np.asarray(self.factor) == 'a']
         self.assertTrue(result.equals(expected))
@@ -260,10 +308,10 @@ class TestCategorical(tm.TestCase):
         self.assert_numpy_array_equal(result, expected)
 
         # comparisons with categoricals
-        cat_rev = pd.Categorical(["a","b","c"], categories=["c","b","a"])
-        cat_rev_base = pd.Categorical(["b","b","b"], categories=["c","b","a"])
-        cat = pd.Categorical(["a","b","c"])
-        cat_base = pd.Categorical(["b","b","b"], categories=cat.categories)
+        cat_rev = pd.Categorical(["a","b","c"], categories=["c","b","a"], ordered=True)
+        cat_rev_base = pd.Categorical(["b","b","b"], categories=["c","b","a"], ordered=True)
+        cat = pd.Categorical(["a","b","c"], ordered=True)
+        cat_base = pd.Categorical(["b","b","b"], categories=cat.categories, ordered=True)
 
         # comparisons need to take categories ordering into account
         res_rev = cat_rev > cat_rev_base
@@ -289,8 +337,7 @@ class TestCategorical(tm.TestCase):
         self.assertRaises(TypeError, f)
 
         # Only categories with same ordering information can be compared
-        cat_unorderd = cat.copy()
-        cat_unorderd.ordered = False
+        cat_unorderd = cat.set_ordered(False)
         self.assertFalse((cat > cat).any())
         def f():
             cat > cat_unorderd
@@ -329,7 +376,7 @@ class TestCategorical(tm.TestCase):
 
     def test_categories_none(self):
         factor = Categorical(['a', 'b', 'b', 'a',
-                              'a', 'c', 'c', 'c'])
+                              'a', 'c', 'c', 'c'], ordered=True)
         self.assertTrue(factor.equals(self.factor))
 
     def test_describe(self):
@@ -345,8 +392,8 @@ class TestCategorical(tm.TestCase):
         cat = self.factor.copy()
         cat.set_categories(["a","b","c","d"], inplace=True)
         desc = cat.describe()
-        expected = DataFrame.from_dict(dict(counts=[3, 2, 3, np.nan],
-                                            freqs=[3/8., 2/8., 3/8., np.nan],
+        expected = DataFrame.from_dict(dict(counts=[3, 2, 3, 0],
+                                            freqs=[3/8., 2/8., 3/8., 0],
                                             categories=['a', 'b', 'c', 'd'])
                                             ).set_index('categories')
         tm.assert_frame_equal(desc, expected)
@@ -371,31 +418,20 @@ class TestCategorical(tm.TestCase):
                                             ).set_index('categories')
         tm.assert_frame_equal(desc, expected)
 
-        # having NaN as category and as "not available" should also print two NaNs in describe!
-        cat = pd.Categorical([np.nan,1, 2, 2])
-        cat.set_categories([1,2,np.nan], rename=True, inplace=True)
-        desc = cat.describe()
-        expected = DataFrame.from_dict(dict(counts=[1, 2, np.nan, 1],
-                                            freqs=[1/4., 2/4., np.nan, 1/4.],
-                                            categories=[1,2,np.nan,np.nan]
-                                            )
-                                            ).set_index('categories')
-        tm.assert_frame_equal(desc, expected)
-
-        # empty categories show up as NA
-        cat = Categorical(["a","b","b","b"], categories=['a','b','c'], ordered=True)
+        # NA as a category
+        cat = pd.Categorical(["a","c","c",np.nan], categories=["b","a","c",np.nan])
         result = cat.describe()
 
-        expected = DataFrame([[1,0.25],[3,0.75],[np.nan,np.nan]],
+        expected = DataFrame([[0,0],[1,0.25],[2,0.5],[1,0.25]],
                              columns=['counts','freqs'],
-                             index=Index(['a','b','c'],name='categories'))
+                             index=Index(['b','a','c',np.nan],name='categories'))
         tm.assert_frame_equal(result,expected)
 
-        # NA as a category
-        cat = pd.Categorical(["a","c","c",np.nan], categories=["b","a","c",np.nan] )
+        # NA as an unused category
+        cat = pd.Categorical(["a","c","c"], categories=["b","a","c",np.nan])
         result = cat.describe()
 
-        expected = DataFrame([[np.nan, np.nan],[1,0.25],[2,0.5], [1,0.25]],
+        expected = DataFrame([[0,0],[1,1/3.],[2,2/3.],[0,0]],
                              columns=['counts','freqs'],
                              index=Index(['b','a','c',np.nan],name='categories'))
         tm.assert_frame_equal(result,expected)
@@ -421,16 +457,19 @@ class TestCategorical(tm.TestCase):
 
     def test_empty_print(self):
         factor = Categorical([], ["a","b","c"], name="cat")
-        expected = ("[], Name: cat, Categories (3, object): [a < b < c]")
+        expected = ("[], Name: cat, Categories (3, object): [a, b, c]")
         # hack because array_repr changed in numpy > 1.6.x
         actual = repr(factor)
-
         self.assertEqual(actual, expected)
 
         factor = Categorical([], ["a","b","c"])
-        expected = ("[], Categories (3, object): [a < b < c]")
+        expected = ("[], Categories (3, object): [a, b, c]")
         actual = repr(factor)
 
+        self.assertEqual(expected, actual)
+        factor = Categorical([], ["a","b","c"], ordered=True)
+        expected = ("[], Categories (3, object): [a < b < c]")
+        actual = repr(factor)
         self.assertEqual(expected, actual)
 
         factor = Categorical([], [])
@@ -450,7 +489,7 @@ class TestCategorical(tm.TestCase):
 
         idx2 = PeriodIndex(['2014-03', '2014-03', '2014-02', '2014-01',
                             '2014-03', '2014-01'], freq='M')
-        cat2 = Categorical.from_array(idx2)
+        cat2 = Categorical.from_array(idx2, ordered=True)
         str(cat2)
         exp_arr = np.array([2, 2, 1, 0, 2, 0],dtype='int64')
         exp_idx2 = PeriodIndex(['2014-01', '2014-02', '2014-03'], freq='M')
@@ -459,7 +498,7 @@ class TestCategorical(tm.TestCase):
 
         idx3 = PeriodIndex(['2013-12', '2013-11', '2013-10', '2013-09',
                             '2013-08', '2013-07', '2013-05'], freq='M')
-        cat3 = Categorical.from_array(idx3)
+        cat3 = Categorical.from_array(idx3, ordered=True)
         exp_arr = np.array([6, 5, 4, 3, 2, 1, 0],dtype='int64')
         exp_idx = PeriodIndex(['2013-05', '2013-07', '2013-08', '2013-09',
                                '2013-10', '2013-11', '2013-12'], freq='M')
@@ -480,6 +519,60 @@ class TestCategorical(tm.TestCase):
         def f():
             s.categories = [1,2]
         self.assertRaises(ValueError, f)
+
+    def test_construction_with_ordered(self):
+        # GH 9347, 9190
+        cat = Categorical([0,1,2])
+        self.assertFalse(cat.ordered)
+        cat = Categorical([0,1,2],ordered=False)
+        self.assertFalse(cat.ordered)
+        cat = Categorical([0,1,2],ordered=True)
+        self.assertTrue(cat.ordered)
+
+    def test_ordered_api(self):
+        # GH 9347
+        cat1 = pd.Categorical(["a","c","b"], ordered=False)
+        self.assertTrue(cat1.categories.equals(Index(['a','b','c'])))
+        self.assertFalse(cat1.ordered)
+
+        cat2 = pd.Categorical(["a","c","b"], categories=['b','c','a'], ordered=False)
+        self.assertTrue(cat2.categories.equals(Index(['b','c','a'])))
+        self.assertFalse(cat2.ordered)
+
+        cat3 = pd.Categorical(["a","c","b"], ordered=True)
+        self.assertTrue(cat3.categories.equals(Index(['a','b','c'])))
+        self.assertTrue(cat3.ordered)
+
+        cat4 = pd.Categorical(["a","c","b"], categories=['b','c','a'], ordered=True)
+        self.assertTrue(cat4.categories.equals(Index(['b','c','a'])))
+        self.assertTrue(cat4.ordered)
+
+    def test_set_ordered(self):
+
+        cat = Categorical(["a","b","c","a"], ordered=True)
+        cat2 = cat.as_unordered()
+        self.assertFalse(cat2.ordered)
+        cat2 = cat.as_ordered()
+        self.assertTrue(cat2.ordered)
+        cat2.as_unordered(inplace=True)
+        self.assertFalse(cat2.ordered)
+        cat2.as_ordered(inplace=True)
+        self.assertTrue(cat2.ordered)
+
+        self.assertTrue(cat2.set_ordered(True).ordered)
+        self.assertFalse(cat2.set_ordered(False).ordered)
+        cat2.set_ordered(True, inplace=True)
+        self.assertTrue(cat2.ordered)
+        cat2.set_ordered(False, inplace=True)
+        self.assertFalse(cat2.ordered)
+
+        # deperecated in v0.16.0
+        with tm.assert_produces_warning(FutureWarning):
+            cat.ordered = False
+            self.assertFalse(cat.ordered)
+        with tm.assert_produces_warning(FutureWarning):
+            cat.ordered = True
+            self.assertTrue(cat.ordered)
 
     def test_set_categories(self):
         cat = Categorical(["a","b","c","a"], ordered=True)
@@ -516,7 +609,7 @@ class TestCategorical(tm.TestCase):
         self.assert_numpy_array_equal(cat.categories, exp_categories)
 
         # internals...
-        c = Categorical([1,2,3,4,1], categories=[1,2,3,4])
+        c = Categorical([1,2,3,4,1], categories=[1,2,3,4], ordered=True)
         self.assert_numpy_array_equal(c._codes, np.array([0,1,2,3,0]))
         self.assert_numpy_array_equal(c.categories , np.array([1,2,3,4] ))
         self.assert_numpy_array_equal(c.get_values(), np.array([1,2,3,4,1] ))
@@ -526,6 +619,16 @@ class TestCategorical(tm.TestCase):
         self.assert_numpy_array_equal(c.get_values(), np.array([1,2,3,4,1])) # output is the same
         self.assertTrue(c.min(), 4)
         self.assertTrue(c.max(), 1)
+
+        # set_categories should set the ordering if specified
+        c2 = c.set_categories([4,3,2,1],ordered=False)
+        self.assertFalse(c2.ordered)
+        self.assert_numpy_array_equal(c.get_values(), c2.get_values())
+
+        # set_categories should pass thru the ordering
+        c2 = c.set_ordered(False).set_categories([4,3,2,1])
+        self.assertFalse(c2.ordered)
+        self.assert_numpy_array_equal(c.get_values(), c2.get_values())
 
     def test_rename_categories(self):
         cat = pd.Categorical(["a","b","c","a"])
@@ -774,12 +877,15 @@ class TestCategorical(tm.TestCase):
         exp = np.asarray(["a","b"])
         res = cat.unique()
         self.assert_numpy_array_equal(res, exp)
+
         cat = Categorical(["a","b","a","a"], categories=["a","b","c"])
         res = cat.unique()
         self.assert_numpy_array_equal(res, exp)
-        cat = Categorical(["a","b","a", np.nan], categories=["a","b","c"])
+
+        # unique should not sort
+        cat = Categorical(["b", "b", np.nan, "a"], categories=["a","b","c"])
         res = cat.unique()
-        exp = np.asarray(["a","b", np.nan], dtype=object)
+        exp = np.asarray(["b", np.nan, "a"], dtype=object)
         self.assert_numpy_array_equal(res, exp)
 
     def test_mode(self):
@@ -812,9 +918,11 @@ class TestCategorical(tm.TestCase):
 
     def test_sort(self):
 
-        # unordered cats are not sortable
+        # unordered cats are sortable
         cat = Categorical(["a","b","b","a"], ordered=False)
-        self.assertRaises(TypeError, lambda : cat.sort())
+        cat.order()
+        cat.sort()
+
         cat = Categorical(["a","c","b","d"], ordered=True)
 
         # order
@@ -892,8 +1000,8 @@ class TestCategorical(tm.TestCase):
         # https://github.com/pydata/pandas/issues/8420
         s1 = pd.Series(['apple', 'bread', 'bread', 'cheese', 'milk' ])
         s2 = pd.Series(['apple', 'bread', 'bread', 'cheese', 'milk', 'donuts' ])
-        c1 = pd.Categorical(s1)
-        c2 = pd.Categorical(s2)
+        c1 = pd.Categorical(s1, ordered=True)
+        c2 = pd.Categorical(s2, ordered=True)
 
         # Single item array
         res = c1.searchsorted(['bread'])
@@ -909,8 +1017,8 @@ class TestCategorical(tm.TestCase):
         exp = np.array([1])
         self.assert_numpy_array_equal(res, exp)
         self.assert_numpy_array_equal(res, chk)
-       
-        # Searching for a value that is not present in the Categorical 
+
+        # Searching for a value that is not present in the Categorical
         res = c1.searchsorted(['bread', 'eggs'])
         chk = s1.searchsorted(['bread', 'eggs'])
         exp = np.array([1, 4])
@@ -927,7 +1035,7 @@ class TestCategorical(tm.TestCase):
         # As above, but with a sorter array to reorder an unsorted array
         res = c2.searchsorted(['bread', 'eggs'], side='right', sorter=[0, 1, 2, 3, 5, 4])
         chk = s2.searchsorted(['bread', 'eggs'], side='right', sorter=[0, 1, 2, 3, 5, 4])
-        exp = np.array([3, 5])       # eggs after donuts, after switching milk and donuts 
+        exp = np.array([3, 5])       # eggs after donuts, after switching milk and donuts
         self.assert_numpy_array_equal(res, exp)
         self.assert_numpy_array_equal(res, chk)
 
@@ -954,13 +1062,13 @@ class TestCategorical(tm.TestCase):
         self.assertFalse(LooseVersion(pd.__version__) >= '0.18')
 
     def test_datetime_categorical_comparison(self):
-        dt_cat = pd.Categorical(pd.date_range('2014-01-01', periods=3))
+        dt_cat = pd.Categorical(pd.date_range('2014-01-01', periods=3), ordered=True)
         self.assert_numpy_array_equal(dt_cat > dt_cat[0], [False, True, True])
         self.assert_numpy_array_equal(dt_cat[0] < dt_cat, [False, True, True])
 
     def test_reflected_comparison_with_scalars(self):
         # GH8658
-        cat = pd.Categorical([1, 2, 3])
+        cat = pd.Categorical([1, 2, 3], ordered=True)
         self.assert_numpy_array_equal(cat > cat[0], [False, True, True])
         self.assert_numpy_array_equal(cat[0] < cat, [False, True, True])
 
@@ -1116,6 +1224,17 @@ class TestCategoricalAsBlock(tm.TestCase):
         exp_df = pd.DataFrame({"cats":cats, "vals":[1,2,3,4,5,6]})
         df["cats"] =  df["cats"].astype("category")
         tm.assert_frame_equal(exp_df, df)
+
+        # with keywords
+        l = ["a","b","c","a"]
+        s = pd.Series(l)
+        exp = pd.Series(Categorical(l, ordered=True))
+        res = s.astype('category', ordered=True)
+        tm.assert_series_equal(res, exp)
+
+        exp = pd.Series(Categorical(l, categories=list('abcdef'), ordered=True))
+        res = s.astype('category', categories=list('abcdef'), ordered=True)
+        tm.assert_series_equal(res, exp)
 
     def test_construction_series(self):
 
@@ -1282,7 +1401,7 @@ class TestCategoricalAsBlock(tm.TestCase):
     def test_cat_accessor(self):
         s = Series(Categorical(["a","b",np.nan,"a"]))
         self.assert_numpy_array_equal(s.cat.categories, np.array(["a","b"]))
-        self.assertEqual(s.cat.ordered, True)
+        self.assertEqual(s.cat.ordered, False)
         exp = Categorical(["a","b",np.nan,"a"], categories=["b","a"])
         s.cat.set_categories(["b", "a"], inplace=True)
         self.assertTrue(s.values.equals(exp))
@@ -1318,13 +1437,13 @@ class TestCategoricalAsBlock(tm.TestCase):
     def test_series_delegations(self):
 
         # invalid accessor
-        self.assertRaises(TypeError, lambda : Series([1,2,3]).cat)
-        tm.assertRaisesRegexp(TypeError,
+        self.assertRaises(AttributeError, lambda : Series([1,2,3]).cat)
+        tm.assertRaisesRegexp(AttributeError,
                               r"Can only use .cat accessor with a 'category' dtype",
                               lambda : Series([1,2,3]).cat)
-        self.assertRaises(TypeError, lambda : Series(['a','b','c']).cat)
-        self.assertRaises(TypeError, lambda : Series(np.arange(5.)).cat)
-        self.assertRaises(TypeError, lambda : Series([Timestamp('20130101')]).cat)
+        self.assertRaises(AttributeError, lambda : Series(['a','b','c']).cat)
+        self.assertRaises(AttributeError, lambda : Series(np.arange(5.)).cat)
+        self.assertRaises(AttributeError, lambda : Series([Timestamp('20130101')]).cat)
 
         # Series should delegate calls to '.categories', '.codes', '.ordered' and the
         # methods '.set_categories()' 'drop_unused_categories()' to the categorical
@@ -1339,8 +1458,10 @@ class TestCategoricalAsBlock(tm.TestCase):
         tm.assert_series_equal(s.cat.codes, exp_codes)
 
         self.assertEqual(s.cat.ordered, True)
-        s.cat.ordered = False
+        s = s.cat.as_unordered()
         self.assertEqual(s.cat.ordered, False)
+        s.cat.as_ordered(inplace=True)
+        self.assertEqual(s.cat.ordered, True)
 
         # reorder
         s = Series(Categorical(["a","b","c","a"], ordered=True))
@@ -1410,7 +1531,7 @@ class TestCategoricalAsBlock(tm.TestCase):
 
         # Categoricals should not show up together with numerical columns
         result = self.cat.describe()
-        self.assertEquals(len(result.columns),1)
+        self.assertEqual(len(result.columns),1)
 
 
         # In a frame, describe() for the cat should be the same as for string arrays (count, unique,
@@ -1430,11 +1551,11 @@ class TestCategoricalAsBlock(tm.TestCase):
     def test_repr(self):
         a = pd.Series(pd.Categorical([1,2,3,4], name="a"))
         exp = u("0    1\n1    2\n2    3\n3    4\n" +
-              "Name: a, dtype: category\nCategories (4, int64): [1 < 2 < 3 < 4]")
+              "Name: a, dtype: category\nCategories (4, int64): [1, 2, 3, 4]")
 
         self.assertEqual(exp, a.__unicode__())
 
-        a = pd.Series(pd.Categorical(["a","b"] *25, name="a"))
+        a = pd.Series(pd.Categorical(["a","b"] *25, name="a", ordered=True))
         exp = u("".join(["%s    a\n%s    b\n"%(i,i+1) for i in range(0,10,2)]) + "...\n" +
                 "".join(["%s    a\n%s    b\n"%(i,i+1) for i in range(40,50,2)]) +
                 "Name: a, Length: 50, dtype: category\n" +
@@ -1442,7 +1563,7 @@ class TestCategoricalAsBlock(tm.TestCase):
         self.assertEqual(exp,a._tidy_repr())
 
         levs = list("abcdefghijklmnopqrstuvwxyz")
-        a = pd.Series(pd.Categorical(["a","b"], name="a", categories=levs))
+        a = pd.Series(pd.Categorical(["a","b"], name="a", categories=levs, ordered=True))
         exp = u("0    a\n1    b\n" +
                 "Name: a, dtype: category\n"
                 "Categories (26, object): [a < b < c < d ... w < x < y < z]")
@@ -1526,17 +1647,57 @@ class TestCategoricalAsBlock(tm.TestCase):
         exp = Series([3,2,1,0], index=["c","b","a","d"])
         tm.assert_series_equal(res, exp)
 
+    def test_value_counts_with_nan(self):
+        # https://github.com/pydata/pandas/issues/9443
+
+        s = pd.Series(["a", "b", "a"], dtype="category")
+        tm.assert_series_equal(
+            s.value_counts(dropna=True),
+            pd.Series([2, 1], index=["a", "b"]))
+        tm.assert_series_equal(
+            s.value_counts(dropna=False),
+            pd.Series([2, 1], index=["a", "b"]))
+
+        s = pd.Series(["a", "b", None, "a", None, None], dtype="category")
+        tm.assert_series_equal(
+            s.value_counts(dropna=True),
+            pd.Series([2, 1], index=["a", "b"]))
+        tm.assert_series_equal(
+            s.value_counts(dropna=False),
+            pd.Series([3, 2, 1], index=[np.nan, "a", "b"]))
+        # When we aren't sorting by counts, and np.nan isn't a
+        # category, it should be last.
+        tm.assert_series_equal(
+            s.value_counts(dropna=False, sort=False),
+            pd.Series([2, 1, 3], index=["a", "b", np.nan]))
+
+        s = pd.Series(pd.Categorical(["a", "b", "a"], categories=["a", "b", np.nan]))
+        tm.assert_series_equal(
+            s.value_counts(dropna=True),
+            pd.Series([2, 1], index=["a", "b"]))
+        tm.assert_series_equal(
+            s.value_counts(dropna=False),
+            pd.Series([2, 1, 0], index=["a", "b", np.nan]))
+
+        s = pd.Series(pd.Categorical(["a", "b", None, "a", None, None], categories=["a", "b", np.nan]))
+        tm.assert_series_equal(
+            s.value_counts(dropna=True),
+            pd.Series([2, 1], index=["a", "b"]))
+        tm.assert_series_equal(
+            s.value_counts(dropna=False),
+            pd.Series([3, 2, 1], index=[np.nan, "a", "b"]))
+
     def test_groupby(self):
 
-        cats = Categorical(["a", "a", "a", "b", "b", "b", "c", "c", "c"], categories=["a","b","c","d"])
+        cats = Categorical(["a", "a", "a", "b", "b", "b", "c", "c", "c"], categories=["a","b","c","d"], ordered=True)
         data = DataFrame({"a":[1,1,1,2,2,2,3,4,5], "b":cats})
 
         expected = DataFrame({ 'a' : Series([1,2,4,np.nan],index=Index(['a','b','c','d'],name='b')) })
         result = data.groupby("b").mean()
         tm.assert_frame_equal(result, expected)
 
-        raw_cat1 = Categorical(["a","a","b","b"], categories=["a","b","z"])
-        raw_cat2 = Categorical(["c","d","c","d"], categories=["c","d","y"])
+        raw_cat1 = Categorical(["a","a","b","b"], categories=["a","b","z"], ordered=True)
+        raw_cat2 = Categorical(["c","d","c","d"], categories=["c","d","y"], ordered=True)
         df = DataFrame({"A":raw_cat1,"B":raw_cat2, "values":[1,2,3,4]})
 
         # single grouper
@@ -1590,8 +1751,8 @@ class TestCategoricalAsBlock(tm.TestCase):
 
     def test_pivot_table(self):
 
-        raw_cat1 = Categorical(["a","a","b","b"], categories=["a","b","z"])
-        raw_cat2 = Categorical(["c","d","c","d"], categories=["c","d","y"])
+        raw_cat1 = Categorical(["a","a","b","b"], categories=["a","b","z"], ordered=True)
+        raw_cat2 = Categorical(["c","d","c","d"], categories=["c","d","y"], ordered=True)
         df = DataFrame({"A":raw_cat1,"B":raw_cat2, "values":[1,2,3,4]})
         result = pd.pivot_table(df, values='values', index=['A', 'B'])
 
@@ -1608,9 +1769,12 @@ class TestCategoricalAsBlock(tm.TestCase):
 
     def test_sort(self):
 
-        # unordered cats are not sortable
         cat = Series(Categorical(["a","b","b","a"], ordered=False))
-        self.assertRaises(TypeError, lambda : cat.sort())
+
+        # sort in the categories order
+        expected = Series(Categorical(["a","a","b","b"], ordered=False),index=[0,3,1,2])
+        result = cat.order()
+        tm.assert_series_equal(result, expected)
 
         cat = Series(Categorical(["a","c","b","d"], ordered=True))
 
@@ -1628,7 +1792,7 @@ class TestCategoricalAsBlock(tm.TestCase):
         self.assert_numpy_array_equal(res.__array__(), exp)
 
         raw_cat1 = Categorical(["a","b","c","d"], categories=["a","b","c","d"], ordered=False)
-        raw_cat2 = Categorical(["a","b","c","d"], categories=["d","c","b","a"])
+        raw_cat2 = Categorical(["a","b","c","d"], categories=["d","c","b","a"], ordered=True)
         s = ["a","b","c","d"]
         df = DataFrame({"unsort":raw_cat1,"sort":raw_cat2, "string":s, "values":[1,2,3,4]})
 
@@ -1644,14 +1808,13 @@ class TestCategoricalAsBlock(tm.TestCase):
         self.assertEqual(res["sort"].dtype, "category")
         self.assertEqual(res["unsort"].dtype, "category")
 
-        def f():
-            df.sort(columns=["unsort"], ascending=False)
-        self.assertRaises(TypeError, f)
+        # unordered cat, but we allow this
+        df.sort(columns=["unsort"], ascending=False)
 
         # multi-columns sort
         # GH 7848
         df = DataFrame({"id":[6,5,4,3,2,1], "raw_grade":['a', 'b', 'b', 'a', 'a', 'e']})
-        df["grade"] = pd.Categorical(df["raw_grade"])
+        df["grade"] = pd.Categorical(df["raw_grade"], ordered=True)
         df['grade'] = df['grade'].cat.set_categories(['b', 'e', 'a'])
 
         # sorts 'grade' according to the order of the categories
@@ -2203,10 +2366,10 @@ class TestCategoricalAsBlock(tm.TestCase):
         tests_data = [(list("abc"), list("cba"), list("bbb")),
                       ([1,2,3], [3,2,1], [2,2,2])]
         for data , reverse, base in tests_data:
-            cat_rev = pd.Series(pd.Categorical(data, categories=reverse))
-            cat_rev_base = pd.Series(pd.Categorical(base, categories=reverse))
-            cat = pd.Series(pd.Categorical(data))
-            cat_base = pd.Series(pd.Categorical(base, categories=cat.cat.categories))
+            cat_rev = pd.Series(pd.Categorical(data, categories=reverse, ordered=True))
+            cat_rev_base = pd.Series(pd.Categorical(base, categories=reverse, ordered=True))
+            cat = pd.Series(pd.Categorical(data, ordered=True))
+            cat_base = pd.Series(pd.Categorical(base, categories=cat.cat.categories, ordered=True))
             s = Series(base)
             a = np.array(base)
 
@@ -2376,6 +2539,39 @@ class TestCategoricalAsBlock(tm.TestCase):
             df.append(df_wrong_categories)
         self.assertRaises(ValueError, f)
 
+
+    def test_merge(self):
+        # GH 9426
+
+        right = DataFrame({'c': {0: 'a', 1: 'b', 2: 'c', 3: 'd', 4: 'e'},
+                              'd': {0: 'null', 1: 'null', 2: 'null', 3: 'null', 4: 'null'}})
+        left = DataFrame({'a': {0: 'f', 1: 'f', 2: 'f', 3: 'f', 4: 'f'},
+                          'b': {0: 'g', 1: 'g', 2: 'g', 3: 'g', 4: 'g'}})
+        df = pd.merge(left, right, how='left', left_on='b', right_on='c')
+
+        # object-object
+        expected = df.copy()
+
+        # object-cat
+        cright = right.copy()
+        cright['d'] = cright['d'].astype('category')
+        result = pd.merge(left, cright, how='left', left_on='b', right_on='c')
+        tm.assert_frame_equal(result, expected)
+
+        # cat-object
+        cleft = left.copy()
+        cleft['b'] = cleft['b'].astype('category')
+        result = pd.merge(cleft, cright, how='left', left_on='b', right_on='c')
+        tm.assert_frame_equal(result, expected)
+
+        # cat-cat
+        cright = right.copy()
+        cright['d'] = cright['d'].astype('category')
+        cleft = left.copy()
+        cleft['b'] = cleft['b'].astype('category')
+        result = pd.merge(cleft, cright, how='left', left_on='b', right_on='c')
+        tm.assert_frame_equal(result, expected)
+
     def test_na_actions(self):
 
         cat = pd.Categorical([1,2,3,np.nan], categories=[1,2,3])
@@ -2507,7 +2703,8 @@ class TestCategoricalAsBlock(tm.TestCase):
          # test the tab completion display
         ok_for_cat = ['categories','codes','ordered','set_categories',
                       'add_categories', 'remove_categories', 'rename_categories',
-                      'reorder_categories', 'remove_unused_categories']
+                      'reorder_categories', 'remove_unused_categories',
+                      'as_ordered', 'as_unordered']
         def get_dir(s):
             results = [ r for r in s.cat.__dir__() if not r.startswith('_') ]
             return list(sorted(set(results)))
@@ -2516,6 +2713,18 @@ class TestCategoricalAsBlock(tm.TestCase):
         results = get_dir(s)
         tm.assert_almost_equal(results,list(sorted(set(ok_for_cat))))
 
+    def test_cat_accessor_api(self):
+        # GH 9322
+        from pandas.core.categorical import CategoricalAccessor
+        self.assertIs(Series.cat, CategoricalAccessor)
+        s = Series(list('aabbcde')).astype('category')
+        self.assertIsInstance(s.cat, CategoricalAccessor)
+
+        invalid = Series([1])
+        with tm.assertRaisesRegexp(AttributeError, "only use .cat accessor"):
+            invalid.cat
+        self.assertFalse(hasattr(invalid, 'cat'))
+
     def test_pickle_v0_14_1(self):
         cat = pd.Categorical(values=['a', 'b', 'c'],
                              categories=['a', 'b', 'c', 'd'],
@@ -2523,6 +2732,23 @@ class TestCategoricalAsBlock(tm.TestCase):
         pickle_path = os.path.join(tm.get_data_path(),
                                    'categorical_0_14_1.pickle')
         # This code was executed once on v0.14.1 to generate the pickle:
+        #
+        # cat = Categorical(labels=np.arange(3), levels=['a', 'b', 'c', 'd'],
+        #                   name='foobar')
+        # with open(pickle_path, 'wb') as f: pickle.dump(cat, f)
+        #
+        self.assert_categorical_equal(cat, pd.read_pickle(pickle_path))
+
+    def test_pickle_v0_15_2(self):
+        # ordered -> _ordered
+        # GH 9347
+
+        cat = pd.Categorical(values=['a', 'b', 'c'],
+                             categories=['a', 'b', 'c', 'd'],
+                             name='foobar', ordered=False)
+        pickle_path = os.path.join(tm.get_data_path(),
+                                   'categorical_0_15_2.pickle')
+        # This code was executed once on v0.15.2 to generate the pickle:
         #
         # cat = Categorical(labels=np.arange(3), levels=['a', 'b', 'c', 'd'],
         #                   name='foobar')

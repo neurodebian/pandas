@@ -13,7 +13,8 @@ from pandas.util.decorators import Appender, cache_readonly
 
 
 _shared_docs = dict()
-_indexops_doc_kwargs = dict(klass='IndexOpsMixin', inplace='')
+_indexops_doc_kwargs = dict(klass='IndexOpsMixin', inplace='',
+                            duplicated='IndexOpsMixin')
 
 
 class StringMixin(object):
@@ -164,6 +165,28 @@ class PandasDelegate(PandasObject):
             # don't overwrite existing methods/properties
             if not hasattr(cls, name):
                 setattr(cls,name,f)
+
+
+class AccessorProperty(object):
+    """Descriptor for implementing accessor properties like Series.str
+    """
+    def __init__(self, accessor_cls, construct_accessor):
+        self.accessor_cls = accessor_cls
+        self.construct_accessor = construct_accessor
+        self.__doc__ = accessor_cls.__doc__
+
+    def __get__(self, instance, owner=None):
+        if instance is None:
+            # this ensures that Series.str.<method> is well defined
+            return self.accessor_cls
+        return self.construct_accessor(instance)
+
+    def __set__(self, instance, value):
+        raise AttributeError("can't set attribute")
+
+    def __delete__(self, instance):
+        raise AttributeError("can't delete attribute")
+
 
 class FrozenList(PandasObject, list):
 
@@ -440,7 +463,12 @@ class IndexOpsMixin(object):
         -------
         nunique : int
         """
-        return len(self.value_counts(dropna=dropna))
+        uniqs = self.unique()
+        n = len(uniqs)
+        if dropna and com.isnull(uniqs).any():
+            n -= 1
+        return n
+
 
     def factorize(self, sort=False, na_sentinel=-1):
         """
@@ -486,14 +514,14 @@ class IndexOpsMixin(object):
     @Appender(_shared_docs['drop_duplicates'] % _indexops_doc_kwargs)
     def drop_duplicates(self, take_last=False, inplace=False):
         duplicated = self.duplicated(take_last=take_last)
-        result = self[~(duplicated.values).astype(bool)]
+        result = self[np.logical_not(duplicated)]
         if inplace:
             return self._update_inplace(result)
         else:
             return result
 
     _shared_docs['duplicated'] = (
-        """Return boolean %(klass)s denoting duplicate values
+        """Return boolean %(duplicated)s denoting duplicate values
 
         Parameters
         ----------
@@ -502,7 +530,7 @@ class IndexOpsMixin(object):
 
         Returns
         -------
-        duplicated : %(klass)s
+        duplicated : %(duplicated)s
         """)
 
     @Appender(_shared_docs['duplicated'] % _indexops_doc_kwargs)
@@ -513,8 +541,7 @@ class IndexOpsMixin(object):
             return self._constructor(duplicated,
                                      index=self.index).__finalize__(self)
         except AttributeError:
-            from pandas.core.index import Index
-            return Index(duplicated)
+            return np.array(duplicated, dtype=bool)
 
     #----------------------------------------------------------------------
     # abstracts

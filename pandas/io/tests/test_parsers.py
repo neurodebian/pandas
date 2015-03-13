@@ -509,6 +509,17 @@ KORD6,19990127, 23:00:00, 22:56:00, -0.5900, 1.7100, 4.6000, 0.0000, 280.0000"""
         tm.assert_frame_equal(xp, rs)
         self.assertEqual(xp.index.name, rs.index.name)
 
+    def test_usecols_index_col_False(self):
+        # Issue 9082
+        s = "a,b,c,d\n1,2,3,4\n5,6,7,8"
+        s_malformed = "a,b,c,d\n1,2,3,4,\n5,6,7,8,"
+        cols = ['a','c','d']
+        expected = DataFrame({'a':[1,5], 'c':[3,7], 'd':[4,8]})
+        df = self.read_csv(StringIO(s), usecols=cols, index_col=False)
+        tm.assert_frame_equal(expected, df)
+        df = self.read_csv(StringIO(s_malformed), usecols=cols, index_col=False)
+        tm.assert_frame_equal(expected, df)
+
     def test_converter_index_col_bug(self):
         # 1835
         data = "A;B\n1;2\n3;4"
@@ -3048,6 +3059,30 @@ A,B,C
         df = self.read_csv(StringIO(data), comment='#', skiprows=4)
         tm.assert_almost_equal(df.values, expected)
 
+    def test_skiprows_lineterminator(self):
+        #GH #9079
+        data = '\n'.join(['SMOSMANIA ThetaProbe-ML2X ',
+                          '2007/01/01 01:00   0.2140 U M ',
+                          '2007/01/01 02:00   0.2141 M O ',
+                          '2007/01/01 04:00   0.2142 D M '])
+        expected = pd.DataFrame([['2007/01/01', '01:00', 0.2140, 'U', 'M'],
+                                 ['2007/01/01', '02:00', 0.2141, 'M', 'O'],
+                                 ['2007/01/01', '04:00', 0.2142, 'D', 'M']],
+                                columns=['date', 'time', 'var', 'flag', 
+                                         'oflag'])
+        # test with the three default lineterminators LF, CR and CRLF
+        df = self.read_csv(StringIO(data), skiprows=1, delim_whitespace=True,
+                           names=['date', 'time', 'var', 'flag', 'oflag'])
+        tm.assert_frame_equal(df, expected)
+        df = self.read_csv(StringIO(data.replace('\n', '\r')), 
+                           skiprows=1, delim_whitespace=True,
+                           names=['date', 'time', 'var', 'flag', 'oflag'])
+        tm.assert_frame_equal(df, expected)
+        df = self.read_csv(StringIO(data.replace('\n', '\r\n')), 
+                           skiprows=1, delim_whitespace=True,
+                           names=['date', 'time', 'var', 'flag', 'oflag'])
+        tm.assert_frame_equal(df, expected)
+
     def test_trailing_spaces(self):
         data = "A B C  \nrandom line with trailing spaces    \nskip\n1,2,3\n1,2.,4.\nrandom line with trailing tabs\t\t\t\n   \n5.1,NaN,10.0\n"
         expected = pd.DataFrame([[1., 2., 4.],
@@ -3222,6 +3257,19 @@ nan 2
         with tm.assertRaisesRegexp(ValueError, 'does not support'):
             self.read_table(StringIO(data), engine='c', skip_footer=1)
 
+
+    def test_buffer_overflow(self):
+        # GH9205
+        # test certain malformed input files that cause buffer overflows in
+        # tokenizer.c
+        malfw = "1\r1\r1\r 1\r 1\r"         # buffer overflow in words pointer
+        malfs = "1\r1\r1\r 1\r 1\r11\r"     # buffer overflow in stream pointer
+        malfl = "1\r1\r1\r 1\r 1\r11\r1\r"  # buffer overflow in lines pointer
+        for malf in (malfw, malfs, malfl):
+            try:
+                df = self.read_table(StringIO(malf))
+            except Exception as cperr:
+                self.assertIn('Buffer overflow caught - possible malformed input file.', str(cperr))
 
 class TestCParserLowMemory(ParserTests, tm.TestCase):
 
@@ -3631,6 +3679,19 @@ No,No,No"""
             self.read_table(StringIO(data), sep='\s', delim_whitespace=True)
 
 
+    def test_buffer_overflow(self):
+        # GH9205
+        # test certain malformed input files that cause buffer overflows in
+        # tokenizer.c
+        malfw = "1\r1\r1\r 1\r 1\r"         # buffer overflow in words pointer
+        malfs = "1\r1\r1\r 1\r 1\r11\r"     # buffer overflow in stream pointer
+        malfl = "1\r1\r1\r 1\r 1\r11\r1\r"  # buffer overflow in lines pointer
+        for malf in (malfw, malfs, malfl):
+            try:
+                df = self.read_table(StringIO(malf))
+            except Exception as cperr:
+                self.assertIn('Buffer overflow caught - possible malformed input file.', str(cperr))
+
 class TestMiscellaneous(tm.TestCase):
 
     # for tests that don't fit into any of the other classes, e.g. those that
@@ -3740,9 +3801,6 @@ class TestS3(tm.TestCase):
             import boto
         except ImportError:
             raise nose.SkipTest("boto not installed")
-
-        if compat.PY3:
-            raise nose.SkipTest("boto incompatible with Python 3")
 
     @tm.network
     def test_parse_public_s3_bucket(self):

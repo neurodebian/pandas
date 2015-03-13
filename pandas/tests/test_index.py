@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # pylint: disable=E1101,E1103,W0232
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from pandas.compat import range, lrange, lzip, u, zip
 import operator
 import re
@@ -33,6 +33,7 @@ import pandas.tseries.offsets as offsets
 
 import pandas as pd
 from pandas.lib import Timestamp
+from itertools import product
 
 
 class Base(object):
@@ -94,6 +95,15 @@ class Base(object):
                 pass
         tm.assertRaisesRegexp(ValueError,'The truth value of a',f)
 
+    def test_reindex_base(self):
+        idx = self.create_index()
+        expected = np.arange(idx.size)
+        actual = idx.get_indexer(idx)
+        assert_array_equal(expected, actual)
+
+        with tm.assertRaisesRegexp(ValueError, 'Invalid fill method'):
+            idx.get_indexer(idx, method='invalid')
+
     def test_ndarray_compat_properties(self):
 
         idx = self.create_index()
@@ -107,6 +117,7 @@ class Base(object):
         # test for validity
         idx.nbytes
         idx.values.nbytes
+
 
 class TestIndex(Base, tm.TestCase):
     _holder = Index
@@ -296,6 +307,9 @@ class TestIndex(Base, tm.TestCase):
         i_view = i.view()
         self.assertEqual(i_view.name, 'Foo')
 
+        # with arguments
+        self.assertRaises(TypeError, lambda : i.view('i8'))
+
     def test_legacy_pickle_identity(self):
 
         # GH 8431
@@ -417,7 +431,7 @@ class TestIndex(Base, tm.TestCase):
 
     def test_asof(self):
         d = self.dateIndex[0]
-        self.assertIs(self.dateIndex.asof(d), d)
+        self.assertEqual(self.dateIndex.asof(d), d)
         self.assertTrue(np.isnan(self.dateIndex.asof(d - timedelta(1))))
 
         d = self.dateIndex[-1]
@@ -428,9 +442,10 @@ class TestIndex(Base, tm.TestCase):
 
     def test_asof_datetime_partial(self):
         idx = pd.date_range('2010-01-01', periods=2, freq='m')
-        expected = Timestamp('2010-01-31')
+        expected = Timestamp('2010-02-28')
         result = idx.asof('2010-02')
         self.assertEqual(result, expected)
+        self.assertFalse(isinstance(result, Index))
 
     def test_nanosecond_index_access(self):
         s = Series([Timestamp('20130101')]).values.view('i8')[0]
@@ -725,7 +740,7 @@ class TestIndex(Base, tm.TestCase):
         # expected = Index([0.0, np.nan, 2.0, 3.0, np.nan])
 
         nans = pd.isnull(result)
-        self.assertEqual(nans.sum(), 2)
+        self.assertEqual(nans.sum(), 1)
         self.assertEqual((~nans).sum(), 3)
         [self.assertIn(x, result) for x in [0.0, 2.0, 3.0]]
 
@@ -851,16 +866,80 @@ class TestIndex(Base, tm.TestCase):
         assert_almost_equal(r1, [1, 3, -1])
 
         r1 = idx2.get_indexer(idx1, method='pad')
-        assert_almost_equal(r1, [-1, 0, 0, 1, 1])
+        e1 = [-1, 0, 0, 1, 1]
+        assert_almost_equal(r1, e1)
+
+        r2 = idx2.get_indexer(idx1[::-1], method='pad')
+        assert_almost_equal(r2, e1[::-1])
 
         rffill1 = idx2.get_indexer(idx1, method='ffill')
         assert_almost_equal(r1, rffill1)
 
         r1 = idx2.get_indexer(idx1, method='backfill')
-        assert_almost_equal(r1, [0, 0, 1, 1, 2])
+        e1 = [0, 0, 1, 1, 2]
+        assert_almost_equal(r1, e1)
 
         rbfill1 = idx2.get_indexer(idx1, method='bfill')
         assert_almost_equal(r1, rbfill1)
+
+        r2 = idx2.get_indexer(idx1[::-1], method='backfill')
+        assert_almost_equal(r2, e1[::-1])
+
+    def test_get_indexer_nearest(self):
+        idx = Index(np.arange(10))
+
+        all_methods = ['pad', 'backfill', 'nearest']
+        for method in all_methods:
+            actual = idx.get_indexer([0, 5, 9], method=method)
+            self.assert_array_equal(actual, [0, 5, 9])
+
+        for method, expected in zip(all_methods, [[0, 1, 8], [1, 2, 9], [0, 2, 9]]):
+            actual = idx.get_indexer([0.2, 1.8, 8.5], method=method)
+            self.assert_array_equal(actual, expected)
+
+        with tm.assertRaisesRegexp(ValueError, 'limit argument'):
+            idx.get_indexer([1, 0], method='nearest', limit=1)
+
+    def test_get_indexer_nearest_decreasing(self):
+        idx = Index(np.arange(10))[::-1]
+
+        all_methods = ['pad', 'backfill', 'nearest']
+        for method in all_methods:
+            actual = idx.get_indexer([0, 5, 9], method=method)
+            self.assert_array_equal(actual, [9, 4, 0])
+
+        for method, expected in zip(all_methods, [[8, 7, 0], [9, 8, 1], [9, 7, 0]]):
+            actual = idx.get_indexer([0.2, 1.8, 8.5], method=method)
+            self.assert_array_equal(actual, expected)
+
+    def test_get_indexer_strings(self):
+        idx = pd.Index(['b', 'c'])
+
+        actual = idx.get_indexer(['a', 'b', 'c', 'd'], method='pad')
+        expected = [-1, 0, 1, 1]
+        self.assert_array_equal(actual, expected)
+
+        actual = idx.get_indexer(['a', 'b', 'c', 'd'], method='backfill')
+        expected = [0, 0, 1, -1]
+        self.assert_array_equal(actual, expected)
+
+        with tm.assertRaises(TypeError):
+            idx.get_indexer(['a', 'b', 'c', 'd'], method='nearest')
+
+    def test_get_loc(self):
+        idx = pd.Index([0, 1, 2])
+        all_methods = [None, 'pad', 'backfill', 'nearest']
+        for method in all_methods:
+            self.assertEqual(idx.get_loc(1, method=method), 1)
+            with tm.assertRaises(TypeError):
+                idx.get_loc([1, 2], method=method)
+
+        for method, loc in [('pad', 1), ('backfill', 2), ('nearest', 1)]:
+            self.assertEqual(idx.get_loc(1.1, method), loc)
+
+        idx = pd.Index(['a', 'c'])
+        with tm.assertRaises(TypeError):
+            idx.get_loc('a', method='nearest')
 
     def test_slice_locs(self):
         for dtype in [int, float]:
@@ -871,16 +950,30 @@ class TestIndex(Base, tm.TestCase):
             self.assertEqual(idx.slice_locs(start=3), (3, n))
             self.assertEqual(idx.slice_locs(3, 8), (3, 6))
             self.assertEqual(idx.slice_locs(5, 10), (3, n))
-            self.assertEqual(idx.slice_locs(5.0, 10.0), (3, n))
-            self.assertEqual(idx.slice_locs(4.5, 10.5), (3, 8))
             self.assertEqual(idx.slice_locs(end=8), (0, 6))
             self.assertEqual(idx.slice_locs(end=9), (0, 7))
 
+            # reversed
             idx2 = idx[::-1]
             self.assertEqual(idx2.slice_locs(8, 2), (2, 6))
-            self.assertEqual(idx2.slice_locs(8.5, 1.5), (2, 6))
             self.assertEqual(idx2.slice_locs(7, 3), (2, 5))
-            self.assertEqual(idx2.slice_locs(10.5, -1), (0, n))
+
+        # float slicing
+        idx = Index(np.array([0, 1, 2, 5, 6, 7, 9, 10], dtype=float))
+        n = len(idx)
+        self.assertEqual(idx.slice_locs(5.0, 10.0), (3, n))
+        self.assertEqual(idx.slice_locs(4.5, 10.5), (3, 8))
+        idx2 = idx[::-1]
+        self.assertEqual(idx2.slice_locs(8.5, 1.5), (2, 6))
+        self.assertEqual(idx2.slice_locs(10.5, -1), (0, n))
+
+        # int slicing with floats
+        idx = Index(np.array([0, 1, 2, 5, 6, 7, 9, 10], dtype=int))
+        self.assertEqual(idx.slice_locs(5.0, 10.0), (3, n))
+        self.assertEqual(idx.slice_locs(4.5, 10.5), (3, 8))
+        idx2 = idx[::-1]
+        self.assertEqual(idx2.slice_locs(8.5, 1.5), (2, 6))
+        self.assertEqual(idx2.slice_locs(10.5, -1), (0, n))
 
     def test_slice_locs_dup(self):
         idx = Index(['a', 'a', 'b', 'c', 'd', 'd'])
@@ -1243,6 +1336,7 @@ class Numeric(Base):
         expected = Float64Index(np.sin(np.arange(5,dtype='int64')))
         tm.assert_index_equal(result, expected)
 
+
 class TestFloat64Index(Numeric, tm.TestCase):
     _holder = Float64Index
     _multiprocess_can_split_ = True
@@ -1356,6 +1450,26 @@ class TestFloat64Index(Numeric, tm.TestCase):
         i2 = Float64Index([1.0,np.nan])
         self.assertTrue(i.equals(i2))
 
+    def test_get_indexer(self):
+        idx = Float64Index([0.0, 1.0, 2.0])
+        self.assert_array_equal(idx.get_indexer(idx), [0, 1, 2])
+
+        target = [-0.1, 0.5, 1.1]
+        self.assert_array_equal(idx.get_indexer(target, 'pad'), [-1, 0, 1])
+        self.assert_array_equal(idx.get_indexer(target, 'backfill'), [0, 1, 2])
+        self.assert_array_equal(idx.get_indexer(target, 'nearest'), [0, 1, 1])
+
+    def test_get_loc(self):
+        idx = Float64Index([0.0, 1.0, 2.0])
+        for method in [None, 'pad', 'backfill', 'nearest']:
+            self.assertEqual(idx.get_loc(1, method), 1)
+
+        for method, loc in [('pad', 1), ('backfill', 2), ('nearest', 1)]:
+            self.assertEqual(idx.get_loc(1.1, method), loc)
+
+        self.assertRaises(KeyError, idx.get_loc, 'foo')
+        self.assertRaises(KeyError, idx.get_loc, 1.5)
+
     def test_get_loc_na(self):
         idx = Float64Index([np.nan, 1, 2])
         self.assertEqual(idx.get_loc(1), 1)
@@ -1467,6 +1581,12 @@ class TestInt64Index(Numeric, tm.TestCase):
         i = Int64Index([], name='Foo')
         i_view = i.view()
         self.assertEqual(i_view.name, 'Foo')
+
+        i_view = i.view('i8')
+        tm.assert_index_equal(i, Int64Index(i_view))
+
+        i_view = i.view(Int64Index)
+        tm.assert_index_equal(i, Int64Index(i_view))
 
     def test_coerce_list(self):
         # coerce things
@@ -1855,7 +1975,21 @@ class TestInt64Index(Numeric, tm.TestCase):
         idx = Int64Index([1, 2], name='asdf')
         self.assertEqual(idx.name, idx[1:].name)
 
-class TestDatetimeIndex(Base, tm.TestCase):
+class DatetimeLike(Base):
+
+    def test_view(self):
+
+        i = self.create_index()
+
+        i_view = i.view('i8')
+        result = self._holder(i)
+        tm.assert_index_equal(result, i)
+
+        i_view = i.view(self._holder)
+        result = self._holder(i)
+        tm.assert_index_equal(result, i)
+
+class TestDatetimeIndex(DatetimeLike, tm.TestCase):
     _holder = DatetimeIndex
     _multiprocess_can_split_ = True
 
@@ -1872,6 +2006,54 @@ class TestDatetimeIndex(Base, tm.TestCase):
             for f in [lambda : np.timedelta64(1, 'D').astype('m8[ns]') * pd.date_range('2000-01-01', periods=3),
                       lambda : pd.date_range('2000-01-01', periods=3) * np.timedelta64(1, 'D').astype('m8[ns]') ]:
                 self.assertRaises(TypeError, f)
+
+    def test_get_loc(self):
+        idx = pd.date_range('2000-01-01', periods=3)
+
+        for method in [None, 'pad', 'backfill', 'nearest']:
+            self.assertEqual(idx.get_loc(idx[1], method), 1)
+            self.assertEqual(idx.get_loc(idx[1].to_pydatetime(), method), 1)
+            self.assertEqual(idx.get_loc(str(idx[1]), method), 1)
+
+        self.assertEqual(idx.get_loc('2000-01-01', method='nearest'), 0)
+        self.assertEqual(idx.get_loc('2000-01-01T12', method='nearest'), 1)
+
+        self.assertEqual(idx.get_loc('2000', method='nearest'), slice(0, 3))
+        self.assertEqual(idx.get_loc('2000-01', method='nearest'), slice(0, 3))
+
+        self.assertEqual(idx.get_loc('1999', method='nearest'), 0)
+        self.assertEqual(idx.get_loc('2001', method='nearest'), 2)
+
+        with tm.assertRaises(KeyError):
+            idx.get_loc('1999', method='pad')
+        with tm.assertRaises(KeyError):
+            idx.get_loc('2001', method='backfill')
+
+        with tm.assertRaises(KeyError):
+            idx.get_loc('foobar')
+        with tm.assertRaises(TypeError):
+            idx.get_loc(slice(2))
+
+        idx = pd.to_datetime(['2000-01-01', '2000-01-04'])
+        self.assertEqual(idx.get_loc('2000-01-02', method='nearest'), 0)
+        self.assertEqual(idx.get_loc('2000-01-03', method='nearest'), 1)
+        self.assertEqual(idx.get_loc('2000-01', method='nearest'), slice(0, 2))
+
+        # time indexing
+        idx = pd.date_range('2000-01-01', periods=24, freq='H')
+        assert_array_equal(idx.get_loc(time(12)), [12])
+        assert_array_equal(idx.get_loc(time(12, 30)), [])
+        with tm.assertRaises(NotImplementedError):
+            idx.get_loc(time(12, 30), method='pad')
+
+    def test_get_indexer(self):
+        idx = pd.date_range('2000-01-01', periods=3)
+        self.assert_array_equal(idx.get_indexer(idx), [0, 1, 2])
+
+        target = idx[0] + pd.to_timedelta(['-1 hour', '12 hours', '1 day 1 hour'])
+        self.assert_array_equal(idx.get_indexer(target, 'pad'), [-1, 0, 1])
+        self.assert_array_equal(idx.get_indexer(target, 'backfill'), [0, 1, 2])
+        self.assert_array_equal(idx.get_indexer(target, 'nearest'), [0, 1, 1])
 
     def test_roundtrip_pickle_with_tz(self):
 
@@ -1909,7 +2091,23 @@ class TestDatetimeIndex(Base, tm.TestCase):
             right.iloc[i] *= -10
             tm.assert_series_equal(left, right)
 
-class TestPeriodIndex(Base, tm.TestCase):
+    def test_time_overflow_for_32bit_machines(self):
+        # GH8943.  On some machines NumPy defaults to np.int32 (for example,
+        # 32-bit Linux machines).  In the function _generate_regular_range
+        # found in tseries/index.py, `periods` gets multiplied by `strides`
+        # (which has value 1e9) and since the max value for np.int32 is ~2e9,
+        # and since those machines won't promote np.int32 to np.int64, we get
+        # overflow.
+        periods = np.int_(1000)
+
+        idx1 = pd.date_range(start='2000', periods=periods, freq='S')
+        self.assertEqual(len(idx1), periods)
+
+        idx2 = pd.date_range(end='2000', periods=periods, freq='S')
+        self.assertEqual(len(idx2), periods)
+
+
+class TestPeriodIndex(DatetimeLike, tm.TestCase):
     _holder = PeriodIndex
     _multiprocess_can_split_ = True
 
@@ -1919,12 +2117,56 @@ class TestPeriodIndex(Base, tm.TestCase):
     def test_pickle_compat_construction(self):
         pass
 
-class TestTimedeltaIndex(Base, tm.TestCase):
+    def test_get_loc(self):
+        idx = pd.period_range('2000-01-01', periods=3)
+
+        for method in [None, 'pad', 'backfill', 'nearest']:
+            self.assertEqual(idx.get_loc(idx[1], method), 1)
+            self.assertEqual(idx.get_loc(idx[1].asfreq('H', how='start'), method), 1)
+            self.assertEqual(idx.get_loc(idx[1].to_timestamp(), method), 1)
+            self.assertEqual(idx.get_loc(idx[1].to_timestamp().to_pydatetime(), method), 1)
+            self.assertEqual(idx.get_loc(str(idx[1]), method), 1)
+
+    def test_get_indexer(self):
+        idx = pd.period_range('2000-01-01', periods=3).asfreq('H', how='start')
+        self.assert_array_equal(idx.get_indexer(idx), [0, 1, 2])
+
+        target = pd.PeriodIndex(['1999-12-31T23', '2000-01-01T12',
+                                 '2000-01-02T01'], freq='H')
+        self.assert_array_equal(idx.get_indexer(target, 'pad'), [-1, 0, 1])
+        self.assert_array_equal(idx.get_indexer(target, 'backfill'), [0, 1, 2])
+        self.assert_array_equal(idx.get_indexer(target, 'nearest'), [0, 1, 1])
+
+        with self.assertRaisesRegexp(ValueError, 'different freq'):
+            idx.asfreq('D').get_indexer(idx)
+
+
+class TestTimedeltaIndex(DatetimeLike, tm.TestCase):
     _holder = TimedeltaIndex
     _multiprocess_can_split_ = True
 
     def create_index(self):
         return pd.to_timedelta(range(5),unit='d') + pd.offsets.Hour(1)
+
+    def test_get_loc(self):
+        idx = pd.to_timedelta(['0 days', '1 days', '2 days'])
+
+        for method in [None, 'pad', 'backfill', 'nearest']:
+            self.assertEqual(idx.get_loc(idx[1], method), 1)
+            self.assertEqual(idx.get_loc(idx[1].to_pytimedelta(), method), 1)
+            self.assertEqual(idx.get_loc(str(idx[1]), method), 1)
+
+        for method, loc in [('pad', 1), ('backfill', 2), ('nearest', 1)]:
+            self.assertEqual(idx.get_loc('1 day 1 hour', method), loc)
+
+    def test_get_indexer(self):
+        idx = pd.to_timedelta(['0 days', '1 days', '2 days'])
+        self.assert_array_equal(idx.get_indexer(idx), [0, 1, 2])
+
+        target = pd.to_timedelta(['-1 hour', '12 hours', '1 day 1 hour'])
+        self.assert_array_equal(idx.get_indexer(target, 'pad'), [-1, 0, 1])
+        self.assert_array_equal(idx.get_indexer(target, 'backfill'), [0, 1, 2])
+        self.assert_array_equal(idx.get_indexer(target, 'nearest'), [0, 1, 1])
 
     def test_numeric_compat(self):
 
@@ -2693,6 +2935,9 @@ class TestMultiIndex(Base, tm.TestCase):
         self.assertRaises(KeyError, self.index.get_loc, ('bar', 'two'))
         self.assertRaises(KeyError, self.index.get_loc, 'quux')
 
+        self.assertRaises(NotImplementedError, self.index.get_loc, 'foo',
+                          method='nearest')
+
         # 3 levels
         index = MultiIndex(levels=[Index(lrange(4)),
                                    Index(lrange(4)),
@@ -2895,13 +3140,21 @@ class TestMultiIndex(Base, tm.TestCase):
         assert_almost_equal(r1, [1, 3, -1])
 
         r1 = idx2.get_indexer(idx1, method='pad')
-        assert_almost_equal(r1, [-1, 0, 0, 1, 1])
+        e1 = [-1, 0, 0, 1, 1]
+        assert_almost_equal(r1, e1)
+
+        r2 = idx2.get_indexer(idx1[::-1], method='pad')
+        assert_almost_equal(r2, e1[::-1])
 
         rffill1 = idx2.get_indexer(idx1, method='ffill')
         assert_almost_equal(r1, rffill1)
 
         r1 = idx2.get_indexer(idx1, method='backfill')
-        assert_almost_equal(r1, [0, 0, 1, 1, 2])
+        e1 = [0, 0, 1, 1, 2]
+        assert_almost_equal(r1, e1)
+
+        r2 = idx2.get_indexer(idx1[::-1], method='backfill')
+        assert_almost_equal(r2, e1[::-1])
 
         rbfill1 = idx2.get_indexer(idx1, method='bfill')
         assert_almost_equal(r1, rbfill1)
@@ -2920,6 +3173,11 @@ class TestMultiIndex(Base, tm.TestCase):
         assertRaisesRegexp(InvalidIndexError, "Reindexing only valid with"
                            " uniquely valued Index objects",
                            idx1.get_indexer, idx2)
+
+    def test_get_indexer_nearest(self):
+        midx = MultiIndex.from_tuples([('a', 1), ('b', 2)])
+        with tm.assertRaises(NotImplementedError):
+            midx.get_indexer(['a'], method='nearest')
 
     def test_format(self):
         self.index.format()
@@ -3337,6 +3595,56 @@ class TestMultiIndex(Base, tm.TestCase):
         assertRaisesRegexp(ValueError, "Item must have length equal to number"
                            " of levels", self.index.insert, 0, ('foo2',))
 
+        left = pd.DataFrame([['a', 'b', 0], ['b', 'd', 1]],
+                            columns=['1st', '2nd', '3rd'])
+        left.set_index(['1st', '2nd'], inplace=True)
+        ts = left['3rd'].copy(deep=True)
+
+        left.loc[('b', 'x'), '3rd'] = 2
+        left.loc[('b', 'a'), '3rd'] = -1
+        left.loc[('b', 'b'), '3rd'] = 3
+        left.loc[('a', 'x'), '3rd'] = 4
+        left.loc[('a', 'w'), '3rd'] = 5
+        left.loc[('a', 'a'), '3rd'] = 6
+
+        ts.loc[('b', 'x')] = 2
+        ts.loc['b', 'a'] = -1
+        ts.loc[('b', 'b')] = 3
+        ts.loc['a', 'x'] = 4
+        ts.loc[('a', 'w')] = 5
+        ts.loc['a', 'a'] = 6
+
+        right = pd.DataFrame([['a', 'b',  0],
+                              ['b', 'd',  1],
+                              ['b', 'x',  2],
+                              ['b', 'a', -1],
+                              ['b', 'b',  3],
+                              ['a', 'x',  4],
+                              ['a', 'w',  5],
+                              ['a', 'a',  6]],
+                              columns=['1st', '2nd', '3rd'])
+        right.set_index(['1st', '2nd'], inplace=True)
+        # FIXME data types changes to float because
+        # of intermediate nan insertion;
+        tm.assert_frame_equal(left, right, check_dtype=False)
+        tm.assert_series_equal(ts, right['3rd'])
+
+        # GH9250
+        idx = [('test1', i) for i in range(5)] + \
+                [('test2', i) for i in range(6)] + \
+                [('test', 17), ('test', 18)]
+
+        left = pd.Series(np.linspace(0, 10, 11),
+                         pd.MultiIndex.from_tuples(idx[:-2]))
+
+        left.loc[('test', 17)] = 11
+        left.ix[('test', 18)] = 12
+
+        right = pd.Series(np.linspace(0, 12, 13),
+                          pd.MultiIndex.from_tuples(idx))
+
+        tm.assert_series_equal(left, right)
+
     def test_take_preserve_name(self):
         taken = self.index.take([3, 0, 1])
         self.assertEqual(taken.names, self.index.names)
@@ -3434,6 +3742,99 @@ class TestMultiIndex(Base, tm.TestCase):
                            labels=[[0, 0, 0, 0, 1, 1, 1],
                                    [0, 1, 2, 0, 0, 1, 2]])
         self.assertTrue(index.has_duplicates)
+
+        # GH 9075
+        t = [(u('x'), u('out'), u('z'), 5, u('y'), u('in'), u('z'), 169),
+             (u('x'), u('out'), u('z'), 7, u('y'), u('in'), u('z'), 119),
+             (u('x'), u('out'), u('z'), 9, u('y'), u('in'), u('z'), 135),
+             (u('x'), u('out'), u('z'), 13, u('y'), u('in'), u('z'), 145),
+             (u('x'), u('out'), u('z'), 14, u('y'), u('in'), u('z'), 158),
+             (u('x'), u('out'), u('z'), 16, u('y'), u('in'), u('z'), 122),
+             (u('x'), u('out'), u('z'), 17, u('y'), u('in'), u('z'), 160),
+             (u('x'), u('out'), u('z'), 18, u('y'), u('in'), u('z'), 180),
+             (u('x'), u('out'), u('z'), 20, u('y'), u('in'), u('z'), 143),
+             (u('x'), u('out'), u('z'), 21, u('y'), u('in'), u('z'), 128),
+             (u('x'), u('out'), u('z'), 22, u('y'), u('in'), u('z'), 129),
+             (u('x'), u('out'), u('z'), 25, u('y'), u('in'), u('z'), 111),
+             (u('x'), u('out'), u('z'), 28, u('y'), u('in'), u('z'), 114),
+             (u('x'), u('out'), u('z'), 29, u('y'), u('in'), u('z'), 121),
+             (u('x'), u('out'), u('z'), 31, u('y'), u('in'), u('z'), 126),
+             (u('x'), u('out'), u('z'), 32, u('y'), u('in'), u('z'), 155),
+             (u('x'), u('out'), u('z'), 33, u('y'), u('in'), u('z'), 123),
+             (u('x'), u('out'), u('z'), 12, u('y'), u('in'), u('z'), 144)]
+
+        index = pd.MultiIndex.from_tuples(t)
+        self.assertFalse(index.has_duplicates)
+
+        # handle int64 overflow if possible
+        def check(nlevels, with_nulls):
+            labels = np.tile(np.arange(500), 2)
+            level = np.arange(500)
+
+            if with_nulls:  # inject some null values
+                labels[500] = -1  # common nan value
+                labels = list(labels.copy() for i in range(nlevels))
+                for i in range(nlevels):
+                    labels[i][500 + i - nlevels // 2 ] = -1
+
+                labels += [np.array([-1, 1]).repeat(500)]
+            else:
+                labels = [labels] * nlevels + [np.arange(2).repeat(500)]
+
+            levels = [level] * nlevels + [[0, 1]]
+
+            # no dups
+            index = MultiIndex(levels=levels, labels=labels)
+            self.assertFalse(index.has_duplicates)
+
+            # with a dup
+            if with_nulls:
+                f = lambda a: np.insert(a, 1000, a[0])
+                labels = list(map(f, labels))
+                index = MultiIndex(levels=levels, labels=labels)
+            else:
+                values = index.values.tolist()
+                index = MultiIndex.from_tuples(values + [values[0]])
+
+            self.assertTrue(index.has_duplicates)
+
+        # no overflow
+        check(4, False)
+        check(4, True)
+
+        # overflow possible
+        check(8, False)
+        check(8, True)
+
+        # GH 9125
+        n, k = 200, 5000
+        levels = [np.arange(n), tm.makeStringIndex(n), 1000 + np.arange(n)]
+        labels = [np.random.choice(n, k * n) for lev in levels]
+        mi = MultiIndex(levels=levels, labels=labels)
+
+        for take_last in [False, True]:
+            left = mi.duplicated(take_last=take_last)
+            right = pd.lib.duplicated(mi.values, take_last=take_last)
+            tm.assert_array_equal(left, right)
+
+        # GH5873
+        for a in [101, 102]:
+            mi = MultiIndex.from_arrays([[101, a], [3.5, np.nan]])
+            self.assertFalse(mi.has_duplicates)
+            self.assertEqual(mi.get_duplicates(), [])
+            self.assert_array_equal(mi.duplicated(), np.zeros(2, dtype='bool'))
+
+        for n in range(1, 6):  # 1st level shape
+            for m in range(1, 5):  # 2nd level shape
+                # all possible unique combinations, including nan
+                lab = product(range(-1, n), range(-1, m))
+                mi = MultiIndex(levels=[list('abcde')[:n], list('WXYZ')[:m]],
+                                labels=np.random.permutation(list(lab)).T)
+                self.assertEqual(len(mi), (n + 1) * (m + 1))
+                self.assertFalse(mi.has_duplicates)
+                self.assertEqual(mi.get_duplicates(), [])
+                self.assert_array_equal(mi.duplicated(),
+                                        np.zeros(len(mi), dtype='bool'))
 
     def test_tolist(self):
         result = self.index.tolist()

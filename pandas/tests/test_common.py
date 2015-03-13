@@ -157,6 +157,15 @@ def test_isnull_datetime():
     assert(mask[0])
     assert(not mask[1:].any())
 
+    # GH 9129
+    pidx = idx.to_period(freq='M')
+    mask = isnull(pidx)
+    assert(mask[0])
+    assert(not mask[1:].any())
+
+    mask = isnull(pidx[1:])
+    assert(not mask.any())
+
 
 class TestIsNull(tm.TestCase):
     def test_0d_array(self):
@@ -415,7 +424,7 @@ def test_is_hashable():
             raise TypeError("Not hashable")
 
     hashable = (
-        1, 'a', tuple(), (1,), HashableClass(),
+        1, 3.14, np.float64(3.14), 'a', tuple(), (1,), HashableClass(),
     )
     not_hashable = (
         [], UnhashableClass1(),
@@ -425,13 +434,10 @@ def test_is_hashable():
     )
 
     for i in hashable:
-        assert isinstance(i, collections.Hashable)
         assert com.is_hashable(i)
     for i in not_hashable:
-        assert not isinstance(i, collections.Hashable)
         assert not com.is_hashable(i)
     for i in abc_hashable_not_really_hashable:
-        assert isinstance(i, collections.Hashable)
         assert not com.is_hashable(i)
 
     # numpy.array is no longer collections.Hashable as of
@@ -446,7 +452,7 @@ def test_is_hashable():
             pass
         c = OldStyleClass()
         assert not isinstance(c, collections.Hashable)
-        assert not com.is_hashable(c)
+        assert com.is_hashable(c)
         hash(c)  # this will not raise
 
 
@@ -936,6 +942,34 @@ class TestTake(tm.TestCase):
         expected = arr.take(indexer, axis=1)
         expected[:, [2, 4]] = datetime(2007, 1, 1)
         tm.assert_almost_equal(result, expected)
+
+
+class TestMaybe(tm.TestCase):
+
+    def test_maybe_convert_string_to_array(self):
+        result = com._maybe_convert_string_to_object('x')
+        tm.assert_numpy_array_equal(result, np.array(['x'], dtype=object))
+        self.assertTrue(result.dtype == object)
+
+        result = com._maybe_convert_string_to_object(1)
+        self.assertEqual(result, 1)
+
+        arr = np.array(['x', 'y'], dtype=str)
+        result = com._maybe_convert_string_to_object(arr)
+        tm.assert_numpy_array_equal(result, np.array(['x', 'y'], dtype=object))
+        self.assertTrue(result.dtype == object)
+
+        # unicode
+        arr = np.array(['x', 'y']).astype('U')
+        result = com._maybe_convert_string_to_object(arr)
+        tm.assert_numpy_array_equal(result, np.array(['x', 'y'], dtype=object))
+        self.assertTrue(result.dtype == object)
+
+        # object
+        arr = np.array(['x', 2], dtype=object)
+        result = com._maybe_convert_string_to_object(arr)
+        tm.assert_numpy_array_equal(result, np.array(['x', 2], dtype=object))
+        self.assertTrue(result.dtype == object)
 
 
 if __name__ == '__main__':

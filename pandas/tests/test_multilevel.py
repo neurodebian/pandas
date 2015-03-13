@@ -92,18 +92,18 @@ class TestMultiLevel(tm.TestCase):
                            (1.2, datetime.datetime(2011, 1, 2, tzinfo=tz)),
                            (1.3, datetime.datetime(2011, 1, 3, tzinfo=tz))]
         expected = Index([1.1, 1.2, 1.3] + expected_tuples)
-        self.assert_(result.equals(expected))
+        self.assertTrue(result.equals(expected))
 
         result = midx_lv2.append(idx1)
         expected = Index(expected_tuples + [1.1, 1.2, 1.3])
-        self.assert_(result.equals(expected))
+        self.assertTrue(result.equals(expected))
 
         result = midx_lv2.append(midx_lv2)
         expected = MultiIndex.from_arrays([idx1.append(idx1), idx2.append(idx2)])
-        self.assert_(result.equals(expected))
+        self.assertTrue(result.equals(expected))
 
         result = midx_lv2.append(midx_lv3)
-        self.assert_(result.equals(expected))
+        self.assertTrue(result.equals(expected))
 
         result = midx_lv3.append(midx_lv2)
         expected = Index._simple_new(
@@ -111,7 +111,7 @@ class TestMultiLevel(tm.TestCase):
                       (1.2, datetime.datetime(2011, 1, 2, tzinfo=tz), 'B'),
                       (1.3, datetime.datetime(2011, 1, 3, tzinfo=tz), 'C')]
                       + expected_tuples), None)
-        self.assert_(result.equals(expected))
+        self.assertTrue(result.equals(expected))
 
     def test_dataframe_constructor(self):
         multi = DataFrame(np.random.randn(4, 4),
@@ -2075,13 +2075,17 @@ Thur,Lunch,Yes,51.51,17"""
         # GH 4060
         idx = MultiIndex.from_arrays(([1, 2, 3, 1, 2 ,3], [1, 1, 1, 1, 2, 2]))
 
-        expected = Index([False, False, False, True, False, False])
-        tm.assert_index_equal(idx.duplicated(), expected)
+        expected = np.array([False, False, False, True, False, False], dtype=bool)
+        duplicated = idx.duplicated()
+        tm.assert_numpy_array_equal(duplicated, expected)
+        self.assertTrue(duplicated.dtype == bool)
         expected = MultiIndex.from_arrays(([1, 2, 3, 2 ,3], [1, 1, 1, 2, 2]))
         tm.assert_index_equal(idx.drop_duplicates(), expected)
 
-        expected = Index([True, False, False, False, False, False])
-        tm.assert_index_equal(idx.duplicated(take_last=True), expected)
+        expected = np.array([True, False, False, False, False, False])
+        duplicated = idx.duplicated(take_last=True)
+        tm.assert_numpy_array_equal(duplicated, expected)
+        self.assertTrue(duplicated.dtype == bool)
         expected = MultiIndex.from_arrays(([2, 3, 1, 2 ,3], [1, 1, 1, 2, 2]))
         tm.assert_index_equal(idx.drop_duplicates(take_last=True), expected)
 
@@ -2256,6 +2260,15 @@ Thur,Lunch,Yes,51.51,17"""
         self.assertTrue(df.index.get_level_values(0).equals(idx1))
         self.assertTrue(df.index.get_level_values(1).equals(idx2))
         self.assertTrue(df.index.get_level_values(2).equals(idx3))
+
+    def test_repeat(self):
+        # GH 9361
+        # fixed by # GH 7891
+        m_idx = pd.MultiIndex.from_tuples([(1, 2), (3, 4),
+                                           (5, 6), (7, 8)])
+        data = ['a', 'b', 'c', 'd']
+        m_df = pd.Series(data, index=m_idx)
+        assert m_df.repeat(3).shape == (3 * len(data),)
 
 
 if __name__ == '__main__':
