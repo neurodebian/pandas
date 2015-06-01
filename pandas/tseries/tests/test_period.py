@@ -226,14 +226,27 @@ class TestPeriodProperties(tm.TestCase):
 
         i1 = Period(date(2007, 1, 1), freq='M')
         i2 = Period(datetime(2007, 1, 1), freq='M')
+        i3 = Period(np.datetime64('2007-01-01'), freq='M')
+        i4 = Period(np.datetime64('2007-01-01 00:00:00Z'), freq='M')
+        i5 = Period(np.datetime64('2007-01-01 00:00:00.000Z'), freq='M')
         self.assertEqual(i1, i2)
+        self.assertEqual(i1, i3)
+        self.assertEqual(i1, i4)
+        self.assertEqual(i1, i5)
 
         i1 = Period('2007-01-01 09:00:00.001')
         expected = Period(datetime(2007, 1, 1, 9, 0, 0, 1000), freq='L')
         self.assertEqual(i1, expected)
 
+        expected = Period(np.datetime64('2007-01-01 09:00:00.001Z'), freq='L')
+        self.assertEqual(i1, expected)
+
         i1 = Period('2007-01-01 09:00:00.00101')
         expected = Period(datetime(2007, 1, 1, 9, 0, 0, 1010), freq='U')
+        self.assertEqual(i1, expected)
+
+        expected = Period(np.datetime64('2007-01-01 09:00:00.00101Z'),
+                          freq='U')
         self.assertEqual(i1, expected)
 
         self.assertRaises(ValueError, Period, ordinal=200701)
@@ -434,7 +447,7 @@ class TestPeriodProperties(tm.TestCase):
         assert_equal((w_date - 1).week, 52)
         assert_equal(w_date.days_in_month, 31)
         assert_equal(Period(freq='WK', year=2012, month=2, day=1).days_in_month, 29)
-        
+
     def test_properties_daily(self):
         # Test properties on Periods with daily frequency.
         b_date = Period(freq='B', year=2007, month=1, day=1)
@@ -2105,6 +2118,7 @@ class TestPeriodIndex(tm.TestCase):
         for idx in [didx, pidx]:
             df = DataFrame(dict(units=[100 + i for i in range(10)]), index=idx)
             empty = DataFrame(index=idx.__class__([], freq='D'), columns=['units'])
+            empty['units'] = empty['units'].astype('int64')
 
             tm.assert_frame_equal(df['2013/09/01':'2013/09/30'], empty)
             tm.assert_frame_equal(df['2013/09/30':'2013/10/02'], df.iloc[:2])

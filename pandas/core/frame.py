@@ -66,7 +66,7 @@ from pandas.core.config import get_option
 # Docstring templates
 
 _shared_doc_kwargs = dict(axes='index, columns', klass='DataFrame',
-                          axes_single_arg="{0,1,'index','columns'}")
+                          axes_single_arg="{0, 1, 'index', 'columns'}")
 
 _numeric_only_doc = """numeric_only : boolean, default None
     Include only float, int, boolean data. If None, will attempt to use
@@ -191,6 +191,11 @@ class DataFrame(NDFrame):
 
     _constructor_sliced = Series
 
+    @property
+    def _constructor_expanddim(self):
+        from pandas.core.panel import Panel
+        return Panel
+
     def __init__(self, data=None, index=None, columns=None, dtype=None,
                  copy=False):
         if data is None:
@@ -260,8 +265,7 @@ class DataFrame(NDFrame):
                     mgr = self._init_ndarray(data, index, columns, dtype=dtype,
                                              copy=copy)
             else:
-                mgr = self._init_ndarray(data, index, columns, dtype=dtype,
-                                         copy=copy)
+                mgr = self._init_dict({}, index, columns, dtype=dtype)
         elif isinstance(data, collections.Iterator):
             raise TypeError("data argument can't be an iterator")
         else:
@@ -794,10 +798,7 @@ class DataFrame(NDFrame):
                 return cls()
 
             try:
-                if compat.PY3:
-                    first_row = next(data)
-                else:
-                    first_row = next(data)
+                first_row = next(data)
             except StopIteration:
                 return cls(index=index, columns=columns)
 
@@ -1064,8 +1065,6 @@ class DataFrame(NDFrame):
         -------
         panel : Panel
         """
-        from pandas.core.panel import Panel
-
         # only support this kind for now
         if (not isinstance(self.index, MultiIndex) or  # pragma: no cover
                 len(self.index.levels) != 2):
@@ -1103,7 +1102,7 @@ class DataFrame(NDFrame):
                                               shape=shape,
                                               ref_items=selfsorted.columns)
 
-        return Panel(new_mgr)
+        return self._constructor_expanddim(new_mgr)
 
     to_wide = deprecate('to_wide', to_panel)
 
@@ -1244,6 +1243,9 @@ class DataFrame(NDFrame):
         >>> writer.save()
         """
         from pandas.io.excel import ExcelWriter
+        if self.columns.nlevels > 1:
+            raise NotImplementedError("Writing as Excel with a MultiIndex is "
+                                      "not yet implemented.")
 
         need_save = False
         if encoding == None:
@@ -1738,17 +1740,19 @@ class DataFrame(NDFrame):
                 lab_slice = slice(label[0], label[-1])
                 return self.ix[:, lab_slice]
             else:
-                label = self.columns[i]
                 if isinstance(label, Index):
                     return self.take(i, axis=1, convert=True)
+
+                index_len = len(self.index)
 
                 # if the values returned are not the same length
                 # as the index (iow a not found value), iget returns
                 # a 0-len ndarray. This is effectively catching
                 # a numpy error (as numpy should really raise)
                 values = self._data.iget(i)
-                if not len(values):
-                    values = np.array([np.nan] * len(self.index), dtype=object)
+
+                if index_len and not len(values):
+                    values = np.array([np.nan] * index_len, dtype=object)
                 result = self._constructor_sliced.from_array(
                     values, index=self.index,
                     name=label, fastpath=True)
@@ -1835,7 +1839,7 @@ class DataFrame(NDFrame):
                 result.columns = result_columns
             else:
                 new_values = self.values[:, loc]
-                result = DataFrame(new_values, index=self.index,
+                result = self._constructor(new_values, index=self.index,
                                    columns=result_columns).__finalize__(self)
             if len(result.columns) == 1:
                 top = result.columns[0]
@@ -1843,7 +1847,7 @@ class DataFrame(NDFrame):
                         (type(top) == tuple and top[0] == '')):
                     result = result['']
                     if isinstance(result, Series):
-                        result = Series(result, index=self.index, name=key)
+                        result = self._constructor_sliced(result, index=self.index, name=key)
 
             result._set_is_copy(self)
             return result
@@ -2244,10 +2248,11 @@ class DataFrame(NDFrame):
         Notes
         -----
         Since ``kwargs`` is a dictionary, the order of your
-        arguments may not be preserved, and so the order of the
-        new columns is not well defined. Assigning multiple
-        columns within the same ``assign`` is possible, but you cannot
-        reference other columns created within the same ``assign`` call.
+        arguments may not be preserved. The make things predicatable,
+        the columns are inserted in alphabetical order, at the end of
+        your DataFrame. Assigning multiple columns within the same
+        ``assign`` is possible, but you cannot reference other columns
+        created within the same ``assign`` call.
 
         Examples
         --------
@@ -2296,7 +2301,7 @@ class DataFrame(NDFrame):
                 results[k] = v
 
         # ... and then assign
-        for k, v in results.items():
+        for k, v in sorted(results.items()):
             data[k] = v
 
         return data
@@ -2511,6 +2516,19 @@ class DataFrame(NDFrame):
     def rename(self, index=None, columns=None, **kwargs):
         return super(DataFrame, self).rename(index=index, columns=columns,
                                              **kwargs)
+
+    @Appender(_shared_docs['fillna'] % _shared_doc_kwargs)
+    def fillna(self, value=None, method=None, axis=None, inplace=False,
+               limit=None, downcast=None, **kwargs):
+        return super(DataFrame, self).fillna(value=value, method=method,
+                                             axis=axis, inplace=inplace,
+                                             limit=limit, downcast=downcast,
+                                             **kwargs)
+
+    @Appender(_shared_docs['shift'] % _shared_doc_kwargs)
+    def shift(self, periods=1, freq=None, axis=0, **kwargs):
+        return super(DataFrame, self).shift(periods=periods, freq=freq,
+                                            axis=axis, **kwargs)
 
     def set_index(self, keys, drop=True, append=False, inplace=False,
                   verify_integrity=False):
@@ -3583,7 +3601,7 @@ class DataFrame(NDFrame):
     #----------------------------------------------------------------------
     # Time series-related
 
-    def diff(self, periods=1):
+    def diff(self, periods=1, axis=0):
         """
         1st discrete difference of object
 
@@ -3591,12 +3609,14 @@ class DataFrame(NDFrame):
         ----------
         periods : int, default 1
             Periods to shift for forming difference
+        axis : {0 or 'index', 1 or 'columns'}, default 0
 
         Returns
         -------
         diffed : DataFrame
         """
-        new_data = self._data.diff(n=periods)
+        bm_axis = self._get_block_manager_axis(axis)
+        new_data = self._data.diff(n=periods, axis=bm_axis)
         return self._constructor(new_data)
 
     #----------------------------------------------------------------------
@@ -4411,9 +4431,15 @@ class DataFrame(NDFrame):
 
     def mode(self, axis=0, numeric_only=False):
         """
-        Gets the mode of each element along the axis selected. Empty if nothing
+        Gets the mode(s) of each element along the axis selected. Empty if nothing
         has 2+ occurrences. Adds a row for each mode per label, fills in gaps
         with nan.
+
+        Note that there could be multiple values returned for the selected
+        axis (when more than one item share the maximum frequency), which is the
+        reason why a dataframe is returned. If you want to impute missing values
+        with the mode in a dataframe ``df``, you can just do this:
+        ``df.fillna(df.mode().iloc[0])``
 
         Parameters
         ----------
@@ -4426,6 +4452,14 @@ class DataFrame(NDFrame):
         Returns
         -------
         modes : DataFrame (sorted)
+
+        Examples
+        --------
+        >>> df = pd.DataFrame({'A': [1, 2, 1, 2, 1, 2, 3]})
+        >>> df.mode()
+           A
+        0  1
+        1  2
         """
         data = self if not numeric_only else self._get_numeric_data()
         f = lambda s: s.mode()

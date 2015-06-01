@@ -158,6 +158,7 @@ Top-level dealing with datetimelike
    bdate_range
    period_range
    timedelta_range
+   infer_freq
 
 Top-level evaluation
 ~~~~~~~~~~~~~~~~~~~~
@@ -390,6 +391,7 @@ Reindexing / Selection / Label manipulation
    Series.reindex_like
    Series.rename
    Series.reset_index
+   Series.sample
    Series.select
    Series.take
    Series.tail
@@ -490,6 +492,7 @@ These can be accessed like ``Series.dt.<property>``.
    Series.dt.to_pydatetime
    Series.dt.tz_localize
    Series.dt.tz_convert
+   Series.dt.normalize
 
 **Timedelta Properties**
 
@@ -517,12 +520,11 @@ String handling
 strings and apply several methods to it. These can be acccessed like
 ``Series.str.<function/property>``.
 
-.. currentmodule:: pandas.core.strings
-
 .. autosummary::
    :toctree: generated/
    :template: autosummary/accessor_method.rst
 
+   Series.str.capitalize
    Series.str.cat
    Series.str.center
    Series.str.contains
@@ -534,25 +536,33 @@ strings and apply several methods to it. These can be acccessed like
    Series.str.find
    Series.str.findall
    Series.str.get
+   Series.str.index
    Series.str.join
    Series.str.len
    Series.str.ljust
    Series.str.lower
    Series.str.lstrip
    Series.str.match
+   Series.str.normalize
    Series.str.pad
+   Series.str.partition
    Series.str.repeat
    Series.str.replace
    Series.str.rfind
+   Series.str.rindex
    Series.str.rjust
+   Series.str.rpartition
    Series.str.rstrip
    Series.str.slice
    Series.str.slice_replace
    Series.str.split
    Series.str.startswith
    Series.str.strip
+   Series.str.swapcase
    Series.str.title
+   Series.str.translate
    Series.str.upper
+   Series.str.wrap
    Series.str.zfill
    Series.str.isalnum
    Series.str.isalpha
@@ -823,6 +833,7 @@ Reindexing / Selection / Label manipulation
    DataFrame.reindex_like
    DataFrame.rename
    DataFrame.reset_index
+   DataFrame.sample
    DataFrame.select
    DataFrame.set_index
    DataFrame.tail
@@ -863,6 +874,7 @@ Combining / joining / merging
    :toctree: generated/
 
    DataFrame.append
+   DataFrame.assign
    DataFrame.join
    DataFrame.merge
    DataFrame.update
@@ -1070,6 +1082,7 @@ Reindexing / Selection / Label manipulation
    Panel.reindex_axis
    Panel.reindex_like
    Panel.rename
+   Panel.sample
    Panel.select
    Panel.take
    Panel.truncate
@@ -1290,6 +1303,34 @@ Selecting
    Index.slice_indexer
    Index.slice_locs
 
+.. _api.categoricalindex:
+
+CategoricalIndex
+----------------
+
+.. autosummary::
+   :toctree: generated/
+
+   CategoricalIndex
+
+Categorical Components
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+   :toctree: generated/
+
+   CategoricalIndex.codes
+   CategoricalIndex.categories
+   CategoricalIndex.ordered
+   CategoricalIndex.rename_categories
+   CategoricalIndex.reorder_categories
+   CategoricalIndex.add_categories
+   CategoricalIndex.remove_categories
+   CategoricalIndex.remove_unused_categories
+   CategoricalIndex.set_categories
+   CategoricalIndex.as_ordered
+   CategoricalIndex.as_unordered
+
 .. _api.datetimeindex:
 
 DatetimeIndex
@@ -1331,6 +1372,7 @@ Time/Date Components
    DatetimeIndex.is_quarter_end
    DatetimeIndex.is_year_start
    DatetimeIndex.is_year_end
+   DatetimeIndex.inferred_freq
 
 Selecting
 ~~~~~~~~~
@@ -1381,6 +1423,7 @@ Components
    TimedeltaIndex.microseconds
    TimedeltaIndex.nanoseconds
    TimedeltaIndex.components
+   TimedeltaIndex.inferred_freq
 
 Conversion
 ~~~~~~~~~~
@@ -1520,230 +1563,3 @@ Working with options
    get_option
    set_option
    option_context
-
-
-..
-    HACK - see github issue #4539. To ensure old links remain valid, include
-    here the autosummaries with previous currentmodules as a comment and add
-    them to a hidden toctree (to avoid warnings):
-
-.. toctree::
-   :hidden:
-
-   generated/pandas.core.common.isnull
-   generated/pandas.core.common.notnull
-   generated/pandas.core.reshape.get_dummies
-   generated/pandas.io.clipboard.read_clipboard
-   generated/pandas.io.excel.ExcelFile.parse
-   generated/pandas.io.excel.read_excel
-   generated/pandas.io.html.read_html
-   generated/pandas.io.json.read_json
-   generated/pandas.io.parsers.read_csv
-   generated/pandas.io.parsers.read_fwf
-   generated/pandas.io.parsers.read_table
-   generated/pandas.io.pickle.read_pickle
-   generated/pandas.io.pytables.HDFStore.append
-   generated/pandas.io.pytables.HDFStore.get
-   generated/pandas.io.pytables.HDFStore.put
-   generated/pandas.io.pytables.HDFStore.select
-   generated/pandas.io.pytables.read_hdf
-   generated/pandas.io.sql.read_sql
-   generated/pandas.io.sql.read_frame
-   generated/pandas.io.sql.write_frame
-   generated/pandas.io.stata.read_stata
-   generated/pandas.stats.moments.ewma
-   generated/pandas.stats.moments.ewmcorr
-   generated/pandas.stats.moments.ewmcov
-   generated/pandas.stats.moments.ewmstd
-   generated/pandas.stats.moments.ewmvar
-   generated/pandas.stats.moments.expanding_apply
-   generated/pandas.stats.moments.expanding_corr
-   generated/pandas.stats.moments.expanding_count
-   generated/pandas.stats.moments.expanding_cov
-   generated/pandas.stats.moments.expanding_kurt
-   generated/pandas.stats.moments.expanding_mean
-   generated/pandas.stats.moments.expanding_median
-   generated/pandas.stats.moments.expanding_quantile
-   generated/pandas.stats.moments.expanding_skew
-   generated/pandas.stats.moments.expanding_std
-   generated/pandas.stats.moments.expanding_sum
-   generated/pandas.stats.moments.expanding_var
-   generated/pandas.stats.moments.rolling_apply
-   generated/pandas.stats.moments.rolling_corr
-   generated/pandas.stats.moments.rolling_count
-   generated/pandas.stats.moments.rolling_cov
-   generated/pandas.stats.moments.rolling_kurt
-   generated/pandas.stats.moments.rolling_mean
-   generated/pandas.stats.moments.rolling_median
-   generated/pandas.stats.moments.rolling_quantile
-   generated/pandas.stats.moments.rolling_skew
-   generated/pandas.stats.moments.rolling_std
-   generated/pandas.stats.moments.rolling_sum
-   generated/pandas.stats.moments.rolling_var
-   generated/pandas.tools.merge.concat
-   generated/pandas.tools.merge.merge
-   generated/pandas.tools.pivot.pivot_table
-   generated/pandas.tseries.tools.to_datetime
-
-..
-    .. currentmodule:: pandas.io.pickle
-
-    .. autosummary::
-       :toctree: generated/
-
-       read_pickle
-
-    .. currentmodule:: pandas.io.parsers
-
-    .. autosummary::
-       :toctree: generated/
-
-       read_table
-       read_csv
-       read_fwf
-
-    .. currentmodule:: pandas.io.clipboard
-
-    .. autosummary::
-       :toctree: generated/
-
-       read_clipboard
-
-    .. currentmodule:: pandas.io.excel
-
-    .. autosummary::
-       :toctree: generated/
-
-       read_excel
-       ExcelFile.parse
-
-    .. currentmodule:: pandas.io.json
-
-    .. autosummary::
-       :toctree: generated/
-
-       read_json
-
-    .. currentmodule:: pandas.io.html
-
-    .. autosummary::
-       :toctree: generated/
-
-       read_html
-
-    .. currentmodule:: pandas.io.pytables
-
-    .. autosummary::
-       :toctree: generated/
-
-       read_hdf
-       HDFStore.put
-       HDFStore.append
-       HDFStore.get
-       HDFStore.select
-
-    .. currentmodule:: pandas.io.sql
-
-    .. autosummary::
-       :toctree: generated/
-
-       read_sql
-       read_frame
-       write_frame
-
-    .. currentmodule:: pandas.io.stata
-
-    .. autosummary::
-       :toctree: generated/
-
-       read_stata
-       StataReader.data
-       StataReader.data_label
-       StataReader.value_labels
-       StataReader.variable_labels
-       StataWriter.write_file
-
-    .. currentmodule:: pandas.tools.pivot
-
-    .. autosummary::
-       :toctree: generated/
-
-       pivot_table
-
-    .. currentmodule:: pandas.tools.merge
-
-    .. autosummary::
-       :toctree: generated/
-
-       merge
-       concat
-
-    .. currentmodule:: pandas.core.reshape
-
-    .. autosummary::
-       :toctree: generated/
-
-       get_dummies
-
-    .. currentmodule:: pandas.core.common
-
-    .. autosummary::
-       :toctree: generated/
-
-       isnull
-       notnull
-
-    .. currentmodule:: pandas.tseries.tools
-
-    .. autosummary::
-       :toctree: generated/
-
-       to_datetime
-
-
-    .. currentmodule:: pandas.stats.moments
-
-    .. autosummary::
-       :toctree: generated/
-
-       rolling_count
-       rolling_sum
-       rolling_mean
-       rolling_median
-       rolling_var
-       rolling_std
-       rolling_corr
-       rolling_cov
-       rolling_skew
-       rolling_kurt
-       rolling_apply
-       rolling_quantile
-
-
-    .. currentmodule:: pandas.stats.moments
-
-    .. autosummary::
-       :toctree: generated/
-
-       expanding_count
-       expanding_sum
-       expanding_mean
-       expanding_median
-       expanding_var
-       expanding_std
-       expanding_corr
-       expanding_cov
-       expanding_skew
-       expanding_kurt
-       expanding_apply
-       expanding_quantile
-
-
-    .. autosummary::
-       :toctree: generated/
-
-       ewma
-       ewmstd
-       ewmvar
-       ewmcorr
-       ewmcov

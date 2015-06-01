@@ -140,7 +140,7 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, Int64Index):
                 copy=False, name=None,
                 closed=None, verify_integrity=True, **kwargs):
 
-        if isinstance(data, TimedeltaIndex) and freq is None:
+        if isinstance(data, TimedeltaIndex) and freq is None and name is None:
             if copy:
                 data = data.copy()
             return data
@@ -273,10 +273,6 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, Int64Index):
     def _formatter_func(self):
         from pandas.core.format import _get_format_timedelta64
         return _get_format_timedelta64(self, box=True)
-
-    def _format_footer(self):
-        tagline = 'Length: %d, Freq: %s'
-        return tagline % (len(self), self.freqstr)
 
     def __setstate__(self, state):
         """Necessary for making this object picklable"""
@@ -927,7 +923,8 @@ def _generate_regular_range(start, end, periods, offset):
         e = Timedelta(end).value + stride
         b = e - periods * stride
     else:
-        raise NotImplementedError
+        raise ValueError("at least 'start' or 'end' should be specified "
+                         "if a 'period' is given.")
 
     data = np.arange(b, e, stride, dtype=np.int64)
     data = TimedeltaIndex._simple_new(data, None)

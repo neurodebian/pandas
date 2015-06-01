@@ -34,7 +34,7 @@ from pandas import lib
 _shared_doc_kwargs = dict(
     axes='items, major_axis, minor_axis',
     klass="Panel",
-    axes_single_arg="{0,1,2,'items','major_axis','minor_axis'}")
+    axes_single_arg="{0, 1, 2, 'items', 'major_axis', 'minor_axis'}")
 _shared_doc_kwargs['args_transpose'] = ("three positional arguments: each one"
                                         "of\n        %s" %
                                         _shared_doc_kwargs['axes_single_arg'])
@@ -1161,6 +1161,14 @@ class Panel(NDFrame):
     def transpose(self, *args, **kwargs):
         return super(Panel, self).transpose(*args, **kwargs)
 
+    @Appender(_shared_docs['fillna'] % _shared_doc_kwargs)
+    def fillna(self, value=None, method=None, axis=None, inplace=False,
+               limit=None, downcast=None, **kwargs):
+        return super(Panel, self).fillna(value=value, method=method,
+                                         axis=axis, inplace=inplace,
+                                         limit=limit, downcast=downcast,
+                                         **kwargs)
+
     def count(self, axis='major'):
         """
         Return number of observations over requested axis.
@@ -1184,13 +1192,17 @@ class Panel(NDFrame):
     @deprecate_kwarg(old_arg_name='lags', new_arg_name='periods')
     def shift(self, periods=1, freq=None, axis='major'):
         """
-        Shift major or minor axis by specified number of leads/lags. Drops
-        periods right now compared with DataFrame.shift
+        Shift index by desired number of periods with an optional time freq.
+        The shifted data will not include the dropped periods and the
+        shifted axis will be smaller than the original. This is different
+        from the behavior of DataFrame.shift()
 
         Parameters
         ----------
-        lags : int
-        axis : {'major', 'minor'}
+        periods : int
+            Number of periods to move, can be positive or negative
+        freq : DateOffset, timedelta, or time rule string, optional
+        axis : {'items', 'major', 'minor'} or {0, 1, 2}
 
         Returns
         -------
@@ -1198,9 +1210,6 @@ class Panel(NDFrame):
         """
         if freq:
             return self.tshift(periods, freq, axis=axis)
-
-        if axis == 'items':
-            raise ValueError('Invalid axis')
 
         return super(Panel, self).slice_shift(periods, axis=axis)
 

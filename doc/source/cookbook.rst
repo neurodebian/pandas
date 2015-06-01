@@ -17,7 +17,12 @@
    np.random.seed(123456)
 
    pd.options.display.max_rows=15
-   pd.options.display.mpl_style='default'
+
+   import matplotlib
+   try:
+      matplotlib.style.use('ggplot')
+   except AttributeError:
+      pd.options.display.mpl_style = 'default'
 
    np.set_printoptions(precision=4, suppress=True)
 
@@ -1000,6 +1005,9 @@ The :ref:`HDFStores <io.hdf5>` docs
 
 `Merging on-disk tables with millions of rows
 <http://stackoverflow.com/questions/14614512/merging-two-tables-with-millions-of-rows-in-python/14617925#14617925>`__
+
+`Avoiding inconsistencies when writing to a store from multiple processes/threads
+<http://stackoverflow.com/a/29014295/2858145>`__
 
 De-duplicating a large store by chunks, essentially a recursive reduction operation. Shows a function for taking in data from
 csv file and creating a store by chunks, with date parsing as well.

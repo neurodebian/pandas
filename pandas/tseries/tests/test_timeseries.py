@@ -288,7 +288,7 @@ class TestTimeSeriesDuplicates(tm.TestCase):
         self.assertRaises(KeyError, df.__getitem__, df.index[2],)
 
     def test_recreate_from_data(self):
-        freqs = ['M', 'Q', 'A', 'D', 'B', 'T', 'S', 'L', 'U', 'H', 'N', 'C']
+        freqs = ['M', 'Q', 'A', 'D', 'B', 'BH', 'T', 'S', 'L', 'U', 'H', 'N', 'C']
 
         for f in freqs:
             org = DatetimeIndex(start='2001/02/01 09:00', freq=f, periods=1)
@@ -1130,6 +1130,15 @@ class TestTimeSeries(tm.TestCase):
 
         result = ts[list(ts.index[5:10])]
         tm.assert_series_equal(result, expected)
+
+    def test_asfreq_keep_index_name(self):
+        # GH #9854
+        index_name = 'bar'
+        index = pd.date_range('20130101',periods=20,name=index_name)
+        df = pd.DataFrame([x for x in range(20)],columns=['foo'],index=index)
+
+        tm.assert_equal(index_name, df.index.name)
+        tm.assert_equal(index_name, df.asfreq('10D').index.name)
 
     def test_promote_datetime_date(self):
         rng = date_range('1/1/2000', periods=20)
@@ -3337,6 +3346,29 @@ class TestSeriesDatetime64(tm.TestCase):
 
         ex_first = Timestamp('2000-01-03')
         self.assertEqual(rng[0], ex_first)
+
+    def test_date_range_businesshour(self):
+        idx = DatetimeIndex(['2014-07-04 09:00', '2014-07-04 10:00', '2014-07-04 11:00',
+                             '2014-07-04 12:00', '2014-07-04 13:00', '2014-07-04 14:00',
+                             '2014-07-04 15:00', '2014-07-04 16:00'], freq='BH')
+        rng = date_range('2014-07-04 09:00', '2014-07-04 16:00', freq='BH')
+        tm.assert_index_equal(idx, rng)
+
+        idx = DatetimeIndex(['2014-07-04 16:00', '2014-07-07 09:00'], freq='BH')
+        rng = date_range('2014-07-04 16:00', '2014-07-07 09:00', freq='BH')
+        tm.assert_index_equal(idx, rng)
+
+        idx = DatetimeIndex(['2014-07-04 09:00', '2014-07-04 10:00', '2014-07-04 11:00',
+                             '2014-07-04 12:00', '2014-07-04 13:00', '2014-07-04 14:00',
+                             '2014-07-04 15:00', '2014-07-04 16:00',
+                             '2014-07-07 09:00', '2014-07-07 10:00', '2014-07-07 11:00',
+                             '2014-07-07 12:00', '2014-07-07 13:00', '2014-07-07 14:00',
+                             '2014-07-07 15:00', '2014-07-07 16:00',
+                             '2014-07-08 09:00', '2014-07-08 10:00', '2014-07-08 11:00',
+                             '2014-07-08 12:00', '2014-07-08 13:00', '2014-07-08 14:00',
+                             '2014-07-08 15:00', '2014-07-08 16:00'], freq='BH')
+        rng = date_range('2014-07-04 09:00', '2014-07-08 16:00', freq='BH')
+        tm.assert_index_equal(idx, rng)
 
     def test_string_index_series_name_converted(self):
         # #1644

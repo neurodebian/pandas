@@ -21,7 +21,8 @@ from pandas.compat import map, zip, lrange, string_types, isidentifier, lmap
 from pandas.core.common import (isnull, notnull, is_list_like,
                                 _values_from_object, _maybe_promote,
                                 _maybe_box_datetimelike, ABCSeries,
-                                SettingWithCopyError, SettingWithCopyWarning)
+                                SettingWithCopyError, SettingWithCopyWarning,
+                                AbstractMethodError)
 import pandas.core.nanops as nanops
 from pandas.util.decorators import Appender, Substitution, deprecate_kwarg
 from pandas.core import config
@@ -137,7 +138,7 @@ class NDFrame(PandasObject):
 
     @property
     def _constructor(self):
-        raise NotImplementedError
+        raise AbstractMethodError(self)
 
     def __unicode__(self):
         # unicode representation based upon iterating over self
@@ -145,13 +146,17 @@ class NDFrame(PandasObject):
         prepr = '[%s]' % ','.join(map(com.pprint_thing, self))
         return '%s(%s)' % (self.__class__.__name__, prepr)
 
-    def _local_dir(self):
+    def _dir_additions(self):
         """ add the string-like attributes from the info_axis """
-        return [c for c in self._info_axis
-                if isinstance(c, string_types) and isidentifier(c)]
+        return set([c for c in self._info_axis
+                if isinstance(c, string_types) and isidentifier(c)])
 
     @property
     def _constructor_sliced(self):
+        raise AbstractMethodError(self)
+
+    @property
+    def _constructor_expanddim(self):
         raise NotImplementedError
 
     #----------------------------------------------------------------------
@@ -1100,7 +1105,7 @@ class NDFrame(PandasObject):
         return lower
 
     def _box_item_values(self, key, values):
-        raise NotImplementedError
+        raise AbstractMethodError(self)
 
     def _maybe_cache_changed(self, item, value):
         """
@@ -1179,6 +1184,7 @@ class NDFrame(PandasObject):
         """
         axis = self._get_block_manager_axis(axis)
         result = self._constructor(self._data.get_slice(slobj, axis=axis))
+        result = result.__finalize__(self)
 
         # this could be a view
         # but only in a single-dtyped view slicable case
@@ -1556,7 +1562,7 @@ class NDFrame(PandasObject):
 
         return self.reindex(**d)
 
-    def drop(self, labels, axis=0, level=None, inplace=False):
+    def drop(self, labels, axis=0, level=None, inplace=False, errors='raise'):
         """
         Return new object with labels in requested axis removed
 
@@ -1568,6 +1574,8 @@ class NDFrame(PandasObject):
             For MultiIndex
         inplace : bool, default False
             If True, do operation inplace and return None.
+        errors : {'ignore', 'raise'}, default 'raise'
+            If 'ignore', suppress error and existing labels are dropped.
 
         Returns
         -------
@@ -1581,9 +1589,9 @@ class NDFrame(PandasObject):
             if level is not None:
                 if not isinstance(axis, MultiIndex):
                     raise AssertionError('axis must be a MultiIndex')
-                new_axis = axis.drop(labels, level=level)
+                new_axis = axis.drop(labels, level=level, errors=errors)
             else:
-                new_axis = axis.drop(labels)
+                new_axis = axis.drop(labels, errors=errors)
             dropped = self.reindex(**{axis_name: new_axis})
             try:
                 dropped.axes[axis_].set_names(axis.names, inplace=True)
@@ -1940,6 +1948,103 @@ class NDFrame(PandasObject):
             return self
         return self.iloc[-n:]
 
+
+    def sample(self, n=None, frac=None, replace=False, weights=None, random_state=None, axis=None):
+        """
+        Returns a random sample of items from an axis of object.
+
+        Parameters
+        ----------
+        n : int, optional
+            Number of items from axis to return. Cannot be used with `frac`.
+            Default = 1 if `frac` = None.
+        frac : float, optional
+            Fraction of axis items to return. Cannot be used with `n`.
+        replace : boolean, optional
+            Sample with or without replacement. Default = False.
+        weights : str or ndarray-like, optional
+            Default 'None' results in equal probability weighting.
+            If called on a DataFrame, will accept the name of a column
+            when axis = 0.
+            Weights must be same length as axis being sampled.
+            If weights do not sum to 1, they will be normalized to sum to 1.
+            Missing values in the weights column will be treated as zero.
+            inf and -inf values not allowed.
+        random_state : int or numpy.random.RandomState, optional
+            Seed for the random number generator (if int), or numpy RandomState
+            object.
+        axis : int or string, optional
+            Axis to sample. Accepts axis number or name. Default is stat axis
+            for given data type (0 for Series and DataFrames, 1 for Panels).
+
+        Returns
+        -------
+        Same type as caller.
+        """
+
+        if axis is None:
+            axis = self._stat_axis_number
+
+        axis = self._get_axis_number(axis)
+        axis_length = self.shape[axis]
+
+        # Process random_state argument
+        rs = com._random_state(random_state)
+
+        # Check weights for compliance
+        if weights is not None:
+
+            # Strings acceptable if a dataframe and axis = 0
+            if isinstance(weights, string_types):
+                if isinstance(self, pd.DataFrame):
+                    if axis == 0:
+                        try:
+                            weights = self[weights]
+                        except KeyError:
+                            raise KeyError("String passed to weights not a valid column")
+                    else:
+                        raise ValueError("Strings can only be passed to weights when sampling from rows on a DataFrame")
+                else:
+                    raise ValueError("Strings cannot be passed as weights when sampling from a Series or Panel.")
+
+            weights = pd.Series(weights, dtype='float64')
+
+            if len(weights) != axis_length:
+                raise ValueError("Weights and axis to be sampled must be of same length")
+
+            if (weights == np.inf).any() or (weights == -np.inf).any():
+                raise ValueError("weight vector may not include `inf` values")
+
+            if (weights < 0).any():
+                raise ValueError("weight vector many not include negative values")
+
+            # If has nan, set to zero.
+            weights = weights.fillna(0)
+
+            # Renormalize if don't sum to 1
+            if weights.sum() != 1:
+                weights = weights / weights.sum()
+
+            weights = weights.values
+
+        # If no frac or n, default to n=1.
+        if n is None and frac is None:
+            n = 1
+        elif n is not None and frac is None and n % 1 != 0:
+            raise ValueError("Only integers accepted as `n` values")
+        elif n is None and frac is not None:
+            n = int(round(frac * axis_length))
+        elif n is not None and frac is not None:
+            raise ValueError('Please enter a value for `frac` OR `n`, not both')
+
+        # Check for negative sizes
+        if n < 0:
+            raise ValueError("A negative number of rows requested. Please provide positive value.")
+
+        locs = rs.choice(axis_length, size=n, replace=replace, p=weights)
+        return self.take(locs, axis=axis)
+
+
     #----------------------------------------------------------------------
     # Attribute access
 
@@ -2260,19 +2365,23 @@ class NDFrame(PandasObject):
 
         Parameters
         ----------
-        convert_dates : if True, attempt to soft convert dates, if 'coerce',
-            force conversion (and non-convertibles get NaT)
-        convert_numeric : if True attempt to coerce to numbers (including
-            strings), non-convertibles get NaN
-        convert_timedeltas : if True, attempt to soft convert timedeltas, if 'coerce',
-            force conversion (and non-convertibles get NaT)
-        copy : Boolean, if True, return copy even if no copy is necessary
-            (e.g. no conversion was done), default is True.
-            It is meant for internal use, not to be confused with `inplace` kw.
+        convert_dates : boolean, default True
+            If True, convert to date where possible. If 'coerce', force
+            conversion, with unconvertible values becoming NaT.
+        convert_numeric : boolean, default False
+            If True, attempt to coerce to numbers (including strings), with
+            unconvertible values becoming NaN.
+        convert_timedeltas : boolean, default True
+            If True, convert to timedelta where possible. If 'coerce', force
+            conversion, with unconvertible values becoming NaT.
+        copy : boolean, default True
+            If True, return a copy even if no copy is necessary (e.g. no
+            conversion was done). Note: This is meant for internal use, and
+            should not be confused with inplace.
 
         Returns
         -------
-        converted : asm as input object
+        converted : same as input object
         """
         return self._constructor(
             self._data.convert(convert_dates=convert_dates,
@@ -2283,8 +2392,7 @@ class NDFrame(PandasObject):
     #----------------------------------------------------------------------
     # Filling NA's
 
-    def fillna(self, value=None, method=None, axis=None, inplace=False,
-               limit=None, downcast=None):
+    _shared_docs['fillna'] = (
         """
         Fill NA/NaN values using the specified method
 
@@ -2299,15 +2407,18 @@ class NDFrame(PandasObject):
             values specifying which value to use for each index (for a Series) or
             column (for a DataFrame). (values not in the dict/Series/DataFrame will not be
             filled). This value cannot be a list.
-        axis : {0, 1}, default 0
-            * 0: fill column-by-column
-            * 1: fill row-by-row
+        axis : %(axes_single_arg)s
         inplace : boolean, default False
             If True, fill in place. Note: this will modify any
             other views on this object, (e.g. a no-copy slice for a column in a
             DataFrame).
         limit : int, default None
-            Maximum size gap to forward or backward fill
+            If method is specified, this is the maximum number of consecutive
+            NaN values to forward/backward fill. In other words, if there is
+            a gap with more than this number of consecutive NaNs, it will only
+            be partially filled. If method is not specified, this is the
+            maximum number of entries along the entire axis where NaNs will be
+            filled.
         downcast : dict, default is None
             a dict of item->dtype of what to downcast if possible,
             or the string 'infer' which will try to downcast to an appropriate
@@ -2319,8 +2430,13 @@ class NDFrame(PandasObject):
 
         Returns
         -------
-        filled : same type as caller
+        filled : %(klass)s
         """
+    )
+
+    @Appender(_shared_docs['fillna'] % _shared_doc_kwargs)
+    def fillna(self, value=None, method=None, axis=None, inplace=False,
+               limit=None, downcast=None):
         if isinstance(value, (list, tuple)):
             raise TypeError('"value" parameter must be a scalar or dict, but '
                             'you passed a "{0}"'.format(type(value).__name__))
@@ -2723,7 +2839,8 @@ class NDFrame(PandasObject):
         Examples
         --------
 
-        # Filling in NaNs:
+        Filling in NaNs
+
         >>> s = pd.Series([0, 1, np.nan, 3])
         >>> s.interpolate()
         0    0
@@ -2809,37 +2926,77 @@ class NDFrame(PandasObject):
         """
         return notnull(self).__finalize__(self)
 
-    def clip(self, lower=None, upper=None, out=None):
+    def clip(self, lower=None, upper=None, out=None, axis=None):
         """
         Trim values at input threshold(s)
 
         Parameters
         ----------
-        lower : float, default None
-        upper : float, default None
+        lower : float or array_like, default None
+        upper : float or array_like, default None
+        axis : int or string axis name, optional
+            Align object with lower and upper along the given axis.
 
         Returns
         -------
         clipped : Series
+
+        Examples
+        --------
+        >>> df
+          0         1
+        0  0.335232 -1.256177
+        1 -1.367855  0.746646
+        2  0.027753 -1.176076
+        3  0.230930 -0.679613
+        4  1.261967  0.570967
+        >>> df.clip(-1.0, 0.5)
+                  0         1
+        0  0.335232 -1.000000
+        1 -1.000000  0.500000
+        2  0.027753 -1.000000
+        3  0.230930 -0.679613
+        4  0.500000  0.500000
+        >>> t
+        0   -0.3
+        1   -0.2
+        2   -0.1
+        3    0.0
+        4    0.1
+        dtype: float64
+        >>> df.clip(t, t + 1, axis=0)
+                  0         1
+        0  0.335232 -0.300000
+        1 -0.200000  0.746646
+        2  0.027753 -0.100000
+        3  0.230930  0.000000
+        4  1.100000  0.570967
         """
         if out is not None:  # pragma: no cover
             raise Exception('out argument is not supported yet')
 
         # GH 2747 (arguments were reversed)
         if lower is not None and upper is not None:
-            lower, upper = min(lower, upper), max(lower, upper)
+            if lib.isscalar(lower) and lib.isscalar(upper):
+                lower, upper = min(lower, upper), max(lower, upper)
 
         result = self
         if lower is not None:
-            result = result.clip_lower(lower)
+            result = result.clip_lower(lower, axis)
         if upper is not None:
-            result = result.clip_upper(upper)
+            result = result.clip_upper(upper, axis)
 
         return result
 
-    def clip_upper(self, threshold):
+    def clip_upper(self, threshold, axis=None):
         """
-        Return copy of input with values above given value truncated
+        Return copy of input with values above given value(s) truncated
+
+        Parameters
+        ----------
+        threshold : float or array_like
+        axis : int or string axis name, optional
+            Align object with threshold along the given axis.
 
         See also
         --------
@@ -2849,14 +3006,21 @@ class NDFrame(PandasObject):
         -------
         clipped : same type as input
         """
-        if isnull(threshold):
+        if np.any(isnull(threshold)):
             raise ValueError("Cannot use an NA value as a clip threshold")
 
-        return self.where((self <= threshold) | isnull(self), threshold)
+        subset = self.le(threshold, axis=axis) | isnull(self)
+        return self.where(subset, threshold, axis=axis)
 
-    def clip_lower(self, threshold):
+    def clip_lower(self, threshold, axis=None):
         """
-        Return copy of the input with values below given value truncated
+        Return copy of the input with values below given value(s) truncated
+
+        Parameters
+        ----------
+        threshold : float or array_like
+        axis : int or string axis name, optional
+            Align object with threshold along the given axis.
 
         See also
         --------
@@ -2866,10 +3030,11 @@ class NDFrame(PandasObject):
         -------
         clipped : same type as input
         """
-        if isnull(threshold):
+        if np.any(isnull(threshold)):
             raise ValueError("Cannot use an NA value as a clip threshold")
 
-        return self.where((self >= threshold) | isnull(self), threshold)
+        subset = self.ge(threshold, axis=axis) | isnull(self)
+        return self.where(subset, threshold, axis=axis)
 
     def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
                 group_keys=True, squeeze=False):
@@ -2902,13 +3067,13 @@ class NDFrame(PandasObject):
 
         Examples
         --------
-        # DataFrame result
-        >>> data.groupby(func, axis=0).mean()
+        DataFrame results
 
-        # DataFrame result
+        >>> data.groupby(func, axis=0).mean()
         >>> data.groupby(['col1', 'col2'])['col3'].mean()
 
-        # DataFrame with hierarchical index
+        DataFrame with hierarchical index
+
         >>> data.groupby(['col1', 'col2']).mean()
 
         Returns
@@ -3050,7 +3215,8 @@ class NDFrame(PandasObject):
         """
         from pandas.tseries.frequencies import to_offset
         if not isinstance(self.index, DatetimeIndex):
-            raise NotImplementedError
+            raise NotImplementedError("'first' only supports a DatetimeIndex "
+                                      "index")
 
         if len(self.index) == 0:
             return self
@@ -3084,7 +3250,8 @@ class NDFrame(PandasObject):
         """
         from pandas.tseries.frequencies import to_offset
         if not isinstance(self.index, DatetimeIndex):
-            raise NotImplementedError
+            raise NotImplementedError("'last' only supports a DatetimeIndex "
+                                      "index")
 
         if len(self.index) == 0:
             return self
@@ -3250,16 +3417,14 @@ class NDFrame(PandasObject):
             return (left_result.__finalize__(self),
                     right_result.__finalize__(other))
 
-    def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
-              try_cast=False, raise_on_error=True):
-        """
+    _shared_docs['where'] = ("""
         Return an object of same shape as self and whose corresponding
-        entries are from self where cond is True and otherwise are from other.
+        entries are from self where cond is %(cond)s and otherwise are from other.
 
         Parameters
         ----------
-        cond : boolean NDFrame or array
-        other : scalar or NDFrame
+        cond : boolean %(klass)s or array
+        other : scalar or %(klass)s
         inplace : boolean, default False
             Whether to perform the operation in place on the data
         axis : alignment axis if needed, default None
@@ -3273,7 +3438,11 @@ class NDFrame(PandasObject):
         Returns
         -------
         wh : same type as caller
-        """
+        """)
+    @Appender(_shared_docs['where'] % dict(_shared_doc_kwargs, cond="True"))
+    def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
+              try_cast=False, raise_on_error=True):
+
         if isinstance(cond, NDFrame):
             cond = cond.reindex(**self._construct_axes_dict())
         else:
@@ -3323,11 +3492,20 @@ class NDFrame(PandasObject):
                 except ValueError:
                     new_other = np.array(other)
 
-                if not (new_other == np.array(other)).all():
-                    other = np.array(other)
+                matches = (new_other == np.array(other))
+                if matches is False or not matches.all():
 
-                    # we can't use our existing dtype
-                    # because of incompatibilities
+                    # coerce other to a common dtype if we can
+                    if com.needs_i8_conversion(self.dtype):
+                        try:
+                            other = np.array(other, dtype=self.dtype)
+                        except:
+                            other = np.array(other)
+                    else:
+                        other = np.asarray(other)
+                        other = np.asarray(other, dtype=np.common_type(other, new_other))
+
+                    # we need to use the new dtype
                     try_quick = False
                 else:
                     other = new_other
@@ -3400,23 +3578,13 @@ class NDFrame(PandasObject):
 
             return self._constructor(new_data).__finalize__(self)
 
-    def mask(self, cond):
-        """
-        Returns copy whose values are replaced with nan if the
-        inverted condition is True
+    @Appender(_shared_docs['where'] % dict(_shared_doc_kwargs, cond="False"))
+    def mask(self, cond, other=np.nan, inplace=False, axis=None, level=None,
+             try_cast=False, raise_on_error=True):
+        return self.where(~cond, other=other, inplace=inplace, axis=axis,
+            level=level, try_cast=try_cast, raise_on_error=raise_on_error)
 
-        Parameters
-        ----------
-        cond : boolean NDFrame or array
-
-        Returns
-        -------
-        wh: same as input
-        """
-        return self.where(~cond, np.nan)
-
-    def shift(self, periods=1, freq=None, axis=0, **kwargs):
-        """
+    _shared_docs['shift'] = ("""
         Shift index by desired number of periods with an optional time freq
 
         Parameters
@@ -3426,6 +3594,7 @@ class NDFrame(PandasObject):
         freq : DateOffset, timedelta, or time rule string, optional
             Increment to use from datetools module or time rule (e.g. 'EOM').
             See Notes.
+        axis : %(axes_single_arg)s
 
         Notes
         -----
@@ -3435,8 +3604,10 @@ class NDFrame(PandasObject):
 
         Returns
         -------
-        shifted : same type as caller
-        """
+        shifted : %(klass)s
+    """)
+    @Appender(_shared_docs['shift'] % _shared_doc_kwargs)
+    def shift(self, periods=1, freq=None, axis=0, **kwargs):
         if periods == 0:
             return self
 
@@ -3595,8 +3766,7 @@ class NDFrame(PandasObject):
 
     def tz_convert(self, tz, axis=0, level=None, copy=True):
         """
-        Convert the axis to target time zone. If it is time zone naive, it
-        will be localized to the passed time zone.
+        Convert tz-aware axis to target time zone.
 
         Parameters
         ----------
@@ -3610,6 +3780,11 @@ class NDFrame(PandasObject):
 
         Returns
         -------
+
+        Raises
+        ------
+        TypeError
+            If the axis is tz-naive.
         """
         axis = self._get_axis_number(axis)
         ax = self._get_axis(axis)
@@ -3668,6 +3843,11 @@ class NDFrame(PandasObject):
 
         Returns
         -------
+
+        Raises
+        ------
+        TypeError
+            If the TimeSeries is tz-aware and tz is not None.
         """
         axis = self._get_axis_number(axis)
         ax = self._get_axis(axis)

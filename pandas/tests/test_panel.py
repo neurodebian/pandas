@@ -509,7 +509,9 @@ class CheckIndexing(object):
         idx = self.panel.major_axis[5]
         xs = self.panel.major_xs(idx)
 
-        assert_series_equal(xs['ItemA'], ref.xs(idx))
+        result = xs['ItemA']
+        assert_series_equal(result, ref.xs(idx), check_names=False)
+        self.assertEqual(result.name, 'ItemA')
 
         # not contained
         idx = self.panel.major_axis[0] - bday
@@ -527,7 +529,7 @@ class CheckIndexing(object):
         idx = self.panel.minor_axis[1]
         xs = self.panel.minor_xs(idx)
 
-        assert_series_equal(xs['ItemA'], ref[idx])
+        assert_series_equal(xs['ItemA'], ref[idx], check_names=False)
 
         # not contained
         self.assertRaises(Exception, self.panel.minor_xs, 'E')
@@ -658,7 +660,7 @@ class CheckIndexing(object):
 
     def test_ix_align(self):
         from pandas import Series
-        b = Series(np.random.randn(10))
+        b = Series(np.random.randn(10), name=0)
         b.sort()
         df_orig = Panel(np.random.randn(3, 10, 2))
         df = df_orig.copy()
@@ -1696,22 +1698,23 @@ class TestPanel(tm.TestCase, PanelTests, CheckIndexing,
         # major
         idx = self.panel.major_axis[0]
         idx_lag = self.panel.major_axis[1]
-
         shifted = self.panel.shift(1)
-
         assert_frame_equal(self.panel.major_xs(idx),
                            shifted.major_xs(idx_lag))
 
         # minor
         idx = self.panel.minor_axis[0]
         idx_lag = self.panel.minor_axis[1]
-
         shifted = self.panel.shift(1, axis='minor')
-
         assert_frame_equal(self.panel.minor_xs(idx),
                            shifted.minor_xs(idx_lag))
 
-        self.assertRaises(Exception, self.panel.shift, 1, axis='items')
+        # items
+        idx = self.panel.items[0]
+        idx_lag = self.panel.items[1]
+        shifted = self.panel.shift(1, axis='items')
+        assert_frame_equal(self.panel[idx],
+                           shifted[idx_lag])
 
         # negative numbers, #2164
         result = self.panel.shift(-1)
@@ -1983,6 +1986,15 @@ class TestPanel(tm.TestCase, PanelTests, CheckIndexing,
         # Items
         expected = Panel({"One": df})
         check_drop('Two', 0, ['items'], expected)
+
+        self.assertRaises(ValueError, panel.drop, 'Three')
+
+        # errors = 'ignore'
+        dropped = panel.drop('Three', errors='ignore')
+        assert_panel_equal(dropped, panel)
+        dropped = panel.drop(['Two', 'Three'], errors='ignore')
+        expected = Panel({"One": df})
+        assert_panel_equal(dropped, expected)
 
         # Major
         exp_df = DataFrame({"A": [2], "B": [4]}, index=[1])

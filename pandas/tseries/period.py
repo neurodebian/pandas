@@ -293,6 +293,10 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
         """ return an array repr of this object, potentially casting to object """
         return self.asobject.values
 
+    @property
+    def _formatter_func(self):
+        return lambda x: "'%s'" % x
+
     def asof_locs(self, where, mask):
         """
         where : array of timestamps
@@ -355,6 +359,44 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
         return self.freq
 
     def asfreq(self, freq=None, how='E'):
+        """
+        Convert the PeriodIndex to the specified frequency `freq`.
+
+        Parameters
+        ----------
+
+        freq : str
+            a frequency
+        how : str {'E', 'S'}
+            'E', 'END', or 'FINISH' for end,
+            'S', 'START', or 'BEGIN' for start.
+            Whether the elements should be aligned to the end
+            or start within pa period. January 31st ('END') vs.
+            Janury 1st ('START') for example.
+
+        Returns
+        -------
+
+        new : PeriodIndex with the new frequency
+
+        Examples
+        --------
+        >>> pidx = pd.period_range('2010-01-01', '2015-01-01', freq='A')
+        >>> pidx
+        <class 'pandas.tseries.period.PeriodIndex'>
+        [2010, ..., 2015]
+        Length: 6, Freq: A-DEC
+
+        >>> pidx.asfreq('M')
+        <class 'pandas.tseries.period.PeriodIndex'>
+        [2010-12, ..., 2015-12]
+        Length: 6, Freq: M
+
+        >>> pidx.asfreq('M', how='S')
+        <class 'pandas.tseries.period.PeriodIndex'>
+        [2010-01, ..., 2015-01]
+        Length: 6, Freq: M
+        """
         how = _validate_end_alias(how)
 
         freq = frequencies.get_standard_freq(freq)
@@ -387,7 +429,7 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
     qyear = _field_accessor('qyear', 1)
     days_in_month = _field_accessor('days_in_month', 11, "The number of days in the month")
     daysinmonth = days_in_month
-    
+
     def _get_object_array(self):
         freq = self.freq
         return np.array([ Period._from_ordinal(ordinal=x, freq=freq) for x in self.values], copy=False)
@@ -687,7 +729,7 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
 
         imask = ~mask
         values[imask] = np.array([u('%s') % dt for dt in values[imask]])
-        return values.tolist()
+        return values
 
     def __array_finalize__(self, obj):
         if not self.ndim:  # pragma: no cover
@@ -696,10 +738,6 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
         self.freq = getattr(obj, 'freq', None)
         self.name = getattr(obj, 'name', None)
         self._reset_identity()
-
-    def _format_footer(self):
-        tagline = 'Length: %d, Freq: %s'
-        return tagline % (len(self), self.freqstr)
 
     def take(self, indices, axis=None):
         """

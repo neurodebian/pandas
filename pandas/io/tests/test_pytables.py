@@ -11,7 +11,7 @@ import numpy as np
 import pandas
 import pandas as pd
 from pandas import (Series, DataFrame, Panel, MultiIndex, Categorical, bdate_range,
-                    date_range, Index, DatetimeIndex, isnull)
+                    date_range, timedelta_range, Index, DatetimeIndex, TimedeltaIndex, isnull)
 
 from pandas.io.pytables import _tables
 try:
@@ -156,50 +156,51 @@ class TestHDFStore(tm.TestCase):
         pass
 
     def test_factory_fun(self):
+        path = create_tempfile(self.path)
         try:
-            with get_store(self.path) as tbl:
+            with get_store(path) as tbl:
                 raise ValueError('blah')
         except ValueError:
             pass
         finally:
-            safe_remove(self.path)
+            safe_remove(path)
 
         try:
-            with get_store(self.path) as tbl:
+            with get_store(path) as tbl:
                 tbl['a'] = tm.makeDataFrame()
 
-            with get_store(self.path) as tbl:
+            with get_store(path) as tbl:
                 self.assertEqual(len(tbl), 1)
                 self.assertEqual(type(tbl['a']), DataFrame)
         finally:
             safe_remove(self.path)
 
     def test_context(self):
+        path = create_tempfile(self.path)
         try:
-            with HDFStore(self.path) as tbl:
+            with HDFStore(path) as tbl:
                 raise ValueError('blah')
         except ValueError:
             pass
         finally:
-            safe_remove(self.path)
+            safe_remove(path)
 
         try:
-            with HDFStore(self.path) as tbl:
+            with HDFStore(path) as tbl:
                 tbl['a'] = tm.makeDataFrame()
 
-            with HDFStore(self.path) as tbl:
+            with HDFStore(path) as tbl:
                 self.assertEqual(len(tbl), 1)
                 self.assertEqual(type(tbl['a']), DataFrame)
         finally:
-            safe_remove(self.path)
+            safe_remove(path)
 
     def test_conv_read_write(self):
-
+        path = create_tempfile(self.path)
         try:
-
             def roundtrip(key, obj,**kwargs):
-                obj.to_hdf(self.path, key,**kwargs)
-                return read_hdf(self.path, key)
+                obj.to_hdf(path, key,**kwargs)
+                return read_hdf(path, key)
 
             o = tm.makeTimeSeries()
             assert_series_equal(o, roundtrip('series',o))
@@ -215,12 +216,12 @@ class TestHDFStore(tm.TestCase):
 
             # table
             df = DataFrame(dict(A=lrange(5), B=lrange(5)))
-            df.to_hdf(self.path,'table',append=True)
-            result = read_hdf(self.path, 'table', where = ['index>2'])
+            df.to_hdf(path,'table',append=True)
+            result = read_hdf(path, 'table', where = ['index>2'])
             assert_frame_equal(df[df.index>2],result)
 
         finally:
-            safe_remove(self.path)
+            safe_remove(path)
 
     def test_long_strings(self):
 
@@ -1593,9 +1594,10 @@ class TestHDFStore(tm.TestCase):
 
             # series
             _maybe_remove(store, 's')
-            s = Series(np.zeros(12), index=make_index(['date',None,None]))
+            s = Series(np.zeros(12), index=make_index(['date', None, None]))
             store.append('s',s)
-            tm.assert_series_equal(store.select('s'),s)
+            xp = Series(np.zeros(12), index=make_index(['date', 'level_1', 'level_2']))
+            tm.assert_series_equal(store.select('s'), xp)
 
             # dup with column
             _maybe_remove(store, 'df')
@@ -3612,7 +3614,7 @@ class TestHDFStore(tm.TestCase):
 
             # invert ok for filters
             result = store.select('df', "~(columns=['A','B'])")
-            expected = df.loc[:,df.columns-['A','B']]
+            expected = df.loc[:,df.columns.difference(['A','B'])]
             tm.assert_frame_equal(result, expected)
 
             # in
@@ -4328,13 +4330,14 @@ class TestHDFStore(tm.TestCase):
         df = tm.makeDataFrame()
 
         try:
-            st = HDFStore(self.path)
+            path = create_tempfile(self.path)
+            st = HDFStore(path)
             st.append('df', df, data_columns = ['A'])
             st.close()
-            do_copy(f = self.path)
-            do_copy(f = self.path, propindexes = False)
+            do_copy(f = path)
+            do_copy(f = path, propindexes = False)
         finally:
-            safe_remove(self.path)
+            safe_remove(path)
 
     def test_legacy_table_write(self):
         raise nose.SkipTest("cannot write legacy tables")
@@ -4586,7 +4589,33 @@ class TestHDFStore(tm.TestCase):
 
             df.to_hdf(path, 'df', format='table')
             other = read_hdf(path, 'df')
+
             tm.assert_frame_equal(df, other)
+            self.assertTrue(df.equals(other))
+            self.assertTrue(other.equals(df))
+
+    def test_round_trip_equals(self):
+        # GH 9330
+        df = DataFrame({"B": [1,2], "A": ["x","y"]})
+
+        with ensure_clean_path(self.path) as path:
+            df.to_hdf(path, 'df', format='table')
+            other = read_hdf(path, 'df')
+            tm.assert_frame_equal(df, other)
+            self.assertTrue(df.equals(other))
+            self.assertTrue(other.equals(df))
+
+    def test_preserve_timedeltaindex_type(self):
+        # GH9635
+        # Storing TimedeltaIndexed DataFrames in fixed stores did not preserve
+        # the type of the index.
+        df = DataFrame(np.random.normal(size=(10,5)))
+        df.index = timedelta_range(start='0s',periods=10,freq='1s',name='example')
+
+        with ensure_clean_store(self.path) as store:
+
+            store['df'] = df
+            assert_frame_equal(store['df'], df)
 
 
 def _test_sort(obj):

@@ -1626,7 +1626,7 @@ def _dtype_to_stata_type(dtype, column):
     elif dtype.type == np.object_:  # try to coerce it to the biggest string
                                     # not memory efficient, what else could we
                                     # do?
-        itemsize = max_len_string_array(column.values)
+        itemsize = max_len_string_array(com._ensure_object(column.values))
         return chr(max(itemsize, 1))
     elif dtype == np.float64:
         return chr(255)
@@ -1664,7 +1664,7 @@ def _dtype_to_default_stata_fmt(dtype, column):
         if not (inferred_dtype in ('string', 'unicode')
                 or len(column) == 0):
             raise ValueError('Writing general object arrays is not supported')
-        itemsize = max_len_string_array(column.values)
+        itemsize = max_len_string_array(com._ensure_object(column.values))
         if itemsize > 244:
             raise ValueError(excessive_string_length_error % column.name)
         return "%" + str(max(itemsize, 1)) + "s"
@@ -1885,6 +1885,8 @@ class StataWriter(StataParser):
         #NOTE: we might need a different API / class for pandas objects so
         # we can set different semantics - handle this with a PR to pandas.io
 
+        data = data.copy()
+
         if self._write_index:
             data = data.reset_index()
 
@@ -2013,7 +2015,7 @@ class StataWriter(StataParser):
                 self._write(_pad_bytes("", 81))
 
     def _prepare_data(self):
-        data = self.data.copy()
+        data = self.data
         typlist = self.typlist
         convert_dates = self._convert_dates
         # 1. Convert dates

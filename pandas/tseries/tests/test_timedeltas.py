@@ -64,6 +64,13 @@ class TestTimedeltas(tm.TestCase):
         self.assertEqual(Timedelta(123072001000000).value, 123072001000000)
         self.assertTrue('1 days 10:11:12.001' in str(Timedelta(123072001000000)))
 
+        # string conversion with/without leading zero
+        # GH 9570
+        self.assertEqual(Timedelta('0:00:00'), timedelta(hours=0))
+        self.assertEqual(Timedelta('00:00:00'), timedelta(hours=0))
+        self.assertEqual(Timedelta('-1:00:00'), -timedelta(hours=1))
+        self.assertEqual(Timedelta('-01:00:00'), -timedelta(hours=1))
+
         # more strings
         # GH 8190
         self.assertEqual(Timedelta('1 h'), timedelta(hours=1))
@@ -607,7 +614,7 @@ class TestTimedeltas(tm.TestCase):
         self.assertEqual(result, expected)
 
         result = td.median()
-        expected = to_timedelta('00:00:08')
+        expected = to_timedelta('00:00:09')
         self.assertEqual(result, expected)
 
         result = td.to_frame().median()
@@ -633,6 +640,14 @@ class TestTimedeltas(tm.TestCase):
         # invalid ops
         for op in ['skew','kurt','sem','var','prod']:
             self.assertRaises(TypeError, lambda : getattr(td,op)())
+
+        # GH 10040
+        # make sure NaT is properly handled by median()
+        s = Series([Timestamp('2015-02-03'), Timestamp('2015-02-07')])
+        self.assertEqual(s.diff().median(), timedelta(days=4))
+
+        s = Series([Timestamp('2015-02-03'), Timestamp('2015-02-07'), Timestamp('2015-02-15')])
+        self.assertEqual(s.diff().median(), timedelta(days=6))
 
     def test_timedelta_ops_scalar(self):
         # GH 6808
@@ -941,6 +956,10 @@ class TestTimedeltaIndex(tm.TestCase):
         idx = TimedeltaIndex(start='1 days', periods=1, freq='D',
                             name='TEST')
         self.assertEqual(idx.name, 'TEST')
+
+        # GH10025
+        idx2 = TimedeltaIndex(idx, name='something else')
+        self.assertEqual(idx2.name, 'something else')
 
     def test_freq_conversion(self):
 

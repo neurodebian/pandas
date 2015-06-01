@@ -290,6 +290,15 @@ class TestStata(tm.TestCase):
             df = DataFrame(np.random.randn(10, 2), columns=list('AB'))
             df.to_stata(path)
 
+    def test_write_preserves_original(self):
+        # 9795
+        np.random.seed(423)
+        df = pd.DataFrame(np.random.randn(5,4), columns=list('abcd'))
+        df.ix[2, 'a':'c'] = np.nan
+        df_copy = df.copy()
+        df.to_stata('test.dta', write_index=False)
+        tm.assert_frame_equal(df, df_copy)
+
     def test_encoding(self):
 
         # GH 4626, proper encoding handling
@@ -866,8 +875,8 @@ class TestStata(tm.TestCase):
         parsed_117.index = np.arange(parsed_117.shape[0])
         codes = [-1, -1, 0, 1, 1, 1, 2, 2, 3, 4]
         categories = ["Poor", "Fair", "Good", "Very good", "Excellent"]
-        expected = pd.Series(pd.Categorical.from_codes(codes=codes,
-                                                       categories=categories))
+        cat = pd.Categorical.from_codes(codes=codes, categories=categories)
+        expected = pd.Series(cat, name='srh')
         tm.assert_series_equal(expected, parsed_115["srh"])
         tm.assert_series_equal(expected, parsed_117["srh"])
 
