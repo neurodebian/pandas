@@ -1,6 +1,6 @@
 --- a/pandas/tests/test_frame.py
 +++ b/pandas/tests/test_frame.py
-@@ -4536,6 +4536,9 @@ class TestDataFrame(tm.TestCase, CheckIn
+@@ -4666,6 +4666,9 @@ class TestDataFrame(tm.TestCase, CheckIn
          self.assertEqual(len(tst.columns), 3)
  
      def test_from_records_sequencelike(self):

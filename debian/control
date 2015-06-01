@@ -115,15 +115,14 @@ Description: data structures for "relational" or "labeled" data - Python 3
  .
  This package contains the Python 3 version.
 
-# No doc package built due to dependency on ipython 0.11 - only experimental
-# Package: python-pandas-doc
-# Architecture: all
-# Section: doc
-# Depends: ${misc:Depends}, libjs-jquery
-# Suggests: python-pandas
-# Description: documentation and examples for pandas
-#  This package contains documentation and example scripts for
-#  python-pandas.
+Package: python-pandas-doc
+Architecture: all
+Section: doc
+Depends: ${misc:Depends}, libjs-jquery
+Suggests: python-pandas
+Description: documentation and examples for pandas
+ This package contains documentation and example scripts for
+ python-pandas.
 
 Package: python-pandas-lib
 Architecture: any
