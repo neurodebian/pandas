@@ -699,7 +699,6 @@ class TestGroupBy(tm.TestCase):
         expected = wp.reindex(major=[x for x in wp.major_axis if x.month == 1])
         assert_panel_equal(gp, expected)
 
-
         # GH 5267
         # be datelike friendly
         df = DataFrame({'DATE' : pd.to_datetime(['10-Oct-2013', '10-Oct-2013', '10-Oct-2013',
@@ -2596,6 +2595,35 @@ class TestGroupBy(tm.TestCase):
         result = self.df.groupby(cats).D.apply(get_stats)
         self.assertEqual(result.index.names[0], 'C')
 
+    def test_apply_categorical_data(self):
+        # GH 10138
+        for ordered in [True, False]:
+            dense = Categorical(list('abc'), ordered=ordered)
+            # 'b' is in the categories but not in the list
+            missing = Categorical(list('aaa'), categories=['a', 'b'], ordered=ordered)
+            values = np.arange(len(dense))
+            df = DataFrame({'missing': missing,
+                            'dense': dense,
+                            'values': values})
+            grouped = df.groupby(['missing', 'dense'])
+
+            # missing category 'b' should still exist in the output index
+            idx = MultiIndex.from_product([['a', 'b'], ['a', 'b', 'c']],
+                                          names=['missing', 'dense'])
+            expected = DataFrame([0, 1, 2, np.nan, np.nan, np.nan],
+                                 index=idx,
+                                 columns=['values'])
+
+            assert_frame_equal(grouped.apply(lambda x: np.mean(x)), expected)
+            assert_frame_equal(grouped.mean(), expected)
+            assert_frame_equal(grouped.agg(np.mean), expected)
+
+            # but for transform we should still get back the original index
+            idx = MultiIndex.from_product([['a'], ['a', 'b', 'c']],
+                                          names=['missing', 'dense'])
+            expected = Series(1, index=idx)
+            assert_series_equal(grouped.apply(lambda x: 1), expected)
+
     def test_apply_corner_cases(self):
         # #535, can't use sliding iterator
 
@@ -2836,6 +2864,49 @@ class TestGroupBy(tm.TestCase):
 
         result = df.groupby(['foo', 'bar']).mean()
         expected = df.groupby([df['foo'], df['bar']]).mean()[['val']]
+
+    def test_groupby_nat_exclude(self):
+        # GH 6992
+        df = pd.DataFrame({'values': np.random.randn(8),
+                   'dt': [np.nan, pd.Timestamp('2013-01-01'), np.nan, pd.Timestamp('2013-02-01'),
+                          np.nan, pd.Timestamp('2013-02-01'), np.nan, pd.Timestamp('2013-01-01')],
+                    'str': [np.nan, 'a', np.nan, 'a',
+                          np.nan, 'a', np.nan, 'b']})
+        grouped = df.groupby('dt')
+
+        expected = [[1, 7], [3, 5]]
+        keys = sorted(grouped.groups.keys())
+        self.assertEqual(len(keys), 2)
+        for k, e in zip(keys, expected):
+            # grouped.groups keys are np.datetime64 with system tz
+            # not to be affected by tz, only compare values
+            self.assertEqual(grouped.groups[k], e)
+
+        # confirm obj is not filtered
+        tm.assert_frame_equal(grouped.grouper.groupings[0].obj, df)
+        self.assertEqual(grouped.ngroups, 2)
+        expected = {Timestamp('2013-01-01 00:00:00'): np.array([1, 7]),
+                    Timestamp('2013-02-01 00:00:00'): np.array([3, 5])}
+        for k in grouped.indices:
+            self.assert_numpy_array_equal(grouped.indices[k], expected[k])
+
+        tm.assert_frame_equal(grouped.get_group(Timestamp('2013-01-01')), df.iloc[[1, 7]])
+        tm.assert_frame_equal(grouped.get_group(Timestamp('2013-02-01')), df.iloc[[3, 5]])
+
+        self.assertRaises(KeyError, grouped.get_group, pd.NaT)
+
+        nan_df = DataFrame({'nan': [np.nan, np.nan, np.nan],
+                            'nat': [pd.NaT, pd.NaT, pd.NaT]})
+        self.assertEqual(nan_df['nan'].dtype, 'float64')
+        self.assertEqual(nan_df['nat'].dtype, 'datetime64[ns]')
+
+        for key in ['nan', 'nat']:
+            grouped = nan_df.groupby(key)
+            self.assertEqual(grouped.groups, {})
+            self.assertEqual(grouped.ngroups, 0)
+            self.assertEqual(grouped.indices, {})
+            self.assertRaises(KeyError, grouped.get_group, np.nan)
+            self.assertRaises(KeyError, grouped.get_group, pd.NaT)
 
     def test_dictify(self):
         dict(iter(self.df.groupby('A')))

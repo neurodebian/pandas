@@ -14,7 +14,7 @@ from pandas.core.base import PandasObject
 from pandas.core.categorical import Categorical
 from pandas.core.frame import DataFrame
 from pandas.core.generic import NDFrame
-from pandas.core.index import Index, MultiIndex, CategoricalIndex, _ensure_index, _union_indexes
+from pandas.core.index import Index, MultiIndex, CategoricalIndex, _ensure_index
 from pandas.core.internals import BlockManager, make_block
 from pandas.core.series import Series
 from pandas.core.panel import Panel
@@ -187,7 +187,7 @@ class Grouper(object):
 
     Examples
     --------
-    >>> df.groupby(Grouper(key='A')) : syntatic sugar for df.groupby('A')
+    >>> df.groupby(Grouper(key='A')) : syntactic sugar for df.groupby('A')
     >>> df.groupby(Grouper(key='date',freq='60s')) : specify a resample on the column 'date'
     >>> df.groupby(Grouper(level='date',freq='60s',axis=1)) :
         specify a resample on the level 'date' on the columns axis with a frequency of 60s
@@ -426,7 +426,11 @@ class GroupBy(PandasObject):
                 return Timestamp(key).asm8
             return key
 
-        sample = next(iter(self.indices))
+        if len(self.indices) > 0:
+            sample = next(iter(self.indices))
+        else:
+            sample = None       # Dummy sample
+
         if isinstance(sample, tuple):
             if not isinstance(name, tuple):
                 msg = ("must supply a tuple to get_group with multiple"
@@ -1496,6 +1500,8 @@ class BaseGrouper(object):
 
         if is_datetime_or_timedelta_dtype(values.dtype):
             values = values.view('int64')
+            # GH 7754
+            is_numeric = True
         elif is_bool_dtype(values.dtype):
             values = _algos.ensure_float64(values)
         elif com.is_integer_dtype(values):
@@ -2938,7 +2944,8 @@ class NDFrameGroupBy(GroupBy):
                     cd = 'coerce'
                 else:
                     cd = True
-                return result.convert_objects(convert_dates=cd)
+                result = result.convert_objects(convert_dates=cd)
+                return self._reindex_output(result)
 
             else:
                 # only coerce dates if we find at least 1 datetime

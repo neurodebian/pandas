@@ -18,7 +18,7 @@ from pandas.core.common import (CategoricalDtype, ABCSeries, ABCIndexClass, ABCP
                                 _possibly_infer_to_datetimelike, get_dtype_kinds,
                                 is_list_like, is_sequence, is_null_slice, is_bool,
                                 _ensure_platform_int, _ensure_object, _ensure_int64,
-                                _coerce_indexer_dtype, _values_from_object, take_1d)
+                                _coerce_indexer_dtype, take_1d)
 from pandas.util.terminal import get_terminal_size
 from pandas.core.config import get_option
 
@@ -1310,8 +1310,7 @@ class Categorical(PandasObject):
         levheader = "Categories (%d, %s): " % (len(self.categories),
                                                self.categories.dtype)
         width, height = get_terminal_size()
-        max_width = (width if get_option("display.width") == 0
-                    else get_option("display.width"))
+        max_width = get_option("display.width") or width
         if com.in_ipython_frontend():
             # 0 = no breaks
             max_width = 0

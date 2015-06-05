@@ -23,6 +23,8 @@ from pandas.tseries.offsets import Day, Second, Hour
 import pandas.util.testing as tm
 from numpy.random import rand, randn
 from pandas import _np_version_under1p8
+import pandas.compat as compat
+
 
 iNaT = tslib.iNaT
 
@@ -309,51 +311,70 @@ class TestTimedeltas(tm.TestCase):
 
     def test_fields(self):
 
+        def check(value):
+            # that we are int/long like
+            self.assertTrue(isinstance(value, (int, compat.long)))
+
         # compat to datetime.timedelta
         rng = to_timedelta('1 days, 10:11:12')
-        self.assertEqual(rng.days,1)
-        self.assertEqual(rng.seconds,10*3600+11*60+12)
-        self.assertEqual(rng.microseconds,0)
-        self.assertEqual(rng.nanoseconds,0)
+        self.assertEqual(rng.days, 1)
+        self.assertEqual(rng.seconds, 10*3600+11*60+12)
+        self.assertEqual(rng.microseconds, 0)
+        self.assertEqual(rng.nanoseconds, 0)
 
         self.assertRaises(AttributeError, lambda : rng.hours)
         self.assertRaises(AttributeError, lambda : rng.minutes)
         self.assertRaises(AttributeError, lambda : rng.milliseconds)
 
+        # GH 10050
+        check(rng.days)
+        check(rng.seconds)
+        check(rng.microseconds)
+        check(rng.nanoseconds)
+
         td = Timedelta('-1 days, 10:11:12')
-        self.assertEqual(abs(td),Timedelta('13:48:48'))
+        self.assertEqual(abs(td), Timedelta('13:48:48'))
         self.assertTrue(str(td) == "-1 days +10:11:12")
-        self.assertEqual(-td,Timedelta('0 days 13:48:48'))
-        self.assertEqual(-Timedelta('-1 days, 10:11:12').value,49728000000000)
-        self.assertEqual(Timedelta('-1 days, 10:11:12').value,-49728000000000)
+        self.assertEqual(-td, Timedelta('0 days 13:48:48'))
+        self.assertEqual(-Timedelta('-1 days, 10:11:12').value, 49728000000000)
+        self.assertEqual(Timedelta('-1 days, 10:11:12').value, -49728000000000)
 
         rng = to_timedelta('-1 days, 10:11:12.100123456')
-        self.assertEqual(rng.days,-1)
-        self.assertEqual(rng.seconds,10*3600+11*60+12)
-        self.assertEqual(rng.microseconds,100*1000+123)
-        self.assertEqual(rng.nanoseconds,456)
+        self.assertEqual(rng.days, -1)
+        self.assertEqual(rng.seconds, 10*3600+11*60+12)
+        self.assertEqual(rng.microseconds, 100*1000+123)
+        self.assertEqual(rng.nanoseconds, 456)
         self.assertRaises(AttributeError, lambda : rng.hours)
         self.assertRaises(AttributeError, lambda : rng.minutes)
         self.assertRaises(AttributeError, lambda : rng.milliseconds)
 
         # components
         tup = pd.to_timedelta(-1, 'us').components
-        self.assertEqual(tup.days,-1)
-        self.assertEqual(tup.hours,23)
-        self.assertEqual(tup.minutes,59)
-        self.assertEqual(tup.seconds,59)
-        self.assertEqual(tup.milliseconds,999)
-        self.assertEqual(tup.microseconds,999)
-        self.assertEqual(tup.nanoseconds,0)
+        self.assertEqual(tup.days, -1)
+        self.assertEqual(tup.hours, 23)
+        self.assertEqual(tup.minutes, 59)
+        self.assertEqual(tup.seconds, 59)
+        self.assertEqual(tup.milliseconds, 999)
+        self.assertEqual(tup.microseconds, 999)
+        self.assertEqual(tup.nanoseconds, 0)
+
+        # GH 10050
+        check(tup.days)
+        check(tup.hours)
+        check(tup.minutes)
+        check(tup.seconds)
+        check(tup.milliseconds)
+        check(tup.microseconds)
+        check(tup.nanoseconds)
 
         tup = Timedelta('-1 days 1 us').components
-        self.assertEqual(tup.days,-2)
-        self.assertEqual(tup.hours,23)
-        self.assertEqual(tup.minutes,59)
-        self.assertEqual(tup.seconds,59)
-        self.assertEqual(tup.milliseconds,999)
-        self.assertEqual(tup.microseconds,999)
-        self.assertEqual(tup.nanoseconds,0)
+        self.assertEqual(tup.days, -2)
+        self.assertEqual(tup.hours, 23)
+        self.assertEqual(tup.minutes, 59)
+        self.assertEqual(tup.seconds, 59)
+        self.assertEqual(tup.milliseconds, 999)
+        self.assertEqual(tup.microseconds, 999)
+        self.assertEqual(tup.nanoseconds, 0)
 
     def test_timedelta_range(self):
 

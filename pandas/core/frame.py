@@ -26,8 +26,9 @@ import numpy.ma as ma
 from pandas.core.common import (isnull, notnull, PandasError, _try_sort,
                                 _default_index, _maybe_upcast, is_sequence,
                                 _infer_dtype_from_scalar, _values_from_object,
-                                is_list_like, _get_dtype, _maybe_box_datetimelike,
-                                is_categorical_dtype, is_object_dtype, _possibly_infer_to_datetimelike)
+                                is_list_like, _maybe_box_datetimelike,
+                                is_categorical_dtype, is_object_dtype,
+                                _possibly_infer_to_datetimelike)
 from pandas.core.generic import NDFrame, _shared_docs
 from pandas.core.index import Index, MultiIndex, _ensure_index
 from pandas.core.indexing import (maybe_droplevels,
@@ -661,6 +662,8 @@ class DataFrame(NDFrame):
             The "orientation" of the data. If the keys of the passed dict
             should be the columns of the resulting DataFrame, pass 'columns'
             (default). Otherwise if the keys should be rows, pass 'index'.
+        dtype : dtype, default None
+            Data type to force, otherwise infer
 
         Returns
         -------
@@ -2148,7 +2151,7 @@ class DataFrame(NDFrame):
     def _setitem_frame(self, key, value):
         # support boolean setting with DataFrame input, e.g.
         # df[df > df2] = 0
-        if key.values.dtype != np.bool_:
+        if key.values.size and not com.is_bool_dtype(key.values):
             raise TypeError('Must pass DataFrame with boolean values only')
 
         self._check_inplace_setting(value)
@@ -2742,7 +2745,7 @@ class DataFrame(NDFrame):
 
         Parameters
         ----------
-        axis : {0, 1}, or tuple/list thereof
+        axis : {0 or 'index', 1 or 'columns'}, or tuple/list thereof
             Pass tuple or list to drop on multiple axes
         how : {'any', 'all'}
             * any : if any NA values are present, drop that label
@@ -2887,7 +2890,7 @@ class DataFrame(NDFrame):
         ascending : boolean or list, default True
             Sort ascending vs. descending. Specify list for multiple sort
             orders
-        axis : {0, 1}
+        axis : {0 or 'index', 1 or 'columns'}, default 0
             Sort index/rows versus columns
         inplace : boolean, default False
             Sort the DataFrame without creating a new instance
@@ -2916,7 +2919,7 @@ class DataFrame(NDFrame):
 
         Parameters
         ----------
-        axis : {0, 1}
+        axis : {0 or 'index', 1 or 'columns'}, default 0
             Sort index/rows versus columns
         by : object
             Column name(s) in frame. Accepts a column name or a list
@@ -3024,7 +3027,7 @@ class DataFrame(NDFrame):
         Parameters
         ----------
         level : int
-        axis : {0, 1}
+        axis : {0 or 'index', 1 or 'columns'}, default 0
         ascending : boolean, default True
         inplace : boolean, default False
             Sort the DataFrame without creating a new instance
@@ -3636,9 +3639,9 @@ class DataFrame(NDFrame):
         ----------
         func : function
             Function to apply to each column/row
-        axis : {0, 1}
-            * 0 : apply function to each column
-            * 1 : apply function to each row
+        axis : {0 or 'index', 1 or 'columns'}, default 0
+            * 0 or 'index': apply function to each column
+            * 1 or 'columns': apply function to each row
         broadcast : boolean, default False
             For aggregation functions, return object of same size with values
             propagated
@@ -4159,8 +4162,8 @@ class DataFrame(NDFrame):
         Parameters
         ----------
         other : DataFrame
-        axis : {0, 1}
-            0 to compute column-wise, 1 for row-wise
+        axis : {0 or 'index', 1 or 'columns'}, default 0
+            0 or 'index' to compute column-wise, 1 or 'columns' for row-wise
         drop : boolean, default False
             Drop missing indices from result, default returns union of all
 
@@ -4211,8 +4214,8 @@ class DataFrame(NDFrame):
 
         Parameters
         ----------
-        axis : {0, 1}
-            0 for row-wise, 1 for column-wise
+        axis : {0 or 'index', 1 or 'columns'}, default 0
+            0 or 'index' for row-wise, 1 or 'columns' for column-wise
         level : int or level name, default None
             If the axis is a MultiIndex (hierarchical), count along a
             particular level, collapsing into a DataFrame
@@ -4365,8 +4368,8 @@ class DataFrame(NDFrame):
 
         Parameters
         ----------
-        axis : {0, 1}
-            0 for row-wise, 1 for column-wise
+        axis : {0 or 'index', 1 or 'columns'}, default 0
+            0 or 'index' for row-wise, 1 or 'columns' for column-wise
         skipna : boolean, default True
             Exclude NA/null values. If an entire row/column is NA, the result
             will be NA
@@ -4396,8 +4399,8 @@ class DataFrame(NDFrame):
 
         Parameters
         ----------
-        axis : {0, 1}
-            0 for row-wise, 1 for column-wise
+        axis : {0 or 'index', 1 or 'columns'}, default 0
+            0 or 'index' for row-wise, 1 or 'columns' for column-wise
         skipna : boolean, default True
             Exclude NA/null values. If an entire row/column is NA, the result
             will be first index.
@@ -4443,9 +4446,9 @@ class DataFrame(NDFrame):
 
         Parameters
         ----------
-        axis : {0, 1, 'index', 'columns'} (default 0)
-            * 0/'index' : get mode of each column
-            * 1/'columns' : get mode of each row
+        axis : {0 or 'index', 1 or 'columns'}, default 0
+            * 0 or 'index' : get mode of each column
+            * 1 or 'columns' : get mode of each row
         numeric_only : boolean, default False
             if True, only apply to numeric columns
 
@@ -4550,7 +4553,7 @@ class DataFrame(NDFrame):
 
         Parameters
         ----------
-        axis : {0, 1}, default 0
+        axis : {0 or 'index', 1 or 'columns'}, default 0
             Ranks over columns (0) or rows (1)
         numeric_only : boolean, default None
             Include only float, int, boolean data
@@ -4602,7 +4605,7 @@ class DataFrame(NDFrame):
         how : {'s', 'e', 'start', 'end'}
             Convention for converting period to timestamp; start of period
             vs. end
-        axis : {0, 1} default 0
+        axis : {0 or 'index', 1 or 'columns'}, default 0
             The axis to convert (the index by default)
         copy : boolean, default True
             If false then underlying input data is not copied
@@ -4633,7 +4636,7 @@ class DataFrame(NDFrame):
         Parameters
         ----------
         freq : string, default
-        axis : {0, 1}, default 0
+        axis : {0 or 'index', 1 or 'columns'}, default 0
             The axis to convert (the index by default)
         copy : boolean, default True
             If False then underlying input data is not copied

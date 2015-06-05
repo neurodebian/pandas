@@ -5,6 +5,7 @@ from numpy cimport (int8_t, int32_t, int64_t, import_array, ndarray,
                     NPY_INT64, NPY_DATETIME, NPY_TIMEDELTA)
 import numpy as np
 
+from cpython.ref cimport PyObject
 from cpython cimport (
     PyTypeObject,
     PyFloat_Check,
@@ -12,13 +13,14 @@ from cpython cimport (
     PyObject_RichCompareBool,
     PyObject_RichCompare,
     PyString_Check,
-    Py_GT, Py_GE, Py_EQ, Py_NE, Py_LT, Py_LE
+    Py_GT, Py_GE, Py_EQ, Py_NE, Py_LT, Py_LE,
 )
 
 # Cython < 0.17 doesn't have this in cpython
 cdef extern from "Python.h":
     cdef PyTypeObject *Py_TYPE(object)
     int PySlice_Check(object)
+    object PyUnicode_FromFormat(const char*, ...)
 
 cdef extern from "datetime_helper.h":
     double total_seconds(object)
@@ -41,7 +43,11 @@ from datetime import time as datetime_time
 # dateutil compat
 from dateutil.tz import (tzoffset, tzlocal as _dateutil_tzlocal, tzfile as _dateutil_tzfile,
                          tzutc as _dateutil_tzutc)
-from dateutil.zoneinfo import gettz as _dateutil_gettz
+from pandas.compat import is_platform_windows
+if is_platform_windows():
+    from dateutil.zoneinfo import gettz as _dateutil_gettz
+else:
+    from dateutil.tz import gettz as _dateutil_gettz
 
 from pytz.tzinfo import BaseTzInfo as _pytz_BaseTzInfo
 from pandas.compat import parse_date, string_types, PY3, iteritems
@@ -627,7 +633,7 @@ class NaTType(_NaT):
 
 fields = ['year', 'quarter', 'month', 'day', 'hour',
           'minute', 'second', 'millisecond', 'microsecond', 'nanosecond',
-          'week', 'dayofyear', 'days_in_month']
+          'week', 'dayofyear', 'days_in_month', 'daysinmonth', 'dayofweek']
 for field in fields:
     prop = property(fget=lambda self: np.nan)
     setattr(NaTType, field, prop)
@@ -952,7 +958,7 @@ cdef class _Timestamp(datetime):
 
     cpdef _get_field(self, field):
         out = get_date_field(np.array([self.value], dtype=np.int64), field)
-        return out[0]
+        return int(out[0])
 
     cpdef _get_start_end_field(self, field):
         month_kw = self.freq.kwds.get('startingMonth', self.freq.kwds.get('month', 12)) if self.freq else 12
@@ -1414,6 +1420,8 @@ def format_array_from_datetime(ndarray[int64_t] values, object tz=None, object f
     """
     cdef:
         int64_t val, ns, N = len(values)
+        ndarray[int64_t] consider_values
+        bint show_ms = 0, show_us = 0, show_ns = 0, basic_format = 0
         ndarray[object] result = np.empty(N, dtype=object)
         object ts, res
         pandas_datetimestruct dts
@@ -1421,43 +1429,82 @@ def format_array_from_datetime(ndarray[int64_t] values, object tz=None, object f
     if na_rep is None:
        na_rep = 'NaT'
 
-    for i in range(N):
-       val = values[i]
+    # if we don't have a format nor tz, then choose
+    # a format based on precision
+    basic_format = format is None and tz is None
+    if basic_format:
+        consider_values = values[values != iNaT]
+        show_ns = (consider_values%1000).any()
 
-       if val == iNaT:
-          result[i] = na_rep
-       else:
-          if format is None and tz is None:
+        if not show_ns:
+            consider_values //= 1000
+            show_us = (consider_values%1000).any()
+
+            if not show_ms:
+                consider_values //= 1000
+                show_ms = (consider_values%1000).any()
+
+    for i in range(N):
+        val = values[i]
+
+        if val == iNaT:
+            result[i] = na_rep
+        elif basic_format:
 
             pandas_datetime_to_datetimestruct(val, PANDAS_FR_ns, &dts)
-            res = '%d-%.2d-%.2d %.2d:%.2d:%.2d' % (dts.year,
-                                                   dts.month,
-                                                   dts.day,
-                                                   dts.hour,
-                                                   dts.min,
-                                                   dts.sec)
+            if show_ns:
+                ns = dts.ps / 1000
+                res = PyUnicode_FromFormat('%d-%02d-%02d %02d:%02d:%02d.%09d',
+                                           dts.year,
+                                           dts.month,
+                                           dts.day,
+                                           dts.hour,
+                                           dts.min,
+                                           dts.sec,
+                                           ns + 1000 * dts.us)
+            elif show_us:
+                res = PyUnicode_FromFormat('%d-%02d-%02d %02d:%02d:%02d.%06d',
+                                           dts.year,
+                                           dts.month,
+                                           dts.day,
+                                           dts.hour,
+                                           dts.min,
+                                           dts.sec,
+                                           dts.us)
 
-            ns = dts.ps / 1000
-
-            if ns != 0:
-               res += '.%.9d' % (ns + 1000 * dts.us)
-            elif dts.us != 0:
-               res += '.%.6d' % dts.us
+            elif show_ms:
+                res = PyUnicode_FromFormat('%d-%02d-%02d %02d:%02d:%02d.%03d',
+                                           dts.year,
+                                           dts.month,
+                                           dts.day,
+                                           dts.hour,
+                                           dts.min,
+                                           dts.sec,
+                                           dts.us/1000)
+            else:
+                res = PyUnicode_FromFormat('%d-%02d-%02d %02d:%02d:%02d',
+                                           dts.year,
+                                           dts.month,
+                                           dts.day,
+                                           dts.hour,
+                                           dts.min,
+                                           dts.sec)
 
             result[i] = res
 
-          else:
-             ts = Timestamp(val, tz=tz)
-             if format is None:
-                 result[i] = str(ts)
-             else:
+        else:
 
-                 # invalid format string
-                 # requires dates > 1900
-                 try:
-                     result[i] = ts.strftime(format)
-                 except ValueError:
-                     result[i] = str(ts)
+            ts = Timestamp(val, tz=tz)
+            if format is None:
+                result[i] = str(ts)
+            else:
+
+                # invalid format string
+                # requires dates > 1900
+                try:
+                    result[i] = ts.strftime(format)
+                except ValueError:
+                    result[i] = str(ts)
 
     return result
 

@@ -264,9 +264,10 @@ class CheckNameIntegration(object):
         self.assertTrue('dt' not in dir(s))
 
     def test_binop_maybe_preserve_name(self):
-
         # names match, preserve
         result = self.ts * self.ts
+        self.assertEqual(result.name, self.ts.name)
+        result = self.ts.mul(self.ts)
         self.assertEqual(result.name, self.ts.name)
 
         result = self.ts * self.ts[:-2]
@@ -277,6 +278,22 @@ class CheckNameIntegration(object):
         cp.name = 'something else'
         result = self.ts + cp
         self.assertIsNone(result.name)
+        result = self.ts.add(cp)
+        self.assertIsNone(result.name)
+
+        ops = ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow']
+        ops = ops + ['r' + op for op in ops]
+        for op in ops:
+            # names match, preserve
+            s = self.ts.copy()
+            result = getattr(s, op)(s)
+            self.assertEqual(result.name, self.ts.name)
+
+            # names don't match, don't preserve
+            cp = self.ts.copy()
+            cp.name = 'changed'
+            result = getattr(s, op)(cp)
+            self.assertIsNone(result.name)
 
     def test_combine_first_name(self):
         result = self.ts.combine_first(self.ts[:5])
@@ -2299,7 +2316,7 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         self.assertFalse(hasattr(self.series.iteritems(), 'reverse'))
 
     def test_sum(self):
-        self._check_stat_op('sum', np.sum)
+        self._check_stat_op('sum', np.sum, check_allna=True)
 
     def test_sum_inf(self):
         import pandas.core.nanops as nanops
@@ -2612,7 +2629,7 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         r = np.diff(s)
         assert_series_equal(Series([nan, 0, 0, 0, nan]), r)
 
-    def _check_stat_op(self, name, alternate, check_objects=False):
+    def _check_stat_op(self, name, alternate, check_objects=False, check_allna=False):
         import pandas.core.nanops as nanops
 
         def testit():
@@ -2636,7 +2653,17 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
             assert_almost_equal(f(self.series), alternate(nona.values))
 
             allna = self.series * nan
-            self.assertTrue(np.isnan(f(allna)))
+
+            if check_allna:
+                # xref 9422
+                # bottleneck >= 1.0 give 0.0 for an allna Series sum
+                try:
+                    self.assertTrue(nanops._USE_BOTTLENECK)
+                    import bottleneck as bn
+                    self.assertTrue(bn.__version__ >= LooseVersion('1.0'))
+                    self.assertEqual(f(allna),0.0)
+                except:
+                    self.assertTrue(np.isnan(f(allna)))
 
             # dtype=object with None, it works!
             s = Series([1, 2, 3, None, 5])
@@ -5398,7 +5425,8 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
     def test_getitem_setitem_datetime_tz_dateutil(self):
         tm._skip_if_no_dateutil();
         from dateutil.tz import tzutc
-        from dateutil.zoneinfo import gettz
+        from pandas.tslib import _dateutil_gettz as gettz
+
         tz = lambda x: tzutc() if x == 'UTC' else gettz(x)  # handle special case for utc in dateutil
 
         from pandas import date_range
@@ -5931,6 +5959,10 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
 
             assert_series_equal(aa, ea)
             assert_series_equal(ab, eb)
+            self.assertEqual(aa.name, 'ts')
+            self.assertEqual(ea.name, 'ts')
+            self.assertEqual(ab.name, 'ts')
+            self.assertEqual(eb.name, 'ts')
 
         for kind in JOIN_TYPES:
             _check_align(self.ts[2:], self.ts[:-5], how=kind)
@@ -5938,12 +5970,15 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
 
             # empty left
             _check_align(self.ts[:0], self.ts[:-5], how=kind)
+            _check_align(self.ts[:0], self.ts[:-5], how=kind, fill=-1)
 
             # empty right
             _check_align(self.ts[:-5], self.ts[:0], how=kind)
+            _check_align(self.ts[:-5], self.ts[:0], how=kind, fill=-1)
 
             # both empty
             _check_align(self.ts[:0], self.ts[:0], how=kind)
+            _check_align(self.ts[:0], self.ts[:0], how=kind, fill=-1)
 
     def test_align_fill_method(self):
         def _check_align(a, b, how='left', method='pad', limit=None):

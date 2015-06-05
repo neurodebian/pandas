@@ -17,7 +17,7 @@ from pandas.core.internals import BlockManager
 import pandas.core.common as com
 import pandas.core.datetools as datetools
 from pandas import compat
-from pandas.compat import map, zip, lrange, string_types, isidentifier, lmap
+from pandas.compat import map, zip, lrange, string_types, isidentifier
 from pandas.core.common import (isnull, notnull, is_list_like,
                                 _values_from_object, _maybe_promote,
                                 _maybe_box_datetimelike, ABCSeries,
@@ -2398,15 +2398,15 @@ class NDFrame(PandasObject):
 
         Parameters
         ----------
-        method : {'backfill', 'bfill', 'pad', 'ffill', None}, default None
-            Method to use for filling holes in reindexed Series
-            pad / ffill: propagate last valid observation forward to next valid
-            backfill / bfill: use NEXT valid observation to fill gap
         value : scalar, dict, Series, or DataFrame
             Value to use to fill holes (e.g. 0), alternately a dict/Series/DataFrame of
             values specifying which value to use for each index (for a Series) or
             column (for a DataFrame). (values not in the dict/Series/DataFrame will not be
             filled). This value cannot be a list.
+        method : {'backfill', 'bfill', 'pad', 'ffill', None}, default None
+            Method to use for filling holes in reindexed Series
+            pad / ffill: propagate last valid observation forward to next valid
+            backfill / bfill: use NEXT valid observation to fill gap
         axis : %(axes_single_arg)s
         inplace : boolean, default False
             If True, fill in place. Note: this will modify any
@@ -3365,11 +3365,10 @@ class NDFrame(PandasObject):
                                                          level=level,
                                                          return_indexers=True)
 
-            left_result = self._reindex_indexer(join_index, lidx, copy)
-            right_result = other._reindex_indexer(join_index, ridx, copy)
+            left = self._reindex_indexer(join_index, lidx, copy)
+            right = other._reindex_indexer(join_index, ridx, copy)
 
         else:
-
             # one has > 1 ndim
             fdata = self._data
             if axis == 0:
@@ -3399,23 +3398,19 @@ class NDFrame(PandasObject):
             if copy and fdata is self._data:
                 fdata = fdata.copy()
 
-            left_result = DataFrame(fdata)
+            left = DataFrame(fdata)
 
             if ridx is None:
-                right_result = other
+                right = other
             else:
-                right_result = other.reindex(join_index, level=level)
+                right = other.reindex(join_index, level=level)
 
         # fill
         fill_na = notnull(fill_value) or (method is not None)
         if fill_na:
-            return (left_result.fillna(fill_value, method=method, limit=limit,
-                                       axis=fill_axis),
-                    right_result.fillna(fill_value, method=method,
-                                        limit=limit))
-        else:
-            return (left_result.__finalize__(self),
-                    right_result.__finalize__(other))
+            left = left.fillna(fill_value, method=method, limit=limit, axis=fill_axis)
+            right = right.fillna(fill_value, method=method, limit=limit)
+        return (left.__finalize__(self), right.__finalize__(other))
 
     _shared_docs['where'] = ("""
         Return an object of same shape as self and whose corresponding

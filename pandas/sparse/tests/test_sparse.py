@@ -128,14 +128,15 @@ class TestSparseSeries(tm.TestCase,
 
         date_index = bdate_range('1/1/2011', periods=len(index))
 
-        self.bseries = SparseSeries(arr, index=index, kind='block')
-        self.bseries.name = 'bseries'
+        self.bseries = SparseSeries(arr, index=index, kind='block',
+                                    name='bseries')
 
         self.ts = self.bseries
 
         self.btseries = SparseSeries(arr, index=date_index, kind='block')
 
-        self.iseries = SparseSeries(arr, index=index, kind='integer')
+        self.iseries = SparseSeries(arr, index=index, kind='integer',
+                                    name='iseries')
 
         arr, index = _test_data2()
         self.bseries2 = SparseSeries(arr, index=index, kind='block')
@@ -143,7 +144,7 @@ class TestSparseSeries(tm.TestCase,
 
         arr, index = _test_data1_zero()
         self.zbseries = SparseSeries(arr, index=index, kind='block',
-                                     fill_value=0)
+                                     fill_value=0, name='zbseries')
         self.ziseries = SparseSeries(arr, index=index, kind='integer',
                                      fill_value=0)
 
@@ -234,12 +235,21 @@ class TestSparseSeries(tm.TestCase,
                      self.bseries.to_dense().fillna(0).values)
 
         # pass SparseSeries
-        s2 = SparseSeries(self.bseries)
-        s3 = SparseSeries(self.iseries)
-        s4 = SparseSeries(self.zbseries)
-        assert_sp_series_equal(s2, self.bseries)
-        assert_sp_series_equal(s3, self.iseries)
-        assert_sp_series_equal(s4, self.zbseries)
+        def _check_const(sparse, name):
+            # use passed series name
+            result = SparseSeries(sparse)
+            assert_sp_series_equal(result, sparse)
+            self.assertEqual(sparse.name, name)
+            self.assertEqual(result.name, name)
+
+            # use passed name
+            result = SparseSeries(sparse, name='x')
+            assert_sp_series_equal(result, sparse)
+            self.assertEqual(result.name, 'x')
+
+        _check_const(self.bseries, 'bseries')
+        _check_const(self.iseries, 'iseries')
+        _check_const(self.zbseries, 'zbseries')
 
         # Sparse time series works
         date_index = bdate_range('1/1/2000', periods=len(self.bseries))
@@ -508,6 +518,21 @@ class TestSparseSeries(tm.TestCase,
         for op in inplace_ops:
             _check_inplace_op(
                 getattr(operator, "i%s" % op), getattr(operator, op))
+
+    def test_abs(self):
+        s = SparseSeries([1, 2, -3], name='x')
+        expected = SparseSeries([1, 2, 3], name='x')
+        result = s.abs()
+        assert_sp_series_equal(result, expected)
+        self.assertEqual(result.name, 'x')
+
+        result = abs(s)
+        assert_sp_series_equal(result, expected)
+        self.assertEqual(result.name, 'x')
+
+        result = np.abs(s)
+        assert_sp_series_equal(result, expected)
+        self.assertEqual(result.name, 'x')
 
     def test_reindex(self):
         def _compare_with_series(sps, new_index):

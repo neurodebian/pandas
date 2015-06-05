@@ -19,8 +19,8 @@ from pandas.core.common import (isnull, notnull, is_bool_indexer,
                                 is_list_like, _values_from_object,
                                 _possibly_cast_to_datetime, _possibly_castable,
                                 _possibly_convert_platform, _try_sort,
-                                ABCSparseArray, _maybe_match_name, _coerce_to_dtype,
-                                _ensure_object, SettingWithCopyError,
+                                ABCSparseArray, _maybe_match_name,
+                                _coerce_to_dtype, SettingWithCopyError,
                                 _maybe_box_datetimelike, ABCDataFrame)
 from pandas.core.index import (Index, MultiIndex, InvalidIndexError,
                                _ensure_index)
@@ -1442,7 +1442,7 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
 
     def append(self, to_append, verify_integrity=False):
         """
-        Concatenate two or more Series. The indexes must not overlap
+        Concatenate two or more Series.
 
         Parameters
         ----------
@@ -1508,7 +1508,12 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
 
         result = func(this_vals, other_vals)
         name = _maybe_match_name(self, other)
-        return self._constructor(result, index=new_index).__finalize__(self)
+        result = self._constructor(result, index=new_index, name=name)
+        result = result.__finalize__(self)
+        if name is None:
+            # When name is None, __finalize__ overwrites current name
+            result.name = None
+        return result
 
     def combine(self, other, func, fill_value=nan):
         """

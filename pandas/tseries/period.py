@@ -1,10 +1,6 @@
 # pylint: disable=E1101,E1103,W0232
-import operator
-
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 import numpy as np
-from pandas.core.base import PandasObject
-
 import pandas.tseries.frequencies as frequencies
 from pandas.tseries.frequencies import get_freq_code as _gfc
 from pandas.tseries.index import DatetimeIndex, Int64Index, Index
@@ -114,20 +110,20 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
 
     Parameters
     ----------
-    data  : array-like (1-dimensional), optional
+    data : array-like (1-dimensional), optional
         Optional period-like data to construct index with
     dtype : NumPy dtype (default: i8)
-    copy  : bool
+    copy : bool
         Make a copy of input ndarray
     freq : string or period object, optional
         One of pandas period strings or corresponding objects
     start : starting value, period-like, optional
         If data is None, used as the start point in generating regular
         period data.
-    periods  : int, optional, > 0
+    periods : int, optional, > 0
         Number of periods to generate, if generating index. Takes precedence
         over end argument
-    end   : end value, period-like, optional
+    end : end value, period-like, optional
         If periods is none, generated index will extend to first conforming
         period on or just past end argument
     year : int, array, or Series, default None
@@ -505,7 +501,6 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
         ----------
         n : int
             Periods to shift by
-        freq : freq string
 
         Returns
         -------
@@ -684,6 +679,8 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
         return self._apply_meta(result)
 
     def _assert_can_do_setop(self, other):
+        super(PeriodIndex, self)._assert_can_do_setop(other)
+
         if not isinstance(other, PeriodIndex):
             raise ValueError('can only call with other PeriodIndex-ed objects')
 
@@ -974,8 +971,8 @@ def period_range(start=None, end=None, periods=None, freq='D', name=None):
 
     Parameters
     ----------
-    start :
-    end :
+    start : starting value, period-like, optional
+    end : ending value, period-like, optional
     periods : int, default None
         Number of periods in the index
     freq : str/DateOffset, default 'D'
