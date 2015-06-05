@@ -33,6 +33,8 @@ Build-Depends: debhelper (>= 7.0.50),
                python3-bs4,
                python3-six,
                xvfb, xauth, xclip,
+Build-Depends-Indep:
+ ipython (>= 0.12) | ipython2x | ipython1x,
 X-Python-Version: >= 2.7
 X-Python3-Version: >= 3.2
 Standards-Version: 3.9.5
