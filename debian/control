@@ -20,6 +20,7 @@ Build-Depends: debhelper (>= 7.0.50),
                python-bs4,
                python-html5lib,
                python-six,
+               python-lxml,
                python3-all-dev,
                python3-setuptools,
                cython3 (>= 0.17.1~) | cython (<< 0.17.1~),
@@ -32,6 +33,7 @@ Build-Depends: debhelper (>= 7.0.50),
                python3-tk,
                python3-bs4,
                python3-six,
+               python3-lxml,
                xvfb, xauth, xclip,
 Build-Depends-Indep:
  ipython (>= 0.12) | ipython2x | ipython1x,
@@ -60,6 +62,7 @@ Recommends: python-scipy,
             python-openpyxl, python-xlwt, python-xlrd,
             python-bs4,
             python-html5lib,
+            python-lxml,
 Provides: ${python:Provides}
 Suggests: python-pandas-doc
 Description: data structures for "relational" or "labeled" data
@@ -96,6 +99,7 @@ Recommends: python3-scipy,
             python3-bs4,
             python3-html5lib,
             python3-six,
+            python3-lxml,
 Suggests: python-pandas-doc
 Description: data structures for "relational" or "labeled" data - Python 3
  pandas is a Python package providing fast, flexible, and expressive
