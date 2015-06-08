@@ -5,7 +5,7 @@ pandas (0.16.1+git97-gbc7d48f-1) unstable; urgency=medium
     - build -doc package (Closes: #660900)
     - add ipython (or alternative new ones from neurodebian) into
       Build-Depends-Indep to build docs
-    - add python{,3}-lxml to Build-Depends and Recommends
+    - add python{,3}-{lxml,html5lib} to Build-Depends and Recommends
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 05 Jun 2015 08:01:40 -0400
 
