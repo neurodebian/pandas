@@ -1352,6 +1352,7 @@ class NDFrame(PandasObject):
         taken : type of caller
         """
 
+        self._consolidate_inplace()
         new_data = self._data.take(indices,
                                    axis=self._get_block_manager_axis(axis),
                                    convert=True, verify=True)
@@ -1576,6 +1577,8 @@ class NDFrame(PandasObject):
             If True, do operation inplace and return None.
         errors : {'ignore', 'raise'}, default 'raise'
             If 'ignore', suppress error and existing labels are dropped.
+
+            .. versionadded:: 0.16.1
 
         Returns
         -------
@@ -1953,6 +1956,8 @@ class NDFrame(PandasObject):
         """
         Returns a random sample of items from an axis of object.
 
+        .. versionadded:: 0.16.1
+
         Parameters
         ----------
         n : int, optional
@@ -2044,6 +2049,68 @@ class NDFrame(PandasObject):
         locs = rs.choice(axis_length, size=n, replace=replace, p=weights)
         return self.take(locs, axis=axis)
 
+    _shared_docs['pipe'] = ("""
+        Apply func(self, \*args, \*\*kwargs)
+
+        .. versionadded:: 0.16.2
+
+        Parameters
+        ----------
+        func : function
+            function to apply to the %(klass)s.
+            ``args``, and ``kwargs`` are passed into ``func``.
+            Alternatively a ``(callable, data_keyword)`` tuple where
+            ``data_keyword`` is a string indicating the keyword of
+            ``callable`` that expects the %(klass)s.
+        args : positional arguments passed into ``func``.
+        kwargs : a dictionary of keyword arguments passed into ``func``.
+
+        Returns
+        -------
+        object : the return type of ``func``.
+
+        Notes
+        -----
+
+        Use ``.pipe`` when chaining together functions that expect
+        on Series or DataFrames. Instead of writing
+
+        >>> f(g(h(df), arg1=a), arg2=b, arg3=c)
+
+        You can write
+
+        >>> (df.pipe(h)
+        ...    .pipe(g, arg1=a)
+        ...    .pipe(f, arg2=b, arg3=c)
+        ... )
+
+        If you have a function that takes the data as (say) the second
+        argument, pass a tuple indicating which keyword expects the
+        data. For example, suppose ``f`` takes its data as ``arg2``:
+
+        >>> (df.pipe(h)
+        ...    .pipe(g, arg1=a)
+        ...    .pipe((f, 'arg2'), arg1=a, arg3=c)
+        ...  )
+
+        See Also
+        --------
+        pandas.DataFrame.apply
+        pandas.DataFrame.applymap
+        pandas.Series.map
+    """
+    )
+    @Appender(_shared_docs['pipe'] % _shared_doc_kwargs)
+    def pipe(self, func, *args, **kwargs):
+        if isinstance(func, tuple):
+            func, target = func
+            if target in kwargs:
+                msg = '%s is both the pipe target and a keyword argument' % target
+                raise ValueError(msg)
+            kwargs[target] = self
+            return func(*args, **kwargs)
+        else:
+            return func(self, *args, **kwargs)
 
     #----------------------------------------------------------------------
     # Attribute access
@@ -2128,8 +2195,10 @@ class NDFrame(PandasObject):
         return result
 
     def _consolidate_inplace(self):
-        f = lambda: self._data.consolidate()
-        self._data = self._protect_consolidate(f)
+        """ we are inplace consolidating; return None """
+        def f():
+            self._data = self._data.consolidate()
+        self._protect_consolidate(f)
 
     def consolidate(self, inplace=False):
         """
@@ -2856,47 +2925,50 @@ class NDFrame(PandasObject):
 
         if axis == 0:
             ax = self._info_axis_name
+            _maybe_transposed_self = self
         elif axis == 1:
-            self = self.T
+            _maybe_transposed_self = self.T
             ax = 1
-        ax = self._get_axis_number(ax)
+        else:
+            _maybe_transposed_self = self
+        ax = _maybe_transposed_self._get_axis_number(ax)
 
-        if self.ndim == 2:
+        if _maybe_transposed_self.ndim == 2:
             alt_ax = 1 - ax
         else:
             alt_ax = ax
 
-        if isinstance(self.index, MultiIndex) and method != 'linear':
+        if isinstance(_maybe_transposed_self.index, MultiIndex) and method != 'linear':
             raise ValueError("Only `method=linear` interpolation is supported "
                              "on MultiIndexes.")
 
-        if self._data.get_dtype_counts().get('object') == len(self.T):
+        if _maybe_transposed_self._data.get_dtype_counts().get('object') == len(_maybe_transposed_self.T):
             raise TypeError("Cannot interpolate with all NaNs.")
 
         # create/use the index
         if method == 'linear':
-            index = np.arange(len(self._get_axis(alt_ax)))  # prior default
+            index = np.arange(len(_maybe_transposed_self._get_axis(alt_ax)))  # prior default
         else:
-            index = self._get_axis(alt_ax)
+            index = _maybe_transposed_self._get_axis(alt_ax)
 
         if pd.isnull(index).any():
             raise NotImplementedError("Interpolation with NaNs in the index "
                                       "has not been implemented. Try filling "
                                       "those NaNs before interpolating.")
-        new_data = self._data.interpolate(method=method,
-                                          axis=ax,
-                                          index=index,
-                                          values=self,
-                                          limit=limit,
-                                          inplace=inplace,
-                                          downcast=downcast,
-                                          **kwargs)
+        new_data = _maybe_transposed_self._data.interpolate(
+            method=method,
+            axis=ax,
+            index=index,
+            values=_maybe_transposed_self,
+            limit=limit,
+            inplace=inplace,
+            downcast=downcast,
+            **kwargs
+        )
         if inplace:
             if axis == 1:
-                self._update_inplace(new_data)
-                self = self.T
-            else:
-                self._update_inplace(new_data)
+                new_data = self._constructor(new_data).T._data
+            self._update_inplace(new_data)
         else:
             res = self._constructor(new_data).__finalize__(self)
             if axis == 1:

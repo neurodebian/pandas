@@ -19,7 +19,7 @@ import pandas.algos as algos
 import pandas.lib as lib
 import pandas.tslib as tslib
 from pandas import compat
-from pandas.compat import StringIO, BytesIO, range, long, u, zip, map, string_types
+from pandas.compat import StringIO, BytesIO, range, long, u, zip, map, string_types, iteritems
 
 from pandas.core.config import get_option
 
@@ -1194,7 +1194,7 @@ def _maybe_upcast_putmask(result, mask, other):
         if result.dtype in _DATELIKE_DTYPES:
             if lib.isscalar(other):
                 if isnull(other):
-                    other = tslib.iNaT
+                    other = result.dtype.type('nat')
                 elif is_integer(other):
                     other = np.array(other, dtype=result.dtype)
             elif is_integer_dtype(other):
@@ -2497,6 +2497,10 @@ def is_integer_dtype(arr_or_dtype):
     return (issubclass(tipo, np.integer) and
             not issubclass(tipo, (np.datetime64, np.timedelta64)))
 
+def is_int64_dtype(arr_or_dtype):
+    tipo = _get_dtype_type(arr_or_dtype)
+    return issubclass(tipo, np.int64)
+
 
 def is_int_or_datetime_dtype(arr_or_dtype):
     tipo = _get_dtype_type(arr_or_dtype)
@@ -2605,9 +2609,14 @@ def is_list_like(arg):
             not isinstance(arg, compat.string_and_binary_types))
 
 def is_null_slice(obj):
+    """ we have a null slice """
     return (isinstance(obj, slice) and obj.start is None and
             obj.stop is None and obj.step is None)
 
+def is_full_slice(obj, l):
+    """ we have a full length slice """
+    return (isinstance(obj, slice) and obj.start == 0 and
+            obj.stop == l and obj.step is None)
 
 def is_hashable(arg):
     """Return True if hash(arg) will succeed, False otherwise.
@@ -2813,11 +2822,7 @@ def _get_handle(path, mode, encoding=None, compression=None):
         else:
             raise ValueError('Unrecognized compression type: %s' %
                              compression)
-        if compat.PY3_2:
-            # gzip and bz2 don't work with TextIOWrapper in 3.2
-            encoding = encoding or get_option('display.encoding')
-            f = StringIO(f.read().decode(encoding))
-        elif compat.PY3:
+        if compat.PY3:
             from io import TextIOWrapper
             f = TextIOWrapper(f, encoding=encoding)
         return f
@@ -3028,13 +3033,27 @@ def _where_compat(mask, arr1, arr2):
 
     return np.where(mask, arr1, arr2)
 
+def _dict_compat(d):
+    """
+    Helper function to convert datetimelike-keyed dicts to Timestamp-keyed dict
+
+    Parameters
+    ----------
+    d: dict like object
+
+    Returns
+    -------
+    dict
+
+    """
+    return dict((_maybe_box_datetimelike(key), value) for key, value in iteritems(d))
 
 def sentinel_factory():
+
     class Sentinel(object):
         pass
 
     return Sentinel()
-
 
 def in_interactive_session():
     """ check if we're running in an interactive shell

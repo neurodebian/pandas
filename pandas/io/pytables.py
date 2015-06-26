@@ -257,6 +257,7 @@ def _tables():
 def to_hdf(path_or_buf, key, value, mode=None, complevel=None, complib=None,
            append=None, **kwargs):
     """ store this object, close it if we opened it """
+
     if append:
         f = lambda store: store.append(key, value, **kwargs)
     else:
@@ -289,8 +290,6 @@ def read_hdf(path_or_buf, key, **kwargs):
             return columns
         iterator : optional, boolean, return an iterator, default False
         chunksize : optional, nrows to include in iteration, return an iterator
-        auto_close : optional, boolean, should automatically close the store
-            when finished, default is False
 
         Returns
         -------
@@ -301,9 +300,6 @@ def read_hdf(path_or_buf, key, **kwargs):
     # grab the scope
     if 'where' in kwargs:
         kwargs['where'] = _ensure_term(kwargs['where'], scope_level=1)
-
-    f = lambda store, auto_close: store.select(
-        key, auto_close=auto_close, **kwargs)
 
     if isinstance(path_or_buf, string_types):
 
@@ -320,20 +316,28 @@ def read_hdf(path_or_buf, key, **kwargs):
         # can't auto open/close if we are using an iterator
         # so delegate to the iterator
         store = HDFStore(path_or_buf, **kwargs)
+        auto_close = True
+
+    elif isinstance(path_or_buf, HDFStore):
+        if not path_or_buf.is_open:
+            raise IOError('The HDFStore must be open for reading.')
+
+        store = path_or_buf
+        auto_close = False
+    else:
+        raise NotImplementedError('Support for generic buffers has not been '
+                                  'implemented.')
+
+    try:
+        return store.select(key, auto_close=auto_close, **kwargs)
+    except:
+        # if there is an error, close the store
         try:
-            return f(store, True)
+            store.close()
         except:
+            pass
 
-            # if there is an error, close the store
-            try:
-                store.close()
-            except:
-                pass
-
-            raise
-
-    # a passed store; user controls open/close
-    f(path_or_buf, False)
+        raise
 
 
 class HDFStore(StringMixin):
@@ -384,6 +388,10 @@ class HDFStore(StringMixin):
             import tables
         except ImportError as ex:  # pragma: no cover
             raise ImportError('HDFStore requires PyTables, "{ex}" problem importing'.format(ex=str(ex)))
+
+        if complib not in (None, 'blosc', 'bzip2', 'lzo', 'zlib'):
+            raise ValueError("complib only supports 'blosc', 'bzip2', lzo' "
+                             "or 'zlib' compression.")
 
         self._path = path
         if mode is None:
@@ -1535,6 +1543,12 @@ class IndexCol(StringMixin):
                 self.typ = _tables(
                 ).StringCol(itemsize=min_itemsize, pos=self.pos)
 
+    def validate(self, handler, append, **kwargs):
+        self.validate_names()
+
+    def validate_names(self):
+        pass
+
     def validate_and_set(self, handler, append, **kwargs):
         self.set_table(handler.table)
         self.validate_col()
@@ -2079,6 +2093,10 @@ class DataIndexableCol(DataCol):
 
     """ represent a data column that can be indexed """
     is_data_indexable = True
+
+    def validate_names(self):
+        if not Index(self.values).is_object():
+            raise ValueError("cannot have non-object label DataIndexableCol")
 
     def get_atom_string(self, block, itemsize):
         return _tables().StringCol(itemsize=itemsize)
@@ -3590,7 +3608,7 @@ class Table(Fixed):
                                                 nan_rep=self.nan_rep,
                                                 encoding=self.encoding
                                                 ).take_data(),
-                                      a.tz, True))
+                                      a.tz, True), name=column)
 
         raise KeyError("column [%s] not found in the table" % column)
 
@@ -3755,6 +3773,9 @@ class AppendableTable(LegacyTable):
         self.create_axes(axes=axes, obj=obj, validate=append,
                          min_itemsize=min_itemsize,
                          **kwargs)
+
+        for a in self.axes:
+            a.validate(self, append)
 
         if not self.is_exists:
 

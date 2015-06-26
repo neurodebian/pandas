@@ -395,8 +395,8 @@ class TestCategorical(tm.TestCase):
         self.assertRaises(TypeError, lambda: cat_rev > a)
 
         # The following work via '__array_priority__ = 1000'
-        # works only on numpy >= 1.7.1 and not on PY3.2
-        if LooseVersion(np.__version__) > "1.7.1" and not compat.PY3_2:
+        # works only on numpy >= 1.7.1
+        if LooseVersion(np.__version__) > "1.7.1":
             self.assertRaises(TypeError, lambda: a < cat)
             self.assertRaises(TypeError, lambda: a < cat_rev)
 
@@ -854,6 +854,28 @@ class TestCategorical(tm.TestCase):
         self.assert_numpy_array_equal(c.categories , np.array(["a","b",np.nan],dtype=np.object_))
         self.assert_numpy_array_equal(c._codes , np.array([0,2,-1,0]))
 
+        # Remove null categories (GH 10156)
+        cases = [
+            ([1.0, 2.0, np.nan], [1.0, 2.0]),
+            (['a', 'b', None], ['a', 'b']),
+            ([pd.Timestamp('2012-05-01'), pd.NaT], [pd.Timestamp('2012-05-01')])
+        ]
+
+        null_values = [np.nan, None, pd.NaT]
+
+        for with_null, without in cases:
+            base = Categorical([], with_null)
+            expected = Categorical([], without)
+
+            for nullval in null_values:
+                result = base.remove_categories(nullval)
+                self.assert_categorical_equal(result, expected)
+
+        # Different null values are indistinguishable
+        for i, j in [(0, 1), (0, 2), (1, 2)]:
+            nulls = [null_values[i], null_values[j]]
+            self.assertRaises(ValueError, lambda: Categorical([], categories=nulls))
+
 
     def test_isnull(self):
         exp = np.array([False, False, True])
@@ -1233,7 +1255,7 @@ class TestCategoricalAsBlock(tm.TestCase):
     def test_basic(self):
 
         # test basic creation / coercion of categoricals
-        s = Series(self.factor,name='A')
+        s = Series(self.factor, name='A')
         self.assertEqual(s.dtype,'category')
         self.assertEqual(len(s),len(self.factor))
         str(s.values)
@@ -1260,8 +1282,9 @@ class TestCategoricalAsBlock(tm.TestCase):
         df = DataFrame({'A' : s, 'B' : s, 'C' : 1})
         result1 = df['A']
         result2 = df['B']
-        tm.assert_series_equal(result1,s)
-        tm.assert_series_equal(result2,s)
+        tm.assert_series_equal(result1, s)
+        tm.assert_series_equal(result2, s, check_names=False)
+        self.assertEqual(result2.name, 'B')
         self.assertEqual(len(df),len(self.factor))
         str(df.values)
         str(df)
@@ -1344,23 +1367,23 @@ class TestCategoricalAsBlock(tm.TestCase):
         # GH8626
 
         # dict creation
-        df = DataFrame({ 'A' : list('abc') },dtype='category')
-        expected = Series(list('abc'),dtype='category')
-        tm.assert_series_equal(df['A'],expected)
+        df = DataFrame({ 'A' : list('abc') }, dtype='category')
+        expected = Series(list('abc'), dtype='category', name='A')
+        tm.assert_series_equal(df['A'], expected)
 
         # to_frame
-        s = Series(list('abc'),dtype='category')
+        s = Series(list('abc'), dtype='category')
         result = s.to_frame()
-        expected = Series(list('abc'),dtype='category')
-        tm.assert_series_equal(result[0],expected)
+        expected = Series(list('abc'), dtype='category', name=0)
+        tm.assert_series_equal(result[0], expected)
         result = s.to_frame(name='foo')
-        expected = Series(list('abc'),dtype='category')
-        tm.assert_series_equal(result['foo'],expected)
+        expected = Series(list('abc'), dtype='category', name='foo')
+        tm.assert_series_equal(result['foo'], expected)
 
         # list-like creation
-        df = DataFrame(list('abc'),dtype='category')
-        expected = Series(list('abc'),dtype='category')
-        tm.assert_series_equal(df[0],expected)
+        df = DataFrame(list('abc'), dtype='category')
+        expected = Series(list('abc'), dtype='category', name=0)
+        tm.assert_series_equal(df[0], expected)
 
         # ndim != 1
         df = DataFrame([pd.Categorical(list('abc'))])
@@ -1833,7 +1856,11 @@ class TestCategoricalAsBlock(tm.TestCase):
         # Monotonic
         df = DataFrame({"a": [5, 15, 25]})
         c = pd.cut(df.a, bins=[0,10,20,30,40])
-        tm.assert_series_equal(df.a.groupby(c).transform(sum), df['a'])
+
+        result = df.a.groupby(c).transform(sum)
+        tm.assert_series_equal(result, df['a'], check_names=False)
+        self.assertTrue(result.name is None)
+
         tm.assert_series_equal(df.a.groupby(c).transform(lambda xs: np.sum(xs)), df['a'])
         tm.assert_frame_equal(df.groupby(c).transform(sum), df[['a']])
         tm.assert_frame_equal(df.groupby(c).transform(lambda xs: np.max(xs)), df[['a']])
@@ -1845,7 +1872,11 @@ class TestCategoricalAsBlock(tm.TestCase):
         # Non-monotonic
         df = DataFrame({"a": [5, 15, 25, -5]})
         c = pd.cut(df.a, bins=[-10, 0,10,20,30,40])
-        tm.assert_series_equal(df.a.groupby(c).transform(sum), df['a'])
+
+        result = df.a.groupby(c).transform(sum)
+        tm.assert_series_equal(result, df['a'], check_names=False)
+        self.assertTrue(result.name is None)
+
         tm.assert_series_equal(df.a.groupby(c).transform(lambda xs: np.sum(xs)), df['a'])
         tm.assert_frame_equal(df.groupby(c).transform(sum), df[['a']])
         tm.assert_frame_equal(df.groupby(c).transform(lambda xs: np.sum(xs)), df[['a']])
@@ -1983,19 +2014,19 @@ class TestCategoricalAsBlock(tm.TestCase):
         df = DataFrame({'value': (np.arange(100)+1).astype('int64')})
         df['D'] = pd.cut(df.value, bins=[0,25,50,75,100])
 
-        expected = Series([11,'(0, 25]'],index=['value','D'])
+        expected = Series([11,'(0, 25]'], index=['value','D'], name=10)
         result = df.iloc[10]
-        tm.assert_series_equal(result,expected)
+        tm.assert_series_equal(result, expected)
 
         expected = DataFrame({'value': np.arange(11,21).astype('int64')},
                              index=np.arange(10,20).astype('int64'))
         expected['D'] = pd.cut(expected.value, bins=[0,25,50,75,100])
         result = df.iloc[10:20]
-        tm.assert_frame_equal(result,expected)
+        tm.assert_frame_equal(result, expected)
 
-        expected = Series([9,'(0, 25]'],index=['value','D'])
+        expected = Series([9,'(0, 25]'],index=['value', 'D'], name=8)
         result = df.loc[8]
-        tm.assert_series_equal(result,expected)
+        tm.assert_series_equal(result, expected)
 
     def test_slicing_and_getting_ops(self):
 
@@ -2151,7 +2182,8 @@ class TestCategoricalAsBlock(tm.TestCase):
         tm.assert_series_equal(result, expected)
 
         result = df.loc["h":"j","cats"]
-        expected = Series(Categorical(['a','b','b'],categories=['a','b','c']),index=['h','i','j'])
+        expected = Series(Categorical(['a','b','b'], name='cats',
+                          categories=['a','b','c']), index=['h','i','j'])
         tm.assert_series_equal(result, expected)
 
         result = df.ix["h":"j",0:1]
@@ -2704,7 +2736,6 @@ class TestCategoricalAsBlock(tm.TestCase):
             df.append(df_wrong_categories)
         self.assertRaises(ValueError, f)
 
-
     def test_merge(self):
         # GH 9426
 
@@ -2736,6 +2767,13 @@ class TestCategoricalAsBlock(tm.TestCase):
         cleft['b'] = cleft['b'].astype('category')
         result = pd.merge(cleft, cright, how='left', left_on='b', right_on='c')
         tm.assert_frame_equal(result, expected)
+
+    def test_repeat(self):
+        #GH10183
+        cat = pd.Categorical(["a","b"], categories=["a","b"])
+        exp = pd.Categorical(["a", "a", "b", "b"], categories=["a","b"])
+        res = cat.repeat(2)
+        self.assert_categorical_equal(res, exp)
 
     def test_na_actions(self):
 
@@ -2832,21 +2870,21 @@ class TestCategoricalAsBlock(tm.TestCase):
         # GH8626
 
         # dict creation
-        df = DataFrame({ 'A' : list('abc') },dtype='category')
-        expected = Series(list('abc'),dtype='category')
-        tm.assert_series_equal(df['A'],expected)
+        df = DataFrame({ 'A' : list('abc') }, dtype='category')
+        expected = Series(list('abc'), dtype='category', name='A')
+        tm.assert_series_equal(df['A'], expected)
 
         # list-like creation
-        df = DataFrame(list('abc'),dtype='category')
-        expected = Series(list('abc'),dtype='category')
-        tm.assert_series_equal(df[0],expected)
+        df = DataFrame(list('abc'), dtype='category')
+        expected = Series(list('abc'), dtype='category', name=0)
+        tm.assert_series_equal(df[0], expected)
 
         # to record array
         # this coerces
         result = df.to_records()
         expected = np.rec.array([(0, 'a'), (1, 'b'), (2, 'c')],
                                 dtype=[('index', '<i8'), ('0', 'O')])
-        tm.assert_almost_equal(result,expected)
+        tm.assert_almost_equal(result, expected)
 
     def test_numeric_like_ops(self):
 

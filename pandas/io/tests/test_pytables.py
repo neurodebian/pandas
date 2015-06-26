@@ -13,7 +13,7 @@ import pandas as pd
 from pandas import (Series, DataFrame, Panel, MultiIndex, Categorical, bdate_range,
                     date_range, timedelta_range, Index, DatetimeIndex, TimedeltaIndex, isnull)
 
-from pandas.io.pytables import _tables
+from pandas.io.pytables import _tables, TableIterator
 try:
     _tables()
 except ImportError as e:
@@ -3766,7 +3766,7 @@ class TestHDFStore(tm.TestCase):
             # valid
             result = store.select_column('df', 'index')
             tm.assert_almost_equal(result.values, Series(df.index).values)
-            self.assertIsInstance(result,Series)
+            self.assertIsInstance(result, Series)
 
             # not a data indexable column
             self.assertRaises(
@@ -3805,6 +3805,14 @@ class TestHDFStore(tm.TestCase):
 
             result = store.select_column('df3', 'string', start=-2, stop=2)
             tm.assert_almost_equal(result.values, df3['string'].values[-2:2])
+
+            # GH 10392 - make sure column name is preserved
+            df4 = DataFrame({'A': np.random.randn(10), 'B': 'foo'})
+            store.append('df4', df4, data_columns=True)
+            expected = df4['B']
+            result = store.select_column('df4', 'B')
+            tm.assert_series_equal(result, expected)
+
 
     def test_coordinates(self):
         df = tm.makeTimeDataFrame()
@@ -4640,6 +4648,90 @@ class TestHDFStore(tm.TestCase):
             df_loaded = read_hdf(path, 'df', columns=cols2load)
             self.assertTrue(cols2load_original == cols2load)
 
+    def test_to_hdf_with_object_column_names(self):
+        # GH9057
+        # Writing HDF5 table format should only work for string-like
+        # column types
+
+        types_should_fail = [ tm.makeIntIndex, tm.makeFloatIndex,
+                                tm.makeDateIndex, tm.makeTimedeltaIndex,
+                                tm.makePeriodIndex ]
+        types_should_run = [ tm.makeStringIndex, tm.makeCategoricalIndex ]
+
+        if compat.PY3:
+            types_should_run.append(tm.makeUnicodeIndex)
+        else:
+            types_should_fail.append(tm.makeUnicodeIndex)
+
+        for index in types_should_fail:
+            df = DataFrame(np.random.randn(10, 2), columns=index(2))
+            with ensure_clean_path(self.path) as path:
+                with self.assertRaises(ValueError,
+                        msg="cannot have non-object label DataIndexableCol"):
+                    df.to_hdf(path, 'df', format='table', data_columns=True)
+
+        for index in types_should_run:
+            df = DataFrame(np.random.randn(10, 2), columns=index(2))
+            with ensure_clean_path(self.path) as path:
+                df.to_hdf(path, 'df', format='table', data_columns=True)
+                result = pd.read_hdf(path, 'df', where="index = [{0}]".format(df.index[0]))
+                assert(len(result))
+
+
+    def test_read_hdf_open_store(self):
+        # GH10330
+        # No check for non-string path_or-buf, and no test of open store
+        df = DataFrame(np.random.rand(4, 5),
+                       index=list('abcd'),
+                       columns=list('ABCDE'))
+        df.index.name = 'letters'
+        df = df.set_index(keys='E', append=True)
+
+        with ensure_clean_path(self.path) as path:
+            df.to_hdf(path, 'df', mode='w')
+            direct = read_hdf(path, 'df')
+            store = HDFStore(path, mode='r')
+            indirect = read_hdf(store, 'df')
+            tm.assert_frame_equal(direct, indirect)
+            self.assertTrue(store.is_open)
+            store.close()
+
+    def test_read_hdf_iterator(self):
+        df = DataFrame(np.random.rand(4, 5),
+                       index=list('abcd'),
+                       columns=list('ABCDE'))
+        df.index.name = 'letters'
+        df = df.set_index(keys='E', append=True)
+
+        with ensure_clean_path(self.path) as path:
+            df.to_hdf(path, 'df', mode='w', format='t')
+            direct = read_hdf(path, 'df')
+            iterator = read_hdf(path, 'df', iterator=True)
+            self.assertTrue(isinstance(iterator, TableIterator))
+            indirect = next(iterator.__iter__())
+            tm.assert_frame_equal(direct, indirect)
+            iterator.store.close()
+
+    def test_read_hdf_errors(self):
+        df = DataFrame(np.random.rand(4, 5),
+                       index=list('abcd'),
+                       columns=list('ABCDE'))
+
+        with ensure_clean_path(self.path) as path:
+            self.assertRaises(IOError, read_hdf, path, 'key')
+            df.to_hdf(path, 'df')
+            store = HDFStore(path, mode='r')
+            store.close()
+            self.assertRaises(IOError, read_hdf, store, 'df')
+            with open(path, mode='r') as store:
+                self.assertRaises(NotImplementedError, read_hdf, store, 'df')
+
+    def test_invalid_complib(self):
+        df = DataFrame(np.random.rand(4, 5),
+                       index=list('abcd'),
+                       columns=list('ABCDE'))
+        with ensure_clean_path(self.path) as path:
+            self.assertRaises(ValueError, df.to_hdf, path, 'df', complib='blosc:zlib')
 
 def _test_sort(obj):
     if isinstance(obj, DataFrame):

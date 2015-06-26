@@ -749,11 +749,19 @@ class Categorical(PandasObject):
         """
         if not is_list_like(removals):
             removals = [removals]
-        removals = set(list(removals))
-        not_included = removals - set(self._categories)
+
+        removal_set = set(list(removals))
+        not_included = removal_set - set(self._categories)
+        new_categories = [ c for c in self._categories if c not in removal_set ]
+
+        # GH 10156
+        if any(isnull(removals)):
+            not_included = [x for x in not_included if notnull(x)]
+            new_categories = [x for x in new_categories if notnull(x)]
+
         if len(not_included) != 0:
             raise ValueError("removals must all be in old categories: %s" % str(not_included))
-        new_categories = [ c for c in self._categories if c not in removals ]
+
         return self.set_categories(new_categories, ordered=self.ordered, rename=False,
                                    inplace=inplace)
 
@@ -1599,6 +1607,20 @@ class Categorical(PandasObject):
 
         return result
 
+    def repeat(self, repeats):
+        """
+        Repeat elements of a Categorical.
+
+        See also
+        --------
+        numpy.ndarray.repeat
+
+        """
+        codes = self._codes.repeat(repeats)
+        return Categorical(values=codes, categories=self.categories,
+                           ordered=self.ordered, name=self.name, fastpath=True)
+
+
 ##### The Series.cat accessor #####
 
 class CategoricalAccessor(PandasDelegate):
@@ -1700,6 +1722,7 @@ def _concat_compat(to_concat, axis=0):
     ----------
     to_concat : array of arrays
     axis : axis to provide concatenation
+        in the current impl this is always 0, e.g. we only have 1-d categoricals
 
     Returns
     -------
@@ -1722,7 +1745,7 @@ def _concat_compat(to_concat, axis=0):
 
         # convert to object type and perform a regular concat
         from pandas.core.common import _concat_compat
-        return _concat_compat([ np.array(x,copy=False).astype('object') for x in to_concat ],axis=axis)
+        return _concat_compat([ np.array(x,copy=False).astype('object') for x in to_concat ],axis=0)
 
     # we could have object blocks and categorical's here
     # if we only have a single cateogoricals then combine everything
@@ -1739,4 +1762,4 @@ def _concat_compat(to_concat, axis=0):
             raise ValueError("incompatible categories in categorical concat")
 
     # concat them
-    return Categorical(np.concatenate([ convert_categorical(x) for x in to_concat ],axis=axis), categories=categories)
+    return Categorical(np.concatenate([ convert_categorical(x) for x in to_concat ],axis=0), categories=categories)

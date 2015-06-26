@@ -921,8 +921,8 @@ class TestSeries(tm.TestCase, Generic):
     def test_describe_none(self):
         noneSeries = Series([None])
         noneSeries.name = 'None'
-        assert_series_equal(noneSeries.describe(),
-                            Series([0, 0], index=['count', 'unique']))
+        expected = Series([0, 0], index=['count', 'unique'], name='None')
+        assert_series_equal(noneSeries.describe(), expected)
 
 
 class TestDataFrame(tm.TestCase, Generic):
@@ -980,11 +980,11 @@ class TestDataFrame(tm.TestCase, Generic):
                         'C': [1, 2, 3, 5], 'D': list('abcd')})
 
         result = df['A'].interpolate()
-        expected = Series([1., 2., 3., 4.])
+        expected = Series([1., 2., 3., 4.], name='A')
         assert_series_equal(result, expected)
 
         result = df['A'].interpolate(downcast='infer')
-        expected = Series([1, 2, 3, 4])
+        expected = Series([1, 2, 3, 4], name='A')
         assert_series_equal(result, expected)
 
     def test_interp_nan_idx(self):
@@ -1116,6 +1116,14 @@ class TestDataFrame(tm.TestCase, Generic):
         result = df.copy()
         result['a'].interpolate(inplace=True, downcast='infer')
         assert_frame_equal(result, expected.astype('int64'))
+
+    def test_interp_inplace_row(self):
+        # GH 10395
+        result = DataFrame({'a': [1.,2.,3.,4.], 'b': [np.nan, 2., 3., 4.],
+                            'c': [3, 2, 2, 2]})
+        expected = result.interpolate(method='linear', axis=1, inplace=False)
+        result.interpolate(method='linear', axis=1, inplace=True)
+        assert_frame_equal(result, expected)
 
     def test_interp_ignore_all_good(self):
         # GH
@@ -1519,7 +1527,7 @@ class TestDataFrame(tm.TestCase, Generic):
         df.y = 5
 
         assert_equal(df.y, 5)
-        assert_series_equal(df['y'], Series([2, 4, 6]))
+        assert_series_equal(df['y'], Series([2, 4, 6], name='y'))
 
 
 class TestPanel(tm.TestCase, Generic):
@@ -1648,6 +1656,48 @@ class TestNDFrame(tm.TestCase):
     def test_describe_raises(self):
         with tm.assertRaises(NotImplementedError):
             tm.makePanel().describe()
+
+    def test_pipe(self):
+        df = DataFrame({'A': [1, 2, 3]})
+        f = lambda x, y: x ** y
+        result = df.pipe(f, 2)
+        expected = DataFrame({'A': [1, 4, 9]})
+        self.assert_frame_equal(result, expected)
+
+        result = df.A.pipe(f, 2)
+        self.assert_series_equal(result, expected.A)
+
+    def test_pipe_tuple(self):
+        df = DataFrame({'A': [1, 2, 3]})
+        f = lambda x, y: y
+        result = df.pipe((f, 'y'), 0)
+        self.assert_frame_equal(result, df)
+
+        result = df.A.pipe((f, 'y'), 0)
+        self.assert_series_equal(result, df.A)
+
+    def test_pipe_tuple_error(self):
+        df = DataFrame({"A": [1, 2, 3]})
+        f = lambda x, y: y
+        with tm.assertRaises(ValueError):
+            result = df.pipe((f, 'y'), x=1, y=0)
+
+        with tm.assertRaises(ValueError):
+            result = df.A.pipe((f, 'y'), x=1, y=0)
+
+    def test_pipe_panel(self):
+        wp = Panel({'r1': DataFrame({"A": [1, 2, 3]})})
+        f = lambda x, y: x + y
+        result = wp.pipe(f, 2)
+        expected = wp + 2
+        assert_panel_equal(result, expected)
+
+        result = wp.pipe((f, 'y'), x=1)
+        expected = wp + 1
+        assert_panel_equal(result, expected)
+
+        with tm.assertRaises(ValueError):
+            result = wp.pipe((f, 'y'), x=1, y=1)
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],

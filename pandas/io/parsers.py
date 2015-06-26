@@ -1170,7 +1170,9 @@ class CParserWrapper(ParserBase):
             data = self._reader.read(nrows)
         except StopIteration:
             if nrows is None:
-                return None, self.names, {}
+                return _get_empty_meta(self.orig_names,
+                                       self.index_col,
+                                       self.index_names)
             else:
                 raise
 
@@ -1325,10 +1327,7 @@ def _wrap_compressed(f, compression, encoding=None):
         import gzip
 
         f = gzip.GzipFile(fileobj=f)
-        if compat.PY3_2:
-            # 3.2's gzip doesn't support read1
-            f = StringIO(f.read().decode(encoding))
-        elif compat.PY3:
+        if compat.PY3:
             from io import TextIOWrapper
 
             f = TextIOWrapper(f)
@@ -2057,18 +2056,20 @@ def _make_date_converter(date_parser=None, dayfirst=False,
                     infer_datetime_format=infer_datetime_format
                 )
             except:
-                return lib.try_parse_dates(strs, dayfirst=dayfirst)
+                return tools.to_datetime(
+                    lib.try_parse_dates(strs, dayfirst=dayfirst))
         else:
             try:
-                result = date_parser(*date_cols)
+                result = tools.to_datetime(date_parser(*date_cols))
                 if isinstance(result, datetime.datetime):
                     raise Exception('scalar parser')
                 return result
             except Exception:
                 try:
-                    return lib.try_parse_dates(_concat_date_cols(date_cols),
-                                               parser=date_parser,
-                                               dayfirst=dayfirst)
+                    return tools.to_datetime(
+                        lib.try_parse_dates(_concat_date_cols(date_cols),
+                                            parser=date_parser,
+                                            dayfirst=dayfirst))
                 except Exception:
                     return generic_parser(date_parser, *date_cols)
 

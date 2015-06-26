@@ -1349,32 +1349,6 @@ class DatetimeIndex(DatetimeIndexOpsMixin, Int64Index):
             else:
                 raise
 
-    def __getitem__(self, key):
-        getitem = self._data.__getitem__
-        if np.isscalar(key):
-            val = getitem(key)
-            return Timestamp(val, offset=self.offset, tz=self.tz)
-        else:
-            if com.is_bool_indexer(key):
-                key = np.asarray(key)
-                if key.all():
-                    key = slice(0,None,None)
-                else:
-                    key = lib.maybe_booleans_to_slice(key.view(np.uint8))
-
-            new_offset = None
-            if isinstance(key, slice):
-                if self.offset is not None and key.step is not None:
-                    new_offset = key.step * self.offset
-                else:
-                    new_offset = self.offset
-
-            result = getitem(key)
-            if result.ndim > 1:
-                return result
-
-            return self._simple_new(result, self.name, new_offset, self.tz)
-
     # alias to offset
     def _get_freq(self):
         return self.offset
@@ -1399,7 +1373,7 @@ class DatetimeIndex(DatetimeIndexOpsMixin, Int64Index):
     weekday = dayofweek
     dayofyear = _field_accessor('dayofyear', 'doy', "The ordinal day of the year")
     quarter = _field_accessor('quarter', 'q', "The quarter of the date")
-    days_in_month = _field_accessor('days_in_month', 'dim', "The number of days in the month")
+    days_in_month = _field_accessor('days_in_month', 'dim', "The number of days in the month\n\n.. versionadded:: 0.16.0")
     daysinmonth = days_in_month
     is_month_start = _field_accessor('is_month_start', 'is_month_start', "Logical indicating if first day of month (defined by frequency)")
     is_month_end = _field_accessor('is_month_end', 'is_month_end', "Logical indicating if last day of month (defined by frequency)")
@@ -1523,7 +1497,7 @@ class DatetimeIndex(DatetimeIndexOpsMixin, Int64Index):
             if zone != izone:
                 raise ValueError('Passed item and index have different timezone')
             # check freq can be preserved on edge cases
-            if self.freq is not None:
+            if self.size and self.freq is not None:
                 if (loc == 0 or loc == -len(self)) and item + self.freq == self[0]:
                     freq = self.freq
                 elif (loc == len(self)) and item - self.freq == self[-1]:

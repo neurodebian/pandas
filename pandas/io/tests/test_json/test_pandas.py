@@ -4,7 +4,7 @@ from pandas import compat
 import os
 
 import numpy as np
-from pandas import Series, DataFrame, DatetimeIndex, Timestamp
+from pandas import Series, DataFrame, DatetimeIndex, Timestamp, CategoricalIndex
 from datetime import timedelta
 import pandas as pd
 read_json = pd.read_json
@@ -23,6 +23,11 @@ _intframe = DataFrame(dict((k, v.astype(np.int64))
                            for k, v in compat.iteritems(_seriesd)))
 
 _tsframe = DataFrame(_tsd)
+_cat_frame = _frame.copy()
+cat = ['bah']*5 + ['bar']*5 + ['baz']*5 + ['foo']*(len(_cat_frame)-15)
+_cat_frame.index = pd.CategoricalIndex(cat,name='E')
+_cat_frame['E'] = list(reversed(cat))
+_cat_frame['sort'] = np.arange(len(_cat_frame),dtype='int64')
 
 _mixed_frame = _frame.copy()
 
@@ -48,6 +53,7 @@ class TestPandasContainer(tm.TestCase):
         self.intframe = _intframe.copy()
         self.tsframe = _tsframe.copy()
         self.mixed_frame = _mixed_frame.copy()
+        self.categorical = _cat_frame.copy()
 
     def tearDown(self):
         del self.dirpath
@@ -128,8 +134,22 @@ class TestPandasContainer(tm.TestCase):
 
     def test_frame_from_json_to_json(self):
         def _check_orient(df, orient, dtype=None, numpy=False,
-                          convert_axes=True, check_dtype=True, raise_ok=None):
-            df = df.sort()
+                          convert_axes=True, check_dtype=True, raise_ok=None,
+                          sort=None):
+            if sort is not None:
+                df = df.sort(sort)
+            else:
+                df = df.sort()
+
+            # if we are not unique, then check that we are raising ValueError
+            # for the appropriate orients
+            if not df.index.is_unique and orient in ['index','columns']:
+                self.assertRaises(ValueError, lambda : df.to_json(orient=orient))
+                return
+            if not df.columns.is_unique and orient in ['index','columns','records']:
+                self.assertRaises(ValueError, lambda : df.to_json(orient=orient))
+                return
+
             dfjson = df.to_json(orient=orient)
 
             try:
@@ -141,7 +161,10 @@ class TestPandasContainer(tm.TestCase):
                         return
                     raise
 
-            unser = unser.sort()
+            if sort is not None and sort in unser.columns:
+                unser = unser.sort(sort)
+            else:
+                unser = unser.sort()
 
             if dtype is False:
                 check_dtype=False
@@ -160,7 +183,9 @@ class TestPandasContainer(tm.TestCase):
                 # index and col labels might not be strings
                 unser.index = [str(i) for i in unser.index]
                 unser.columns = [str(i) for i in unser.columns]
-                unser = unser.sort()
+
+                if sort is None:
+                    unser = unser.sort()
                 assert_almost_equal(df.values, unser.values)
             else:
                 if convert_axes:
@@ -169,45 +194,45 @@ class TestPandasContainer(tm.TestCase):
                     assert_frame_equal(df, unser, check_less_precise=False,
                                        check_dtype=check_dtype)
 
-        def _check_all_orients(df, dtype=None, convert_axes=True, raise_ok=None):
+        def _check_all_orients(df, dtype=None, convert_axes=True, raise_ok=None, sort=None):
 
             # numpy=False
             if convert_axes:
-                _check_orient(df, "columns", dtype=dtype)
-                _check_orient(df, "records", dtype=dtype)
-                _check_orient(df, "split", dtype=dtype)
-                _check_orient(df, "index", dtype=dtype)
-                _check_orient(df, "values", dtype=dtype)
+                _check_orient(df, "columns", dtype=dtype, sort=sort)
+                _check_orient(df, "records", dtype=dtype, sort=sort)
+                _check_orient(df, "split", dtype=dtype, sort=sort)
+                _check_orient(df, "index", dtype=dtype, sort=sort)
+                _check_orient(df, "values", dtype=dtype, sort=sort)
 
-            _check_orient(df, "columns", dtype=dtype, convert_axes=False)
-            _check_orient(df, "records", dtype=dtype, convert_axes=False)
-            _check_orient(df, "split", dtype=dtype, convert_axes=False)
-            _check_orient(df, "index", dtype=dtype, convert_axes=False)
-            _check_orient(df, "values", dtype=dtype ,convert_axes=False)
+            _check_orient(df, "columns", dtype=dtype, convert_axes=False, sort=sort)
+            _check_orient(df, "records", dtype=dtype, convert_axes=False, sort=sort)
+            _check_orient(df, "split", dtype=dtype, convert_axes=False, sort=sort)
+            _check_orient(df, "index", dtype=dtype, convert_axes=False, sort=sort)
+            _check_orient(df, "values", dtype=dtype ,convert_axes=False, sort=sort)
 
             # numpy=True and raise_ok might be not None, so ignore the error
             if convert_axes:
                 _check_orient(df, "columns", dtype=dtype, numpy=True,
-                              raise_ok=raise_ok)
+                              raise_ok=raise_ok, sort=sort)
                 _check_orient(df, "records", dtype=dtype, numpy=True,
-                              raise_ok=raise_ok)
+                              raise_ok=raise_ok, sort=sort)
                 _check_orient(df, "split", dtype=dtype, numpy=True,
-                              raise_ok=raise_ok)
+                              raise_ok=raise_ok, sort=sort)
                 _check_orient(df, "index", dtype=dtype, numpy=True,
-                              raise_ok=raise_ok)
+                              raise_ok=raise_ok, sort=sort)
                 _check_orient(df, "values", dtype=dtype, numpy=True,
-                              raise_ok=raise_ok)
+                              raise_ok=raise_ok, sort=sort)
 
             _check_orient(df, "columns", dtype=dtype, numpy=True,
-                          convert_axes=False, raise_ok=raise_ok)
+                          convert_axes=False, raise_ok=raise_ok, sort=sort)
             _check_orient(df, "records", dtype=dtype, numpy=True,
-                          convert_axes=False, raise_ok=raise_ok)
+                          convert_axes=False, raise_ok=raise_ok, sort=sort)
             _check_orient(df, "split", dtype=dtype, numpy=True,
-                          convert_axes=False, raise_ok=raise_ok)
+                          convert_axes=False, raise_ok=raise_ok, sort=sort)
             _check_orient(df, "index", dtype=dtype, numpy=True,
-                          convert_axes=False, raise_ok=raise_ok)
+                          convert_axes=False, raise_ok=raise_ok, sort=sort)
             _check_orient(df, "values", dtype=dtype, numpy=True,
-                          convert_axes=False, raise_ok=raise_ok)
+                          convert_axes=False, raise_ok=raise_ok, sort=sort)
 
         # basic
         _check_all_orients(self.frame)
@@ -232,6 +257,9 @@ class TestPandasContainer(tm.TestCase):
                            convert_axes=False)
         _check_all_orients(DataFrame(biggie, dtype='U3'), dtype='U3',
                            convert_axes=False, raise_ok=ValueError)
+
+        # categorical
+        _check_all_orients(self.categorical, sort='sort', raise_ok=ValueError)
 
         # empty
         _check_all_orients(self.empty_frame)
@@ -333,6 +361,33 @@ class TestPandasContainer(tm.TestCase):
         self.assertTrue(df._is_mixed_type)
         assert_frame_equal(read_json(df.to_json(), dtype=dict(df.dtypes)), df)
 
+    def test_frame_mixedtype_orient(self):  # GH10289
+        vals = [[10, 1, 'foo', .1, .01],
+                [20, 2, 'bar', .2, .02],
+                [30, 3, 'baz', .3, .03],
+                [40, 4, 'qux', .4, .04]]
+
+        df = DataFrame(vals, index=list('abcd'),
+                       columns=['1st', '2nd', '3rd', '4th', '5th'])
+
+        self.assertTrue(df._is_mixed_type)
+        right = df.copy()
+
+        for orient in ['split', 'index', 'columns']:
+            inp = df.to_json(orient=orient)
+            left = read_json(inp, orient=orient, convert_axes=False)
+            assert_frame_equal(left, right)
+
+        right.index = np.arange(len(df))
+        inp = df.to_json(orient='records')
+        left = read_json(inp, orient='records', convert_axes=False)
+        assert_frame_equal(left, right)
+
+        right.columns = np.arange(df.shape[1])
+        inp = df.to_json(orient='values')
+        left = read_json(inp, orient='values', convert_axes=False)
+        assert_frame_equal(left, right)
+
     def test_v12_compat(self):
         df = DataFrame(
             [[1.56808523,  0.65727391,  1.81021139, -0.17251653],
@@ -409,12 +464,10 @@ class TestPandasContainer(tm.TestCase):
             if orient == "records" or orient == "values":
                 assert_almost_equal(series.values, unser.values)
             else:
-                try:
-                    assert_series_equal(series, unser)
-                except:
-                    raise
                 if orient == "split":
-                    self.assertEqual(series.name, unser.name)
+                    assert_series_equal(series, unser)
+                else:
+                    assert_series_equal(series, unser, check_names=False)
 
         def _check_all_orients(series, dtype=None):
             _check_orient(series, "columns", dtype=dtype)
@@ -491,7 +544,8 @@ class TestPandasContainer(tm.TestCase):
         # series
         json = self.ts.to_json()
         result = read_json(json, typ='series')
-        assert_series_equal(result, self.ts)
+        assert_series_equal(result, self.ts, check_names=False)
+        self.assertTrue(result.name is None)
 
     def test_convert_dates(self):
 

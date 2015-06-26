@@ -53,6 +53,15 @@ JSON
 
    read_json
 
+.. currentmodule:: pandas.io.json
+
+.. autosummary::
+   :toctree: generated/
+
+   json_normalize
+
+.. currentmodule:: pandas
+
 HTML
 ~~~~
 
@@ -563,6 +572,7 @@ strings and apply several methods to it. These can be acccessed like
    Series.str.slice
    Series.str.slice_replace
    Series.str.split
+   Series.str.rsplit
    Series.str.startswith
    Series.str.strip
    Series.str.swapcase

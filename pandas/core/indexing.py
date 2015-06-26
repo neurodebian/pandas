@@ -6,7 +6,7 @@ import pandas.compat as compat
 import pandas.core.common as com
 from pandas.core.common import (is_bool_indexer, is_integer_dtype,
                                 _asarray_tuplesafe, is_list_like, isnull,
-                                is_null_slice,
+                                is_null_slice, is_full_slice,
                                 ABCSeries, ABCDataFrame, ABCPanel, is_float,
                                 _values_from_object, _infer_fill_value, is_integer)
 import numpy as np
@@ -204,6 +204,15 @@ class _NDFrameIndexer(object):
 
         # maybe partial set
         take_split_path = self.obj._is_mixed_type
+
+        # if there is only one block/type, still have to take split path
+        # unless the block is one-dimensional or it can hold the value
+        if not take_split_path and self.obj._data.blocks:
+            blk, = self.obj._data.blocks
+            if 1 < blk.ndim:  # in case of dict, keys are indices
+                val = list(value.values()) if isinstance(value,dict) else value
+                take_split_path = not blk._can_hold_element(val)
+
         if isinstance(indexer, tuple):
             nindexer = []
             for i, idx in enumerate(indexer):
@@ -369,6 +378,7 @@ class _NDFrameIndexer(object):
                     # we can directly set the series here
                     # as we select a slice indexer on the mi
                     idx = index._convert_slice_indexer(idx)
+                    obj._consolidate_inplace()
                     obj = obj.copy()
                     obj._data = obj._data.setitem(indexer=tuple([idx]), value=value)
                     self.obj[item] = obj
@@ -389,13 +399,14 @@ class _NDFrameIndexer(object):
                 pi = plane_indexer[0] if lplane_indexer == 1 else plane_indexer
 
                 # perform the equivalent of a setitem on the info axis
-                # as we have a null slice which means essentially reassign to the columns
-                # of a multi-dim object
-                # GH6149
-                if isinstance(pi, tuple) and all(is_null_slice(idx) for idx in pi):
+                # as we have a null slice or a slice with full bounds
+                # which means essentially reassign to the columns of a multi-dim object
+                # GH6149 (null slice), GH10408 (full bounds)
+                if isinstance(pi, tuple) and all(is_null_slice(idx) or is_full_slice(idx, len(self.obj)) for idx in pi):
                     s = v
                 else:
                     # set the item, possibly having a dtype change
+                    s._consolidate_inplace()
                     s = s.copy()
                     s._data = s._data.setitem(indexer=pi, value=v)
                     s._maybe_update_cacher(clear=True)
@@ -492,12 +503,13 @@ class _NDFrameIndexer(object):
             self.obj._check_is_chained_assignment_possible()
 
             # actually do the set
+            self.obj._consolidate_inplace()
             self.obj._data = self.obj._data.setitem(indexer=indexer, value=value)
             self.obj._maybe_update_cacher(clear=True)
 
     def _align_series(self, indexer, ser):
         # indexer to assign Series can be tuple, slice, scalar
-        if isinstance(indexer, (slice, np.ndarray, list)):
+        if isinstance(indexer, (slice, np.ndarray, list, Index)):
             indexer = tuple([indexer])
 
         if isinstance(indexer, tuple):
@@ -1707,7 +1719,7 @@ def maybe_convert_ix(*args):
 
     ixify = True
     for arg in args:
-        if not isinstance(arg, (np.ndarray, list, ABCSeries)):
+        if not isinstance(arg, (np.ndarray, list, ABCSeries, Index)):
             ixify = False
 
     if ixify:

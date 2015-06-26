@@ -18,7 +18,7 @@ Instructions for installing from source,
 Python version support
 ----------------------
 
-Officially Python 2.6, 2.7, 3.2, 3.3, and 3.4.
+Officially Python 2.6, 2.7, 3.3, and 3.4.
 
 Installing pandas
 -----------------
@@ -249,10 +249,9 @@ Optional Dependencies
 * `statsmodels <http://statsmodels.sourceforge.net/>`__
    * Needed for parts of :mod:`pandas.stats`
 * `openpyxl <http://packages.python.org/openpyxl/>`__, `xlrd/xlwt <http://www.python-excel.org/>`__
-   * openpyxl version 1.6.1 or higher, but lower than 2.0.0
    * Needed for Excel I/O
 * `XlsxWriter <https://pypi.python.org/pypi/XlsxWriter>`__
-   * Alternative Excel writer.
+   * Alternative Excel writer
 * `boto <https://pypi.python.org/pypi/boto>`__: necessary for Amazon S3
   access.
 * `blosc <https://pypi.python.org/pypi/blosc>`__: for msgpack compression using ``blosc``

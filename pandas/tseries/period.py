@@ -528,8 +528,8 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
         except (KeyError, IndexError):
             try:
                 asdt, parsed, reso = parse_time_string(key, self.freq)
-                grp = frequencies._infer_period_group(reso)
-                freqn = frequencies._period_group(self.freq)
+                grp = frequencies.Resolution.get_freq_group(reso)
+                freqn = frequencies.get_freq_group(self.freq)
 
                 vals = self.values
 
@@ -655,8 +655,8 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
 
         key, parsed, reso = parse_time_string(key, self.freq)
 
-        grp = frequencies._infer_period_group(reso)
-        freqn = frequencies._period_group(self.freq)
+        grp = frequencies.Resolution.get_freq_group(reso)
+        freqn = frequencies.get_freq_group(self.freq)
         if reso in ['day', 'hour', 'minute', 'second'] and not grp < freqn:
             raise KeyError(key)
 
@@ -782,6 +782,17 @@ class PeriodIndex(DatetimeIndexOpsMixin, Int64Index):
         to_concat = [x.values if isinstance(x, Index) else x
                      for x in to_concat]
         return Index(com._concat_compat(to_concat), name=name)
+
+    def repeat(self, n):
+        """
+        Return a new Index of the values repeated n times.
+
+        See also
+        --------
+        numpy.ndarray.repeat
+        """
+        # overwrites method from DatetimeIndexOpsMixin
+        return self._shallow_copy(self.values.repeat(n))
 
     def __setstate__(self, state):
         """Necessary for making this object picklable"""

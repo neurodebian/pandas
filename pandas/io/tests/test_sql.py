@@ -1256,7 +1256,7 @@ class _TestSQLAlchemy(PandasSQLTest):
         self._transaction_test()
 
     def test_get_schema_create_table(self):
-        # Use a dataframe without a bool column, since MySQL converts bool to 
+        # Use a dataframe without a bool column, since MySQL converts bool to
         # TINYINT (which read_sql_table returns as an int and causes a dtype
         # mismatch)
 
@@ -1738,7 +1738,8 @@ class TestSQLiteFallback(PandasSQLTest):
 
         for ndx, weird_name in enumerate(['test_weird_name]','test_weird_name[',
             'test_weird_name`','test_weird_name"', 'test_weird_name\'',
-            '_b.test_weird_name_01-30', '"_b.test_weird_name_01-30"']):
+            '_b.test_weird_name_01-30', '"_b.test_weird_name_01-30"',
+            '12345','12345blah']):
             df.to_sql(weird_name, self.conn, flavor=self.flavor)
             sql.table_exists(weird_name, self.conn)
 
@@ -1839,16 +1840,30 @@ class TestMySQLLegacy(TestSQLiteFallback):
         self._to_sql_save_index()
 
     def test_illegal_names(self):
+        df = DataFrame([[1, 2], [3, 4]], columns=['a', 'b'])
+
+        # These tables and columns should be ok
+        for ndx, ok_name in enumerate(['99beginswithnumber','12345']):
+            df.to_sql(ok_name, self.conn, flavor=self.flavor, index=False,
+                      if_exists='replace')
+            self.conn.cursor().execute("DROP TABLE `%s`" % ok_name)
+            self.conn.commit()
+            df2 = DataFrame([[1, 2], [3, 4]], columns=['a', ok_name])
+            c_tbl = 'test_ok_col_name%d'%ndx
+            df2.to_sql(c_tbl, self.conn, flavor=self.flavor, index=False,
+                      if_exists='replace')   
+            self.conn.cursor().execute("DROP TABLE `%s`" % c_tbl)
+            self.conn.commit()
+
         # For MySQL, these should raise ValueError
         for ndx, illegal_name in enumerate(['test_illegal_name]','test_illegal_name[',
             'test_illegal_name`','test_illegal_name"', 'test_illegal_name\'', '']):
-            df = DataFrame([[1, 2], [3, 4]], columns=['a', 'b'])
             self.assertRaises(ValueError, df.to_sql, illegal_name, self.conn,
                 flavor=self.flavor, index=False)
 
             df2 = DataFrame([[1, 2], [3, 4]], columns=['a', illegal_name])
             c_tbl = 'test_illegal_col_name%d'%ndx
-            self.assertRaises(ValueError, df2.to_sql, 'test_illegal_col_name',
+            self.assertRaises(ValueError, df2.to_sql, c_tbl,
                 self.conn, flavor=self.flavor, index=False)
 
 
@@ -2025,7 +2040,7 @@ class TestXSQLite(tm.TestCase):
         frame = tm.makeTimeDataFrame()
         sql.write_frame(frame, name='test_table', con=self.db)
         result = sql.tquery("select A from test_table", self.db)
-        expected = Series(frame.A, frame.index) # not to have name
+        expected = Series(frame.A.values, frame.index) # not to have name
         result = Series(result, frame.index)
         tm.assert_series_equal(result, expected)
 
@@ -2370,7 +2385,7 @@ class TestXMySQL(tm.TestCase):
         cur.execute(drop_sql)
         sql.write_frame(frame, name='test_table', con=self.db, flavor='mysql')
         result = sql.tquery("select A from test_table", self.db)
-        expected = Series(frame.A, frame.index) # not to have name
+        expected = Series(frame.A.values, frame.index) # not to have name
         result = Series(result, frame.index)
         tm.assert_series_equal(result, expected)
 

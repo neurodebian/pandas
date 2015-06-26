@@ -454,12 +454,12 @@ class TestPlotBase(tm.TestCase):
             self.plt.subplot(1,4*len(kinds),spndx); spndx+=1
             mpl.rc('axes',grid=False)
             obj.plot(kind=kind, **kws)
-            self.assertFalse(is_grid_on())    
+            self.assertFalse(is_grid_on())
 
             self.plt.subplot(1,4*len(kinds),spndx); spndx+=1
             mpl.rc('axes',grid=True)
             obj.plot(kind=kind, grid=False, **kws)
-            self.assertFalse(is_grid_on())    
+            self.assertFalse(is_grid_on())
 
             if kind != 'pie':
                 self.plt.subplot(1,4*len(kinds),spndx); spndx+=1
@@ -1143,7 +1143,7 @@ class TestSeriesPlots(TestPlotBase):
     @slow
     def test_series_grid_settings(self):
         # Make sure plot defaults to rcParams['axes.grid'] setting, GH 9792
-        self._check_grid_settings(Series([1,2,3]), 
+        self._check_grid_settings(Series([1,2,3]),
             plotting._series_kinds + plotting._common_kinds)
 
 
@@ -1376,7 +1376,7 @@ class TestDataFramePlots(TestPlotBase):
         ax = df.plot()
         l = ax.get_lines()[0]
         rs = l.get_xydata()
-        rs = Series(rs[:, 1], rs[:, 0], dtype=np.int64)
+        rs = Series(rs[:, 1], rs[:, 0], dtype=np.int64, name='y')
         tm.assert_series_equal(rs, df.y)
 
     @slow
@@ -3467,9 +3467,9 @@ class TestDataFramePlots(TestPlotBase):
     @slow
     def test_df_grid_settings(self):
         # Make sure plot defaults to rcParams['axes.grid'] setting, GH 9792
-        self._check_grid_settings(DataFrame({'a':[1,2,3],'b':[2,3,4]}), 
+        self._check_grid_settings(DataFrame({'a':[1,2,3],'b':[2,3,4]}),
             plotting._dataframe_kinds, kws={'x':'a','y':'b'})
-        
+
 
 @tm.mplskip
 class TestDataFrameGroupByPlots(TestPlotBase):
@@ -3895,6 +3895,14 @@ class TestDataFrameGroupByPlots(TestPlotBase):
         tm.close()
         df.groupby('def')['val'].apply(lambda x: x.plot())
         tm.close()
+
+    def test_hist_single_row(self):
+        # GH10214
+        bins = np.arange(80, 100 + 2, 1)
+        df = DataFrame({"Name": ["AAA", "BBB"], "ByCol": [1, 2], "Mark": [85, 89]})
+        df["Mark"].hist(by=df["ByCol"], bins=bins)
+        df = DataFrame({"Name": ["AAA"], "ByCol": [1], "Mark": [85]})
+        df["Mark"].hist(by=df["ByCol"], bins=bins)
 
 
 def assert_is_valid_plot_return_object(objs):

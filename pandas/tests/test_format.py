@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
+from distutils.version import LooseVersion
 import re
 
 from pandas.compat import range, zip, lrange, StringIO, PY3, lzip, u
@@ -13,6 +14,14 @@ import warnings
 from numpy import nan
 from numpy.random import randn
 import numpy as np
+
+div_style = ''
+try:
+    import IPython
+    if IPython.__version__ < LooseVersion('3.0.0'):
+        div_style = ' style="max-width:1500px;overflow:auto;"'
+except ImportError:
+    pass
 
 from pandas import DataFrame, Series, Index, Timestamp, MultiIndex, date_range, NaT
 
@@ -892,7 +901,7 @@ class TestDataFrameFormatting(tm.TestCase):
         fmt.set_option('display.max_columns',4)
         result = df._repr_html_()
         expected = '''\
-<div style="max-height:1000px;max-width:1500px;overflow:auto;">
+<div{0}>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -980,7 +989,7 @@ class TestDataFrameFormatting(tm.TestCase):
   </tbody>
 </table>
 <p>20 rows × 20 columns</p>
-</div>'''
+</div>'''.format(div_style)
         if sys.version_info[0] < 3:
             expected = expected.decode('utf-8')
         self.assertEqual(result, expected)
@@ -993,7 +1002,7 @@ class TestDataFrameFormatting(tm.TestCase):
         fmt.set_option('display.max_columns',7)
         result = df._repr_html_()
         expected = '''\
-<div style="max-height:1000px;max-width:1500px;overflow:auto;">
+<div{0}>
 <table border="1" class="dataframe">
   <thead>
     <tr>
@@ -1096,7 +1105,7 @@ class TestDataFrameFormatting(tm.TestCase):
   </tbody>
 </table>
 <p>8 rows × 8 columns</p>
-</div>'''
+</div>'''.format(div_style)
         if sys.version_info[0] < 3:
             expected = expected.decode('utf-8')
         self.assertEqual(result, expected)
@@ -1110,7 +1119,7 @@ class TestDataFrameFormatting(tm.TestCase):
         fmt.set_option('display.multi_sparse',False)
         result = df._repr_html_()
         expected = '''\
-<div style="max-height:1000px;max-width:1500px;overflow:auto;">
+<div{0}>
 <table border="1" class="dataframe">
   <thead>
     <tr>
@@ -1206,7 +1215,7 @@ class TestDataFrameFormatting(tm.TestCase):
   </tbody>
 </table>
 <p>8 rows × 8 columns</p>
-</div>'''
+</div>'''.format(div_style)
         if sys.version_info[0] < 3:
             expected = expected.decode('utf-8')
         self.assertEqual(result, expected)
@@ -2448,6 +2457,27 @@ $1$,$2$
 
         expected_float_format = ';col1;col2;col3\n0;1;a;10,10\n'
         self.assertEqual(df.to_csv(decimal=',',sep=';', float_format = '%.2f'), expected_float_format)
+
+    def test_to_csv_date_format(self):
+        # GH 10209
+        df_sec = DataFrame({'A': pd.date_range('20130101',periods=5,freq='s')})
+        df_day = DataFrame({'A': pd.date_range('20130101',periods=5,freq='d')})
+
+        expected_default_sec = ',A\n0,2013-01-01 00:00:00\n1,2013-01-01 00:00:01\n2,2013-01-01 00:00:02' + \
+                               '\n3,2013-01-01 00:00:03\n4,2013-01-01 00:00:04\n'
+        self.assertEqual(df_sec.to_csv(), expected_default_sec)
+
+        expected_ymdhms_day = ',A\n0,2013-01-01 00:00:00\n1,2013-01-02 00:00:00\n2,2013-01-03 00:00:00' + \
+                              '\n3,2013-01-04 00:00:00\n4,2013-01-05 00:00:00\n'
+        self.assertEqual(df_day.to_csv(date_format='%Y-%m-%d %H:%M:%S'), expected_ymdhms_day)
+
+        expected_ymd_sec = ',A\n0,2013-01-01\n1,2013-01-01\n2,2013-01-01\n3,2013-01-01\n4,2013-01-01\n'
+        self.assertEqual(df_sec.to_csv(date_format='%Y-%m-%d'), expected_ymd_sec)
+
+        expected_default_day = ',A\n0,2013-01-01\n1,2013-01-02\n2,2013-01-03\n3,2013-01-04\n4,2013-01-05\n'
+        self.assertEqual(df_day.to_csv(), expected_default_day)
+        self.assertEqual(df_day.to_csv(date_format='%Y-%m-%d'), expected_default_day)
+
 
 class TestSeriesFormatting(tm.TestCase):
     _multiprocess_can_split_ = True

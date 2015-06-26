@@ -28,7 +28,7 @@ import pandas.tslib as tslib
 
 import pandas.index as _index
 
-from pandas.compat import range, long, StringIO, lrange, lmap, zip, product, PY3_2
+from pandas.compat import range, long, StringIO, lrange, lmap, zip, product
 from numpy.random import rand
 from numpy.testing import assert_array_equal
 from pandas.util.testing import assert_frame_equal
@@ -248,25 +248,27 @@ class TestTimeSeriesDuplicates(tm.TestCase):
 
         # GH 3070, make sure semantics work on Series/Frame
         expected = ts['2001']
+        expected.name = 'A'
 
         df = DataFrame(dict(A = ts))
         result = df['2001']['A']
-        assert_series_equal(expected,result)
+        assert_series_equal(expected, result)
 
         # setting
         ts['2001'] = 1
         expected = ts['2001']
+        expected.name = 'A'
 
         df.loc['2001','A'] = 1
 
         result = df['2001']['A']
-        assert_series_equal(expected,result)
+        assert_series_equal(expected, result)
 
         # GH3546 (not including times on the last day)
         idx = date_range(start='2013-05-31 00:00', end='2013-05-31 23:00', freq='H')
         ts  = Series(lrange(len(idx)), index=idx)
         expected = ts['2013-05']
-        assert_series_equal(expected,ts)
+        assert_series_equal(expected, ts)
 
         idx = date_range(start='2013-05-31 00:00', end='2013-05-31 23:59', freq='S')
         ts  = Series(lrange(len(idx)), index=idx)
@@ -882,10 +884,10 @@ class TestTimeSeries(tm.TestCase):
             else:
                 expected[i] = to_datetime(x)
 
-        assert_series_equal(result, expected)
+        assert_series_equal(result, expected, check_names=False)
         self.assertEqual(result.name, 'foo')
 
-        assert_series_equal(dresult, expected)
+        assert_series_equal(dresult, expected, check_names=False)
         self.assertEqual(dresult.name, 'foo')
 
     def test_to_datetime_iso8601(self):
@@ -2223,8 +2225,6 @@ class TestDatetimeIndex(tm.TestCase):
         self.assert_numpy_array_equal(result, exp)
 
     def test_comparisons_nat(self):
-        if PY3_2:
-            raise nose.SkipTest('nat comparisons on 3.2 broken')
 
         fidx1 = pd.Index([1.0, np.nan, 3.0, np.nan, 5.0, 7.0])
         fidx2 = pd.Index([2.0, 3.0, np.nan, np.nan, 6.0, 7.0])

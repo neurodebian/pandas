@@ -161,6 +161,8 @@ enum PANDAS_FORMAT
 //#define PRINTMARK() fprintf(stderr, "%s: MARK(%d)\n", __FILE__, __LINE__)
 #define PRINTMARK()
 
+int PdBlock_iterNext(JSOBJ, JSONTypeContext *);
+
 // import_array() compat
 #if (PY_VERSION_HEX >= 0x03000000)
 void *initObjToJSON(void)
@@ -835,7 +837,10 @@ char *PdBlock_iterGetName(JSOBJ obj, JSONTypeContext *tc, size_t *outLen)
   }
   else
   {
-    idx = npyarr->index[npyarr->stridedim - npyarr->inc] - 1;
+    idx = GET_TC(tc)->iterNext != PdBlock_iterNext
+        ? npyarr->index[npyarr->stridedim - npyarr->inc] - 1
+        : npyarr->index[npyarr->stridedim];
+
     NpyArr_getLabel(obj, tc, outLen, idx, npyarr->rowLabels);
   }
   return NULL;
@@ -1809,7 +1814,7 @@ char** NpyArr_encodeLabels(PyArrayObject* labels, JSONObjectEncoder* enc, npy_in
 
 void Object_beginTypeContext (JSOBJ _obj, JSONTypeContext *tc)
 {
-  PyObject *obj, *exc, *toDictFunc, *tmpObj;
+  PyObject *obj, *exc, *toDictFunc, *tmpObj, *getValuesFunc;
   TypeContext *pc;
   PyObjectEncoder *enc;
   double val;
@@ -2077,14 +2082,25 @@ ISITERABLE:
       return;
     }
 
-    PRINTMARK();
-    tc->type = JT_ARRAY;
-    pc->newObj = PyObject_GetAttrString(obj, "values");
-    pc->iterBegin = NpyArr_iterBegin;
-    pc->iterEnd = NpyArr_iterEnd;
-    pc->iterNext = NpyArr_iterNext;
-    pc->iterGetValue = NpyArr_iterGetValue;
-    pc->iterGetName = NpyArr_iterGetName;
+    getValuesFunc = PyObject_GetAttrString(obj, "get_values");
+    if (getValuesFunc)
+    {
+      PRINTMARK();
+      tc->type = JT_ARRAY;
+      pc->newObj = PyObject_CallObject(getValuesFunc, NULL);
+      pc->iterBegin = NpyArr_iterBegin;
+      pc->iterEnd = NpyArr_iterEnd;
+      pc->iterNext = NpyArr_iterNext;
+      pc->iterGetValue = NpyArr_iterGetValue;
+      pc->iterGetName = NpyArr_iterGetName;
+
+      Py_DECREF(getValuesFunc);
+    }
+    else
+    {
+      goto INVALID;
+    }
+
     return;
   }
   else
@@ -2374,7 +2390,7 @@ ISITERABLE:
       }
       goto INVALID;
     }
-    encode (tmpObj, enc, NULL, 0);
+    encode (tmpObj, (JSONObjectEncoder*) enc, NULL, 0);
     Py_DECREF(tmpObj);
     goto INVALID;
   }

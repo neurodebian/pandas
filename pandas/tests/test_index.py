@@ -19,7 +19,7 @@ from pandas.core.index import InvalidIndexError, NumericIndex
 from pandas.util.testing import (assert_almost_equal, assertRaisesRegexp,
                                  assert_copy)
 from pandas import compat
-from pandas.compat import long
+from pandas.compat import long, is_platform_windows
 
 import pandas.util.testing as tm
 import pandas.core.config as cf
@@ -133,6 +133,14 @@ class Base(object):
         self.assertTrue("'foo'" in str(idx))
         self.assertTrue(idx.__class__.__name__ in str(idx))
 
+    def test_repr_max_seq_item_setting(self):
+        # GH10182
+        idx = self.create_index()
+        idx = idx.repeat(50)
+        with pd.option_context("display.max_seq_items", None):
+            repr(idx)
+            self.assertFalse('...' in str(idx))
+
     def test_wrong_number_names(self):
         def testit(ind):
             ind.names = ["apple", "banana", "carrot"]
@@ -199,9 +207,18 @@ class Base(object):
 
             if not len(ind):
                 continue
+            if isinstance(ind, MultiIndex):
+                continue
             idx = self._holder([ind[0]]*5)
             self.assertFalse(idx.is_unique)
             self.assertTrue(idx.has_duplicates)
+
+            # GH 10115
+            # preserve names
+            idx.name = 'foo'
+            result = idx.drop_duplicates()
+            self.assertEqual(result.name, 'foo')
+            self.assert_index_equal(result, Index([ind[0]],name='foo'))
 
     def test_sort(self):
         for ind in self.indices.values():
@@ -1000,9 +1017,15 @@ class TestIndex(Base, tm.TestCase):
         self._check_method_works(Index.format)
 
         index = Index([datetime.now()])
-        formatted = index.format()
-        expected = [str(index[0])]
-        self.assertEqual(formatted, expected)
+
+
+        # windows has different precision on datetime.datetime.now (it doesn't include us
+        # since the default for Timestamp shows these but Index formating does not
+        # we are skipping
+        if not is_platform_windows:
+            formatted = index.format()
+            expected = [str(index[0])]
+            self.assertEqual(formatted, expected)
 
         # 2845
         index = Index([1, 2.0+3.0j, np.nan])
@@ -1816,9 +1839,12 @@ class TestCategoricalIndex(Base, tm.TestCase):
 
     def test_duplicates(self):
 
-        idx = CategoricalIndex([0, 0, 0])
+        idx = CategoricalIndex([0, 0, 0], name='foo')
         self.assertFalse(idx.is_unique)
         self.assertTrue(idx.has_duplicates)
+
+        expected = CategoricalIndex([0], name='foo')
+        self.assert_index_equal(idx.drop_duplicates(), expected)
 
     def test_get_indexer(self):
 
@@ -2676,14 +2702,6 @@ class TestDatetimeIndex(DatetimeLike, tm.TestCase):
     def test_pickle_compat_construction(self):
         pass
 
-    def test_numeric_compat(self):
-        super(TestDatetimeIndex, self).test_numeric_compat()
-
-        if not compat.PY3_2:
-            for f in [lambda : np.timedelta64(1, 'D').astype('m8[ns]') * pd.date_range('2000-01-01', periods=3),
-                      lambda : pd.date_range('2000-01-01', periods=3) * np.timedelta64(1, 'D').astype('m8[ns]') ]:
-                self.assertRaises(TypeError, f)
-
     def test_get_loc(self):
         idx = pd.date_range('2000-01-01', periods=3)
 
@@ -2850,6 +2868,14 @@ class TestPeriodIndex(DatetimeLike, tm.TestCase):
 
         with self.assertRaisesRegexp(ValueError, 'different freq'):
             idx.asfreq('D').get_indexer(idx)
+
+    def test_repeat(self):
+        # GH10183
+        idx = pd.period_range('2000-01-01', periods=3, freq='D')
+        res = idx.repeat(3)
+        exp = PeriodIndex(idx.values.repeat(3), freq='D')
+        self.assert_index_equal(res, exp)
+        self.assertEqual(res.freqstr, 'D')
 
 
 class TestTimedeltaIndex(DatetimeLike, tm.TestCase):
@@ -4580,6 +4606,19 @@ class TestMultiIndex(Base, tm.TestCase):
                 self.assertEqual(mi.get_duplicates(), [])
                 self.assert_array_equal(mi.duplicated(),
                                         np.zeros(len(mi), dtype='bool'))
+
+    def test_duplicate_meta_data(self):
+        # GH 10115
+        index = MultiIndex(levels=[[0, 1], [0, 1, 2]],
+                           labels=[[0, 0, 0, 0, 1, 1, 1],
+                                   [0, 1, 2, 0, 0, 1, 2]])
+        for idx in [index,
+                    index.set_names([None, None]),
+                    index.set_names([None, 'Num']),
+                    index.set_names(['Upper','Num']),
+                   ]:
+            self.assertTrue(idx.has_duplicates)
+            self.assertEqual(idx.drop_duplicates().names, idx.names)
 
     def test_tolist(self):
         result = self.index.tolist()

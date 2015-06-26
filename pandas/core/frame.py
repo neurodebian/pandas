@@ -28,7 +28,7 @@ from pandas.core.common import (isnull, notnull, PandasError, _try_sort,
                                 _infer_dtype_from_scalar, _values_from_object,
                                 is_list_like, _maybe_box_datetimelike,
                                 is_categorical_dtype, is_object_dtype,
-                                _possibly_infer_to_datetimelike)
+                                _possibly_infer_to_datetimelike, _dict_compat)
 from pandas.core.generic import NDFrame, _shared_docs
 from pandas.core.index import Index, MultiIndex, _ensure_index
 from pandas.core.indexing import (maybe_droplevels,
@@ -538,10 +538,9 @@ class DataFrame(NDFrame):
             max_cols = get_option("display.max_columns")
             show_dimensions = get_option("display.show_dimensions")
 
-            return ('<div style="max-height:1000px;'
-                    'max-width:1500px;overflow:auto;">\n' +
-                    self.to_html(max_rows=max_rows, max_cols=max_cols,
-                                 show_dimensions=show_dimensions) + '\n</div>')
+            return self.to_html(max_rows=max_rows, max_cols=max_cols,
+                                show_dimensions=show_dimensions,
+                                notebook=True)
         else:
             return None
 
@@ -1168,6 +1167,9 @@ class DataFrame(NDFrame):
             Format string for datetime objects
         decimal: string, default '.'
             Character recognized as decimal separator. E.g. use ',' for European data
+
+            .. versionadded:: 0.16.0
+
         """
 
         formatter = fmt.CSVFormatter(self, path_or_buf,
@@ -1244,6 +1246,9 @@ class DataFrame(NDFrame):
         >>> df1.to_excel(writer,'Sheet1')
         >>> df2.to_excel(writer,'Sheet2')
         >>> writer.save()
+
+        For compatibility with to_csv, to_excel serializes lists and dicts to
+        strings before writing.
         """
         from pandas.io.excel import ExcelWriter
         if self.columns.nlevels > 1:
@@ -1349,7 +1354,8 @@ class DataFrame(NDFrame):
                 header=True, index=True, na_rep='NaN', formatters=None,
                 float_format=None, sparsify=None, index_names=True,
                 justify=None, bold_rows=True, classes=None, escape=True,
-                max_rows=None, max_cols=None, show_dimensions=False):
+                max_rows=None, max_cols=None, show_dimensions=False,
+                notebook=False):
         """
         Render a DataFrame as an HTML table.
 
@@ -1388,7 +1394,7 @@ class DataFrame(NDFrame):
                                            max_rows=max_rows,
                                            max_cols=max_cols,
                                            show_dimensions=show_dimensions)
-        formatter.to_html(classes=classes)
+        formatter.to_html(classes=classes, notebook=notebook)
 
         if buf is None:
             return formatter.buf.getvalue()
@@ -3613,6 +3619,9 @@ class DataFrame(NDFrame):
         periods : int, default 1
             Periods to shift for forming difference
         axis : {0 or 'index', 1 or 'columns'}, default 0
+            Take difference over rows (0) or columns (1).
+
+            .. versionadded: 0.16.1
 
         Returns
         -------
@@ -4477,8 +4486,9 @@ class DataFrame(NDFrame):
         ----------
         q : float or array-like, default 0.5 (50% quantile)
             0 <= q <= 1, the quantile(s) to compute
-        axis : {0, 1}
-            0 for row-wise, 1 for column-wise
+        axis : {0, 1, 'index', 'columns'} (default 0)
+            0 or 'index' for row-wise, 1 or 'columns' for column-wise 
+
 
         Returns
         -------
@@ -4524,6 +4534,9 @@ class DataFrame(NDFrame):
                 return _quantile(values, per)
 
         data = self._get_numeric_data() if numeric_only else self
+
+        axis = self._get_axis_number(axis)
+
         if axis == 1:
             data = data.T
 
@@ -5095,14 +5108,9 @@ def _homogenize(data, index, dtype=None):
                 v = v.reindex(index, copy=False)
         else:
             if isinstance(v, dict):
-                if oindex is None:
-                    oindex = index.astype('O')
-                if type(v) == dict:
-                    # fast cython method
-                    v = lib.fast_multiget(v, oindex.values, default=NA)
-                else:
-                    v = lib.map_infer(oindex.values, v.get)
-
+                v = _dict_compat(v)
+                oindex = index.astype('O')
+                v = lib.fast_multiget(v, oindex.values, default=NA)
             v = _sanitize_array(v, index, dtype=dtype, copy=False,
                                 raise_cast_failure=False)
 
