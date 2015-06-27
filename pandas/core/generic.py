@@ -2359,13 +2359,17 @@ class NDFrame(PandasObject):
         return Series(self._data.get_ftypes(), index=self._info_axis,
                       dtype=np.object_)
 
-    def as_blocks(self):
+    def as_blocks(self, copy=True):
         """
         Convert the frame to a dict of dtype -> Constructor Types that each has
         a homogeneous dtype.
 
         NOTE: the dtypes of the blocks WILL BE PRESERVED HERE (unlike in
               as_matrix)
+
+        Parameters
+        ----------
+        copy : boolean, default True
 
         Returns
         -------
@@ -2381,7 +2385,7 @@ class NDFrame(PandasObject):
         for dtype, blocks in bd.items():
             # Must combine even after consolidation, because there may be
             # sparse items which are never consolidated into one block.
-            combined = self._data.combine(blocks, copy=True)
+            combined = self._data.combine(blocks, copy=copy)
             result[dtype] = self._constructor(combined).__finalize__(self)
 
         return result
@@ -2896,6 +2900,7 @@ class NDFrame(PandasObject):
             Update the NDFrame in place if possible.
         downcast : optional, 'infer' or None, defaults to None
             Downcast dtypes if possible.
+        kwargs : keyword arguments to pass on to the interpolating function.
 
         Returns
         -------
