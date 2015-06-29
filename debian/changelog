@@ -1,4 +1,4 @@
-pandas (0.16.2+git49-g3908ad5-1) unstable; urgency=medium
+pandas (0.16.2+git58-g01995b2-1) unstable; urgency=medium
 
   * Fresh upstream post-release snapshot (to pick up recent fixes etc)
     (Closes: #787432)
@@ -9,7 +9,7 @@ pandas (0.16.2+git49-g3908ad5-1) unstable; urgency=medium
     - add python{,3}-{lxml,html5lib} to Build-Depends and Recommends
     - use LC_ALL=C.UTF-8 while running tests
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 29 Jun 2015 10:48:01 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 29 Jun 2015 10:48:30 -0400
 
 pandas (0.16.0~rc1-1) experimental; urgency=medium
 
