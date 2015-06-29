@@ -7,8 +7,9 @@ pandas (0.16.2+git49-g3908ad5-1) unstable; urgency=medium
     - add ipython (or alternative new ones from neurodebian) into
       Build-Depends-Indep to build docs
     - add python{,3}-{lxml,html5lib} to Build-Depends and Recommends
+    - use LC_ALL=C.UTF-8 while running tests
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 26 Jun 2015 21:47:02 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 29 Jun 2015 10:48:01 -0400
 
 pandas (0.16.0~rc1-1) experimental; urgency=medium
 
