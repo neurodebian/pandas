@@ -2068,7 +2068,7 @@ class TestCategoricalAsBlock(tm.TestCase):
         # row
         res_row = df.iloc[2,:]
         tm.assert_series_equal(res_row, exp_row)
-        tm.assert_isinstance(res_row["cats"], compat.string_types)
+        tm.assertIsInstance(res_row["cats"], compat.string_types)
 
         # col
         res_col = df.iloc[:,0]
@@ -2088,7 +2088,7 @@ class TestCategoricalAsBlock(tm.TestCase):
         # row
         res_row = df.loc["j",:]
         tm.assert_series_equal(res_row, exp_row)
-        tm.assert_isinstance(res_row["cats"], compat.string_types)
+        tm.assertIsInstance(res_row["cats"], compat.string_types)
 
         # col
         res_col = df.loc[:,"cats"]
@@ -2109,7 +2109,7 @@ class TestCategoricalAsBlock(tm.TestCase):
         # row
         res_row = df.ix["j",:]
         tm.assert_series_equal(res_row, exp_row)
-        tm.assert_isinstance(res_row["cats"], compat.string_types)
+        tm.assertIsInstance(res_row["cats"], compat.string_types)
 
         # col
         res_col = df.ix[:,"cats"]
@@ -2143,7 +2143,7 @@ class TestCategoricalAsBlock(tm.TestCase):
         # i : int, slice, or sequence of integers
         res_row = df.irow(2)
         tm.assert_series_equal(res_row, exp_row)
-        tm.assert_isinstance(res_row["cats"], compat.string_types)
+        tm.assertIsInstance(res_row["cats"], compat.string_types)
 
         res_df = df.irow(slice(2,4))
         tm.assert_frame_equal(res_df, exp_df)
@@ -2969,9 +2969,9 @@ class TestCategoricalAsBlock(tm.TestCase):
 
     def test_concat_categorical(self):
         # See GH 10177
-        df1 = pd.DataFrame(np.arange(18).reshape(6, 3), columns=["a", "b", "c"])
+        df1 = pd.DataFrame(np.arange(18, dtype='int64').reshape(6, 3), columns=["a", "b", "c"])
 
-        df2 = pd.DataFrame(np.arange(14).reshape(7, 2), columns=["a", "c"])
+        df2 = pd.DataFrame(np.arange(14, dtype='int64').reshape(7, 2), columns=["a", "c"])
         df2['h'] = pd.Series(pd.Categorical(["one", "one", "two", "one", "two", "two", "one"]))
 
         df_concat = pd.concat((df1, df2), axis=0).reset_index(drop=True)
