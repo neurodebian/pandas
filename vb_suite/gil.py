@@ -1,11 +1,20 @@
 from vbench.api import Benchmark
 from datetime import datetime
 
-common_setup = """from pandas_vb_common import *
+common_setup = """from .pandas_vb_common import *
 """
 
 basic = common_setup + """
-from pandas.util.testing import test_parallel
+try:
+    from pandas.util.testing import test_parallel
+    have_real_test_parallel = True
+except ImportError:
+    have_real_test_parallel = False
+    def test_parallel(num_threads=1):
+        def wrapper(fname):
+            return fname
+
+        return wrapper
 
 N = 1000000
 ngroups = 1000
@@ -13,6 +22,9 @@ np.random.seed(1234)
 
 df = DataFrame({'key' : np.random.randint(0,ngroups,size=N),
                 'data' : np.random.randn(N) })
+
+if not have_real_test_parallel:
+    raise NotImplementedError
 """
 
 setup = basic + """
@@ -94,5 +106,5 @@ def take_1d_pg2_float64():
 
 """
 
-nogil_take1d_float64 = Benchmark('take_1d_pg2()_int64', setup, start_date=datetime(2015, 1, 1))
-nogil_take1d_int64 = Benchmark('take_1d_pg2()_float64', setup, start_date=datetime(2015, 1, 1))
+nogil_take1d_float64 = Benchmark('take_1d_pg2_int64()', setup, start_date=datetime(2015, 1, 1))
+nogil_take1d_int64 = Benchmark('take_1d_pg2_float64()', setup, start_date=datetime(2015, 1, 1))

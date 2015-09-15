@@ -11,6 +11,7 @@ from pandas import (Series, TimeSeries, DataFrame, Panel, Index,
 
 from pandas.core.groupby import DataError
 from pandas.tseries.index import date_range
+from pandas.tseries.tdi import timedelta_range
 from pandas.tseries.offsets import Minute, BDay
 from pandas.tseries.period import period_range, PeriodIndex, Period
 from pandas.tseries.resample import DatetimeIndex, TimeGrouper
@@ -240,47 +241,47 @@ class TestResample(tm.TestCase):
 
         self.assertEqual(len(result), 3)
         self.assertTrue((result.index.dayofweek == [6, 6, 6]).all())
-        self.assertEqual(result.irow(0), s['1/2/2005'])
-        self.assertEqual(result.irow(1), s['1/9/2005'])
-        self.assertEqual(result.irow(2), s.irow(-1))
+        self.assertEqual(result.iloc[0], s['1/2/2005'])
+        self.assertEqual(result.iloc[1], s['1/9/2005'])
+        self.assertEqual(result.iloc[2], s.iloc[-1])
 
         result = s.resample('W-MON', how='last')
         self.assertEqual(len(result), 2)
         self.assertTrue((result.index.dayofweek == [0, 0]).all())
-        self.assertEqual(result.irow(0), s['1/3/2005'])
-        self.assertEqual(result.irow(1), s['1/10/2005'])
+        self.assertEqual(result.iloc[0], s['1/3/2005'])
+        self.assertEqual(result.iloc[1], s['1/10/2005'])
 
         result = s.resample('W-TUE', how='last')
         self.assertEqual(len(result), 2)
         self.assertTrue((result.index.dayofweek == [1, 1]).all())
-        self.assertEqual(result.irow(0), s['1/4/2005'])
-        self.assertEqual(result.irow(1), s['1/10/2005'])
+        self.assertEqual(result.iloc[0], s['1/4/2005'])
+        self.assertEqual(result.iloc[1], s['1/10/2005'])
 
         result = s.resample('W-WED', how='last')
         self.assertEqual(len(result), 2)
         self.assertTrue((result.index.dayofweek == [2, 2]).all())
-        self.assertEqual(result.irow(0), s['1/5/2005'])
-        self.assertEqual(result.irow(1), s['1/10/2005'])
+        self.assertEqual(result.iloc[0], s['1/5/2005'])
+        self.assertEqual(result.iloc[1], s['1/10/2005'])
 
         result = s.resample('W-THU', how='last')
         self.assertEqual(len(result), 2)
         self.assertTrue((result.index.dayofweek == [3, 3]).all())
-        self.assertEqual(result.irow(0), s['1/6/2005'])
-        self.assertEqual(result.irow(1), s['1/10/2005'])
+        self.assertEqual(result.iloc[0], s['1/6/2005'])
+        self.assertEqual(result.iloc[1], s['1/10/2005'])
 
         result = s.resample('W-FRI', how='last')
         self.assertEqual(len(result), 2)
         self.assertTrue((result.index.dayofweek == [4, 4]).all())
-        self.assertEqual(result.irow(0), s['1/7/2005'])
-        self.assertEqual(result.irow(1), s['1/10/2005'])
+        self.assertEqual(result.iloc[0], s['1/7/2005'])
+        self.assertEqual(result.iloc[1], s['1/10/2005'])
 
         # to biz day
         result = s.resample('B', how='last')
         self.assertEqual(len(result), 7)
         self.assertTrue((result.index.dayofweek == [4, 0, 1, 2, 3, 4, 0]).all())
-        self.assertEqual(result.irow(0), s['1/2/2005'])
-        self.assertEqual(result.irow(1), s['1/3/2005'])
-        self.assertEqual(result.irow(5), s['1/9/2005'])
+        self.assertEqual(result.iloc[0], s['1/2/2005'])
+        self.assertEqual(result.iloc[1], s['1/3/2005'])
+        self.assertEqual(result.iloc[5], s['1/9/2005'])
         self.assertEqual(result.index.name, 'index')
 
     def test_resample_upsampling_picked_but_not_correct(self):
@@ -407,13 +408,13 @@ class TestResample(tm.TestCase):
         self.assertEqual(len(result), len(expect))
         self.assertEqual(len(result.columns), 4)
 
-        xs = result.irow(-2)
+        xs = result.iloc[-2]
         self.assertEqual(xs['open'], s[-6])
         self.assertEqual(xs['high'], s[-6:-1].max())
         self.assertEqual(xs['low'], s[-6:-1].min())
         self.assertEqual(xs['close'], s[-2])
 
-        xs = result.irow(0)
+        xs = result.iloc[0]
         self.assertEqual(xs['open'], s[0])
         self.assertEqual(xs['high'], s[:5].max())
         self.assertEqual(xs['low'], s[:5].min())
@@ -626,6 +627,21 @@ class TestResample(tm.TestCase):
         exp_rng = date_range('12/31/1999 23:57:00', '1/1/2000 01:57',
                              freq='5min')
         self.assertTrue(resampled.index.equals(exp_rng))
+
+    def test_resample_base_with_timedeltaindex(self):
+
+        # GH 10530
+        rng = timedelta_range(start = '0s', periods = 25, freq = 's')
+        ts = Series(np.random.randn(len(rng)), index = rng)
+
+        with_base = ts.resample('2s', base = 5)
+        without_base = ts.resample('2s')
+
+        exp_without_base = timedelta_range(start = '0s', end = '25s', freq = '2s')
+        exp_with_base = timedelta_range(start = '5s', end = '29s', freq = '2s')
+
+        self.assertTrue(without_base.index.equals(exp_without_base))
+        self.assertTrue(with_base.index.equals(exp_with_base))
 
     def test_resample_daily_anchored(self):
         rng = date_range('1/1/2000 0:00:00', periods=10000, freq='T')
@@ -900,6 +916,31 @@ class TestResample(tm.TestCase):
             result = df.groupby(pd.Grouper(freq='M', key='A')).count()
             assert_frame_equal(result, expected)
 
+    def test_resample_group_info(self):  # GH10914
+        for n, k in product((10000, 100000), (10, 100, 1000)):
+            dr = date_range(start='2015-08-27', periods=n // 10, freq='T')
+            ts = Series(np.random.randint(0, n // k, n).astype('int64'),
+                        index=np.random.choice(dr, n))
+
+            left = ts.resample('30T', how='nunique')
+            ix = date_range(start=ts.index.min(),
+                            end=ts.index.max(),
+                            freq='30T')
+
+            vals = ts.values
+            bins = np.searchsorted(ix.values, ts.index, side='right')
+
+            sorter = np.lexsort((vals, bins))
+            vals, bins = vals[sorter], bins[sorter]
+
+            mask = np.r_[True, vals[1:] != vals[:-1]]
+            mask |= np.r_[True, bins[1:] != bins[:-1]]
+
+            arr = np.bincount(bins[mask] - 1, minlength=len(ix))
+            right = Series(arr, index=ix)
+
+            assert_series_equal(left, right)
+
     def test_resmaple_dst_anchor(self):
         # 5172
         dti = DatetimeIndex([datetime(2012, 11, 4, 23)], tz='US/Eastern')
@@ -964,7 +1005,7 @@ def _simple_ts(start, end, freq='D'):
 
 def _simple_pts(start, end, freq='D'):
     rng = period_range(start, end, freq=freq)
-    return TimeSeries(np.random.randn(len(rng)), index=rng)
+    return Series(np.random.randn(len(rng)), index=rng)
 
 
 class TestResamplePeriodIndex(tm.TestCase):
@@ -1161,7 +1202,7 @@ class TestResamplePeriodIndex(tm.TestCase):
     def test_resample_fill_missing(self):
         rng = PeriodIndex([2000, 2005, 2007, 2009], freq='A')
 
-        s = TimeSeries(np.random.randn(4), index=rng)
+        s = Series(np.random.randn(4), index=rng)
 
         stamps = s.to_timestamp()
 
@@ -1175,12 +1216,12 @@ class TestResamplePeriodIndex(tm.TestCase):
 
     def test_cant_fill_missing_dups(self):
         rng = PeriodIndex([2000, 2005, 2005, 2007, 2007], freq='A')
-        s = TimeSeries(np.random.randn(5), index=rng)
+        s = Series(np.random.randn(5), index=rng)
         self.assertRaises(Exception, s.resample, 'A')
 
     def test_resample_5minute(self):
         rng = period_range('1/1/2000', '1/5/2000', freq='T')
-        ts = TimeSeries(np.random.randn(len(rng)), index=rng)
+        ts = Series(np.random.randn(len(rng)), index=rng)
 
         result = ts.resample('5min')
         expected = ts.to_timestamp().resample('5min')
@@ -1386,7 +1427,7 @@ class TestResamplePeriodIndex(tm.TestCase):
               'COOP_DLY_TRN_QT': 30, 'COOP_DLY_SLS_AMT': 20}] * 28 +
             [{'REST_KEY': 2, 'DLY_TRN_QT': 70, 'DLY_SLS_AMT': 10,
               'COOP_DLY_TRN_QT': 50, 'COOP_DLY_SLS_AMT': 20}] * 28,
-            index=index.append(index)).sort()
+            index=index.append(index)).sort_index()
 
         index = date_range('2001-5-4',periods=4,freq='7D')
         expected = DataFrame(
@@ -1414,7 +1455,7 @@ class TestTimeGrouper(tm.TestCase):
 
         grouped = self.ts.groupby(grouper)
 
-        f = lambda x: x.order()[-3:]
+        f = lambda x: x.sort_values()[-3:]
 
         applied = grouped.apply(f)
         expected = self.ts.groupby(lambda x: x.year).apply(f)
@@ -1544,7 +1585,7 @@ class TestTimeGrouper(tm.TestCase):
         # check TimeGrouper's aggregation is identical as normal groupby
 
         n = 20
-        data = np.random.randn(n, 4)
+        data = np.random.randn(n, 4).astype('int64')
         normal_df = DataFrame(data, columns=['A', 'B', 'C', 'D'])
         normal_df['key'] = [1, 2, np.nan, 4, 5] * 4
 
@@ -1555,7 +1596,7 @@ class TestTimeGrouper(tm.TestCase):
         normal_grouped = normal_df.groupby('key')
         dt_grouped = dt_df.groupby(TimeGrouper(key='key', freq='D'))
 
-        for func in ['min', 'max', 'prod']:
+        for func in ['min', 'max', 'sum', 'prod']:
             normal_result = getattr(normal_grouped, func)()
             dt_result = getattr(dt_grouped, func)()
             pad = DataFrame([[np.nan, np.nan, np.nan, np.nan]],
@@ -1565,7 +1606,7 @@ class TestTimeGrouper(tm.TestCase):
             expected.index = date_range(start='2013-01-01', freq='D', periods=5, name='key')
             assert_frame_equal(expected, dt_result)
 
-        for func in ['count', 'sum']:
+        for func in ['count']:
             normal_result = getattr(normal_grouped, func)()
             pad = DataFrame([[0, 0, 0, 0]], index=[3], columns=['A', 'B', 'C', 'D'])
             expected = normal_result.append(pad)

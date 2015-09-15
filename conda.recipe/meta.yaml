@@ -1,6 +1,6 @@
 package:
-  name: pandas
-  version: {{ environ.get('GIT_DESCRIBE_TAG', '') }}
+    name: pandas
+    version: {{ environ.get('GIT_DESCRIBE_TAG', '').replace('.dev', 'dev') }}
 
 build:
     number: {{ environ.get('GIT_DESCRIBE_NUMBER', 0) }}
@@ -12,8 +12,8 @@ requirements:
   build:
     - python
     - cython
-    - libpython # [win]
     - numpy
+    - libpython # [py2k and win]
     - setuptools
     - pytz
     - dateutil
@@ -21,17 +21,18 @@ requirements:
   run:
     - python
     - numpy
-    - libpython # [win]
     - dateutil
     - pytz
 
 test:
-  requires:
-    - nose
-    - coverage
+  imports:
+    - pandas
 
-  commands:
-    - python -c "import pandas"
+  #requires:
+  #  - nose
+
+  #commands:
+  #  - nosetests --exe -A "not slow and not network and not disabled" pandas
 
 about:
   home: http://pandas.pydata.org

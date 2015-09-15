@@ -157,7 +157,6 @@ location at a particular level:
    index.get_level_values(0)
    index.get_level_values('second')
 
-
 Basic indexing on axis with MultiIndex
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -176,6 +175,35 @@ completely analogous way to selecting a column in a regular DataFrame:
 See :ref:`Cross-section with hierarchical index <advanced.xs>` for how to select
 on a deeper level.
 
+.. note::
+
+   The repr of a ``MultiIndex`` shows ALL the defined levels of an index, even
+   if the they are not actually used. When slicing an index, you may notice this.
+   For example:
+
+   .. ipython:: python
+
+      # original multi-index
+      df.columns
+
+      # sliced
+      df[['foo','qux']].columns
+
+   This is done to avoid a recomputation of the levels in order to make slicing
+   highly performant. If you want to see the actual used levels.
+
+   .. ipython:: python
+
+      df[['foo','qux']].columns.values
+
+      # for a specific level
+      df[['foo','qux']].columns.get_level_values(0)
+
+   To reconstruct the multiindex with only the used levels
+
+   .. ipython:: python
+
+      pd.MultiIndex.from_tuples(df[['foo','qux']].columns.values)
 
 Data alignment and using ``reindex``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -286,7 +314,7 @@ As usual, **both sides** of the slicers are included as this is label indexing.
                                          names=['lvl0', 'lvl1'])
    dfmi = pd.DataFrame(np.arange(len(miindex)*len(micolumns)).reshape((len(miindex),len(micolumns))),
                        index=miindex,
-                       columns=micolumns).sortlevel().sortlevel(axis=1)
+                       columns=micolumns).sort_index().sort_index(axis=1)
    dfmi
 
 Basic multi-index slicing using slices, lists, and labels.
@@ -458,7 +486,7 @@ correctly. You can think about breaking the axis into unique groups, where at
 the hierarchical level of interest, each distinct group shares a label, but no
 two have the same label. However, the ``MultiIndex`` does not enforce this:
 **you are responsible for ensuring that things are properly sorted**. There is
-an important new method ``sortlevel`` to sort an axis within a ``MultiIndex``
+an important new method ``sort_index`` to sort an axis within a ``MultiIndex``
 so that its labels are grouped and sorted by the original ordering of the
 associated factor at that level. Note that this does not necessarily mean the
 labels will be sorted lexicographically!
@@ -468,19 +496,19 @@ labels will be sorted lexicographically!
    import random; random.shuffle(tuples)
    s = pd.Series(np.random.randn(8), index=pd.MultiIndex.from_tuples(tuples))
    s
-   s.sortlevel(0)
-   s.sortlevel(1)
+   s.sort_index(level=0)
+   s.sort_index(level=1)
 
 .. _advanced.sortlevel_byname:
 
-Note, you may also pass a level name to ``sortlevel`` if the MultiIndex levels
+Note, you may also pass a level name to ``sort_index`` if the MultiIndex levels
 are named.
 
 .. ipython:: python
 
    s.index.set_names(['L1', 'L2'], inplace=True)
-   s.sortlevel(level='L1')
-   s.sortlevel(level='L2')
+   s.sort_index(level='L1')
+   s.sort_index(level='L2')
 
 Some indexing will work even if the data are not sorted, but will be rather
 inefficient and will also return a copy of the data rather than a view:
@@ -488,14 +516,14 @@ inefficient and will also return a copy of the data rather than a view:
 .. ipython:: python
 
    s['qux']
-   s.sortlevel(1)['qux']
+   s.sort_index(level=1)['qux']
 
 On higher dimensional objects, you can sort any of the other axes by level if
 they have a MultiIndex:
 
 .. ipython:: python
 
-   df.T.sortlevel(1, axis=1)
+   df.T.sort_index(level=1, axis=1)
 
 The ``MultiIndex`` object has code to **explicity check the sort depth**. Thus,
 if you try to index at a depth at which the index is not sorted, it will raise

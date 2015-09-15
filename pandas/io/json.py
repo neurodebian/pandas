@@ -150,7 +150,18 @@ def read_json(path_or_buf=None, orient=None, typ='frame', dtype=True,
         Try to convert the axes to the proper dtypes.
     convert_dates : boolean, default True
         List of columns to parse for dates; If True, then try to parse
-        datelike columns default is True
+        datelike columns default is True; a column label is datelike if
+        
+        * it ends with ``'_at'``,
+        
+        * it ends with ``'_time'``,
+        
+        * it begins with ``'timestamp'``,
+        
+        * it is ``'modified'``, or
+        
+        * it is ``'date'``
+
     keep_default_dates : boolean, default True.
         If parsing dates, then parse the default datelike columns
     numpy : boolean, default False
@@ -172,7 +183,7 @@ def read_json(path_or_buf=None, orient=None, typ='frame', dtype=True,
     result : Series or DataFrame
     """
 
-    filepath_or_buffer, _ = get_filepath_or_buffer(path_or_buf)
+    filepath_or_buffer, _, _ = get_filepath_or_buffer(path_or_buf)
     if isinstance(filepath_or_buffer, compat.string_types):
         try:
             exists = os.path.exists(filepath_or_buffer)
@@ -543,11 +554,13 @@ class FrameParser(Parser):
             if not isinstance(col, compat.string_types):
                 return False
 
-            if (col.endswith('_at') or
-                    col.endswith('_time') or
-                    col.lower() == 'modified' or
-                    col.lower() == 'date' or
-                    col.lower() == 'datetime'):
+            col_lower = col.lower()
+            if (col_lower.endswith('_at') or
+                    col_lower.endswith('_time') or
+                    col_lower == 'modified' or
+                    col_lower == 'date' or
+                    col_lower == 'datetime' or
+                    col_lower.startswith('timestamp')):
                 return True
             return False
 

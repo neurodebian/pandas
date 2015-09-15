@@ -746,14 +746,11 @@ x   q   30      3    -0.6662 -0.5243 -0.3580  0.89145  2.5838"""
     def test_sortlevel(self):
         df = self.frame.copy()
         df.index = np.arange(len(df))
-        assertRaisesRegexp(TypeError, 'hierarchical index', df.sortlevel, 0)
 
         # axis=1
 
         # series
         a_sorted = self.frame['A'].sortlevel(0)
-        with assertRaisesRegexp(TypeError, 'hierarchical index'):
-            self.frame.reset_index()['A'].sortlevel()
 
         # preserve names
         self.assertEqual(a_sorted.index.names, self.frame.index.names)
@@ -832,7 +829,7 @@ x   q   30      3    -0.6662 -0.5243 -0.3580  0.89145  2.5838"""
             index = frame._get_axis(axis)
             for i in range(index.nlevels):
                 result = frame.count(axis=axis, level=i)
-                expected = frame.groupby(axis=axis, level=i).count(axis=axis)
+                expected = frame.groupby(axis=axis, level=i).count()
                 expected = expected.reindex_like(result).astype('i8')
                 assert_frame_equal(result, expected)
 
@@ -935,7 +932,7 @@ x   q   30      3    -0.6662 -0.5243 -0.3580  0.89145  2.5838"""
 
         # columns unsorted
         unstacked = self.ymd.unstack()
-        unstacked = unstacked.sort(axis=1, ascending=False)
+        unstacked = unstacked.sort_index(axis=1, ascending=False)
         restacked = unstacked.stack()
         assert_frame_equal(restacked, self.ymd)
 
@@ -963,6 +960,44 @@ x   q   30      3    -0.6662 -0.5243 -0.3580  0.89145  2.5838"""
         # stack with negative number
         result = self.ymd.unstack(0).stack(-2)
         expected = self.ymd.unstack(0).stack(0)
+
+        # GH10417
+        def check(left, right):
+            assert_series_equal(left, right)
+            self.assertFalse(left.index.is_unique)
+            li, ri = left.index, right.index
+            for i in range(ri.nlevels):
+                tm.assert_numpy_array_equal(li.levels[i], ri.levels[i])
+                tm.assert_numpy_array_equal(li.labels[i], ri.labels[i])
+
+        df = DataFrame(np.arange(12).reshape(4, 3),
+                       index=list('abab'),
+                       columns=['1st', '2nd', '3rd'])
+
+        mi = MultiIndex(levels=[['a', 'b'], ['1st', '2nd', '3rd']],
+                        labels=[np.tile(np.arange(2).repeat(3), 2),
+                                np.tile(np.arange(3), 4)])
+
+        left, right = df.stack(), Series(np.arange(12), index=mi)
+        check(left, right)
+
+        df.columns = ['1st', '2nd', '1st']
+        mi = MultiIndex(levels=[['a', 'b'], ['1st', '2nd']],
+                        labels=[np.tile(np.arange(2).repeat(3), 2),
+                                np.tile([0, 1, 0], 4)])
+
+        left, right = df.stack(), Series(np.arange(12), index=mi)
+        check(left, right)
+
+        tpls = ('a', 2), ('b', 1), ('a', 1), ('b', 2)
+        df.index = MultiIndex.from_tuples(tpls)
+        mi = MultiIndex(levels=[['a', 'b'], [1, 2], ['1st', '2nd']],
+                        labels=[np.tile(np.arange(2).repeat(3), 2),
+                                np.repeat([1, 0, 1], [3, 6, 3]),
+                                np.tile([0, 1, 0], 4)])
+
+        left, right = df.stack(), Series(np.arange(12), index=mi)
+        check(left, right)
 
     def test_unstack_odd_failure(self):
         data = """day,time,smoker,sum,len
@@ -1993,7 +2028,7 @@ Thur,Lunch,Yes,51.51,17"""
                           columns=columns)
 
         result = frame.ix[:, 1]
-        exp = frame.icol(1)
+        exp = frame.loc[:, ('Ohio', 'Red')]
         tm.assertIsInstance(result, Series)
         assert_series_equal(result, exp)
 
@@ -2098,11 +2133,28 @@ Thur,Lunch,Yes,51.51,17"""
         tm.assert_index_equal(idx.drop_duplicates(), expected)
 
         expected = np.array([True, False, False, False, False, False])
-        duplicated = idx.duplicated(take_last=True)
+        duplicated = idx.duplicated(keep='last')
         tm.assert_numpy_array_equal(duplicated, expected)
         self.assertTrue(duplicated.dtype == bool)
         expected = MultiIndex.from_arrays(([2, 3, 1, 2 ,3], [1, 1, 1, 2, 2]))
-        tm.assert_index_equal(idx.drop_duplicates(take_last=True), expected)
+        tm.assert_index_equal(idx.drop_duplicates(keep='last'), expected)
+
+        expected = np.array([True, False, False, True, False, False])
+        duplicated = idx.duplicated(keep=False)
+        tm.assert_numpy_array_equal(duplicated, expected)
+        self.assertTrue(duplicated.dtype == bool)
+        expected = MultiIndex.from_arrays(([2, 3, 2 ,3], [1, 1, 2, 2]))
+        tm.assert_index_equal(idx.drop_duplicates(keep=False), expected)
+
+        # deprecate take_last
+        expected = np.array([True, False, False, False, False, False])
+        with tm.assert_produces_warning(FutureWarning):
+            duplicated = idx.duplicated(take_last=True)
+        tm.assert_numpy_array_equal(duplicated, expected)
+        self.assertTrue(duplicated.dtype == bool)
+        expected = MultiIndex.from_arrays(([2, 3, 1, 2 ,3], [1, 1, 1, 2, 2]))
+        with tm.assert_produces_warning(FutureWarning):
+            tm.assert_index_equal(idx.drop_duplicates(take_last=True), expected)
 
     def test_multiindex_set_index(self):
         # segfault in #3308
@@ -2135,6 +2187,21 @@ Thur,Lunch,Yes,51.51,17"""
             index = pd.MultiIndex.from_product([[d1],[d2]])
             self.assertIsInstance(index.levels[0],pd.DatetimeIndex)
             self.assertIsInstance(index.levels[1],pd.DatetimeIndex)
+
+    def test_constructor_with_tz(self):
+
+        index = pd.DatetimeIndex(['2013/01/01 09:00', '2013/01/02 09:00'],
+                                 name='dt1', tz='US/Pacific')
+        columns = pd.DatetimeIndex(['2014/01/01 09:00', '2014/01/02 09:00'],
+                                   name='dt2', tz='Asia/Tokyo')
+
+        result = MultiIndex.from_arrays([index, columns])
+        tm.assert_index_equal(result.levels[0], index)
+        tm.assert_index_equal(result.levels[1], columns)
+
+        result = MultiIndex.from_arrays([Series(index), Series(columns)])
+        tm.assert_index_equal(result.levels[0], index)
+        tm.assert_index_equal(result.levels[1], columns)
 
     def test_set_index_datetime(self):
         # GH 3950

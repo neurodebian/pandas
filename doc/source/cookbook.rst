@@ -309,7 +309,7 @@ Method 2 : sort then take first of each
 
 .. ipython:: python
 
-   df.sort("BBB").groupby("AAA", as_index=False).first()
+   df.sort_values(by="BBB").groupby("AAA", as_index=False).first()
 
 Notice the same results, with the exception of the index.
 
@@ -410,7 +410,7 @@ Sorting
 
 .. ipython:: python
 
-   df.sort(('Labs', 'II'), ascending=False)
+   df.sort_values(by=('Labs', 'II'), ascending=False)
 
 `Partial Selection, the need for sortedness;
 <https://github.com/pydata/pandas/issues/2995>`__
@@ -547,7 +547,7 @@ Unlike agg, apply's callable is passed a sub-DataFrame which gives you access to
 
    code_groups = df.groupby('code')
 
-   agg_n_sort_order = code_groups[['data']].transform(sum).sort('data')
+   agg_n_sort_order = code_groups[['data']].transform(sum).sort_values(by='data')
 
    sorted_df = df.ix[agg_n_sort_order.index]
 
@@ -745,6 +745,9 @@ Timeseries
 `Vectorized Lookup
 <http://stackoverflow.com/questions/13893227/vectorized-look-up-of-values-in-pandas-dataframe>`__
 
+`Aggregation and plotting time series
+<http://nipunbatra.github.io/2015/06/timeseries/>`__
+
 Turn a matrix with hours in columns and days in rows into a continuous row sequence in the form of a time series.
 `How to rearrange a python pandas DataFrame?
 <http://stackoverflow.com/questions/15432659/how-to-rearrange-a-python-pandas-dataframe>`__
@@ -830,6 +833,9 @@ ignore_index is needed in pandas < v0.13, and depending on df construction
 
 `Join with a criteria based on the values
 <http://stackoverflow.com/questions/15581829/how-to-perform-an-inner-or-outer-join-of-dataframes-with-pandas-on-non-simplisti>`__
+
+`Using searchsorted to merge based on values inside a range
+<http://stackoverflow.com/questions/25125626/pandas-merge-with-logic/2512764>`__
 
 .. _cookbook.plotting:
 
@@ -985,7 +991,13 @@ The :ref:`Excel <io.excel>` docs
 `Reading from a filelike handle
 <http://stackoverflow.com/questions/15588713/sheets-of-excel-workbook-from-a-url-into-a-pandas-dataframe>`__
 
+`Modifying formatting in XlsxWriter output
+<http://pbpython.com/improve-pandas-excel-output.html>`__
+
 .. _cookbook.html:
+
+HTML
+****
 
 `Reading HTML tables from a server that cannot handle the default request
 header <http://stackoverflow.com/a/18939272/564538>`__

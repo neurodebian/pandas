@@ -247,6 +247,8 @@ just checked out.  There are two primary methods of doing this.
    from your development directory. Thus, you can always be using the development
    version on your system without being inside the clone directory.
 
+.. _contributing.documentation:
+
 Contributing to the documentation
 =================================
 
@@ -315,6 +317,13 @@ Some other important things to know about the docs:
   This means that almost all code examples in the docs are always run (and the
   output saved) during the doc build. This way, they will always be up to date,
   but it makes the doc building a bit more complex.
+
+The utility script ``scripts/api_rst_coverage.py`` can be used to compare
+the list of methods documented in ``doc/source/api.rst`` (which is used to generate
+the `API Reference <http://pandas.pydata.org/pandas-docs/stable/api.html>`_ page)
+and the actual public methods.
+It will identify methods documented in in ``doc/source/api.rst`` that are not actually
+class methods, and existing methods that are not documented in ``doc/source/api.rst``.
 
 
 How to build the pandas documentation
@@ -503,9 +512,71 @@ entire suite.  This is done using one of the following constructs:
 
 Running the performance test suite
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Performance matters and it is worth considering that your code has not introduced
+performance regressions.  *pandas* is in the process of migrating to the
+`asv library <https://github.com/spacetelescope/asv>`__
+to enable easy monitoring of the performance of critical *pandas* operations.
+These benchmarks are all found in the ``pandas/asv_bench`` directory.  *asv*
+supports both python2 and python3.
+
+.. note::
+
+    The *asv* benchmark suite was translated from the previous framework, vbench,
+    so many stylistic issues are likely a result of automated transformation of the
+    code.
+
+To use ''asv'' you will need either ''conda'' or ''virtualenv''. For more details
+please check installation webpage http://asv.readthedocs.org/en/latest/installing.html
+
+To install ''asv''::
+
+    pip install git+https://github.com/spacetelescope/asv
+
+If you need to run a benchmark, change your directory to asv_bench/ and run
+the following if you have been developing on master::
+
+    asv continuous master
+
+Otherwise, if you are working on another branch, either of the following can be used::
+
+    asv continuous master HEAD
+    asv continuous master your_branch
+
+This will checkout the master revision and run the suite on both master and
+your commit.  Running the full test suite can take up to one hour and use up
+to 3GB of RAM.  Usually it is sufficient to paste a subset of the results in
+to the Pull Request to show that the committed changes do not cause unexpected
+performance regressions.
+
+You can run specific benchmarks using the *-b* flag which takes a regular expression.
+For example this will only run tests from a ``pandas/asv_bench/benchmarks/groupby.py``
+file::
+
+    asv continuous master -b groupby
+
+If you want to run only some specific group of tests from a file you can do it
+using ``.`` as a separator. For example::
+
+    asv continuous master -b groupby.groupby_agg_builtins1
+
+will only run a ``groupby_agg_builtins1`` test defined in a ``groupby`` file.
+
+It is also useful to run tests in your current environment. You can simply do it by::
+
+    asv dev
+
+which would be equivalent to ``asv run --quick --show-stderr --python=same``. This
+will launch every test only once, display stderr from the benchmarks and use your
+local ``python'' that comes from your $PATH.
+
+Information on how to write a benchmark can be found in
+`*asv*'s documentation http://asv.readthedocs.org/en/latest/writing_benchmarks.html`.
+
+Running the vbench performance test suite (phasing out)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Performance matters and it is worth considering that your code has not introduced
-performance regressions.  Currently *pandas* uses the `vbench library <https://github.com/pydata/vbench>`__
+performance regressions.  Historically, *pandas* used `vbench library <https://github.com/pydata/vbench>`__
 to enable easy monitoring of the performance of critical *pandas* operations.
 These benchmarks are all found in the ``pandas/vb_suite`` directory.  vbench
 currently only works on python2.
@@ -521,7 +592,7 @@ using pip.  If you need to run a benchmark, change your directory to the *pandas
 
 This will checkout the master revision and run the suite on both master and
 your commit.  Running the full test suite can take up to one hour and use up
-to 3GB of RAM.  Usually it is sufficient to past a subset of the results in
+to 3GB of RAM.  Usually it is sufficient to paste a subset of the results in
 to the Pull Request to show that the committed changes do not cause unexpected
 performance regressions.
 
@@ -536,10 +607,23 @@ Documenting your code
 Changes should be reflected in the release notes located in `doc/source/whatsnew/vx.y.z.txt`.
 This file contains an ongoing change log for each release.  Add an entry to this file to
 document your fix, enhancement or (unavoidable) breaking change.  Make sure to include the
-GitHub issue number when adding your entry.
+GitHub issue number when adding your entry (using `` :issue:`1234` `` where `1234` is the
+issue/pull request number).
 
-If your code is an enhancement, it is most likely necessary to add usage examples to the
-existing documentation.  This can be done following the section regarding documentation.
+If your code is an enhancement, it is most likely necessary to add usage
+examples to the existing documentation.  This can be done following the section
+regarding documentation :ref:`above <contributing.documentation>`.
+Further, to let users know when this feature was added, the ``versionadded``
+directive is used. The sphinx syntax for that is:
+
+.. code-block:: rst
+
+  .. versionadded:: 0.17.0
+
+This will put the text *New in version 0.17.0* wherever you put the sphinx
+directive. This should also be put in the docstring when adding a new function
+or method (`example <https://github.com/pydata/pandas/blob/v0.16.2/pandas/core/generic.py#L1959>`__)
+or a new keyword argument (`example <https://github.com/pydata/pandas/blob/v0.16.2/pandas/core/frame.py#L1171>`__).
 
 Contributing your changes to *pandas*
 =====================================

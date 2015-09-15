@@ -3,7 +3,7 @@ from datetime import datetime
 
 SECTION = 'Indexing and scalar value access'
 
-common_setup = """from pandas_vb_common import *
+common_setup = """from .pandas_vb_common import *
 """
 
 #----------------------------------------------------------------------
@@ -140,7 +140,13 @@ indexing_dataframe_boolean = \
               start_date=datetime(2012, 1, 1))
 
 setup = common_setup + """
-import pandas.computation.expressions as expr
+try:
+    import pandas.computation.expressions as expr
+except:
+    expr = None
+
+if expr is None:
+    raise NotImplementedError
 df  = DataFrame(np.random.randn(50000, 100))
 df2 = DataFrame(np.random.randn(50000, 100))
 expr.set_numexpr_threads(1)
@@ -152,7 +158,13 @@ indexing_dataframe_boolean_st = \
 
 
 setup = common_setup + """
-import pandas.computation.expressions as expr
+try:
+    import pandas.computation.expressions as expr
+except:
+    expr = None
+
+if expr is None:
+    raise NotImplementedError
 df  = DataFrame(np.random.randn(50000, 100))
 df2 = DataFrame(np.random.randn(50000, 100))
 expr.set_use_numexpr(False)
@@ -265,3 +277,16 @@ mdt2 = mdt.set_index(['A','B','C','D']).sortlevel()
 
 multiindex_slicers = Benchmark('mdt2.loc[idx[test_A-eps_A:test_A+eps_A,test_B-eps_B:test_B+eps_B,test_C-eps_C:test_C+eps_C,test_D-eps_D:test_D+eps_D],:]', setup,
                                start_date=datetime(2015, 1, 1))
+
+#----------------------------------------------------------------------
+# take
+
+setup = common_setup + """
+s = Series(np.random.rand(100000))
+ts = Series(np.random.rand(100000),
+            index=date_range('2011-01-01', freq='S', periods=100000))
+indexer = [True, False, True, True, False] * 20000
+"""
+
+series_take_intindex = Benchmark("s.take(indexer)", setup)
+series_take_dtindex = Benchmark("ts.take(indexer)", setup)

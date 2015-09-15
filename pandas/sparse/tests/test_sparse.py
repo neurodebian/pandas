@@ -13,7 +13,7 @@ dec = np.testing.dec
 
 from pandas.util.testing import (assert_almost_equal, assert_series_equal,
                                  assert_frame_equal, assert_panel_equal, assertRaisesRegexp,
-                                 assert_array_equal, assert_attr_equal)
+                                 assert_numpy_array_equal, assert_attr_equal)
 from numpy.testing import assert_equal
 
 from pandas import Series, DataFrame, bdate_range, Panel, MultiIndex
@@ -30,7 +30,7 @@ from pandas.tools.util import cartesian_product
 import pandas.sparse.frame as spf
 
 from pandas._sparse import BlockIndex, IntIndex
-from pandas.sparse.api import (SparseSeries, SparseTimeSeries,
+from pandas.sparse.api import (SparseSeries,
                                SparseDataFrame, SparsePanel,
                                SparseArray)
 import pandas.tests.test_frame as test_frame
@@ -160,6 +160,12 @@ class TestSparseSeries(tm.TestCase,
         [x for x in self.bseries]
         str(self.bseries)
 
+    def test_TimeSeries_deprecation(self):
+
+        # deprecation TimeSeries, #10890
+        with tm.assert_produces_warning(FutureWarning):
+            pd.SparseTimeSeries(1,index=pd.date_range('20130101',periods=3))
+
     def test_construct_DataFrame_with_sp_series(self):
         # it works!
         df = DataFrame({'col': self.bseries})
@@ -258,7 +264,7 @@ class TestSparseSeries(tm.TestCase,
         # Sparse time series works
         date_index = bdate_range('1/1/2000', periods=len(self.bseries))
         s5 = SparseSeries(self.bseries, index=date_index)
-        tm.assertIsInstance(s5, SparseTimeSeries)
+        tm.assertIsInstance(s5, SparseSeries)
 
         # pass Series
         bseries2 = SparseSeries(self.bseries.to_dense())
@@ -575,7 +581,7 @@ class TestSparseSeries(tm.TestCase,
 
         reindexed = self.bseries.reindex(self.bseries.index, copy=False)
         reindexed.sp_values[:] = 1.
-        np.testing.assert_array_equal(self.bseries.sp_values, 1.)
+        tm.assert_numpy_array_equal(self.bseries.sp_values, np.repeat(1., 10))
 
     def test_sparse_reindex(self):
         length = 10
@@ -899,7 +905,7 @@ class TestSparseSeriesScipyInteraction(tm.TestCase):
         (A, il, jl) = results
         (A_result, il_result, jl_result) = check
         # convert to dense and compare
-        assert_array_equal(A.todense(), A_result.todense())
+        assert_numpy_array_equal(A.todense(), A_result.todense())
         # or compare directly as difference of sparse
         # assert(abs(A - A_result).max() < 1e-12) # max is failing in python
         # 2.6
@@ -1189,14 +1195,19 @@ class TestSparseDataFrame(tm.TestCase, test_frame.SafeForSparse):
                   frame['A'].reindex(fidx[::2]),
                   SparseSeries([], index=[])]
 
-        for op in ops:
+        for op in opnames:
             _compare_to_dense(frame, frame[::2], frame.to_dense(),
-                              frame[::2].to_dense(), op)
+                              frame[::2].to_dense(), getattr(operator, op))
+
+            # 2304, no auto-broadcasting
             for i, s in enumerate(series):
+                f = lambda a, b: getattr(a,op)(b,axis='index')
                 _compare_to_dense(frame, s, frame.to_dense(),
-                                  s.to_dense(), op)
-                _compare_to_dense(s, frame, s.to_dense(),
-                                  frame.to_dense(), op)
+                                  s.to_dense(), f)
+
+                # rops are not implemented
+                #_compare_to_dense(s, frame, s.to_dense(),
+                #                  frame.to_dense(), f)
 
         # cross-sectional operations
         series = [frame.xs(fidx[0]),
@@ -1240,8 +1251,10 @@ class TestSparseDataFrame(tm.TestCase, test_frame.SafeForSparse):
         self.assertRaises(Exception, sdf.__getitem__, ['a', 'd'])
 
     def test_icol(self):
+        # 10711 deprecated
+
         # 2227
-        result = self.frame.icol(0)
+        result = self.frame.iloc[:, 0]
         self.assertTrue(isinstance(result, SparseSeries))
         assert_sp_series_equal(result, self.frame['A'])
 
@@ -1249,7 +1262,7 @@ class TestSparseDataFrame(tm.TestCase, test_frame.SafeForSparse):
         data = {'A': [0, 1]}
         iframe = SparseDataFrame(data, default_kind='integer')
         self.assertEqual(type(iframe['A'].sp_index),
-                         type(iframe.icol(0).sp_index))
+                         type(iframe.iloc[:, 0].sp_index))
 
     def test_set_value(self):
 

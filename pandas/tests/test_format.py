@@ -632,6 +632,10 @@ class TestDataFrameFormatting(tm.TestCase):
 </table>"""
         self.assertEqual(result, expected)
 
+        df.index = Index(df.index.values, name='idx')
+        result = df.to_html(index=False)
+        self.assertEqual(result, expected)
+
     def test_to_html_multiindex_sparsify_false_multi_sparse(self):
         with option_context('display.multi_sparse', False):
             index = MultiIndex.from_arrays([[0, 0, 1, 1], [0, 1, 0, 1]],
@@ -990,7 +994,7 @@ class TestDataFrameFormatting(tm.TestCase):
 </table>
 <p>20 rows × 20 columns</p>
 </div>'''.format(div_style)
-        if sys.version_info[0] < 3:
+        if compat.PY2:
             expected = expected.decode('utf-8')
         self.assertEqual(result, expected)
 
@@ -1106,7 +1110,7 @@ class TestDataFrameFormatting(tm.TestCase):
 </table>
 <p>8 rows × 8 columns</p>
 </div>'''.format(div_style)
-        if sys.version_info[0] < 3:
+        if compat.PY2:
             expected = expected.decode('utf-8')
         self.assertEqual(result, expected)
 
@@ -1216,7 +1220,7 @@ class TestDataFrameFormatting(tm.TestCase):
 </table>
 <p>8 rows × 8 columns</p>
 </div>'''.format(div_style)
-        if sys.version_info[0] < 3:
+        if compat.PY2:
             expected = expected.decode('utf-8')
         self.assertEqual(result, expected)
 
@@ -1523,7 +1527,7 @@ class TestDataFrameFormatting(tm.TestCase):
 
     def test_to_string_float_formatting(self):
         self.reset_display_options()
-        fmt.set_option('display.precision', 6, 'display.column_space',
+        fmt.set_option('display.precision', 5, 'display.column_space',
                        12, 'display.notebook_repr_html', False)
 
         df = DataFrame({'x': [0, 0.25, 3456.000, 12e+45, 1.64e+6,
@@ -1554,7 +1558,7 @@ class TestDataFrameFormatting(tm.TestCase):
         self.assertEqual(df_s, expected)
 
         self.reset_display_options()
-        self.assertEqual(get_option("display.precision"), 7)
+        self.assertEqual(get_option("display.precision"), 6)
 
         df = DataFrame({'x': [1e9, 0.2512]})
         df_s = df.to_string()
@@ -1922,15 +1926,195 @@ c  10  11  12  13  14\
                            'C': ['one', 'two', np.NaN]},
                           columns=['A', 'B', 'C'],
                           index=index)
+        expected_with_index = ('<table border="1" class="dataframe">\n'
+                               '  <thead>\n'
+                               '    <tr style="text-align: right;">\n'
+                               '      <th></th>\n'
+                               '      <th>A</th>\n'
+                               '      <th>B</th>\n'
+                               '      <th>C</th>\n'
+                               '    </tr>\n'
+                               '  </thead>\n'
+                               '  <tbody>\n'
+                               '    <tr>\n'
+                               '      <th>foo</th>\n'
+                               '      <td>1</td>\n'
+                               '      <td>1.2</td>\n'
+                               '      <td>one</td>\n'
+                               '    </tr>\n'
+                               '    <tr>\n'
+                               '      <th>bar</th>\n'
+                               '      <td>2</td>\n'
+                               '      <td>3.4</td>\n'
+                               '      <td>two</td>\n'
+                               '    </tr>\n'
+                               '    <tr>\n'
+                               '      <th>baz</th>\n'
+                               '      <td>3</td>\n'
+                               '      <td>5.6</td>\n'
+                               '      <td>NaN</td>\n'
+                               '    </tr>\n'
+                               '  </tbody>\n'
+                               '</table>')
+        self.assertEqual(df.to_html(), expected_with_index)
+
+        expected_without_index = ('<table border="1" class="dataframe">\n'
+                                  '  <thead>\n'
+                                  '    <tr style="text-align: right;">\n'
+                                  '      <th>A</th>\n'
+                                  '      <th>B</th>\n'
+                                  '      <th>C</th>\n'
+                                  '    </tr>\n'
+                                  '  </thead>\n'
+                                  '  <tbody>\n'
+                                  '    <tr>\n'
+                                  '      <td>1</td>\n'
+                                  '      <td>1.2</td>\n'
+                                  '      <td>one</td>\n'
+                                  '    </tr>\n'
+                                  '    <tr>\n'
+                                  '      <td>2</td>\n'
+                                  '      <td>3.4</td>\n'
+                                  '      <td>two</td>\n'
+                                  '    </tr>\n'
+                                  '    <tr>\n'
+                                  '      <td>3</td>\n'
+                                  '      <td>5.6</td>\n'
+                                  '      <td>NaN</td>\n'
+                                  '    </tr>\n'
+                                  '  </tbody>\n'
+                                  '</table>')
         result = df.to_html(index=False)
         for i in index:
             self.assertNotIn(i, result)
+        self.assertEqual(result, expected_without_index)
+        df.index = Index(['foo', 'bar', 'baz'], name='idx')
+        expected_with_index = ('<table border="1" class="dataframe">\n'
+                               '  <thead>\n'
+                               '    <tr style="text-align: right;">\n'
+                               '      <th></th>\n'
+                               '      <th>A</th>\n'
+                               '      <th>B</th>\n'
+                               '      <th>C</th>\n'
+                               '    </tr>\n'
+                               '    <tr>\n'
+                               '      <th>idx</th>\n'
+                               '      <th></th>\n'
+                               '      <th></th>\n'
+                               '      <th></th>\n'
+                               '    </tr>\n'
+                               '  </thead>\n'
+                               '  <tbody>\n'
+                               '    <tr>\n'
+                               '      <th>foo</th>\n'
+                               '      <td>1</td>\n'
+                               '      <td>1.2</td>\n'
+                               '      <td>one</td>\n'
+                               '    </tr>\n'
+                               '    <tr>\n'
+                               '      <th>bar</th>\n'
+                               '      <td>2</td>\n'
+                               '      <td>3.4</td>\n'
+                               '      <td>two</td>\n'
+                               '    </tr>\n'
+                               '    <tr>\n'
+                               '      <th>baz</th>\n'
+                               '      <td>3</td>\n'
+                               '      <td>5.6</td>\n'
+                               '      <td>NaN</td>\n'
+                               '    </tr>\n'
+                               '  </tbody>\n'
+                               '</table>')
+        self.assertEqual(df.to_html(), expected_with_index)
+        self.assertEqual(df.to_html(index=False), expected_without_index)
 
         tuples = [('foo', 'car'), ('foo', 'bike'), ('bar', 'car')]
         df.index = MultiIndex.from_tuples(tuples)
+
+        expected_with_index = ('<table border="1" class="dataframe">\n'
+                               '  <thead>\n'
+                               '    <tr style="text-align: right;">\n'
+                               '      <th></th>\n'
+                               '      <th></th>\n'
+                               '      <th>A</th>\n'
+                               '      <th>B</th>\n'
+                               '      <th>C</th>\n'
+                               '    </tr>\n'
+                               '  </thead>\n'
+                               '  <tbody>\n'
+                               '    <tr>\n'
+                               '      <th rowspan="2" valign="top">foo</th>\n'
+                               '      <th>car</th>\n'
+                               '      <td>1</td>\n'
+                               '      <td>1.2</td>\n'
+                               '      <td>one</td>\n'
+                               '    </tr>\n'
+                               '    <tr>\n'
+                               '      <th>bike</th>\n'
+                               '      <td>2</td>\n'
+                               '      <td>3.4</td>\n'
+                               '      <td>two</td>\n'
+                               '    </tr>\n'
+                               '    <tr>\n'
+                               '      <th>bar</th>\n'
+                               '      <th>car</th>\n'
+                               '      <td>3</td>\n'
+                               '      <td>5.6</td>\n'
+                               '      <td>NaN</td>\n'
+                               '    </tr>\n'
+                               '  </tbody>\n'
+                               '</table>')
+        self.assertEqual(df.to_html(), expected_with_index)
+
         result = df.to_html(index=False)
         for i in ['foo', 'bar', 'car', 'bike']:
             self.assertNotIn(i, result)
+        # must be the same result as normal index
+        self.assertEqual(result, expected_without_index)
+
+        df.index = MultiIndex.from_tuples(tuples, names=['idx1', 'idx2'])
+        expected_with_index = ('<table border="1" class="dataframe">\n'
+                               '  <thead>\n'
+                               '    <tr style="text-align: right;">\n'
+                               '      <th></th>\n'
+                               '      <th></th>\n'
+                               '      <th>A</th>\n'
+                               '      <th>B</th>\n'
+                               '      <th>C</th>\n'
+                               '    </tr>\n'
+                               '    <tr>\n'
+                               '      <th>idx1</th>\n'
+                               '      <th>idx2</th>\n'
+                               '      <th></th>\n'
+                               '      <th></th>\n'
+                               '      <th></th>\n'
+                               '    </tr>\n'
+                               '  </thead>\n'
+                               '  <tbody>\n'
+                               '    <tr>\n'
+                               '      <th rowspan="2" valign="top">foo</th>\n'
+                               '      <th>car</th>\n'
+                               '      <td>1</td>\n'
+                               '      <td>1.2</td>\n'
+                               '      <td>one</td>\n'
+                               '    </tr>\n'
+                               '    <tr>\n'
+                               '      <th>bike</th>\n'
+                               '      <td>2</td>\n'
+                               '      <td>3.4</td>\n'
+                               '      <td>two</td>\n'
+                               '    </tr>\n'
+                               '    <tr>\n'
+                               '      <th>bar</th>\n'
+                               '      <th>car</th>\n'
+                               '      <td>3</td>\n'
+                               '      <td>5.6</td>\n'
+                               '      <td>NaN</td>\n'
+                               '    </tr>\n'
+                               '  </tbody>\n'
+                               '</table>')
+        self.assertEqual(df.to_html(), expected_with_index)
+        self.assertEqual(df.to_html(index=False), expected_without_index)
 
     def test_repr_html(self):
         self.frame._repr_html_()
@@ -2195,6 +2379,24 @@ c  10  11  12  13  14\
 \end{tabular}
 """
         self.assertEqual(withoutindex_result, withoutindex_expected)
+
+    def test_to_latex_format(self):
+        # GH Bug #9402
+        self.frame.to_latex(column_format='ccc')
+
+        df = DataFrame({'a': [1, 2],
+                        'b': ['b1', 'b2']})
+        withindex_result = df.to_latex(column_format='ccc')
+        withindex_expected = r"""\begin{tabular}{ccc}
+\toprule
+{} &  a &   b \\
+\midrule
+0 &  1 &  b1 \\
+1 &  2 &  b2 \\
+\bottomrule
+\end{tabular}
+"""
+        self.assertEqual(withindex_result, withindex_expected)
 
     def test_to_latex_multiindex(self):
         df = DataFrame({('x', 'y'): ['a']})
@@ -2478,6 +2680,115 @@ $1$,$2$
         self.assertEqual(df_day.to_csv(), expected_default_day)
         self.assertEqual(df_day.to_csv(date_format='%Y-%m-%d'), expected_default_day)
 
+    def test_round_dataframe(self):
+
+        # GH 2665
+
+        # Test that rounding an empty DataFrame does nothing
+        df = DataFrame()
+        tm.assert_frame_equal(df, df.round())
+
+        # Here's the test frame we'll be working with
+        df = DataFrame(
+            {'col1': [1.123, 2.123, 3.123], 'col2': [1.234, 2.234, 3.234]})
+
+        # Default round to integer (i.e. decimals=0)
+        expected_rounded = DataFrame(
+            {'col1': [1., 2., 3.], 'col2': [1., 2., 3.]})
+        tm.assert_frame_equal(df.round(), expected_rounded)
+
+        # Round with an integer
+        decimals = 2
+        expected_rounded = DataFrame(
+            {'col1': [1.12, 2.12, 3.12], 'col2': [1.23, 2.23, 3.23]})
+        tm.assert_frame_equal(df.round(decimals), expected_rounded)
+
+        # This should also work with np.round (since np.round dispatches to
+        # df.round)
+        tm.assert_frame_equal(np.round(df, decimals), expected_rounded)
+
+        # Round with a list
+        round_list = [1, 2]
+        with self.assertRaises(TypeError):
+            df.round(round_list)
+
+        # Round with a dictionary
+        expected_rounded = DataFrame(
+            {'col1': [1.1, 2.1, 3.1], 'col2': [1.23, 2.23, 3.23]})
+        round_dict = {'col1': 1, 'col2': 2}
+        tm.assert_frame_equal(df.round(round_dict), expected_rounded)
+
+        # Incomplete dict
+        expected_partially_rounded = DataFrame(
+            {'col1': [1.123, 2.123, 3.123], 'col2': [1.2, 2.2, 3.2]})
+        partial_round_dict = {'col2': 1}
+        tm.assert_frame_equal(
+            df.round(partial_round_dict), expected_partially_rounded)
+
+        # Dict with unknown elements
+        wrong_round_dict = {'col3': 2, 'col2': 1}
+        tm.assert_frame_equal(
+            df.round(wrong_round_dict), expected_partially_rounded)
+
+        # float input to `decimals`
+        non_int_round_dict = {'col1': 1, 'col2': 0.5}
+        if sys.version < LooseVersion('2.7'):
+            # np.round([1.123, 2.123], 0.5) is only a warning in Python 2.6
+            with self.assert_produces_warning(DeprecationWarning, check_stacklevel=False):
+                df.round(non_int_round_dict)
+        else:
+            with self.assertRaises(TypeError):
+                df.round(non_int_round_dict)
+
+        # String input
+        non_int_round_dict = {'col1': 1, 'col2': 'foo'}
+        with self.assertRaises(TypeError):
+            df.round(non_int_round_dict)
+
+        non_int_round_Series = Series(non_int_round_dict)
+        with self.assertRaises(TypeError):
+            df.round(non_int_round_Series)
+
+        # List input
+        non_int_round_dict = {'col1': 1, 'col2': [1, 2]}
+        with self.assertRaises(TypeError):
+            df.round(non_int_round_dict)
+
+        non_int_round_Series = Series(non_int_round_dict)
+        with self.assertRaises(TypeError):
+            df.round(non_int_round_Series)
+
+        # Non integer Series inputs
+        non_int_round_Series = Series(non_int_round_dict)
+        with self.assertRaises(TypeError):
+            df.round(non_int_round_Series)
+
+        non_int_round_Series = Series(non_int_round_dict)
+        with self.assertRaises(TypeError):
+            df.round(non_int_round_Series)
+
+        # Negative numbers
+        negative_round_dict = {'col1': -1, 'col2': -2}
+        big_df = df * 100
+        expected_neg_rounded = DataFrame(
+                {'col1':[110., 210, 310], 'col2':[100., 200, 300]})
+        tm.assert_frame_equal(
+            big_df.round(negative_round_dict), expected_neg_rounded)
+
+        # nan in Series round
+        nan_round_Series = Series({'col1': nan, 'col2':1})
+        expected_nan_round = DataFrame(
+                {'col1': [1.123, 2.123, 3.123], 'col2': [1.2, 2.2, 3.2]})
+        if sys.version < LooseVersion('2.7'):
+            # Rounding with decimal is a ValueError in Python < 2.7
+            with self.assertRaises(ValueError):
+                df.round(nan_round_Series)
+        else:
+            with self.assertRaises(TypeError):
+                df.round(nan_round_Series)
+
+        # Make sure this doesn't break existing Series.round
+        tm.assert_series_equal(df['col1'].round(1), expected_rounded['col1'])
 
 class TestSeriesFormatting(tm.TestCase):
     _multiprocess_can_split_ = True
@@ -3055,7 +3366,7 @@ class TestFloatArrayFormatter(tm.TestCase):
         # Issue #9764
 
         # In case default display precision changes:
-        with pd.option_context('display.precision', 7):
+        with pd.option_context('display.precision', 6):
             # DataFrame example from issue #9764
             d=pd.DataFrame({'col1':[9.999e-8, 1e-7, 1.0001e-7, 2e-7, 4.999e-7, 5e-7, 5.0001e-7, 6e-7, 9.999e-7, 1e-6, 1.0001e-6, 2e-6, 4.999e-6, 5e-6, 5.0001e-6, 6e-6]})
 
@@ -3069,6 +3380,17 @@ class TestFloatArrayFormatter(tm.TestCase):
 
             for (start, stop), v in expected_output.items():
                 self.assertEqual(str(d[start:stop]), v)
+
+    def test_too_long(self):
+        # GH 10451
+        with pd.option_context('display.precision', 4):
+            # need both a number > 1e8 and something that normally formats to having length > display.precision + 6
+            df = pd.DataFrame(dict(x=[12345.6789]))
+            self.assertEqual(str(df), '            x\n0  12345.6789')
+            df = pd.DataFrame(dict(x=[2e8]))
+            self.assertEqual(str(df), '           x\n0  200000000')
+            df = pd.DataFrame(dict(x=[12345.6789, 2e8]))
+            self.assertEqual(str(df), '            x\n0  1.2346e+04\n1  2.0000e+08')
 
 
 class TestRepr_timedelta64(tm.TestCase):

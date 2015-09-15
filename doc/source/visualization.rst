@@ -121,8 +121,9 @@ You can plot one column versus another using the `x` and `y` keywords in
 Other Plots
 -----------
 
-The ``kind`` keyword argument of :meth:`~DataFrame.plot` accepts
-a handful of values for plots other than the default Line plot.
+Plotting methods allow for a handful of plot styles other than the
+default Line plot. These methods can be provided as the ``kind``
+keyword argument to :meth:`~DataFrame.plot`.
 These include:
 
 * :ref:`'bar' <visualization.barplot>` or :ref:`'barh' <visualization.barplot>` for bar plots
@@ -133,6 +134,19 @@ These include:
 * :ref:`'scatter' <visualization.scatter>` for scatter plots
 * :ref:`'hexbin' <visualization.hexbin>` for hexagonal bin plots
 * :ref:`'pie' <visualization.pie>` for pie plots
+
+.. versionadded:: 0.17
+
+You can also create these other plots using the methods ``DataFrame.plot.<kind>`` instead of providing the ``kind`` keyword argument. This makes it easier to discover plot methods and the specific arguments they use:
+
+.. ipython::
+    :verbatim:
+
+    In [14]: df = pd.DataFrame()
+
+    In [15]: df.plot.<TAB>
+    df.plot.area     df.plot.barh     df.plot.density  df.plot.hist     df.plot.line     df.plot.scatter
+    df.plot.bar      df.plot.box      df.plot.hexbin   df.plot.kde      df.plot.pie
 
 In addition to these ``kind`` s, there are  the :ref:`DataFrame.hist() <visualization.hist>`,
 and :ref:`DataFrame.boxplot() <visualization.box>` methods, which use a separate interface.
@@ -375,7 +389,7 @@ For example, horizontal and custom-positioned boxplot can be drawn by
 
 
 See the :meth:`boxplot <matplotlib.axes.Axes.boxplot>` method and the
-`matplotlib boxplot documenation <http://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.boxplot>`__ for more.
+`matplotlib boxplot documentation <http://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.boxplot>`__ for more.
 
 
 The existing interface ``DataFrame.boxplot`` to plot boxplot still can be used.
@@ -387,6 +401,7 @@ The existing interface ``DataFrame.boxplot`` to plot boxplot still can be used.
    np.random.seed(123456)
 
 .. ipython:: python
+   :okwarning:
 
    df = pd.DataFrame(np.random.rand(10,5))
    plt.figure();
@@ -600,7 +615,7 @@ Below example shows a bubble chart using a dataframe column values as bubble siz
    plt.close('all')
 
 See the :meth:`scatter <matplotlib.axes.Axes.scatter>` method and the
-`matplotlib scatter documenation <http://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.scatter>`__ for more.
+`matplotlib scatter documentation <http://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.scatter>`__ for more.
 
 .. _visualization.hexbin:
 
@@ -664,7 +679,7 @@ given by column ``z``. The bins are aggregated with numpy's ``max`` function.
    plt.close('all')
 
 See the :meth:`hexbin <matplotlib.axes.Axes.hexbin>` method and the
-`matplotlib hexbin documenation <http://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.hexbin>`__ for more.
+`matplotlib hexbin documentation <http://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.hexbin>`__ for more.
 
 .. _visualization.pie:
 
@@ -760,7 +775,7 @@ If you pass values whose sum total is less than 1.0, matplotlib draws a semicirc
    @savefig series_pie_plot_semi.png
    series.plot(kind='pie', figsize=(6, 6))
 
-See the `matplotlib pie documenation <http://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.pie>`__ for more.
+See the `matplotlib pie documentation <http://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.pie>`__ for more.
 
 .. ipython:: python
     :suppress:
@@ -1444,7 +1459,7 @@ Finally, there is a helper function ``pandas.tools.plotting.table`` to create a 
 
    plt.close('all')
 
-**Note**: You can get table instances on the axes using ``axes.tables`` property for further decorations. See the `matplotlib table documenation <http://matplotlib.org/api/axes_api.html#matplotlib.axes.Axes.table>`__ for more.
+**Note**: You can get table instances on the axes using ``axes.tables`` property for further decorations. See the `matplotlib table documentation <http://matplotlib.org/api/axes_api.html#matplotlib.axes.Axes.table>`__ for more.
 
 .. _visualization.colormaps:
 
@@ -1649,6 +1664,7 @@ values, the resulting grid has two columns and two rows. A histogram is
 displayed for each cell of the grid.
 
 .. ipython:: python
+   :okwarning:
 
    plt.figure()
 
@@ -1680,6 +1696,7 @@ Example below is the same as previous except the plot is set to kernel density
 estimation. A ``seaborn`` example is included beneath.
 
 .. ipython:: python
+   :okwarning:
 
    plt.figure()
 
@@ -1706,6 +1723,7 @@ The plot below shows that it is possible to have two or more plots for the same
 data displayed on the same Trellis grid cell.
 
 .. ipython:: python
+   :okwarning:
 
    plt.figure()
 
@@ -1745,6 +1763,7 @@ Below is a similar plot but with 2D kernel density estimation plot superimposed,
 followed by a ``seaborn`` equivalent:
 
 .. ipython:: python
+   :okwarning:
 
    plt.figure()
 
@@ -1774,6 +1793,7 @@ only uses 'sex' attribute. If the second grouping attribute is not specified,
 the plots will be arranged in a column.
 
 .. ipython:: python
+   :okwarning:
 
    plt.figure()
 
@@ -1792,6 +1812,7 @@ the plots will be arranged in a column.
 If the first grouping attribute is not specified the plots will be arranged in a row.
 
 .. ipython:: python
+   :okwarning:
 
    plt.figure()
 
@@ -1816,6 +1837,7 @@ scale objects to specify these mappings. The list of scale classes is
 given below with initialization arguments for quick reference.
 
 .. ipython:: python
+   :okwarning:
 
    plt.figure()
 

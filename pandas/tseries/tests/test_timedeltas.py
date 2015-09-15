@@ -19,6 +19,7 @@ from pandas.util.testing import (assert_series_equal,
                                  assert_almost_equal,
                                  assert_index_equal,
                                  ensure_clean)
+from numpy.testing import assert_allclose
 from pandas.tseries.offsets import Day, Second, Hour
 import pandas.util.testing as tm
 from numpy.random import rand, randn
@@ -404,6 +405,14 @@ class TestTimedeltas(tm.TestCase):
         result = timedelta_range('0 days',freq='30T',periods=50)
         tm.assert_index_equal(result, expected)
 
+        # issue10583
+        df = pd.DataFrame(np.random.normal(size=(10,4)))
+        df.index = pd.timedelta_range(start='0s', periods=10, freq='s')
+        expected = df.loc[pd.Timedelta('0s'):,:]
+        result = df.loc['0s':,:]
+        assert_frame_equal(expected, result)
+
+
     def test_numeric_conversions(self):
         self.assertEqual(ct(0), np.timedelta64(0,'ns'))
         self.assertEqual(ct(10), np.timedelta64(10,'ns'))
@@ -607,12 +616,22 @@ class TestTimedeltas(tm.TestCase):
         # ms
         testit('L',lambda x: 'ms')
 
+    def test_to_timedelta_invalid(self):
+
         # these will error
         self.assertRaises(ValueError, lambda : to_timedelta([1,2],unit='foo'))
         self.assertRaises(ValueError, lambda : to_timedelta(1,unit='foo'))
 
         # time not supported ATM
         self.assertRaises(ValueError, lambda :to_timedelta(time(second=1)))
+        self.assertTrue(to_timedelta(time(second=1), errors='coerce') is pd.NaT)
+
+        self.assertRaises(ValueError, lambda : to_timedelta(['foo','bar']))
+        tm.assert_index_equal(TimedeltaIndex([pd.NaT,pd.NaT]),
+                              to_timedelta(['foo','bar'], errors='coerce'))
+
+        tm.assert_index_equal(TimedeltaIndex(['1 day', pd.NaT, '1 min']),
+                              to_timedelta(['1 day','bar','1 min'], errors='coerce'))
 
     def test_to_timedelta_via_apply(self):
         # GH 5458
@@ -665,8 +684,8 @@ class TestTimedeltas(tm.TestCase):
         self.assertEqual(result[0], expected)
 
         # invalid ops
-        for op in ['skew','kurt','sem','var','prod']:
-            self.assertRaises(TypeError, lambda : getattr(td,op)())
+        for op in ['skew','kurt','sem','prod']:
+            self.assertRaises(TypeError, getattr(td,op))
 
         # GH 10040
         # make sure NaT is properly handled by median()
@@ -675,6 +694,25 @@ class TestTimedeltas(tm.TestCase):
 
         s = Series([Timestamp('2015-02-03'), Timestamp('2015-02-07'), Timestamp('2015-02-15')])
         self.assertEqual(s.diff().median(), timedelta(days=6))
+
+    def test_overflow(self):
+        # GH 9442
+        s = Series(pd.date_range('20130101',periods=100000,freq='H'))
+        s[0] += pd.Timedelta('1s 1ms')
+
+        # mean
+        result = (s-s.min()).mean()
+        expected = pd.Timedelta((pd.DatetimeIndex((s-s.min())).asi8/len(s)).sum())
+
+        # the computation is converted to float so might be some loss of precision
+        self.assertTrue(np.allclose(result.value/1000, expected.value/1000))
+
+        # sum
+        self.assertRaises(ValueError, lambda : (s-s.min()).sum())
+        s1 = s[0:10000]
+        self.assertRaises(ValueError, lambda : (s1-s1.min()).sum())
+        s2 = s[0:1000]
+        result = (s2-s2.min()).sum()
 
     def test_timedelta_ops_scalar(self):
         # GH 6808
@@ -916,6 +954,36 @@ class TestTimedeltaIndex(tm.TestCase):
         tm.assert_series_equal(s.dt.days,Series([1,np.nan],index=[0,1]))
         tm.assert_series_equal(s.dt.seconds,Series([10*3600+11*60+12,np.nan],index=[0,1]))
 
+    def test_total_seconds(self):
+        # GH 10939
+        # test index
+        rng = timedelta_range('1 days, 10:11:12.100123456', periods=2, freq='s')
+        expt = [1*86400+10*3600+11*60+12+100123456./1e9,1*86400+10*3600+11*60+13+100123456./1e9]
+        assert_allclose(rng.total_seconds(), expt, atol=1e-10, rtol=0)
+
+        # test Series
+        s = Series(rng)
+        s_expt = Series(expt,index=[0,1])
+        tm.assert_series_equal(s.dt.total_seconds(),s_expt)
+
+        # with nat
+        s[1] = np.nan
+        s_expt = Series([1*86400+10*3600+11*60+12+100123456./1e9,np.nan],index=[0,1])
+        tm.assert_series_equal(s.dt.total_seconds(),s_expt)
+
+        # with both nat
+        s = Series([np.nan,np.nan], dtype='timedelta64[ns]')
+        tm.assert_series_equal(s.dt.total_seconds(),Series([np.nan,np.nan],index=[0,1]))
+
+    def test_total_seconds_scalar(self):
+        # GH 10939
+        rng = Timedelta('1 days, 10:11:12.100123456')
+        expt = 1*86400+10*3600+11*60+12+100123456./1e9
+        assert_allclose(rng.total_seconds(), expt, atol=1e-10, rtol=0)
+
+        rng = Timedelta(np.nan)
+        self.assertTrue(np.isnan(rng.total_seconds()))
+
     def test_components(self):
         rng = timedelta_range('1 days, 10:11:12', periods=2, freq='s')
         rng.components
@@ -1127,7 +1195,7 @@ class TestTimedeltaIndex(tm.TestCase):
     def test_union_coverage(self):
 
         idx = TimedeltaIndex(['3d','1d','2d'])
-        ordered = TimedeltaIndex(idx.order(), freq='infer')
+        ordered = TimedeltaIndex(idx.sort_values(), freq='infer')
         result = ordered.union(idx)
         self.assertTrue(result.equals(ordered))
 
@@ -1190,21 +1258,21 @@ class TestTimedeltaIndex(tm.TestCase):
         self.assertEqual(idx.argmin(), 1)
         self.assertEqual(idx.argmax(), 0)
 
-    def test_order(self):
+    def test_sort_values(self):
 
         idx = TimedeltaIndex(['4d','1d','2d'])
 
-        ordered = idx.order()
+        ordered = idx.sort_values()
         self.assertTrue(ordered.is_monotonic)
 
-        ordered = idx.order(ascending=False)
+        ordered = idx.sort_values(ascending=False)
         self.assertTrue(ordered[::-1].is_monotonic)
 
-        ordered, dexer = idx.order(return_indexer=True)
+        ordered, dexer = idx.sort_values(return_indexer=True)
         self.assertTrue(ordered.is_monotonic)
         self.assert_numpy_array_equal(dexer, [1, 2, 0])
 
-        ordered, dexer = idx.order(return_indexer=True, ascending=False)
+        ordered, dexer = idx.sort_values(return_indexer=True, ascending=False)
         self.assertTrue(ordered[::-1].is_monotonic)
         self.assert_numpy_array_equal(dexer, [0, 2, 1])
 
@@ -1391,7 +1459,7 @@ class TestSlicing(tm.TestCase):
         assert_series_equal(result, expected)
 
         result = s['6 days, 23:11:12']
-        self.assertEqual(result, s.irow(133))
+        self.assertEqual(result, s.iloc[133])
 
         self.assertRaises(KeyError, s.__getitem__, '50 days')
 
@@ -1410,7 +1478,7 @@ class TestSlicing(tm.TestCase):
         assert_series_equal(result, expected)
 
         result = s['1 days, 10:11:12.001001']
-        self.assertEqual(result, s.irow(1001))
+        self.assertEqual(result, s.iloc[1001])
 
     def test_slice_with_negative_step(self):
         ts = Series(np.arange(20),
@@ -1444,6 +1512,42 @@ class TestSlicing(tm.TestCase):
                                 lambda: ts.loc[::0])
         self.assertRaisesRegexp(ValueError, 'slice step cannot be zero',
                                 lambda: ts.ix[::0])
+
+    def test_tdi_ops_attributes(self):
+        rng = timedelta_range('2 days', periods=5, freq='2D', name='x')
+
+        result = rng + 1
+        exp = timedelta_range('4 days', periods=5, freq='2D', name='x')
+        tm.assert_index_equal(result, exp)
+        self.assertEqual(result.freq, '2D')
+
+        result = rng -2
+        exp = timedelta_range('-2 days', periods=5, freq='2D', name='x')
+        tm.assert_index_equal(result, exp)
+        self.assertEqual(result.freq, '2D')
+
+        result = rng * 2
+        exp = timedelta_range('4 days', periods=5, freq='4D', name='x')
+        tm.assert_index_equal(result, exp)
+        self.assertEqual(result.freq, '4D')
+
+        result = rng / 2
+        exp = timedelta_range('1 days', periods=5, freq='D', name='x')
+        tm.assert_index_equal(result, exp)
+        self.assertEqual(result.freq, 'D')
+
+        result = - rng
+        exp = timedelta_range('-2 days', periods=5, freq='-2D', name='x')
+        tm.assert_index_equal(result, exp)
+        self.assertEqual(result.freq, '-2D')
+
+        rng = pd.timedelta_range('-2 days', periods=5, freq='D', name='x')
+
+        result = abs(rng)
+        exp = TimedeltaIndex(['2 days', '1 days', '0 days', '1 days',
+                              '2 days'], name='x')
+        tm.assert_index_equal(result, exp)
+        self.assertEqual(result.freq, None)
 
 
 if __name__ == '__main__':

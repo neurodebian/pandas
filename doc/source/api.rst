@@ -82,6 +82,15 @@ HDFStore: PyTables (HDF5)
    HDFStore.get
    HDFStore.select
 
+SAS
+~~~
+
+.. autosummary::
+   :toctree: generated/
+
+   read_sas
+   XportReader
+
 SQL
 ~~~
 
@@ -101,6 +110,10 @@ Google BigQuery
 
    read_gbq
    to_gbq
+   generate_bq_schema
+   create_table
+   delete_table
+   table_exists
 
 .. currentmodule:: pandas
 
@@ -425,9 +438,8 @@ Reshaping, sorting
    :toctree: generated/
 
    Series.argsort
-   Series.order
    Series.reorder_levels
-   Series.sort
+   Series.sort_values
    Series.sort_index
    Series.sortlevel
    Series.swaplevel
@@ -480,7 +492,6 @@ These can be accessed like ``Series.dt.<property>``.
    Series.dt.second
    Series.dt.microsecond
    Series.dt.nanosecond
-   Series.dt.second
    Series.dt.week
    Series.dt.weekofyear
    Series.dt.dayofweek
@@ -509,6 +520,7 @@ These can be accessed like ``Series.dt.<property>``.
    Series.dt.tz_localize
    Series.dt.tz_convert
    Series.dt.normalize
+   Series.dt.strftime
 
 **Timedelta Properties**
 
@@ -529,6 +541,7 @@ These can be accessed like ``Series.dt.<property>``.
    :template: autosummary/accessor_method.rst
 
    Series.dt.to_pytimedelta
+   Series.dt.total_seconds
 
 String handling
 ~~~~~~~~~~~~~~~
@@ -663,11 +676,33 @@ the Categorical back to a numpy array, so levels and order information is not pr
 Plotting
 ~~~~~~~~
 
+``Series.plot`` is both a callable method and a namespace attribute for
+specific plotting methods of the form ``Series.plot.<kind>``.
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/accessor_callable.rst
+
+   Series.plot
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/accessor_method.rst
+
+   Series.plot.area
+   Series.plot.bar
+   Series.plot.barh
+   Series.plot.box
+   Series.plot.density
+   Series.plot.hist
+   Series.plot.kde
+   Series.plot.line
+   Series.plot.pie
+
 .. autosummary::
    :toctree: generated/
 
    Series.hist
-   Series.plot
 
 Serialization / IO / Conversion
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -798,9 +833,7 @@ Binary operator functions
    DataFrame.ne
    DataFrame.eq
    DataFrame.combine
-   DataFrame.combineAdd
    DataFrame.combine_first
-   DataFrame.combineMult
 
 Function application, GroupBy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -846,6 +879,7 @@ Computations / Descriptive Stats
    DataFrame.prod
    DataFrame.quantile
    DataFrame.rank
+   DataFrame.round
    DataFrame.sem
    DataFrame.skew
    DataFrame.sum
@@ -900,9 +934,11 @@ Reshaping, sorting, transposing
 
    DataFrame.pivot
    DataFrame.reorder_levels
-   DataFrame.sort
+   DataFrame.sort_values
    DataFrame.sort_index
    DataFrame.sortlevel
+   DataFrame.nlargest
+   DataFrame.nsmallest
    DataFrame.swaplevel
    DataFrame.stack
    DataFrame.unstack
@@ -936,14 +972,41 @@ Time series-related
    DataFrame.tz_convert
    DataFrame.tz_localize
 
+.. _api.dataframe.plotting:
+
 Plotting
 ~~~~~~~~
+
+``DataFrame.plot`` is both a callable method and a namespace attribute for
+specific plotting methods of the form ``DataFrame.plot.<kind>``.
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/accessor_callable.rst
+
+   DataFrame.plot
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/accessor_method.rst
+
+   DataFrame.plot.area
+   DataFrame.plot.bar
+   DataFrame.plot.barh
+   DataFrame.plot.box
+   DataFrame.plot.density
+   DataFrame.plot.hexbin
+   DataFrame.plot.hist
+   DataFrame.plot.kde
+   DataFrame.plot.line
+   DataFrame.plot.pie
+   DataFrame.plot.scatter
+
 .. autosummary::
    :toctree: generated/
 
    DataFrame.boxplot
    DataFrame.hist
-   DataFrame.plot
 
 Serialization / IO / Conversion
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1283,7 +1346,6 @@ Modifying and Computations
    Index.insert
    Index.min
    Index.max
-   Index.order
    Index.reindex
    Index.repeat
    Index.take
@@ -1309,8 +1371,7 @@ Sorting
    :toctree: generated/
 
    Index.argsort
-   Index.order
-   Index.sort
+   Index.sort_values
 
 Time-specific operations
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1431,6 +1492,7 @@ Time-specific operations
    :toctree: generated/
 
    DatetimeIndex.normalize
+   DatetimeIndex.strftime
    DatetimeIndex.snap
    DatetimeIndex.tz_convert
    DatetimeIndex.tz_localize
@@ -1443,6 +1505,7 @@ Conversion
 
    DatetimeIndex.to_datetime
    DatetimeIndex.to_period
+   DatetimeIndex.to_perioddelta
    DatetimeIndex.to_pydatetime
    DatetimeIndex.to_series
 
@@ -1558,7 +1621,6 @@ application to columns of a specific data type.
    DataFrameGroupBy.hist
    DataFrameGroupBy.idxmax
    DataFrameGroupBy.idxmin
-   DataFrameGroupBy.irow
    DataFrameGroupBy.mad
    DataFrameGroupBy.pct_change
    DataFrameGroupBy.plot

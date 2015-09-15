@@ -1,7 +1,7 @@
 from vbench.api import Benchmark
 from datetime import datetime
 
-common_setup = """from pandas_vb_common import *
+common_setup = """from .pandas_vb_common import *
 """
 
 #----------------------------------------------------------------------
@@ -98,11 +98,11 @@ def g():
         pass
 
 def h():
-    for i in xrange(10000):
+    for i in range(10000):
         df2['A']
 
 def j():
-    for i in xrange(10000):
+    for i in range(10000):
         df3[0]
 
 """
@@ -126,8 +126,8 @@ frame_getitem_single_column2 = Benchmark('j()', setup,
 setup = common_setup + """
 idx = date_range('1/1/2000', periods=100000, freq='D')
 df = DataFrame(randn(100000, 1),columns=['A'],index=idx)
-def f(x):
-    x = x.copy()
+def f(df):
+    x = df.copy()
     x['date'] = x.index
 """
 
@@ -418,8 +418,8 @@ frame_dtypes = Benchmark('df.dtypes', setup,
 #----------------------------------------------------------------------
 # equals
 setup = common_setup + """
-def make_pair(name):
-    df = globals()[name]
+def make_pair(frame):
+    df = frame
     df2 = df.copy()
     df2.ix[-1,-1] = np.nan
     return df, df2
@@ -437,8 +437,8 @@ object_df = DataFrame([['foo']*1000]*1000)
 nonunique_cols = object_df.copy()
 nonunique_cols.columns = ['A']*len(nonunique_cols.columns)
 
-pairs = dict([(name,make_pair(name))
-         for name in ('float_df', 'object_df', 'nonunique_cols')])
+pairs = dict([(name, make_pair(frame))
+         for name, frame in (('float_df', float_df), ('object_df', object_df), ('nonunique_cols', nonunique_cols))])
 """
 frame_float_equal = Benchmark('test_equal("float_df")', setup)
 frame_object_equal = Benchmark('test_equal("object_df")', setup)
@@ -494,7 +494,7 @@ frame_shift_axis1 = Benchmark('df.shift(1,axis=1)', setup,
 
 setup = common_setup + """
 def get_data(n=100000):
-    return ((x, x*20, x*100) for x in xrange(n))
+    return ((x, x*20, x*100) for x in range(n))
 """
 
 frame_from_records_generator = Benchmark('df = DataFrame.from_records(get_data())',

@@ -36,7 +36,7 @@ def match(to_match, values, na_sentinel=-1):
         values = np.array(values, dtype='O')
 
     f = lambda htype, caster: _match_generic(to_match, values, htype, caster)
-    result = _hashtable_algo(f, values.dtype)
+    result = _hashtable_algo(f, values.dtype, np.int64)
 
     if na_sentinel != -1:
 
@@ -66,7 +66,7 @@ def unique(values):
     return _hashtable_algo(f, values.dtype)
 
 
-def _hashtable_algo(f, dtype):
+def _hashtable_algo(f, dtype, return_dtype=None):
     """
     f(HashTable, type_caster) -> result
     """
@@ -74,6 +74,12 @@ def _hashtable_algo(f, dtype):
         return f(htable.Float64HashTable, com._ensure_float64)
     elif com.is_integer_dtype(dtype):
         return f(htable.Int64HashTable, com._ensure_int64)
+    elif com.is_datetime64_dtype(dtype):
+        return_dtype = return_dtype or 'M8[ns]'
+        return f(htable.Int64HashTable, com._ensure_int64).view(return_dtype)
+    elif com.is_timedelta64_dtype(dtype):
+        return_dtype = return_dtype or 'm8[ns]'
+        return f(htable.Int64HashTable, com._ensure_int64).view(return_dtype)
     else:
         return f(htable.PyObjectHashTable, com._ensure_object)
 
@@ -119,8 +125,8 @@ def factorize(values, sort=False, order=None, na_sentinel=-1, size_hint=None):
     note: an array of Periods will ignore sort as it returns an always sorted PeriodIndex
     """
     if order is not None:
-        warn("order is deprecated."
-             "See https://github.com/pydata/pandas/issues/6926", FutureWarning)
+        msg = "order is deprecated. See https://github.com/pydata/pandas/issues/6926"
+        warn(msg, FutureWarning, stacklevel=2)
 
     from pandas.core.index import Index
     from pandas.core.series import Series
@@ -200,7 +206,7 @@ def value_counts(values, sort=True, ascending=False, normalize=False,
     """
     from pandas.core.series import Series
     from pandas.tools.tile import cut
-    from pandas.tseries.period import PeriodIndex
+    from pandas import Index, PeriodIndex, DatetimeIndex
 
     name = getattr(values, 'name', None)
     values = Series(values).values
@@ -219,26 +225,39 @@ def value_counts(values, sort=True, ascending=False, normalize=False,
 
         dtype = values.dtype
         is_period = com.is_period_arraylike(values)
+        is_datetimetz = com.is_datetimetz(values)
 
-        if com.is_datetime_or_timedelta_dtype(dtype) or is_period:
+        if com.is_datetime_or_timedelta_dtype(dtype) or is_period or is_datetimetz:
 
             if is_period:
-                values = PeriodIndex(values, name=name)
+                values = PeriodIndex(values)
+            elif is_datetimetz:
+                tz = getattr(values, 'tz', None)
+                values = DatetimeIndex(values).tz_localize(None)
 
             values = values.view(np.int64)
-            keys, counts = htable.value_count_int64(values)
+            keys, counts = htable.value_count_scalar64(values, dropna)
 
             if dropna:
                 from pandas.tslib import iNaT
                 msk = keys != iNaT
                 keys, counts = keys[msk], counts[msk]
 
+            # localize to the original tz if necessary
+            if is_datetimetz:
+                keys = DatetimeIndex(keys).tz_localize(tz)
+
             # convert the keys back to the dtype we came in
-            keys = keys.astype(dtype)
+            else:
+                keys = keys.astype(dtype)
+
 
         elif com.is_integer_dtype(dtype):
             values = com._ensure_int64(values)
-            keys, counts = htable.value_count_int64(values)
+            keys, counts = htable.value_count_scalar64(values, dropna)
+        elif com.is_float_dtype(dtype):
+            values = com._ensure_float64(values)
+            keys, counts = htable.value_count_scalar64(values, dropna)
 
         else:
             values = com._ensure_object(values)
@@ -248,7 +267,9 @@ def value_counts(values, sort=True, ascending=False, normalize=False,
                 keys = np.insert(keys, 0, np.NaN)
                 counts = np.insert(counts, 0, mask.sum())
 
-        result = Series(counts, index=com._values_from_object(keys), name=name)
+        if not isinstance(keys, Index):
+            keys = Index(keys)
+        result = Series(counts, index=keys, name=name)
 
         if bins is not None:
             # TODO: This next line should be more efficient
@@ -256,9 +277,7 @@ def value_counts(values, sort=True, ascending=False, normalize=False,
             result.index = bins[:-1]
 
     if sort:
-        result.sort()
-        if not ascending:
-            result = result[::-1]
+        result = result.sort_values(ascending=ascending)
 
     if normalize:
         result = result / float(values.size)
@@ -446,24 +465,24 @@ def group_position(*args):
 _dtype_map = {'datetime64[ns]': 'int64', 'timedelta64[ns]': 'int64'}
 
 
-def _finalize_nsmallest(arr, kth_val, n, take_last, narr):
+def _finalize_nsmallest(arr, kth_val, n, keep, narr):
     ns, = np.nonzero(arr <= kth_val)
     inds = ns[arr[ns].argsort(kind='mergesort')][:n]
-
-    if take_last:
+    if keep == 'last':
         # reverse indices
         return narr - 1 - inds
-    return inds
+    else:
+        return inds
 
 
-def nsmallest(arr, n, take_last=False):
+def nsmallest(arr, n, keep='first'):
     '''
     Find the indices of the n smallest values of a numpy array.
 
     Note: Fails silently with NaN.
 
     '''
-    if take_last:
+    if keep == 'last':
         arr = arr[::-1]
 
     narr = len(arr)
@@ -473,10 +492,10 @@ def nsmallest(arr, n, take_last=False):
     arr = arr.view(_dtype_map.get(sdtype, sdtype))
 
     kth_val = algos.kth_smallest(arr.copy(), n - 1)
-    return _finalize_nsmallest(arr, kth_val, n, take_last, narr)
+    return _finalize_nsmallest(arr, kth_val, n, keep, narr)
 
 
-def nlargest(arr, n, take_last=False):
+def nlargest(arr, n, keep='first'):
     """
     Find the indices of the n largest values of a numpy array.
 
@@ -484,26 +503,26 @@ def nlargest(arr, n, take_last=False):
     """
     sdtype = str(arr.dtype)
     arr = arr.view(_dtype_map.get(sdtype, sdtype))
-    return nsmallest(-arr, n, take_last=take_last)
+    return nsmallest(-arr, n, keep=keep)
 
 
-def select_n_slow(dropped, n, take_last, method):
-    reverse_it = take_last or method == 'nlargest'
+def select_n_slow(dropped, n, keep, method):
+    reverse_it = (keep == 'last' or method == 'nlargest')
     ascending = method == 'nsmallest'
     slc = np.s_[::-1] if reverse_it else np.s_[:]
-    return dropped[slc].order(ascending=ascending).head(n)
+    return dropped[slc].sort_values(ascending=ascending).head(n)
 
 
 _select_methods = {'nsmallest': nsmallest, 'nlargest': nlargest}
 
 
-def select_n(series, n, take_last, method):
+def select_n(series, n, keep, method):
     """Implement n largest/smallest.
 
     Parameters
     ----------
     n : int
-    take_last : bool
+    keep : {'first', 'last'}, default 'first'
     method : str, {'nlargest', 'nsmallest'}
 
     Returns
@@ -515,15 +534,18 @@ def select_n(series, n, take_last, method):
                                    np.timedelta64)):
         raise TypeError("Cannot use method %r with dtype %s" % (method, dtype))
 
+    if keep not in ('first', 'last'):
+        raise ValueError('keep must be either "first", "last"')
+
     if n <= 0:
         return series[[]]
 
     dropped = series.dropna()
 
     if n >= len(series):
-        return select_n_slow(dropped, n, take_last, method)
+        return select_n_slow(dropped, n, keep, method)
 
-    inds = _select_methods[method](dropped.values, n, take_last)
+    inds = _select_methods[method](dropped.values, n, keep)
     return dropped.iloc[inds]
 
 

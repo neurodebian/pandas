@@ -1,7 +1,6 @@
 from datetime import datetime
 from pandas.compat import range
 import nose
-import sys
 import numpy as np
 
 from pandas.core.index import Index
@@ -14,11 +13,6 @@ from pandas.tseries.index import cdate_range, bdate_range, date_range
 import pandas.core.datetools as datetools
 from pandas.util.testing import assertRaisesRegexp
 import pandas.util.testing as tm
-
-
-def _skip_if_windows_python_3():
-    if sys.version_info > (3,) and sys.platform == 'win32':
-        raise nose.SkipTest("not used on python 3/win32")
 
 
 def eq_gen_range(kwargs, expected):
@@ -459,7 +453,7 @@ class TestDateRange(tm.TestCase):
         early_dr.union(late_dr)
 
     def test_month_range_union_tz_dateutil(self):
-        _skip_if_windows_python_3()
+        tm._skip_if_windows_python_3()
         tm._skip_if_no_dateutil()
         from pandas.tslib import _dateutil_gettz as timezone
         tz = timezone('US/Eastern')
@@ -496,6 +490,18 @@ class TestDateRange(tm.TestCase):
         self.assertEqual(dr[0], datetime(2014, 1, 31))
         self.assertEqual(dr[-1], datetime(2014, 12, 31))
 
+    def test_freq_divides_end_in_nanos(self):
+        # GH 10885
+        result_1 = date_range('2005-01-12 10:00', '2005-01-12 16:00',
+                              freq='345min')
+        result_2 = date_range('2005-01-13 10:00', '2005-01-13 16:00',
+                              freq='345min')
+        expected_1 = DatetimeIndex(['2005-01-12 10:00:00', '2005-01-12 15:45:00'],
+                                   dtype='datetime64[ns]', freq='345T', tz=None)
+        expected_2 = DatetimeIndex(['2005-01-13 10:00:00', '2005-01-13 15:45:00'],
+                                   dtype='datetime64[ns]', freq='345T', tz=None)
+        self.assertTrue(result_1.equals(expected_1))
+        self.assertTrue(result_2.equals(expected_2))
 
 class TestCustomDateRange(tm.TestCase):
 

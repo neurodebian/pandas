@@ -23,6 +23,15 @@ from pandas.tseries.offsets import MonthEnd
 from pandas.util.testing import _network_error_classes
 from pandas.io.html import read_html
 
+warnings.warn("\n"
+              "The pandas.io.data module is moved to a separate package "
+              "(pandas-datareader) and will be removed from pandas in a "
+              "future version.\nAfter installing the pandas-datareader package "
+              "(https://github.com/pydata/pandas-datareader), you can change "
+              "the import ``from pandas.io import data, wb`` to "
+              "``from pandas_datareader import data, wb``.",
+              FutureWarning)
+
 class SymbolWarning(UserWarning):
     pass
 
@@ -504,7 +513,7 @@ _FAMAFRENCH_URL = 'http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp'
 
 def get_data_famafrench(name):
     # path of zip files
-    zip_file_path = '{0}/{1}.zip'.format(_FAMAFRENCH_URL, name)
+    zip_file_path = '{0}/{1}_TXT.zip'.format(_FAMAFRENCH_URL, name)
 
     with urlopen(zip_file_path) as url:
         raw = url.read()
@@ -599,7 +608,7 @@ class Options(object):
         self.symbol = symbol.upper()
         if data_source is None:
             warnings.warn("Options(symbol) is deprecated, use Options(symbol,"
-                          " data_source) instead", FutureWarning)
+                          " data_source) instead", FutureWarning, stacklevel=2)
             data_source = "yahoo"
         if data_source != "yahoo":
             raise NotImplementedError("currently only yahoo supported")
@@ -1063,7 +1072,8 @@ class Options(object):
                 Note: Format of returned data frame is dependent on Yahoo and may change.
 
         """
-        warnings.warn("get_forward_data() is deprecated", FutureWarning)
+        warnings.warn("get_forward_data() is deprecated", FutureWarning,
+                      stacklevel=2)
         end_date = dt.date.today() + MonthEnd(months)
         dates = (date for date in self.expiry_dates if date <= end_date.date())
         data = self._get_data_in_date_range(dates, call=call, put=put)

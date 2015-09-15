@@ -168,7 +168,8 @@ class SafeForLongAndSparse(object):
 
         for i in range(obj.ndim):
             result = f(axis=i)
-            assert_frame_equal(result, obj.apply(skipna_wrapper, axis=i))
+            if not tm._incompat_bottleneck_version(name):
+                assert_frame_equal(result, obj.apply(skipna_wrapper, axis=i))
 
         self.assertRaises(Exception, f, axis=obj.ndim)
 
@@ -504,6 +505,20 @@ class CheckIndexing(object):
         P[key] = data
 
         assert_almost_equal(P[key].values, data)
+
+    def test_set_minor_major(self):
+        # GH 11014
+        df1 = DataFrame(['a', 'a', 'a', np.nan, 'a', np.nan])
+        df2 = DataFrame([1.0, np.nan, 1.0, np.nan, 1.0, 1.0])
+        panel = Panel({'Item1' : df1, 'Item2': df2})
+
+        newminor = notnull(panel.iloc[:, :, 0])
+        panel.loc[:, :, 'NewMinor'] = newminor
+        assert_frame_equal(panel.loc[:, :, 'NewMinor'], newminor.astype(object))
+
+        newmajor = notnull(panel.iloc[:, 0, :])
+        panel.loc[:, 'NewMajor', :] = newmajor
+        assert_frame_equal(panel.loc[:, 'NewMajor', :], newmajor.astype(object))
 
     def test_major_xs(self):
         ref = self.panel['ItemA']
@@ -1119,7 +1134,7 @@ class TestPanel(tm.TestCase, PanelTests, CheckIndexing,
         # GH 4937
         p = Panel(dict(A = dict(a = ['1','1.0'])))
         expected = Panel(dict(A = dict(a = [1,1.0])))
-        result = p.convert_objects(convert_numeric='force')
+        result = p.convert_objects(numeric=True, coerce=True)
         assert_panel_equal(result, expected)
 
     def test_dtypes(self):
@@ -1230,6 +1245,9 @@ class TestPanel(tm.TestCase, PanelTests, CheckIndexing,
         dfb = DataFrame(np.array(np.arange(10, 22, dtype='int64')).reshape(4,3), columns=list("ABC"), index=index)
         p = Panel({'f':dfa, 'g':dfb})
         result = p.apply(lambda x: x.sum(), axis=0)
+
+        # on windows this will be in32
+        result = result.astype('int64')
         expected = p.sum(0)
         assert_frame_equal(result,expected)
 

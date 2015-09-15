@@ -7,11 +7,13 @@ import pandas.compat as compat
 import pandas as pd
 from pandas.compat import u, StringIO
 from pandas.core.base import FrozenList, FrozenNDArray, PandasDelegate
+import pandas.core.common as com
 from pandas.tseries.base import DatetimeIndexOpsMixin
 from pandas.util.testing import assertRaisesRegexp, assertIsInstance
 from pandas.tseries.common import is_datetimelike
 from pandas import Series, Index, Int64Index, DatetimeIndex, TimedeltaIndex, PeriodIndex, Timedelta
 import pandas.tslib as tslib
+from pandas import _np_version_under1p9
 import nose
 
 import pandas.util.testing as tm
@@ -273,14 +275,51 @@ class TestIndexOps(Ops):
         self.is_valid_objs  = [ o for o in self.objs if o._allow_index_ops ]
         self.not_valid_objs = [ o for o in self.objs if not o._allow_index_ops ]
 
+    def test_none_comparison(self):
+
+        # bug brought up by #1079
+        # changed from TypeError in 0.17.0
+        for o in self.is_valid_objs:
+            if isinstance(o, Series):
+
+                o[0] = np.nan
+
+                result = o == None
+                self.assertFalse(result.iat[0])
+                self.assertFalse(result.iat[1])
+
+                result = o != None
+                self.assertTrue(result.iat[0])
+                self.assertTrue(result.iat[1])
+
+                result = None == o
+                self.assertFalse(result.iat[0])
+                self.assertFalse(result.iat[1])
+
+                # this fails for numpy < 1.9
+                # and oddly for *some* platforms
+                #result = None != o
+                #self.assertTrue(result.iat[0])
+                #self.assertTrue(result.iat[1])
+
+                result = None > o
+                self.assertFalse(result.iat[0])
+                self.assertFalse(result.iat[1])
+
+                result = o < None
+                self.assertFalse(result.iat[0])
+                self.assertFalse(result.iat[1])
+
+
     def test_ndarray_compat_properties(self):
 
         for o in self.objs:
 
             # check that we work
-            for p in ['shape', 'dtype', 'base', 'flags', 'T',
+            for p in ['shape', 'dtype', 'flags', 'T',
                       'strides', 'itemsize', 'nbytes']:
                 self.assertIsNotNone(getattr(o, p, None))
+            self.assertTrue(hasattr(o, 'base'))
 
             # if we have a datetimelike dtype then needs a view to work
             # but the user is responsible for that
@@ -364,22 +403,35 @@ class TestIndexOps(Ops):
                 # freq must be specified because repeat makes freq ambiguous
 
                 # resets name from Index
-                expected_index = pd.Index(o[::-1], name=None)
+                expected_index = pd.Index(o[::-1])
 
                 # attach name to klass
-                o = klass(np.repeat(values, range(1, len(o) + 1)), freq=o.freq, name='a')
+                o = o.repeat(range(1, len(o) + 1))
+                o.name = 'a'
+
+            elif isinstance(o, DatetimeIndex):
+
+                # resets name from Index
+                expected_index = pd.Index(o[::-1])
+
+                # attach name to klass
+                o = o.repeat(range(1, len(o) + 1))
+                o.name = 'a'
+
             # don't test boolean
             elif isinstance(o,Index) and o.is_boolean():
                 continue
             elif isinstance(o, Index):
-                expected_index = pd.Index(values[::-1], name=None)
-                o = klass(np.repeat(values, range(1, len(o) + 1)), name='a')
+                expected_index = pd.Index(values[::-1])
+                o = o.repeat(range(1, len(o) + 1))
+                o.name = 'a'
             else:
-                expected_index = pd.Index(values[::-1], name=None)
-                idx = np.repeat(o.index.values, range(1, len(o) + 1))
+                expected_index = pd.Index(values[::-1])
+                idx = o.index.repeat(range(1, len(o) + 1))
                 o = klass(np.repeat(values, range(1, len(o) + 1)), index=idx, name='a')
 
             expected_s = Series(range(10, 0, -1), index=expected_index, dtype='int64', name='a')
+
             result = o.value_counts()
             tm.assert_series_equal(result, expected_s)
             self.assertTrue(result.index.name is None)
@@ -410,7 +462,16 @@ class TestIndexOps(Ops):
                     continue
 
                 # special assign to the numpy array
-                if o.values.dtype == 'datetime64[ns]' or isinstance(o, PeriodIndex):
+                if com.is_datetimetz(o):
+                    if isinstance(o, DatetimeIndex):
+                        v = o.asi8
+                        v[0:2] = pd.tslib.iNaT
+                        values = o._shallow_copy(v)
+                    else:
+                        o = o.copy()
+                        o[0:2] = pd.tslib.iNaT
+                        values = o.values
+                elif o.values.dtype == 'datetime64[ns]' or isinstance(o, PeriodIndex):
                     values[0:2] = pd.tslib.iNaT
                 else:
                     values[0:2] = null_obj
@@ -470,10 +531,8 @@ class TestIndexOps(Ops):
             self.assert_numpy_array_equal(s.unique(), np.unique(s_values))
             self.assertEqual(s.nunique(), 4)
             # don't sort, have to sort after the fact as not sorting is platform-dep
-            hist = s.value_counts(sort=False)
-            hist.sort()
-            expected = Series([3, 1, 4, 2], index=list('acbd'))
-            expected.sort()
+            hist = s.value_counts(sort=False).sort_values()
+            expected = Series([3, 1, 4, 2], index=list('acbd')).sort_values()
             tm.assert_series_equal(hist, expected)
 
             # sort ascending
@@ -523,17 +582,19 @@ class TestIndexOps(Ops):
             self.assertEqual(s.nunique(), 0)
 
             # GH 3002, datetime64[ns]
+            # don't test names though
             txt = "\n".join(['xxyyzz20100101PIE', 'xxyyzz20100101GUM', 'xxyyzz20100101EGG',
                              'xxyyww20090101EGG', 'foofoo20080909PIE', 'foofoo20080909GUM'])
             f = StringIO(txt)
             df = pd.read_fwf(f, widths=[6, 8, 3], names=["person_id", "dt", "food"],
                              parse_dates=["dt"])
 
-            s = klass(df['dt'].copy(), name='dt')
+            s = klass(df['dt'].copy())
+            s.name = None
 
             idx = pd.to_datetime(['2010-01-01 00:00:00Z', '2008-09-09 00:00:00Z',
                                   '2009-01-01 00:00:00X'])
-            expected_s = Series([3, 2, 1], index=idx, name='dt')
+            expected_s = Series([3, 2, 1], index=idx)
             tm.assert_series_equal(s.value_counts(), expected_s)
 
             expected = np.array(['2010-01-01 00:00:00Z', '2009-01-01 00:00:00Z',
@@ -548,7 +609,7 @@ class TestIndexOps(Ops):
 
             # with NaT
             s = df['dt'].copy()
-            s = klass([v for v in s.values] + [pd.NaT], name='dt')
+            s = klass([v for v in s.values] + [pd.NaT])
 
             result = s.value_counts()
             self.assertEqual(result.index.dtype, 'datetime64[ns]')
@@ -560,6 +621,7 @@ class TestIndexOps(Ops):
 
             unique = s.unique()
             self.assertEqual(unique.dtype, 'datetime64[ns]')
+
             # numpy_array_equal cannot compare pd.NaT
             self.assert_numpy_array_equal(unique[:3], expected)
             self.assertTrue(unique[3] is pd.NaT or unique[3].astype('int64') == pd.tslib.iNaT)
@@ -613,7 +675,7 @@ class TestIndexOps(Ops):
 
             # sort by value, and create duplicates
             if isinstance(o, Series):
-                o.sort()
+                o = o.sort_values()
                 n = o.iloc[5:].append(o)
             else:
                 indexer = o.argsort()
@@ -674,15 +736,36 @@ class TestIndexOps(Ops):
                 self.assertTrue(duplicated.dtype == bool)
                 tm.assert_index_equal(idx.drop_duplicates(), original)
 
-                last_base = [False] * len(idx)
-                last_base[3] = True
-                last_base[5] = True
-                expected = np.array(last_base)
-                duplicated = idx.duplicated(take_last=True)
+                base = [False] * len(idx)
+                base[3] = True
+                base[5] = True
+                expected = np.array(base)
+
+                duplicated = idx.duplicated(keep='last')
                 tm.assert_numpy_array_equal(duplicated, expected)
                 self.assertTrue(duplicated.dtype == bool)
-                tm.assert_index_equal(idx.drop_duplicates(take_last=True),
-                                      idx[~np.array(last_base)])
+                result = idx.drop_duplicates(keep='last')
+                tm.assert_index_equal(result, idx[~expected])
+
+                # deprecate take_last
+                with tm.assert_produces_warning(FutureWarning):
+                    duplicated = idx.duplicated(take_last=True)
+                tm.assert_numpy_array_equal(duplicated, expected)
+                self.assertTrue(duplicated.dtype == bool)
+                with tm.assert_produces_warning(FutureWarning):
+                    result = idx.drop_duplicates(take_last=True)
+                tm.assert_index_equal(result, idx[~expected])
+
+                base = [False] * len(original) + [True, True]
+                base[3] = True
+                base[5] = True
+                expected = np.array(base)
+
+                duplicated = idx.duplicated(keep=False)
+                tm.assert_numpy_array_equal(duplicated, expected)
+                self.assertTrue(duplicated.dtype == bool)
+                result = idx.drop_duplicates(keep=False)
+                tm.assert_index_equal(result, idx[~expected])
 
                 with tm.assertRaisesRegexp(TypeError,
                                            "drop_duplicates\(\) got an unexpected keyword argument"):
@@ -697,7 +780,7 @@ class TestIndexOps(Ops):
                 self.assertFalse(result is original)
 
                 idx = original.index[list(range(len(original))) + [5, 3]]
-                values = original.values[list(range(len(original))) + [5, 3]]
+                values = original._values[list(range(len(original))) + [5, 3]]
                 s = Series(values, index=idx, name='a')
 
                 expected = Series([False] * len(original) + [True, True],
@@ -705,13 +788,29 @@ class TestIndexOps(Ops):
                 tm.assert_series_equal(s.duplicated(), expected)
                 tm.assert_series_equal(s.drop_duplicates(), original)
 
-                last_base = [False] * len(idx)
-                last_base[3] = True
-                last_base[5] = True
-                expected = Series(last_base, index=idx, name='a')
-                tm.assert_series_equal(s.duplicated(take_last=True), expected)
-                tm.assert_series_equal(s.drop_duplicates(take_last=True),
-                                       s[~np.array(last_base)])
+                base = [False] * len(idx)
+                base[3] = True
+                base[5] = True
+                expected = Series(base, index=idx, name='a')
+
+                tm.assert_series_equal(s.duplicated(keep='last'), expected)
+                tm.assert_series_equal(s.drop_duplicates(keep='last'),
+                                       s[~np.array(base)])
+
+                # deprecate take_last
+                with tm.assert_produces_warning(FutureWarning):
+                    tm.assert_series_equal(s.duplicated(take_last=True), expected)
+                with tm.assert_produces_warning(FutureWarning):
+                    tm.assert_series_equal(s.drop_duplicates(take_last=True),
+                                           s[~np.array(base)])
+                base = [False] * len(original) + [True, True]
+                base[3] = True
+                base[5] = True
+                expected = Series(base, index=idx, name='a')
+
+                tm.assert_series_equal(s.duplicated(keep=False), expected)
+                tm.assert_series_equal(s.drop_duplicates(keep=False),
+                                       s[~np.array(base)])
 
                 s.drop_duplicates(inplace=True)
                 tm.assert_series_equal(s, original)

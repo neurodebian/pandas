@@ -15,6 +15,7 @@ from pandas.tseries.tools import to_datetime
 import pandas.tseries.offsets as offsets
 from pandas.tseries.period import PeriodIndex
 import pandas.compat as compat
+from pandas.compat import is_platform_windows
 
 import pandas.util.testing as tm
 from pandas import Timedelta
@@ -128,9 +129,48 @@ def test_anchored_shortcuts():
     expected = frequencies.to_offset('W-SUN')
     assert(result == expected)
 
-    result = frequencies.to_offset('Q')
-    expected = frequencies.to_offset('Q-DEC')
-    assert(result == expected)
+    result1 = frequencies.to_offset('Q')
+    result2 = frequencies.to_offset('Q-DEC')
+    expected = offsets.QuarterEnd(startingMonth=12)
+    assert(result1 == expected)
+    assert(result2 == expected)
+
+    result1 = frequencies.to_offset('Q-MAY')
+    expected = offsets.QuarterEnd(startingMonth=5)
+    assert(result1 == expected)
+
+
+def test_get_rule_month():
+    result = frequencies._get_rule_month('W')
+    assert(result == 'DEC')
+    result = frequencies._get_rule_month(offsets.Week())
+    assert(result == 'DEC')
+
+    result = frequencies._get_rule_month('D')
+    assert(result == 'DEC')
+    result = frequencies._get_rule_month(offsets.Day())
+    assert(result == 'DEC')
+
+    result = frequencies._get_rule_month('Q')
+    assert(result == 'DEC')
+    result = frequencies._get_rule_month(offsets.QuarterEnd(startingMonth=12))
+    print(result == 'DEC')
+
+    result = frequencies._get_rule_month('Q-JAN')
+    assert(result == 'JAN')
+    result = frequencies._get_rule_month(offsets.QuarterEnd(startingMonth=1))
+    assert(result == 'JAN')
+
+    result = frequencies._get_rule_month('A-DEC')
+    assert(result == 'DEC')
+    result = frequencies._get_rule_month(offsets.YearEnd())
+    assert(result == 'DEC')
+
+    result = frequencies._get_rule_month('A-MAY')
+    assert(result == 'MAY')
+    result = frequencies._get_rule_month(offsets.YearEnd(month=5))
+    assert(result == 'MAY')
+
 
 class TestFrequencyCode(tm.TestCase):
 
@@ -152,6 +192,23 @@ class TestFrequencyCode(tm.TestCase):
 
             result = frequencies.get_freq_group(code)
             self.assertEqual(result, code // 1000 * 1000)
+
+    def test_freq_group(self):
+        self.assertEqual(frequencies.get_freq_group('A'), 1000)
+        self.assertEqual(frequencies.get_freq_group('3A'), 1000)
+        self.assertEqual(frequencies.get_freq_group('-1A'), 1000)
+        self.assertEqual(frequencies.get_freq_group('A-JAN'), 1000)
+        self.assertEqual(frequencies.get_freq_group('A-MAY'), 1000)
+        self.assertEqual(frequencies.get_freq_group(offsets.YearEnd()), 1000)
+        self.assertEqual(frequencies.get_freq_group(offsets.YearEnd(month=1)), 1000)
+        self.assertEqual(frequencies.get_freq_group(offsets.YearEnd(month=5)), 1000)
+
+        self.assertEqual(frequencies.get_freq_group('W'), 4000)
+        self.assertEqual(frequencies.get_freq_group('W-MON'), 4000)
+        self.assertEqual(frequencies.get_freq_group('W-FRI'), 4000)
+        self.assertEqual(frequencies.get_freq_group(offsets.Week()), 4000)
+        self.assertEqual(frequencies.get_freq_group(offsets.Week(weekday=1)), 4000)
+        self.assertEqual(frequencies.get_freq_group(offsets.Week(weekday=5)), 4000)
 
     def test_get_to_timestamp_base(self):
         tsb = frequencies.get_to_timestamp_base
@@ -482,7 +539,7 @@ class TestFrequencyInference(tm.TestCase):
     def test_not_monotonic(self):
         rng = _dti(['1/31/2000', '1/31/2001', '1/31/2002'])
         rng = rng[::-1]
-        self.assertIsNone(rng.inferred_freq)
+        self.assertEqual(rng.inferred_freq, '-1A-JAN')
 
     def test_non_datetimeindex(self):
         rng = _dti(['1/31/2000', '1/31/2001', '1/31/2002'])
@@ -500,9 +557,12 @@ class TestFrequencyInference(tm.TestCase):
                    tm.makePeriodIndex(10) ]:
             self.assertRaises(TypeError, lambda : frequencies.infer_freq(i))
 
-        for i in [ tm.makeStringIndex(10),
-                   tm.makeUnicodeIndex(10) ]:
-            self.assertRaises(ValueError, lambda : frequencies.infer_freq(i))
+        # GH 10822
+        # odd error message on conversions to datetime for unicode
+        if not is_platform_windows():
+            for i in [ tm.makeStringIndex(10),
+                       tm.makeUnicodeIndex(10) ]:
+                self.assertRaises(ValueError, lambda : frequencies.infer_freq(i))
 
     def test_string_datetimelike_compat(self):
 
@@ -525,8 +585,12 @@ class TestFrequencyInference(tm.TestCase):
         self.assertRaises(ValueError, lambda : frequencies.infer_freq(Series(['foo','bar'])))
 
         # cannot infer on PeriodIndex
-        for freq in [None, 'L', 'Y']:
+        for freq in [None, 'L']:
             s = Series(period_range('2013',periods=10,freq=freq))
+            self.assertRaises(TypeError, lambda : frequencies.infer_freq(s))
+        for freq in ['Y']:
+            with tm.assert_produces_warning(FutureWarning, check_stacklevel=False):
+                s = Series(period_range('2013',periods=10,freq=freq))
             self.assertRaises(TypeError, lambda : frequencies.infer_freq(s))
 
         # DateTimeIndex
@@ -538,6 +602,19 @@ class TestFrequencyInference(tm.TestCase):
         s = Series(date_range('20130101','20130110'))
         inferred = frequencies.infer_freq(s)
         self.assertEqual(inferred,'D')
+
+    def test_legacy_offset_warnings(self):
+        for k, v in compat.iteritems(frequencies._rule_aliases):
+            with tm.assert_produces_warning(FutureWarning):
+                result = frequencies.get_offset(k)
+            exp = frequencies.get_offset(v)
+            self.assertEqual(result, exp)
+
+            with tm.assert_produces_warning(FutureWarning, check_stacklevel=False):
+                idx = date_range('2011-01-01', periods=5, freq=k)
+            exp = date_range('2011-01-01', periods=5, freq=v)
+            self.assert_index_equal(idx, exp)
+
 
 MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP',
           'OCT', 'NOV', 'DEC']

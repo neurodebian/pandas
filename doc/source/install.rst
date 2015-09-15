@@ -153,7 +153,8 @@ and can take a few minutes to complete.
 Installing using your Linux distribution's package manager.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
+The commands in this table will install pandas for Python 2 from your distribution.
+To install pandas for Python 3 you may need to use the package ``python3-pandas``.
 
 .. csv-table::
     :header: "Distribution", "Status", "Download / Repository Link", "Install method"
@@ -212,6 +213,7 @@ installed), make sure you have `nose
 Dependencies
 ------------
 
+* `setuptools <http://pythonhosted.org/setuptools>`__
 * `NumPy <http://www.numpy.org>`__: 1.7.0 or higher
 * `python-dateutil <http://labix.org/python-dateutil>`__ 1.5 or higher
 * `pytz <http://pytz.sourceforge.net/>`__
@@ -243,7 +245,7 @@ Optional Dependencies
 * `Cython <http://www.cython.org>`__: Only necessary to build development
   version. Version 0.19.1 or higher.
 * `SciPy <http://www.scipy.org>`__: miscellaneous statistical functions
-* `PyTables <http://www.pytables.org>`__: necessary for HDF5-based storage. Version 3.0.0 or higher required, Version 3.2.0 or higher highly recommended.
+* `PyTables <http://www.pytables.org>`__: necessary for HDF5-based storage. Version 3.0.0 or higher required, Version 3.2.1 or higher highly recommended.
 * `SQLAlchemy <http://www.sqlalchemy.org>`__: for SQL database support. Version 0.8.1 or higher recommended.
 * `matplotlib <http://matplotlib.sourceforge.net/>`__: for plotting
 * `statsmodels <http://statsmodels.sourceforge.net/>`__
@@ -266,11 +268,11 @@ Optional Dependencies
   installation.
 * Google's `python-gflags <http://code.google.com/p/python-gflags/>`__
   and `google-api-python-client <http://github.com/google/google-api-python-client>`__
-   * Needed for :mod:`~pandas.io.gbq`
+  * Needed for :mod:`~pandas.io.gbq`
 * `setuptools <https://pypi.python.org/pypi/setuptools/>`__
-   * Needed for :mod:`~pandas.io.gbq` (specifically, it utilizes `pkg_resources`)
+  * Needed for :mod:`~pandas.io.gbq` (specifically, it utilizes `pkg_resources`)
 * `httplib2 <http://pypi.python.org/pypi/httplib2>`__
-   * Needed for :mod:`~pandas.io.gbq`
+  * Needed for :mod:`~pandas.io.gbq`
 * One of the following combinations of libraries is needed to use the
   top-level :func:`~pandas.io.html.read_html` function:
 

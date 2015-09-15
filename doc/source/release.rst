@@ -5,21 +5,13 @@
 .. ipython:: python
    :suppress:
 
-   import os
-   import csv
-   from pandas.compat import StringIO
    import pandas as pd
-   ExcelWriter = pd.ExcelWriter
-
    import numpy as np
    np.random.seed(123456)
-   randn = np.random.randn
    np.set_printoptions(precision=4, suppress=True)
-
    import matplotlib.pyplot as plt
    plt.close('all')
 
-   from pandas import *
    options.display.max_rows=15
    import pandas.util.testing as tm
 
@@ -44,6 +36,40 @@ analysis / manipulation tool available in any language.
 * Source code: http://github.com/pydata/pandas
 * Binary installers on PyPI: http://pypi.python.org/pypi/pandas
 * Documentation: http://pandas.pydata.org
+
+pandas 0.17.0
+-------------
+
+**Release date:** (September ??, 2015)
+
+This is a major release from 0.16.2 and includes a small number of API changes, several new features,
+enhancements, and performance improvements along with a large number of bug fixes. We recommend that all
+users upgrade to this version.
+
+Highlights include:
+
+- Release the Global Interpreter Lock (GIL) on some cython operations, see :ref:`here <whatsnew_0170.gil>`
+- Plotting methods are now available as attributes of the ``.plot`` accessor, see :ref:`here <whatsnew_0170.plot>`
+- The sorting API has been revamped to remove some long-time inconsistencies, see :ref:`here <whatsnew_0170.api_breaking.sorting>`
+- Support for a ``datetime64[ns]`` with timezones as a first-class dtype, see :ref:`here <whatsnew_0170.tz>`
+- The default for ``to_datetime`` will now be to ``raise`` when presented with unparseable formats,
+  previously this would return the original input. Also, date parse
+  functions now return consistent results. See :ref:`here <whatsnew_0170.api_breaking.to_datetime>`
+- The default for ``dropna`` in ``HDFStore`` has changed to ``False``, to store by default all rows even
+  if they are all ``NaN``, see :ref:`here <whatsnew_0170.api_breaking.hdf_dropna>`
+- Datetime accessor (``dt``) now supports ``Series.dt.strftime`` to generate formatted strings for datetime-likes, and ``Series.dt.total_seconds`` to generate each duration of the timedelta in seconds. See :ref:`here <whatsnew_0170.strftime>`
+- ``Period`` and ``PeriodIndex`` can handle multiplied freq like ``3D``, which corresponding to 3 days span. See :ref:`here <whatsnew_0170.periodfreq>`
+- Development installed versions of pandas will now have ``PEP440`` compliant version strings (:issue:`9518`)
+- Development support for benchmarking with the `Air Speed Velocity library <https://github.com/spacetelescope/asv/>`_ (:issue:`8316`)
+- Support for reading SAS xport files, see :ref:`here <whatsnew_0170.enhancements.sas_xport>`
+- Documentation comparing SAS to *pandas*, see :ref:`here <compare_with_sas>`
+- Removal of the automatic TimeSeries broadcasting, deprecated since 0.8.0, see :ref:`here <whatsnew_0170.prior_deprecations>`
+
+See the :ref:`v0.17.0 Whatsnew <whatsnew_0170>` overview for an extensive list
+of all enhancements and bugs that have been fixed in 0.17.0.
+
+Thanks
+~~~~~~
 
 pandas 0.16.2
 -------------
@@ -1969,9 +1995,9 @@ Improvements to existing features
 
   .. ipython:: python
 
-     p = Panel(randn(3,4,4),items=['ItemA','ItemB','ItemC'],
-                        major_axis=date_range('20010102',periods=4),
-                        minor_axis=['A','B','C','D'])
+     p = pd.Panel(np.random.randn(3,4,4),items=['ItemA','ItemB','ItemC'],
+                  major_axis=pd.date_range('20010102',periods=4),
+                  minor_axis=['A','B','C','D'])
      p
      p.reindex(items=['ItemA']).squeeze()
      p.reindex(items=['ItemA'],minor=['B']).squeeze()
@@ -1987,11 +2013,11 @@ Improvements to existing features
 
   .. ipython:: python
 
-      idx = date_range("2001-10-1", periods=5, freq='M')
-      ts = Series(np.random.rand(len(idx)),index=idx)
+      idx = pd.date_range("2001-10-1", periods=5, freq='M')
+      ts = pd.Series(np.random.rand(len(idx)),index=idx)
       ts['2001']
 
-      df = DataFrame(dict(A = ts))
+      df = pd.DataFrame(dict(A = ts))
       df['2001']
 
 - added option `display.mpl_style` providing a sleeker visual style for plots. Based on https://gist.github.com/huyng/816622 (:issue:`3075`).

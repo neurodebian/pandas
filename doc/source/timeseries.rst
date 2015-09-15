@@ -71,6 +71,23 @@ Resample:
    ts.resample('D', how='mean')
 
 
+.. _timeseries.overview:
+
+Overview
+--------
+
+Following table shows the type of time-related classes pandas can handle and
+how to create them.
+
+=================  ============================== ==================================================
+Class              Remarks                        How to create
+=================  ============================== ==================================================
+``Timestamp``      Represents a single time stamp ``to_datetime``, ``Timestamp``
+``DatetimeIndex``  Index of ``Timestamps``        ``to_datetime``, ``date_range``, ``DatetimeIndex``
+``Period``         Represents a single time span  ``Period``
+``PeriodIndex``    Index of ``Period``            ``period_range``, ``PeriodIndex``
+=================  ============================== ==================================================
+
 .. _timeseries.representation:
 
 Time Stamps vs. Time Spans
@@ -78,30 +95,45 @@ Time Stamps vs. Time Spans
 
 Time-stamped data is the most basic type of timeseries data that associates
 values with points in time. For pandas objects it means using the points in
-time to create the index
+time.
 
 .. ipython:: python
 
-   dates = [datetime(2012, 5, 1), datetime(2012, 5, 2), datetime(2012, 5, 3)]
-   ts = Series(np.random.randn(3), dates)
-
-   type(ts.index)
-
-   ts
+   Timestamp(datetime(2012, 5, 1))
+   Timestamp('2012-05-01')
 
 However, in many cases it is more natural to associate things like change
-variables with a time span instead.
+variables with a time span instead. The span represented by ``Period`` can be
+specified explicitly, or inferred from datetime string format.
 
 For example:
 
 .. ipython:: python
 
-   periods = PeriodIndex([Period('2012-01'), Period('2012-02'),
-                          Period('2012-03')])
+   Period('2011-01')
+
+   Period('2012-05', freq='D')
+
+``Timestamp`` and ``Period`` can be the index. Lists of ``Timestamp`` and
+``Period`` are automatically coerce to ``DatetimeIndex`` and ``PeriodIndex``
+respectively.
+
+.. ipython:: python
+
+   dates = [Timestamp('2012-05-01'), Timestamp('2012-05-02'), Timestamp('2012-05-03')]
+   ts = Series(np.random.randn(3), dates)
+
+   type(ts.index)
+   ts.index
+
+   ts
+
+   periods = [Period('2012-01'), Period('2012-02'), Period('2012-03')]
 
    ts = Series(np.random.randn(3), periods)
 
    type(ts.index)
+   ts.index
 
    ts
 
@@ -150,24 +182,39 @@ you can pass the ``dayfirst`` flag:
    considerably and on versions later then 0.13.0 explicitly specifying
    a format string of '%Y%m%d' takes a faster path still.
 
+If you pass a single string to ``to_datetime``, it returns single ``Timestamp``.
+Also, ``Timestamp`` can accept the string input.
+Note that ``Timestamp`` doesn't accept string parsing option like ``dayfirst``
+or ``format``, use ``to_datetime`` if these are required.
+
+.. ipython:: python
+
+    to_datetime('2010/11/12')
+
+    Timestamp('2010/11/12')
+
 
 Invalid Data
 ~~~~~~~~~~~~
 
-Pass ``coerce=True`` to convert invalid data to ``NaT`` (not a time):
+.. note::
+
+   In version 0.17.0, the default for ``to_datetime`` is now ``errors='raise'``, rather than ``errors='ignore'``. This means
+   that invalid parsing will raise rather that return the original input as in previous versions.
+
+Pass ``errors='coerce'`` to convert invalid data to ``NaT`` (not a time):
 
 .. ipython:: python
+   :okexcept:
 
-   to_datetime(['2009-07-31', 'asd'])
+   # this is the default, raise when unparseable
+   to_datetime(['2009/07/31', 'asd'], errors='raise')
 
-   to_datetime(['2009-07-31', 'asd'], coerce=True)
+   # return the original input when unparseable
+   to_datetime(['2009/07/31', 'asd'], errors='ignore')
 
-
-Take care, ``to_datetime`` may not act as you expect on mixed data:
-
-.. ipython:: python
-
-   to_datetime([1, '1'])
+   # return NaT for input when unparseable
+   to_datetime(['2009/07/31', 'asd'], errors='coerce')
 
 Epoch Timestamps
 ~~~~~~~~~~~~~~~~
@@ -544,7 +591,7 @@ various docstrings for the classes.
 These operations (``apply``, ``rollforward`` and ``rollback``) preserves time (hour, minute, etc) information by default. To reset time, use ``normalize=True`` keyword when creating the offset instance. If ``normalize=True``, result is normalized after the function is applied.
 
 
-  .. ipython:: python
+.. ipython:: python
 
    day = Day()
    day.apply(Timestamp('2014-01-01 09:00'))
@@ -591,6 +638,46 @@ Another example is parameterizing ``YearEnd`` with the specific ending month:
 
    d + YearEnd()
    d + YearEnd(month=6)
+
+
+.. _timeseries.offsetseries:
+
+Using offsets with ``Series`` / ``DatetimeIndex``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Offsets can be used with either a ``Series`` or ``DatetimeIndex`` to
+apply the offset to each element.
+
+.. ipython:: python
+
+   rng = date_range('2012-01-01', '2012-01-03')
+   s = Series(rng)
+   rng
+   rng + DateOffset(months=2)
+   s + DateOffset(months=2)
+   s - DateOffset(months=2)
+
+If the offset class maps directly to a ``Timedelta`` (``Day``, ``Hour``,
+``Minute``, ``Second``, ``Micro``, ``Milli``, ``Nano``) it can be
+used exactly like a ``Timedelta`` - see the
+:ref:`Timedelta section<timedeltas.operations>` for more examples.
+
+.. ipython:: python
+
+   s - Day(2)
+   td = s - Series(date_range('2011-12-29', '2011-12-31'))
+   td
+   td + Minute(15)
+
+Note that some offsets (such as ``BQuarterEnd``) do not have a
+vectorized implementation.  They can still be used but may
+calculate signficantly slower and will raise a ``PerformanceWarning``
+
+.. ipython:: python
+   :okwarning:
+
+   rng + BQuarterEnd()
+
 
 .. _timeseries.alias:
 
@@ -795,10 +882,10 @@ frequencies. We will refer to these aliases as *offset aliases*
     "BAS", "business year start frequency"
     "BH", "business hour frequency"
     "H", "hourly frequency"
-    "T", "minutely frequency"
+    "T, min", "minutely frequency"
     "S", "secondly frequency"
-    "L", "milliseonds"
-    "U", "microseconds"
+    "L, ms", "milliseonds"
+    "U, us", "microseconds"
     "N", "nanoseconds"
 
 Combining Aliases
@@ -866,11 +953,12 @@ These can be used as arguments to ``date_range``, ``bdate_range``, constructors
 for ``DatetimeIndex``, as well as various other timeseries-related functions
 in pandas.
 
+.. _timeseries.legacyaliases:
+
 Legacy Aliases
 ~~~~~~~~~~~~~~
-Note that prior to v0.8.0, time rules had a slightly different look. pandas
-will continue to support the legacy time rules for the time being but it is
-strongly recommended that you switch to using the new offset aliases.
+Note that prior to v0.8.0, time rules had a slightly different look. These are
+deprecated in v0.17.0, and removed in future version.
 
 .. csv-table::
     :header: "Legacy Time Rule", "Offset Alias"
@@ -900,9 +988,7 @@ strongly recommended that you switch to using the new offset aliases.
     "A\@OCT", "BA\-OCT"
     "A\@NOV", "BA\-NOV"
     "A\@DEC", "BA\-DEC"
-    "min", "T"
-    "ms", "L"
-    "us", "U"
+
 
 As you can see, legacy quarterly and annual frequencies are business quarters
 and business year ends. Please also note the legacy time rule for milliseconds
@@ -1171,8 +1257,10 @@ be created with the convenience function ``period_range``.
 
 Period
 ~~~~~~
+
 A ``Period`` represents a span of time (e.g., a day, a month, a quarter, etc).
-It can be created using a frequency alias:
+You can specify the span via ``freq`` keyword using a frequency alias like below.
+Because ``freq`` represents a span of ``Period``, it cannot be negative like "-3D".
 
 .. ipython:: python
 
@@ -1182,19 +1270,22 @@ It can be created using a frequency alias:
 
    Period('2012-1-1 19:00', freq='H')
 
-Unlike time stamped data, pandas does not support frequencies at multiples of
-DateOffsets (e.g., '3Min') for periods.
+   Period('2012-1-1 19:00', freq='5H')
 
 Adding and subtracting integers from periods shifts the period by its own
-frequency.
+frequency. Arithmetic is not allowed between ``Period`` with different ``freq`` (span).
 
 .. ipython:: python
 
    p = Period('2012', freq='A-DEC')
-
    p + 1
-
    p - 3
+   p = Period('2012-01', freq='2M')
+   p + 2
+   p - 1
+   @okexcept
+   p == Period('2012-01', freq='3M')
+
 
 If ``Period`` freq is daily or higher (``D``, ``H``, ``T``, ``S``, ``L``, ``U``, ``N``), ``offsets`` and ``timedelta``-like can be added if the result can have the same freq. Otherise, ``ValueError`` will be raised.
 
@@ -1248,6 +1339,13 @@ The ``PeriodIndex`` constructor can also be used directly:
 .. ipython:: python
 
    PeriodIndex(['2011-1', '2011-2', '2011-3'], freq='M')
+
+Passing multiplied frequency outputs a sequence of ``Period`` which
+has multiplied span.
+
+.. ipython:: python
+
+   PeriodIndex(start='2014-01', freq='3M', periods=4)
 
 Just like ``DatetimeIndex``, a ``PeriodIndex`` can also be used to index pandas
 objects:
@@ -1647,3 +1745,70 @@ constructor as well as ``tz_localize``.
 
    # tz_convert(None) is identical with tz_convert('UTC').tz_localize(None)
    didx.tz_convert('UCT').tz_localize(None)
+
+.. _timeseries.timezone_series:
+
+TZ aware Dtypes
+~~~~~~~~~~~~~~~
+
+.. versionadded:: 0.17.0
+
+``Series/DatetimeIndex`` with a timezone **naive** value are represented with a dtype of ``datetime64[ns]``.
+
+.. ipython:: python
+
+   s_naive = pd.Series(pd.date_range('20130101',periods=3))
+   s_naive
+
+``Series/DatetimeIndex`` with a timezone **aware** value are represented with a dtype of ``datetime64[ns, tz]``.
+
+.. ipython:: python
+
+   s_aware = pd.Series(pd.date_range('20130101',periods=3,tz='US/Eastern'))
+   s_aware
+
+Both of these ``Series`` can be manipulated via the ``.dt`` accessor, see :ref:`here <basics.dt_accessors>`.
+See the :ref:`docs <timeseries.dtypes>` for more details.
+
+For example, to localize and convert a naive stamp to timezone aware.
+
+.. ipython:: python
+
+   s_naive.dt.tz_localize('UTC').dt.tz_convert('US/Eastern')
+
+
+Further more you can ``.astype(...)`` timezone aware (and naive). This operation is effectively a localize AND convert on a naive stamp, and
+a convert on an aware stamp.
+
+.. ipython:: python
+
+   # localize and convert a naive timezone
+   s_naive.astype('datetime64[ns, US/Eastern]')
+
+   # make an aware tz naive
+   s_aware.astype('datetime64[ns]')
+
+   # convert to a new timezone
+   s_aware.astype('datetime64[ns, CET]')
+
+.. note::
+
+   Using the ``.values`` accessor on a ``Series``, returns an numpy array of the data.
+   These values are converted to UTC, as numpy does not currently support timezones (even though it is *printing* in the local timezone!).
+
+   .. ipython:: python
+
+      s_naive.values
+      s_aware.values
+
+   Further note that once converted to a numpy array these would lose the tz tenor.
+
+   .. ipython:: python
+
+      Series(s_aware.values)
+
+   However, these can be easily converted
+
+   .. ipython:: python
+
+      pd.Series(s_aware.values).dt.tz_localize('UTC').dt.tz_convert('US/Eastern')

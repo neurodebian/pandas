@@ -1,7 +1,7 @@
 from vbench.benchmark import Benchmark
 from datetime import datetime
 
-common_setup = """from pandas_vb_common import *
+common_setup = """from .pandas_vb_common import *
 """
 
 SECTION = 'Binary ops'
@@ -88,7 +88,7 @@ frame_float_floor_by_zero = \
     Benchmark("df // 0", setup, name='frame_float_floor_by_zero')
 
 setup = common_setup + """
-df  = DataFrame(np.random.random_integers((1000, 1000)))
+df  = DataFrame(np.random.random_integers(np.iinfo(np.int16).min, np.iinfo(np.int16).max, size=(1000, 1000)))
 """
 frame_int_div_by_zero = \
     Benchmark("df / 0", setup, name='frame_int_div_by_zero')
@@ -111,8 +111,8 @@ frame_float_mod = \
     Benchmark("df / df2", setup, name='frame_float_mod')
 
 setup = common_setup + """
-df  = DataFrame(np.random.random_integers((1000, 1000)))
-df2 = DataFrame(np.random.random_integers((1000, 1000)))
+df  = DataFrame(np.random.random_integers(np.iinfo(np.int16).min, np.iinfo(np.int16).max, size=(1000, 1000)))
+df2 = DataFrame(np.random.random_integers(np.iinfo(np.int16).min, np.iinfo(np.int16).max, size=(1000, 1000)))
 """
 frame_int_mod = \
     Benchmark("df / df2", setup, name='frame_int_mod')
@@ -172,3 +172,28 @@ timestamp_ops_diff1 = Benchmark("s.diff()", setup,
                                 start_date=datetime(2013, 1, 1))
 timestamp_ops_diff2 = Benchmark("s-s.shift()", setup,
                                 start_date=datetime(2013, 1, 1))
+
+#----------------------------------------------------------------------
+# timeseries with tz
+
+setup = common_setup + """
+N = 10000
+halfway = N // 2 - 1
+s = Series(date_range('20010101', periods=N, freq='T', tz='US/Eastern'))
+ts = s[halfway]
+"""
+
+timestamp_tz_series_compare = Benchmark("ts >= s", setup,
+                                        start_date=datetime(2013, 9, 27))
+series_timestamp_tz_compare = Benchmark("s <= ts", setup,
+                                        start_date=datetime(2012, 2, 21))
+
+setup = common_setup + """
+N = 10000
+s = Series(date_range('20010101', periods=N, freq='s', tz='US/Eastern'))
+"""
+
+timestamp_tz_ops_diff1 = Benchmark("s.diff()", setup,
+                                   start_date=datetime(2013, 1, 1))
+timestamp_tz_ops_diff2 = Benchmark("s-s.shift()", setup,
+                                   start_date=datetime(2013, 1, 1))

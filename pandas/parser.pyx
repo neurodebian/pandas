@@ -541,17 +541,6 @@ cdef class TextReader:
         self.parser.cb_io = NULL
         self.parser.cb_cleanup = NULL
 
-        if self.compression == 'infer':
-            if isinstance(source, basestring):
-                if source.endswith('.gz'):
-                    self.compression = 'gzip'
-                elif source.endswith('.bz2'):
-                    self.compression = 'bz2'
-                else:
-                    self.compression = None
-            else:
-                self.compression = None
-
         if self.compression:
             if self.compression == 'gzip':
                 import gzip
@@ -561,10 +550,10 @@ cdef class TextReader:
                     source = gzip.GzipFile(fileobj=source)
             elif self.compression == 'bz2':
                 import bz2
-                if isinstance(source, basestring):
+                if isinstance(source, basestring) or PY3:
                     source = bz2.BZ2File(source, 'rb')
                 else:
-                    raise ValueError('Python cannot read bz2 from open file '
+                    raise ValueError('Python 2 cannot read bz2 from open file '
                                      'handle')
             else:
                 raise ValueError('Unrecognized compression type: %s' %
@@ -1074,7 +1063,8 @@ cdef class TextReader:
                                           na_filter, na_hashset)
             if user_dtype and na_count is not None:
                 if na_count > 0:
-                    raise Exception('Integer column has NA values')
+                    raise Exception("Integer column has NA values in "
+                                    "column {column}".format(column=i))
 
             if result is not None and dtype[1:] != 'i8':
                 result = result.astype(dtype)
@@ -1837,7 +1827,7 @@ def _concatenate_chunks(list chunks):
         warning_message = " ".join(["Columns (%s) have mixed types." % warning_names,
             "Specify dtype option on import or set low_memory=False."
           ])
-        warnings.warn(warning_message, DtypeWarning)
+        warnings.warn(warning_message, DtypeWarning, stacklevel=8)
     return result
 
 #----------------------------------------------------------------------

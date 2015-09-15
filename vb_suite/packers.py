@@ -3,7 +3,7 @@ from datetime import datetime
 
 start_date = datetime(2013, 5, 1)
 
-common_setup = """from pandas_vb_common import *
+common_setup = """from .pandas_vb_common import *
 import os
 import pandas as pd
 from pandas.core import common as com
@@ -92,7 +92,7 @@ packers_write_hdf_store = Benchmark("df2.to_hdf(f,'df')", setup, cleanup="remove
 # hdf table
 
 setup = common_setup + """
-df2.to_hdf(f,'df',table=True)
+df2.to_hdf(f,'df',format='table')
 """
 
 packers_read_hdf_table = Benchmark("pd.read_hdf(f,'df')", setup, start_date=start_date)
