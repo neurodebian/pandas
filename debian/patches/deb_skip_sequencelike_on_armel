@@ -1,7 +1,7 @@
 --- a/pandas/tests/test_frame.py
 +++ b/pandas/tests/test_frame.py
-@@ -4666,6 +4666,9 @@ class TestDataFrame(tm.TestCase, CheckIn
-         self.assertEqual(len(tst.columns), 3)
+@@ -4997,6 +4997,9 @@ class TestDataFrame(tm.TestCase, CheckIn
+         tm.assert_frame_equal(df2.join(df1, how='left'), exp[['value2', 'value1']])
  
      def test_from_records_sequencelike(self):
 +        import platform
