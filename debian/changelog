@@ -1,8 +1,8 @@
-pandas (0.17.0~rc1+git40-gd1feb49-1) unstable; urgency=medium
+pandas (0.17.0~rc1+git92-gc6bcc99-1) unstable; urgency=medium
 
   * New upstream snapshot from v0.17.0rc1-40-gd1feb49 
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 15 Sep 2015 13:59:20 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 22 Sep 2015 10:35:36 -0400
 
 pandas (0.16.2+git65-g054821d-1) unstable; urgency=medium
 
