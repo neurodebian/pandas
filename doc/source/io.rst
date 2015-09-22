@@ -2230,6 +2230,10 @@ Writing Excel Files to Memory
 Pandas supports writing Excel files to buffer-like objects such as ``StringIO`` or
 ``BytesIO`` using :class:`~pandas.io.excel.ExcelWriter`.
 
+.. versionadded:: 0.17
+
+Added support for Openpyxl >= 2.2
+
 .. code-block:: python
 
    # Safe import for either Python 2.x or 3.x
@@ -2279,14 +2283,15 @@ config options <options>` ``io.excel.xlsx.writer`` and
 files if `Xlsxwriter`_ is not available.
 
 .. _XlsxWriter: http://xlsxwriter.readthedocs.org
-.. _openpyxl: http://packages.python.org/openpyxl/
+.. _openpyxl: http://openpyxl.readthedocs.org/
 .. _xlwt: http://www.python-excel.org
 
 To specify which writer you want to use, you can pass an engine keyword
 argument to ``to_excel`` and to ``ExcelWriter``. The built-in engines are:
 
-- ``openpyxl``: This includes stable support for OpenPyxl 1.6.1 up to but
-  not including 2.0.0, and experimental support for OpenPyxl 2.0.0 and later.
+- ``openpyxl``: This includes stable support for Openpyxl from 1.6.1. However,
+  it is advised to use version 2.2 and higher, especially when working with
+  styles.
 - ``xlsxwriter``
 - ``xlwt``
 
@@ -3916,6 +3921,42 @@ connecting to.
    engine = create_engine('sqlite:////absolute/path/to/foo.db')
 
 For more information see the examples the SQLAlchemy `documentation <http://docs.sqlalchemy.org/en/rel_0_9/core/engines.html>`__
+
+
+Advanced SQLAlchemy queries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can use SQLAlchemy constructs to describe your query.
+
+Use :func:`sqlalchemy.text` to specify query parameters in a backend-neutral way
+
+.. ipython:: python
+
+   import sqlalchemy as sa
+   pd.read_sql(sa.text('SELECT * FROM data where Col_1=:col1'), engine, params={'col1': 'X'})
+
+If you have an SQLAlchemy description of your database you can express where conditions using SQLAlchemy expressions
+
+.. ipython:: python
+
+   metadata = sa.MetaData()
+   data_table = sa.Table('data', metadata,
+       sa.Column('index', sa.Integer),
+       sa.Column('Date', sa.DateTime),
+       sa.Column('Col_1', sa.String),
+       sa.Column('Col_2', sa.Float),
+       sa.Column('Col_3', sa.Boolean),
+   )
+
+   pd.read_sql(sa.select([data_table]).where(data_table.c.Col_3 == True), engine)
+
+You can combine SQLAlchemy expressions with parameters passed to :func:`read_sql` using :func:`sqlalchemy.bindparam`
+
+.. ipython:: python
+
+    import datetime as dt
+    expr = sa.select([data_table]).where(data_table.c.Date > sa.bindparam('date'))
+    pd.read_sql(expr, engine, params={'date': dt.datetime(2010, 10, 18)})
 
 
 Sqlite fallback

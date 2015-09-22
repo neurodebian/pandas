@@ -1378,12 +1378,9 @@ class BaseGrouper(object):
         Compute group sizes
 
         """
-        # TODO: better impl
-        labels, _, ngroups = self.group_info
-        bin_counts = algos.value_counts(labels, sort=False)
-        bin_counts = bin_counts.reindex(np.arange(ngroups))
-        bin_counts.index = self.result_index
-        return bin_counts
+        ids, _, ngroup = self.group_info
+        out = np.bincount(ids[ids != -1], minlength=ngroup)
+        return Series(out, index=self.result_index)
 
     @cache_readonly
     def _max_groupsize(self):
@@ -1844,24 +1841,6 @@ class BinGrouper(BaseGrouper):
     def groupings(self):
         # for compat
         return None
-
-    def size(self):
-        """
-        Compute group sizes
-
-        """
-        index = self.result_index
-        base = Series(np.zeros(len(index), dtype=np.int64), index=index)
-        indices = self.indices
-        for k, v in compat.iteritems(indices):
-            indices[k] = len(v)
-        bin_counts = Series(indices, dtype=np.int64)
-        # make bin_counts.index to have same name to preserve it
-        bin_counts.index.name = index.name
-        result = base.add(bin_counts, fill_value=0)
-        # addition with fill_value changes dtype to float64
-        result = result.astype(np.int64)
-        return result
 
     #----------------------------------------------------------------------
     # cython aggregation
@@ -2512,13 +2491,19 @@ class SeriesGroupBy(GroupBy):
         if isinstance(func, compat.string_types):
             func = getattr(self,func)
 
-        values = func().values
-        counts = self.size().fillna(0).values
-        values = np.repeat(values, com._ensure_platform_int(counts))
-        if any(counts == 0):
-            values = self._try_cast(values, self._selected_obj)
+        ids, _, ngroup = self.grouper.group_info
+        mask = ids != -1
 
-        return self._set_result_index_ordered(Series(values))
+        out = func().values[ids]
+        if not mask.all():
+            out = np.where(mask, out, np.nan)
+
+        obs = np.zeros(ngroup, dtype='bool')
+        obs[ids[mask]] = True
+        if not obs.all():
+            out = self._try_cast(out, self._selected_obj)
+
+        return Series(out, index=self.obj.index)
 
     def filter(self, func, dropna=True, *args, **kwargs):
         """

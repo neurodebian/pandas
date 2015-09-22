@@ -49,6 +49,8 @@ Highlights include:
 - Support for reading SAS xport files, see :ref:`here <whatsnew_0170.enhancements.sas_xport>`
 - Documentation comparing SAS to *pandas*, see :ref:`here <compare_with_sas>`
 - Removal of the automatic TimeSeries broadcasting, deprecated since 0.8.0, see :ref:`here <whatsnew_0170.prior_deprecations>`
+- Compatibility with Python 3.5 (:issue:`11097`)
+- Compatibility with matplotlib 1.5.0 (:issue:`11111`)
 
 Check the :ref:`API Changes <whatsnew_0170.api>` and :ref:`deprecations <whatsnew_0170.deprecations>` before updating.
 
@@ -276,6 +278,7 @@ engine, they are mapped to NumPy calls.
 
 Changes to Excel with ``MultiIndex``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 In version 0.16.2 a ``DataFrame`` with ``MultiIndex`` columns could not be written to Excel via ``to_excel``.
 That functionality has been added (:issue:`10564`), along with updating  ``read_excel`` so that the data can
 be read back with no loss of information by specifying which columns/rows make up the ``MultiIndex``
@@ -334,6 +337,7 @@ Google BigQuery Enhancements
 Other enhancements
 ^^^^^^^^^^^^^^^^^^
 
+- Support for ``openpyxl`` >= 2.2. The API for style support is now stable (:issue:`10125`)
 - ``merge`` now accepts the argument ``indicator`` which adds a Categorical-type column (by default called ``_merge``) to the output object that takes on the values (:issue:`8790`)
 
   ===================================   ================
@@ -382,7 +386,7 @@ Other enhancements
 
 - ``DataFrame`` has gained the ``nlargest`` and ``nsmallest`` methods (:issue:`10393`)
 
-- Add a ``limit_direction`` keyword argument that works with ``limit`` to enable ``interpolate`` to fill ``NaN`` values forward, backward, or both (:issue:`9218` and :issue:`10420`)
+- Add a ``limit_direction`` keyword argument that works with ``limit`` to enable ``interpolate`` to fill ``NaN`` values forward, backward, or both (:issue:`9218`, :issue:`10420`, :issue:`11115`)
 
   .. ipython:: python
 
@@ -914,7 +918,8 @@ Other API Changes
 - ``groupby`` using ``Categorical`` follows the same rule as ``Categorical.unique`` described above  (:issue:`10508`)
 - When constructing ``DataFrame`` with an array of ``complex64`` dtype previously meant the corresponding column
   was automatically promoted to the ``complex128`` dtype. Pandas will now preserve the itemsize of the input for complex data (:issue:`10952`)
-
+- some numeric reduction operators would return ``ValueError``, rather than ``TypeError`` on object types that includes strings and numbers (:issue:`11131`)
+- ``DatetimeIndex.union`` does not infer ``freq`` if ``self`` and the input have ``None`` as ``freq`` (:issue:`11086`)
 - ``NaT``'s methods now either raise ``ValueError``, or return ``np.nan`` or ``NaT`` (:issue:`9513`)
 
   ===============================     ===============================================================
@@ -962,6 +967,8 @@ Deprecations
   ``DataFrame.add(other, fill_value=0)`` and ``DataFrame.mul(other, fill_value=1.)``
   (:issue:`10735`).
 - ``TimeSeries`` deprecated in favor of ``Series`` (note that this has been alias since 0.13.0), (:issue:`10890`)
+- ``SparsePanel`` deprecated and will be removed in a future version (:issue:``)
+- ``Series.is_time_series`` deprecated in favor of ``Series.index.is_all_dates`` (:issue:`11135`)
 - Legacy offsets (like ``'A@JAN'``) listed in :ref:`here <timeseries.legacyaliases>` are deprecated (note that this has been alias since 0.8.0), (:issue:`10878`)
 - ``WidePanel`` deprecated in favor of ``Panel``, ``LongPanel`` in favor of ``DataFrame`` (note these have been aliases since < 0.11.0), (:issue:`10892`)
 
@@ -1018,7 +1025,7 @@ Performance Improvements
 - Development support for benchmarking with the `Air Speed Velocity library <https://github.com/spacetelescope/asv/>`_ (:issue:`8316`)
 - Added vbench benchmarks for alternative ExcelWriter engines and reading Excel files (:issue:`7171`)
 - Performance improvements in ``Categorical.value_counts`` (:issue:`10804`)
-- Performance improvements in ``SeriesGroupBy.nunique`` and ``SeriesGroupBy.value_counts`` (:issue:`10820`, :issue:`11077`)
+- Performance improvements in ``SeriesGroupBy.nunique`` and ``SeriesGroupBy.value_counts`` and ``SeriesGroupby.transform`` (:issue:`10820`, :issue:`11077`)
 - Performance improvements in ``DataFrame.drop_duplicates`` with integer dtypes (:issue:`10917`)
 - 4x improvement in ``timedelta`` string parsing (:issue:`6755`, :issue:`10426`)
 - 8x improvement in ``timedelta64`` and ``datetime64`` ops (:issue:`6755`)
@@ -1028,6 +1035,8 @@ Performance Improvements
 - 20x improvement in ``concat`` of Categoricals when categories are identical (:issue:`10587`)
 - Improved performance of ``to_datetime`` when specified format string is ISO8601 (:issue:`10178`)
 - 2x improvement of ``Series.value_counts`` for float dtype (:issue:`10821`)
+- Enable ``infer_datetime_format`` in ``to_datetime`` when date components do not have 0 padding (:issue:`11142`)
+- Regression from 0.16.1 in constructing ``DataFrame`` from nested dictionary (:issue:`11084`)
 
 .. _whatsnew_0170.bug_fixes:
 
@@ -1102,7 +1111,7 @@ Bug Fixes
 - Bug causes memory leak in time-series line and area plot (:issue:`9003`)
 
 - Bug when setting a ``Panel`` sliced along the major or minor axes when the right-hand side is a ``DataFrame`` (:issue:`11014`)
-
+- Bug that returns ``None`` and does not raise ``NotImplementedError`` when operator functions (e.g. ``.add``) of ``Panel`` are not implemented (:issue:`7692`)
 
 - Bug in line and kde plot cannot accept multiple colors when ``subplots=True`` (:issue:`9894`)
 - Bug in ``DataFrame.plot`` raises ``ValueError`` when color name is specified by multiple characters (:issue:`10387`)
@@ -1153,3 +1162,5 @@ Bug Fixes
 - Remove use of some deprecated numpy comparison operations, mainly in tests. (:issue:`10569`)
 - Bug in ``Index`` dtype may not applied properly (:issue:`11017`)
 - Bug in ``io.gbq`` when testing for minimum google api client version (:issue:`10652`)
+- Bug in ``DataFrame`` construction from nested ``dict`` with ``timedelta`` keys (:issue:`11129`)
+- Bug in ``.fillna`` against may raise ``TypeError`` when data contains datetime dtype (:issue:`7095`, :issue:`11153`)

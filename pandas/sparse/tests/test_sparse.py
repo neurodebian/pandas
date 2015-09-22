@@ -446,7 +446,7 @@ class TestSparseSeries(tm.TestCase,
                           [0, len(self.bseries) + 1])
 
         # Corner case
-        sp = SparseSeries(np.ones(10.) * nan)
+        sp = SparseSeries(np.ones(10) * nan)
         assert_almost_equal(sp.take([0, 1, 2, 3, 4]), np.repeat(nan, 5))
 
     def test_setitem(self):
@@ -1792,6 +1792,11 @@ class TestSparsePanel(tm.TestCase,
         with tm.assertRaisesRegexp(TypeError,
                                    "input must be a dict, a 'list' was passed"):
             SparsePanel(['a', 'b', 'c'])
+
+    # deprecation GH11157
+    def test_deprecation(self):
+        with tm.assert_produces_warning(FutureWarning):
+            SparsePanel()
 
     # GH 9272
     def test_constructor_empty(self):

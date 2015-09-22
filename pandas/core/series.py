@@ -251,7 +251,11 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
 
     @property
     def is_time_series(self):
-        return self._subtyp in ['time_series', 'sparse_time_series']
+        msg = "is_time_series is deprecated. Please use Series.index.is_all_dates"
+        warnings.warn(msg, FutureWarning, stacklevel=2)
+        # return self._subtyp in ['time_series', 'sparse_time_series']
+        return self.index.is_all_dates
+
 
     _index = None
 
@@ -329,7 +333,8 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
         [a, a, b, c]
         Categories (3, object): [a, b, c]
 
-        # this is converted to UTC
+        Timezone aware datetime data is converted to UTC:
+
         >>> pd.Series(pd.date_range('20130101',periods=3,tz='US/Eastern')).values
         array(['2013-01-01T00:00:00.000000000-0500',
                '2013-01-02T00:00:00.000000000-0500',
@@ -2562,7 +2567,7 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
 
     def asof(self, where):
         """
-        Return last good (non-NaN) value in TimeSeries if value is NaN for
+        Return last good (non-NaN) value in Series if value is NaN for
         requested date.
 
         If there is no good value, NaN is returned.
@@ -2620,7 +2625,7 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
 
         Returns
         -------
-        ts : TimeSeries with DatetimeIndex
+        ts : Series with DatetimeIndex
         """
         new_values = self._values
         if copy:
@@ -2632,7 +2637,7 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
 
     def to_period(self, freq=None, copy=True):
         """
-        Convert TimeSeries from DatetimeIndex to PeriodIndex with desired
+        Convert Series from DatetimeIndex to PeriodIndex with desired
         frequency (inferred from index if not passed)
 
         Parameters
@@ -2641,7 +2646,7 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
 
         Returns
         -------
-        ts : TimeSeries with PeriodIndex
+        ts : Series with PeriodIndex
         """
         new_values = self._values
         if copy:

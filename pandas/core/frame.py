@@ -52,6 +52,8 @@ from pandas.util.decorators import (cache_readonly, deprecate, Appender,
 
 from pandas.tseries.period import PeriodIndex
 from pandas.tseries.index import DatetimeIndex
+from pandas.tseries.tdi import TimedeltaIndex
+
 
 import pandas.core.algorithms as algos
 import pandas.core.base as base
@@ -597,7 +599,7 @@ class DataFrame(NDFrame):
         Notes
         -----
 
-        1. Because ``iterrows` returns a Series for each row,
+        1. Because ``iterrows`` returns a Series for each row,
            it does **not** preserve dtypes across the rows (dtypes are
            preserved across columns for DataFrames). For example,
 
@@ -4265,12 +4267,12 @@ class DataFrame(NDFrame):
     @Appender(_merge_doc, indents=2)
     def merge(self, right, how='inner', on=None, left_on=None, right_on=None,
               left_index=False, right_index=False, sort=False,
-              suffixes=('_x', '_y'), copy=True):
+              suffixes=('_x', '_y'), copy=True, indicator=False):
         from pandas.tools.merge import merge
         return merge(self, right, how=how, on=on,
                      left_on=left_on, right_on=right_on,
                      left_index=left_index, right_index=right_index, sort=sort,
-                     suffixes=suffixes, copy=copy)
+                     suffixes=suffixes, copy=copy, indicator=indicator)
 
     def round(self, decimals=0, out=None):
         """
@@ -5400,8 +5402,13 @@ def _homogenize(data, index, dtype=None):
                 v = v.reindex(index, copy=False)
         else:
             if isinstance(v, dict):
-                v = _dict_compat(v)
-                oindex = index.astype('O')
+                if oindex is None:
+                    oindex = index.astype('O')
+
+                if isinstance(index, (DatetimeIndex, TimedeltaIndex)):
+                    v = _dict_compat(v)
+                else:
+                    v = dict(v)
                 v = lib.fast_multiget(v, oindex.values, default=NA)
             v = _sanitize_array(v, index, dtype=dtype, copy=False,
                                 raise_cast_failure=False)

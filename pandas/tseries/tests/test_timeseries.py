@@ -2551,6 +2551,15 @@ class TestDatetimeIndex(tm.TestCase):
         result = index_1 & index_2
         self.assertEqual(len(result), 0)
 
+    def test_union_freq_both_none(self):
+        #GH11086
+        expected = bdate_range('20150101', periods=10)
+        expected.freq = None
+
+        result = expected.union(expected)
+        tm.assert_index_equal(result, expected)
+        self.assertIsNone(result.freq)
+
     # GH 10699
     def test_datetime64_with_DateOffset(self):
         for klass, assert_func in zip([Series, DatetimeIndex],
@@ -4614,6 +4623,24 @@ class TestGuessDatetimeFormat(tm.TestCase):
 
         for invalid_dt in invalid_dts:
             self.assertTrue(tools._guess_datetime_format(invalid_dt) is None)
+
+    def test_guess_datetime_format_nopadding(self):
+        # GH 11142
+        dt_string_to_format = (
+            ('2011-1-1', '%Y-%m-%d'),
+            ('30-1-2011', '%d-%m-%Y'),
+            ('1/1/2011', '%m/%d/%Y'),
+            ('2011-1-1 00:00:00', '%Y-%m-%d %H:%M:%S'),
+            ('2011-1-1 0:0:0', '%Y-%m-%d %H:%M:%S'),
+            ('2011-1-3T00:00:0', '%Y-%m-%dT%H:%M:%S')
+        )
+
+        for dt_string, dt_format in dt_string_to_format:
+            self.assertEqual(
+                tools._guess_datetime_format(dt_string),
+                dt_format
+            )
+
 
     def test_guess_datetime_format_for_array(self):
         expected_format = '%Y-%m-%d %H:%M:%S.%f'

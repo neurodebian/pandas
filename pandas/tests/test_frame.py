@@ -34,7 +34,7 @@ import pandas.core.datetools as datetools
 from pandas import (DataFrame, Index, Series, Panel, notnull, isnull,
                     MultiIndex, DatetimeIndex, Timestamp, date_range,
                     read_csv, timedelta_range, Timedelta, CategoricalIndex,
-                    option_context)
+                    option_context, period_range)
 from pandas.core.dtypes import DatetimeTZDtype
 import pandas as pd
 from pandas.parser import CParserError
@@ -3036,6 +3036,50 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
         assert_frame_equal(result_datetime64, expected)
         assert_frame_equal(result_datetime, expected)
         assert_frame_equal(result_Timestamp, expected)
+
+    def test_constructor_dict_timedelta64_index(self):
+        # GH 10160
+        td_as_int = [1, 2, 3, 4]
+
+        def create_data(constructor):
+            return dict((i, {constructor(s): 2*i}) for i, s in enumerate(td_as_int))
+
+        data_timedelta64 = create_data(lambda x: np.timedelta64(x, 'D'))
+        data_timedelta = create_data(lambda x: timedelta(days=x))
+        data_Timedelta = create_data(lambda x: Timedelta(x, 'D'))
+
+        expected = DataFrame([{0: 0, 1: None, 2: None, 3: None},
+                              {0: None, 1: 2, 2: None, 3: None},
+                              {0: None, 1: None, 2: 4, 3: None},
+                              {0: None, 1: None, 2: None, 3: 6}],
+                             index=[Timedelta(td, 'D') for td in td_as_int])
+
+        result_timedelta64 = DataFrame(data_timedelta64)
+        result_timedelta = DataFrame(data_timedelta)
+        result_Timedelta = DataFrame(data_Timedelta)
+        assert_frame_equal(result_timedelta64, expected)
+        assert_frame_equal(result_timedelta, expected)
+        assert_frame_equal(result_Timedelta, expected)
+
+    def test_nested_dict_frame_constructor(self):
+        rng = period_range('1/1/2000', periods=5)
+        df = DataFrame(randn(10, 5), columns=rng)
+
+        data = {}
+        for col in df.columns:
+            for row in df.index:
+                data.setdefault(col, {})[row] = df.get_value(row, col)
+
+        result = DataFrame(data, columns=rng)
+        tm.assert_frame_equal(result, df)
+
+        data = {}
+        for col in df.columns:
+            for row in df.index:
+                data.setdefault(row, {})[col] = df.get_value(row, col)
+
+        result = DataFrame(data, index=rng).T
+        tm.assert_frame_equal(result, df)
 
 
     def _check_basic_constructor(self, empty):
@@ -8717,6 +8761,34 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
             result = df.fillna(v)
             assert_frame_equal(result, expected)
 
+    def test_fillna_datetime_columns(self):
+        # GH 7095
+        df = pd.DataFrame({'A': [-1, -2, np.nan],
+                           'B': date_range('20130101', periods=3),
+                           'C': ['foo', 'bar', None],
+                           'D': ['foo2', 'bar2', None]},
+                          index=date_range('20130110', periods=3))
+        result = df.fillna('?')
+        expected = pd.DataFrame({'A': [-1, -2, '?'],
+                                 'B': date_range('20130101', periods=3),
+                                 'C': ['foo', 'bar', '?'],
+                                 'D': ['foo2', 'bar2', '?']},
+                                index=date_range('20130110', periods=3))
+        self.assert_frame_equal(result, expected)
+
+        df = pd.DataFrame({'A': [-1, -2, np.nan],
+                           'B': [pd.Timestamp('2013-01-01'), pd.Timestamp('2013-01-02'), pd.NaT],
+                           'C': ['foo', 'bar', None],
+                           'D': ['foo2', 'bar2', None]},
+                          index=date_range('20130110', periods=3))
+        result = df.fillna('?')
+        expected = pd.DataFrame({'A': [-1, -2, '?'],
+                                 'B': [pd.Timestamp('2013-01-01'), pd.Timestamp('2013-01-02'), '?'],
+                                 'C': ['foo', 'bar', '?'],
+                                 'D': ['foo2', 'bar2', '?']},
+                                index=date_range('20130110', periods=3))
+        self.assert_frame_equal(result, expected)
+
     def test_ffill(self):
         self.tsframe['A'][:5] = nan
         self.tsframe['A'][-5:] = nan
@@ -12792,7 +12864,7 @@ class TestDataFrame(tm.TestCase, CheckIndexing,
 
             # df1 has all numbers, df2 has a letter inside
             self.assertRaises(TypeError, lambda : getattr(df1, meth)(axis=1, numeric_only=False))
-            self.assertRaises(ValueError, lambda : getattr(df2, meth)(axis=1, numeric_only=False))
+            self.assertRaises(TypeError, lambda : getattr(df2, meth)(axis=1, numeric_only=False))
 
     def test_sem(self):
         alt = lambda x: np.std(x, ddof=1)/np.sqrt(len(x))
