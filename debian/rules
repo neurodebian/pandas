@@ -18,6 +18,7 @@ PY3VERS = $(shell py3versions -vr)
 PY3VER = $(shell py3versions -vd)
 
 UVER := $(shell LC_ALL=C dpkg-parsechangelog | awk '/^Version:/{print $$2;}' | sed -e 's,-[^-]*$$,,g')
+UVER_SHORT := $(shell echo $(UVER) | sed -e 's,[~],,g' -e 's,+git.*,,g')
 
 MIN_CYTHONVER = 0.20.2
 
@@ -75,9 +76,14 @@ override_dh_clean: clean_generated
 	: # prune auto-generated version.py -- will be generated during build again
 	rm -f pandas/version.py
 
-override_dh_auto_build:
+version_py:
+	[ -e pandas/version.py ] || \
+      echo -e "version = '$(UVER)'\nshort_version = '$(UVER_SHORT)'" > pandas/version.py
+
+override_dh_auto_build: version_py
 	# Override default build operation which --force's re-cythonization
 	# on elderly ubuntus
+	# Just build the version.py file
 	:
 
 override_dh_auto_install: ${PYVERS:%=python-install%} ${PY3VERS:%=python-install%} ${PYVERS:%=python-test%} ${PY3VERS:%=python-test%}

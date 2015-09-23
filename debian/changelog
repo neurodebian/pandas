@@ -4,6 +4,10 @@ pandas (0.17.0~rc1+git92-gc6bcc99-1) unstable; urgency=medium
     - Started to trigger failures of test_constructor_compound_dtypes and
       test_invalid_index_types -- disabled those for now, see
       https://github.com/pydata/pandas/issues/11169
+  * debian/rules
+    - Generate pandas/version.py if not present out of debian/changelog
+      upstream version information (versioneer wouldn't know since relies on
+      git)
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 22 Sep 2015 10:35:36 -0400
 
