@@ -18,7 +18,9 @@ PY3VERS = $(shell py3versions -vr)
 PY3VER = $(shell py3versions -vd)
 
 UVER := $(shell LC_ALL=C dpkg-parsechangelog | awk '/^Version:/{print $$2;}' | sed -e 's,-[^-]*$$,,g')
-UVER_SHORT := $(shell echo $(UVER) | sed -e 's,[~],,g' -e 's,+git.*,,g')
+# Python doesn't use ~ for rc
+UVER_PY := $(shell echo $(UVER) | sed -e 's,[~],,g')
+UVER_PYSHORT := $(shell echo $(UVER_PY) | sed -e 's,+git.*,,g')
 
 MIN_CYTHONVER = 0.20.2
 
@@ -36,6 +38,8 @@ EXCLUDE_TESTS3.3 :=
 # try to prevent unsunctioned downloads
 export  http_proxy=http://127.0.0.1:9/
 export  https_proxy=http://127.0.0.1:9/
+
+export SHELL=/bin/bash
 
 # Mega rule
 %:
@@ -78,7 +82,7 @@ override_dh_clean: clean_generated
 
 version_py:
 	[ -e pandas/version.py ] || \
-      echo -e "version = '$(UVER)'\nshort_version = '$(UVER_SHORT)'" > pandas/version.py
+      echo -e "version = '$(UVER_PY)'\nshort_version = '$(UVER_PYSHORT)'" > pandas/version.py
 
 override_dh_auto_build: version_py
 	# Override default build operation which --force's re-cythonization

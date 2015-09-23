@@ -1,0 +1,11 @@
+--- a/pandas/__init__.py
++++ b/pandas/__init__.py
+@@ -57,7 +57,4 @@ from pandas.util.print_versions import s
+ import pandas.util.testing
+ 
+ # use the closest tagged version if possible
+-from ._version import get_versions
+-v = get_versions()
+-__version__ = v.get('closest-tag',v['version'])
+-del get_versions, v
++from .version import version as __version__
