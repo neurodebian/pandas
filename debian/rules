@@ -22,7 +22,7 @@ UVER := $(shell LC_ALL=C dpkg-parsechangelog | awk '/^Version:/{print $$2;}' | s
 MIN_CYTHONVER = 0.20.2
 
 # Some unittests might need to be excluded for different Python versions
-EXCLUDE_TESTS := --exclude 'test_(bar_log|set_locale)'
+EXCLUDE_TESTS := --exclude 'test_(bar_log|set_locale|constructor_compound_dtypes|invalid_index_types)'
 EXCLUDE_TESTS2 :=
 EXCLUDE_TESTS3.2 :=
 #--exclude "test_bootstrap_plot"
