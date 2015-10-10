@@ -1,1 +1,2 @@
 usr/lib/python2*/dist-packages/pandas/*.so
+usr/lib/python2*/dist-packages/pandas/msgpack/*.so
