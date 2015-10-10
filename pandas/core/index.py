@@ -14,6 +14,7 @@ from pandas.lib import Timestamp, Timedelta, is_datetime_array
 
 from pandas.compat import range, zip, lrange, lzip, u, map
 from pandas import compat
+from pandas.core import algorithms
 from pandas.core.base import PandasObject, FrozenList, FrozenNDArray, IndexOpsMixin, _shared_docs, PandasDelegate
 from pandas.util.decorators import (Appender, Substitution, cache_readonly,
                                     deprecate, deprecate_kwarg)
@@ -108,7 +109,6 @@ class Index(IndexOpsMixin, PandasObject):
     _is_numeric_dtype = False
 
     _engine_type = _index.ObjectEngine
-    _isin_type = lib.ismember
 
     def __new__(cls, data=None, dtype=None, copy=False, name=None, fastpath=False,
                 tupleize_cols=True, **kwargs):
@@ -488,7 +488,7 @@ class Index(IndexOpsMixin, PandasObject):
         """
         Return the formatted data as a unicode string
         """
-        from pandas.core.format import get_console_size
+        from pandas.core.format import get_console_size, _get_adjustment
         display_width, _ = get_console_size()
         if display_width is None:
             display_width = get_option('display.width') or 80
@@ -502,14 +502,19 @@ class Index(IndexOpsMixin, PandasObject):
         formatter = self._formatter_func
 
         # do we want to justify (only do so for non-objects)
-        is_justify = not (self.inferred_type == 'string' or self.inferred_type == 'categorical' and is_object_dtype(self.categories))
+        is_justify = not (self.inferred_type in ('string', 'unicode') or
+                          (self.inferred_type == 'categorical' and
+                           is_object_dtype(self.categories)))
 
         # are we a truncated display
         is_truncated = n > max_seq_items
 
+        # adj can optionaly handle unicode eastern asian width
+        adj = _get_adjustment()
+
         def _extend_line(s, line, value, display_width, next_line_prefix):
 
-            if len(line.rstrip()) + len(value.rstrip()) >= display_width:
+            if adj.len(line.rstrip()) + adj.len(value.rstrip()) >= display_width:
                 s += line.rstrip()
                 line = next_line_prefix
             line += value
@@ -517,7 +522,7 @@ class Index(IndexOpsMixin, PandasObject):
 
         def best_len(values):
             if values:
-                return max([len(x) for x in values])
+                return max([adj.len(x) for x in values])
             else:
                 return 0
 
@@ -556,8 +561,10 @@ class Index(IndexOpsMixin, PandasObject):
                 word = head[i] + sep + ' '
                 summary, line = _extend_line(summary, line, word,
                                              display_width, space2)
+
             if is_truncated:
-                summary += line + space2 + '...'
+                # remove trailing space of last line
+                summary += line.rstrip() + space2 + '...'
                 line = space2
 
             for i in range(len(tail)-1):
@@ -1436,7 +1443,7 @@ class Index(IndexOpsMixin, PandasObject):
         return Index(np.array(self) + other)
 
     def __radd__(self, other):
-        if com.is_list_like(other):
+        if is_list_like(other):
             warnings.warn("using '+' to provide set union with Indexes is deprecated, "
                           "use '|' or .union()", FutureWarning, stacklevel=2)
         return Index(other + np.array(self))
@@ -1988,10 +1995,9 @@ class Index(IndexOpsMixin, PandasObject):
         is_contained : ndarray (boolean dtype)
 
         """
-        value_set = set(values)
         if level is not None:
             self._validate_index_level(level)
-        return self._isin_type(np.array(self), value_set)
+        return algorithms.isin(np.array(self), values)
 
     def _can_reindex(self, indexer):
         """
@@ -3090,6 +3096,8 @@ class CategoricalIndex(Index, PandasDelegate):
                 raise TypeError("categories must match existing categories when appending")
         else:
             values = other
+            if not is_list_like(values):
+                values = [ values ]
             other = CategoricalIndex(self._create_categorical(self, other, categories=self.categories, ordered=self.ordered))
             if not other.isin(values).all():
                 raise TypeError("cannot append a non-category item to a CategoricalIndex")
@@ -3573,7 +3581,6 @@ class Int64Index(NumericIndex):
     _outer_indexer = _algos.outer_join_indexer_int64
 
     _engine_type = _index.Int64Engine
-    _isin_type = lib.ismember_int64
 
     def __new__(cls, data=None, dtype=None, copy=False, name=None, fastpath=False, **kwargs):
 
@@ -4501,8 +4508,11 @@ class MultiIndex(Index):
                                       start=int(names),
                                       sentinel=sentinel)
 
+
         if adjoin:
-            return com.adjoin(space, *result_levels).split('\n')
+            from pandas.core.format import  _get_adjustment
+            adj = _get_adjustment()
+            return adj.adjoin(space, *result_levels).split('\n')
         else:
             return result_levels
 

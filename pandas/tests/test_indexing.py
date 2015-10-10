@@ -788,6 +788,58 @@ class TestIndexing(tm.TestCase):
         result = df.loc[(t,n),'X']
         self.assertEqual(result,3)
 
+    def test_indexing_with_datetime_tz(self):
+
+        # 8260
+        # support datetime64 with tz
+
+        idx = Index(date_range('20130101',periods=3,tz='US/Eastern'),
+                    name='foo')
+        dr = date_range('20130110',periods=3)
+        df = DataFrame({'A' : idx, 'B' : dr})
+        df['C'] = idx
+        df.iloc[1,1] = pd.NaT
+        df.iloc[1,2] = pd.NaT
+
+        # indexing
+        result = df.iloc[1]
+        expected = Series([Timestamp('2013-01-02 00:00:00-0500', tz='US/Eastern'), np.nan, np.nan],
+                          index=list('ABC'), dtype='object', name=1)
+        assert_series_equal(result, expected)
+        result = df.loc[1]
+        expected = Series([Timestamp('2013-01-02 00:00:00-0500', tz='US/Eastern'), np.nan, np.nan],
+                          index=list('ABC'), dtype='object', name=1)
+        assert_series_equal(result, expected)
+
+        # indexing - fast_xs
+        df = DataFrame({'a': date_range('2014-01-01', periods=10, tz='UTC')})
+        result = df.iloc[5]
+        expected = Timestamp('2014-01-06 00:00:00+0000', tz='UTC', offset='D')
+        self.assertEqual(result, expected)
+
+        result = df.loc[5]
+        self.assertEqual(result, expected)
+
+        # indexing - boolean
+        result = df[df.a > df.a[3]]
+        expected = df.iloc[4:]
+        assert_frame_equal(result, expected)
+
+        # indexing - setting an element
+        df = DataFrame( data = pd.to_datetime(['2015-03-30 20:12:32','2015-03-12 00:11:11']) ,columns=['time'] )
+        df['new_col']=['new','old']
+        df.time=df.set_index('time').index.tz_localize('UTC')
+        v = df[df.new_col=='new'].set_index('time').index.tz_convert('US/Pacific')
+
+        # trying to set a single element on a part of a different timezone
+        def f():
+            df.loc[df.new_col=='new','time'] = v
+        self.assertRaises(ValueError, f)
+
+        v = df.loc[df.new_col=='new','time'] + pd.Timedelta('1s')
+        df.loc[df.new_col=='new','time'] = v
+        assert_series_equal(df.loc[df.new_col=='new','time'],v)
+
     def test_loc_setitem_dups(self):
 
         # GH 6541
@@ -3138,8 +3190,7 @@ Region_1,Site_2,3977723089,A,5/20/2015 8:33,5/20/2015 9:09,Yes,No"""
         assert_frame_equal(df,expected)
 
         df = df_orig.copy()
-        df.iloc[:,0:2] = df.iloc[:,0:2].convert_objects(datetime=True,
-                                                        numeric=True)
+        df.iloc[:,0:2] = df.iloc[:,0:2]._convert(datetime=True, numeric=True)
         expected =  DataFrame([[1,2,'3','.4',5,6.,'foo']],columns=list('ABCDEFG'))
         assert_frame_equal(df,expected)
 

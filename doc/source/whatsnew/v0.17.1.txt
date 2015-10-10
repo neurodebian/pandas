@@ -1,0 +1,76 @@
+.. _whatsnew_0171:
+
+v0.17.1 (November ??, 2015)
+---------------------------
+
+This is a minor bug-fix release from 0.17.0 and includes a a large number of
+bug fixes along several new features, enhancements, and performance improvements.
+We recommend that all users upgrade to this version.
+
+Highlights include:
+
+.. contents:: What's new in v0.17.1
+    :local:
+    :backlinks: none
+
+.. _whatsnew_0171.enhancements:
+
+Enhancements
+~~~~~~~~~~~~
+
+.. _whatsnew_0171.enhancements.other:
+
+Other Enhancements
+^^^^^^^^^^^^^^^^^^
+
+.. _whatsnew_0171.api:
+
+API changes
+~~~~~~~~~~~
+
+.. _whatsnew_0171.deprecations:
+
+Deprecations
+^^^^^^^^^^^^
+
+.. _whatsnew_0171.performance:
+
+Performance Improvements
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. _whatsnew_0171.bug_fixes:
+
+Bug Fixes
+~~~~~~~~~
+
+- Bug in ``.to_latex()`` output broken when the index has a name (:issue: `10660`)
+- Bug in ``HDFStore.append`` with strings whose encoded length exceded the max unencoded length (:issue:`11234`)
+
+
+
+
+
+
+
+
+
+
+
+- Bug in ``squeeze()`` with zero length arrays (:issue:`11230`, :issue:`8999`)
+
+
+
+
+
+
+
+
+
+
+
+
+- Bug in ``DataFrame.to_latex()`` produces an extra rule when ``header=False`` (:issue:`7124`)
+
+
+
+- Bugs in ``to_excel`` with duplicate columns (:issue:`11007`, :issue:`10982`, :issue:`10970`)

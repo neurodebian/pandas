@@ -1858,71 +1858,6 @@ def _maybe_box_datetimelike(value):
 _values_from_object = lib.values_from_object
 
 
-def _possibly_convert_objects(values,
-                              datetime=True,
-                              numeric=True,
-                              timedelta=True,
-                              coerce=False,
-                              copy=True):
-    """ if we have an object dtype, try to coerce dates and/or numbers """
-
-    conversion_count = sum((datetime, numeric, timedelta))
-    if conversion_count == 0:
-        import warnings
-        warnings.warn('Must explicitly pass type for conversion. Defaulting to '
-                      'pre-0.17 behavior where datetime=True, numeric=True, '
-                      'timedelta=True and coerce=False', DeprecationWarning)
-        datetime = numeric = timedelta = True
-        coerce = False
-
-    if isinstance(values, (list, tuple)):
-        # List or scalar
-        values = np.array(values, dtype=np.object_)
-    elif not hasattr(values, 'dtype'):
-        values = np.array([values], dtype=np.object_)
-    elif not is_object_dtype(values.dtype):
-        # If not object, do not attempt conversion
-        values = values.copy() if copy else values
-        return values
-
-    # If 1 flag is coerce, ensure 2 others are False
-    if coerce:
-        if conversion_count > 1:
-            raise ValueError("Only one of 'datetime', 'numeric' or "
-                             "'timedelta' can be True when when coerce=True.")
-
-        # Immediate return if coerce
-        if datetime:
-            return pd.to_datetime(values, errors='coerce', box=False)
-        elif timedelta:
-            return pd.to_timedelta(values, errors='coerce', box=False)
-        elif numeric:
-            return lib.maybe_convert_numeric(values, set(), coerce_numeric=True)
-
-    # Soft conversions
-    if datetime:
-        values = lib.maybe_convert_objects(values,
-                                           convert_datetime=datetime)
-
-    if timedelta and is_object_dtype(values.dtype):
-        # Object check to ensure only run if previous did not convert
-        values = lib.maybe_convert_objects(values,
-                                           convert_timedelta=timedelta)
-
-    if numeric and is_object_dtype(values.dtype):
-        try:
-            converted = lib.maybe_convert_numeric(values,
-                                                   set(),
-                                                   coerce_numeric=True)
-            # If all NaNs, then do not-alter
-            values = converted if not isnull(converted).all() else values
-            values = values.copy() if copy else values
-        except:
-            pass
-
-    return values
-
-
 def _possibly_castable(arr):
     # return False to force a non-fastpath
 
@@ -2214,21 +2149,33 @@ def _count_not_none(*args):
 
 
 
-def adjoin(space, *lists):
+def adjoin(space, *lists, **kwargs):
     """
     Glues together two sets of strings using the amount of space requested.
     The idea is to prettify.
+
+    ----------
+    space : int
+        number of spaces for padding
+    lists : str
+        list of str which being joined
+    strlen : callable
+        function used to calculate the length of each str. Needed for unicode
+        handling.
+    justfunc : callable
+        function used to justify str. Needed for unicode handling.
     """
+    strlen = kwargs.pop('strlen', len)
+    justfunc = kwargs.pop('justfunc', _justify)
+
     out_lines = []
     newLists = []
-    lengths = [max(map(len, x)) + space for x in lists[:-1]]
-
+    lengths = [max(map(strlen, x)) + space for x in lists[:-1]]
     # not the last one
     lengths.append(max(map(len, lists[-1])))
-
     maxLen = max(map(len, lists))
     for i, lst in enumerate(lists):
-        nl = [x.ljust(lengths[i]) for x in lst]
+        nl = justfunc(lst, lengths[i], mode='left')
         nl.extend([' ' * lengths[i]] * (maxLen - len(lst)))
         newLists.append(nl)
     toJoin = zip(*newLists)
@@ -2236,6 +2183,16 @@ def adjoin(space, *lists):
         out_lines.append(_join_unicode(lines))
     return _join_unicode(out_lines, sep='\n')
 
+def _justify(texts, max_len, mode='right'):
+    """
+    Perform ljust, center, rjust against string or list-like
+    """
+    if mode == 'left':
+        return [x.ljust(max_len) for x in texts]
+    elif mode == 'center':
+        return [x.center(max_len) for x in texts]
+    else:
+        return [x.rjust(max_len) for x in texts]
 
 def _join_unicode(lines, sep=''):
     try:
