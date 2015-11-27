@@ -834,6 +834,11 @@ class _TestSQLApi(PandasSQLTest):
 
         tm.assert_frame_equal(res, df)
 
+    def test_unicode_column_name(self):
+        # GH 11431
+        df = DataFrame([[1,2],[3,4]], columns = [u'\xe9',u'b'])
+        df.to_sql('test_unicode', self.conn, index=False)
+
 
 class TestSQLApi(SQLAlchemyMixIn, _TestSQLApi):
     """
@@ -1480,7 +1485,7 @@ class _TestSQLAlchemy(SQLAlchemyMixIn, PandasSQLTest):
         self.drop_table(tbl)
         self.conn.execute(create_sql)
         returned_df = sql.read_sql_table(tbl, self.conn)
-        tm.assert_frame_equal(returned_df, blank_test_df)
+        tm.assert_frame_equal(returned_df, blank_test_df, check_index_type=False)
         self.drop_table(tbl)
 
     def test_dtype(self):
@@ -1992,7 +1997,7 @@ class TestSQLiteFallback(SQLiteMixIn, PandasSQLTest):
         for ndx, weird_name in enumerate(['test_weird_name]','test_weird_name[',
             'test_weird_name`','test_weird_name"', 'test_weird_name\'',
             '_b.test_weird_name_01-30', '"_b.test_weird_name_01-30"',
-            '99beginswithnumber', '12345']):
+            '99beginswithnumber', '12345', u'\xe9']):
             df.to_sql(weird_name, self.conn, flavor=self.flavor)
             sql.table_exists(weird_name, self.conn)
 

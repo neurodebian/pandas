@@ -16,6 +16,7 @@ from pandas.tseries.index import DatetimeIndex
 from pandas.tseries.period import PeriodIndex
 from pandas.core.internals import BlockManager
 import pandas.core.common as com
+import pandas.core.missing as mis
 import pandas.core.datetools as datetools
 from pandas import compat
 from pandas.compat import map, zip, lrange, string_types, isidentifier
@@ -50,7 +51,7 @@ def _single_replace(self, to_replace, method, inplace, limit):
 
     orig_dtype = self.dtype
     result = self if inplace else self.copy()
-    fill_f = com._get_fill_func(method)
+    fill_f = mis._get_fill_func(method)
 
     mask = com.mask_missing(result.values, to_replace)
     values = fill_f(result.values, limit=limit, mask=mask)
@@ -1777,7 +1778,9 @@ class NDFrame(PandasObject):
             New labels / index to conform to. Preferably an Index object to
             avoid duplicating data
         method : {None, 'backfill'/'bfill', 'pad'/'ffill', 'nearest'}, optional
-            Method to use for filling holes in reindexed DataFrame:
+            method to use for filling holes in reindexed DataFrame.
+            Please note: this is only  applicable to DataFrames/Series with a
+            monotonically increasing/decreasing index.
               * default: don't fill gaps
               * pad / ffill: propagate last valid observation forward to next valid
               * backfill / bfill: use next valid observation to fill gap
@@ -1801,7 +1804,118 @@ class NDFrame(PandasObject):
 
         Examples
         --------
-        >>> df.reindex(index=[date1, date2, date3], columns=['A', 'B', 'C'])
+
+        Create a dataframe with some fictional data.
+
+        >>> index = ['Firefox', 'Chrome', 'Safari', 'IE10', 'Konqueror']
+        >>> df = pd.DataFrame({
+        ...      'http_status': [200,200,404,404,301],
+        ...      'response_time': [0.04, 0.02, 0.07, 0.08, 1.0]},
+        ...       index=index)
+        >>> df
+                    http_status  response_time
+        Firefox            200           0.04
+        Chrome             200           0.02
+        Safari             404           0.07
+        IE10               404           0.08
+        Konqueror          301           1.00
+
+        Create a new index and reindex the dataframe. By default
+        values in the new index that do not have corresponding
+        records in the dataframe are assigned ``NaN``.
+
+        >>> new_index= ['Safari', 'Iceweasel', 'Comodo Dragon', 'IE10',
+        ...             'Chrome']
+        >>> df.reindex(new_index)
+                       http_status  response_time
+        Safari                 404           0.07
+        Iceweasel              NaN            NaN
+        Comodo Dragon          NaN            NaN
+        IE10                   404           0.08
+        Chrome                 200           0.02
+
+        We can fill in the missing values by passing a value to
+        the keyword ``fill_value``. Because the index is not monotonically
+        increasing or decreasing, we cannot use arguments to the keyword
+        ``method`` to fill the ``NaN`` values.
+
+        >>> df.reindex(new_index, fill_value=0)
+                       http_status  response_time
+        Safari                 404           0.07
+        Iceweasel                0           0.00
+        Comodo Dragon            0           0.00
+        IE10                   404           0.08
+        Chrome                 200           0.02
+
+        >>> df.reindex(new_index, fill_value='missing')
+                      http_status response_time
+        Safari                404          0.07
+        Iceweasel         missing       missing
+        Comodo Dragon     missing       missing
+        IE10                  404          0.08
+        Chrome                200          0.02
+
+        To further illustrate the filling functionality in
+        ``reindex``, we will create a dataframe with a
+        monotonically increasing index (for example, a sequence
+        of dates).
+
+        >>> date_index = pd.date_range('1/1/2010', periods=6, freq='D')
+        >>> df2 = pd.DataFrame({"prices": [100, 101, np.nan, 100, 89, 88]},
+                index=date_index)
+        >>> df2
+                    prices
+        2010-01-01     100
+        2010-01-02     101
+        2010-01-03     NaN
+        2010-01-04     100
+        2010-01-05      89
+        2010-01-06      88
+
+        Suppose we decide to expand the dataframe to cover a wider
+        date range.
+
+        >>> date_index2 = pd.date_range('12/29/2009', periods=10, freq='D')
+        >>> df2.reindex(date_index2)
+                    prices
+        2009-12-29     NaN
+        2009-12-30     NaN
+        2009-12-31     NaN
+        2010-01-01     100
+        2010-01-02     101
+        2010-01-03     NaN
+        2010-01-04     100
+        2010-01-05      89
+        2010-01-06      88
+        2010-01-07     NaN
+
+        The index entries that did not have a value in the original data frame
+        (for example, '2009-12-29') are by default filled with ``NaN``.
+        If desired, we can fill in the missing values using one of several
+        options.
+
+        For example, to backpropagate the last valid value to fill the ``NaN``
+        values, pass ``bfill`` as an argument to the ``method`` keyword.
+
+        >>> df2.reindex(date_index2, method='bfill')
+                    prices
+        2009-12-29     100
+        2009-12-30     100
+        2009-12-31     100
+        2010-01-01     100
+        2010-01-02     101
+        2010-01-03     NaN
+        2010-01-04     100
+        2010-01-05      89
+        2010-01-06      88
+        2010-01-07     NaN
+
+        Please note that the ``NaN`` value present in the original dataframe
+        (at index value 2010-01-03) will not be filled by any of the
+        value propagation schemes. This is because filling while reindexing
+        does not look at dataframe values, but only compares the original and
+        desired indexes. If you do want to fill in the ``NaN`` values present
+        in the original dataframe, use the ``fillna()`` method.
 
         Returns
         -------
@@ -1815,7 +1929,7 @@ class NDFrame(PandasObject):
 
         # construct the args
         axes, kwargs = self._construct_axes_from_arguments(args, kwargs)
-        method = com._clean_reindex_fill_method(kwargs.pop('method', None))
+        method = mis._clean_reindex_fill_method(kwargs.pop('method', None))
         level = kwargs.pop('level', None)
         copy = kwargs.pop('copy', True)
         limit = kwargs.pop('limit', None)
@@ -1928,7 +2042,7 @@ class NDFrame(PandasObject):
 
         axis_name = self._get_axis_name(axis)
         axis_values = self._get_axis(axis_name)
-        method = com._clean_reindex_fill_method(method)
+        method = mis._clean_reindex_fill_method(method)
         new_index, indexer = axis_values.reindex(labels, method, level,
                                                  limit=limit)
         return self._reindex_with_indexers(
@@ -2662,7 +2776,7 @@ class NDFrame(PandasObject):
         if axis is None:
             axis = 0
         axis = self._get_axis_number(axis)
-        method = com._clean_fill_method(method)
+        method = mis._clean_fill_method(method)
 
         from pandas import DataFrame
         if value is None:
@@ -2693,7 +2807,7 @@ class NDFrame(PandasObject):
                 return self._constructor.from_dict(result).__finalize__(self)
 
             # 2d or less
-            method = com._clean_fill_method(method)
+            method = mis._clean_fill_method(method)
             new_data = self._data.interpolate(method=method,
                                               axis=axis,
                                               limit=limit,
@@ -2998,8 +3112,6 @@ class NDFrame(PandasObject):
                     msg = ('Invalid "to_replace" type: '
                            '{0!r}').format(type(to_replace).__name__)
                     raise TypeError(msg)  # pragma: no cover
-
-        new_data = new_data.convert(copy=not inplace, numeric=False)
 
         if inplace:
             self._update_inplace(new_data)
@@ -3638,7 +3750,7 @@ class NDFrame(PandasObject):
               fill_value=None, method=None, limit=None, fill_axis=0,
               broadcast_axis=None):
         from pandas import DataFrame, Series
-        method = com._clean_fill_method(method)
+        method = mis._clean_fill_method(method)
 
         if broadcast_axis == 1 and self.ndim != other.ndim:
             if isinstance(self, Series):
@@ -4404,6 +4516,7 @@ class NDFrame(PandasObject):
                 if name not in names:
                     names.append(name)
         d = pd.concat(ldesc, join_axes=pd.Index([names]), axis=1)
+        d.columns.names = data.columns.names
         return d
 
     def _check_percentile(self, q):
@@ -4454,7 +4567,7 @@ class NDFrame(PandasObject):
         if fill_method is None:
             data = self
         else:
-            data = self.fillna(method=fill_method, limit=limit)
+            data = self.fillna(method=fill_method, limit=limit, axis=axis)
 
         rs = (data.div(data.shift(periods=periods, freq=freq,
                                   axis=axis, **kwargs)) - 1)
@@ -4476,151 +4589,23 @@ class NDFrame(PandasObject):
     def _add_numeric_operations(cls):
         """ add the operations to the cls; evaluate the doc strings again """
 
-        axis_descr = "{%s}" % ', '.join([
-            "{0} ({1})".format(a, i) for i, a in enumerate(cls._AXIS_ORDERS)
-        ])
-        name = (cls._constructor_sliced.__name__
-                if cls._AXIS_LEN > 1 else 'scalar')
-
-        _num_doc = """
-
-%(desc)s
-
-Parameters
-----------
-axis : """ + axis_descr + """
-skipna : boolean, default True
-    Exclude NA/null values. If an entire row/column is NA, the result
-    will be NA
-level : int or level name, default None
-        If the axis is a MultiIndex (hierarchical), count along a
-        particular level, collapsing into a """ + name + """
-numeric_only : boolean, default None
-    Include only float, int, boolean data. If None, will attempt to use
-    everything, then use only numeric data
-
-Returns
--------
-%(outname)s : """ + name + " or " + cls.__name__ + " (if level specified)\n"
-
-        _bool_doc = """
-
-%(desc)s
-
-Parameters
-----------
-axis : """ + axis_descr + """
-skipna : boolean, default True
-    Exclude NA/null values. If an entire row/column is NA, the result
-    will be NA
-level : int or level name, default None
-        If the axis is a MultiIndex (hierarchical), count along a
-        particular level, collapsing into a """ + name + """
-bool_only : boolean, default None
-    Include only boolean data. If None, will attempt to use everything,
-    then use only boolean data
-
-Returns
--------
-%(outname)s : """ + name + " or " + cls.__name__ + " (if level specified)\n"
-
-        _cnum_doc = """
-
-Parameters
-----------
-axis : """ + axis_descr + """
-skipna : boolean, default True
-    Exclude NA/null values. If an entire row/column is NA, the result
-    will be NA
-
-Returns
--------
-%(outname)s : """ + name + "\n"
-
-        def _make_stat_function(name, desc, f):
-
-            @Substitution(outname=name, desc=desc)
-            @Appender(_num_doc)
-            def stat_func(self, axis=None, skipna=None, level=None,
-                          numeric_only=None, **kwargs):
-                if skipna is None:
-                    skipna = True
-                if axis is None:
-                    axis = self._stat_axis_number
-                if level is not None:
-                    return self._agg_by_level(name, axis=axis, level=level,
-                                              skipna=skipna)
-                return self._reduce(f, name, axis=axis,
-                                    skipna=skipna, numeric_only=numeric_only)
-            stat_func.__name__ = name
-            return stat_func
-
-        cls.sum = _make_stat_function(
-            'sum', 'Return the sum of the values for the requested axis',
-            nanops.nansum)
-        cls.mean = _make_stat_function(
-            'mean', 'Return the mean of the values for the requested axis',
-            nanops.nanmean)
-        cls.skew = _make_stat_function(
-            'skew',
-            'Return unbiased skew over requested axis\nNormalized by N-1',
-            nanops.nanskew)
-        cls.kurt = _make_stat_function(
-            'kurt',
-            'Return unbiased kurtosis over requested axis using Fisher''s '
-            'definition of\nkurtosis (kurtosis of normal == 0.0). Normalized '
-            'by N-1\n',
-            nanops.nankurt)
-        cls.kurtosis = cls.kurt
-        cls.prod = _make_stat_function(
-            'prod', 'Return the product of the values for the requested axis',
-            nanops.nanprod)
-        cls.product = cls.prod
-        cls.median = _make_stat_function(
-            'median', 'Return the median of the values for the requested axis',
-            nanops.nanmedian)
-        cls.max = _make_stat_function('max', """
-This method returns the maximum of the values in the object. If you
-want the *index* of the maximum, use ``idxmax``. This is the
-equivalent of the ``numpy.ndarray`` method ``argmax``.""", nanops.nanmax)
-        cls.min = _make_stat_function('min', """
-This method returns the minimum of the values in the object. If you
-want the *index* of the minimum, use ``idxmin``. This is the
-equivalent of the ``numpy.ndarray`` method ``argmin``.""", nanops.nanmin)
-
-        def _make_logical_function(name, desc, f):
-
-            @Substitution(outname=name, desc=desc)
-            @Appender(_bool_doc)
-            def logical_func(self, axis=None, bool_only=None, skipna=None,
-                             level=None, **kwargs):
-                if skipna is None:
-                    skipna = True
-                if axis is None:
-                    axis = self._stat_axis_number
-                if level is not None:
-                    if bool_only is not None:
-                        raise NotImplementedError(
-                            "Option bool_only is not implemented with option "
-                            "level.")
-                    return self._agg_by_level(name, axis=axis, level=level,
-                                              skipna=skipna)
-                return self._reduce(f, axis=axis, skipna=skipna,
-                                    numeric_only=bool_only, filter_type='bool',
-                                    name=name)
-            logical_func.__name__ = name
-            return logical_func
+        axis_descr, name, name2 = _doc_parms(cls)
 
         cls.any = _make_logical_function(
-            'any', 'Return whether any element is True over requested axis',
+            'any', name, name2, axis_descr,
+            'Return whether any element is True over requested axis',
             nanops.nanany)
         cls.all = _make_logical_function(
-            'all', 'Return whether all elements are True over requested axis',
+            'all', name, name2, axis_descr,
+            'Return whether all elements are True over requested axis',
             nanops.nanall)
 
         @Substitution(outname='mad',
                       desc="Return the mean absolute deviation of the values "
-                           "for the requested axis")
+                           "for the requested axis",
+                      name1=name,
+                      name2=name2,
+                      axis_descr=axis_descr)
         @Appender(_num_doc)
         def mad(self,  axis=None, skipna=None, level=None):
             if skipna is None:
@@ -4639,39 +4624,20 @@ equivalent of the ``numpy.ndarray`` method ``argmin``.""", nanops.nanmin)
             return np.abs(demeaned).mean(axis=axis, skipna=skipna)
         cls.mad = mad
 
-        def _make_stat_function_ddof(name, desc, f):
-
-            @Substitution(outname=name, desc=desc)
-            @Appender(_num_doc)
-            def stat_func(self, axis=None, skipna=None, level=None, ddof=1,
-                          numeric_only=None, **kwargs):
-                if skipna is None:
-                    skipna = True
-                if axis is None:
-                    axis = self._stat_axis_number
-                if level is not None:
-                    return self._agg_by_level(name, axis=axis, level=level,
-                                              skipna=skipna, ddof=ddof)
-                return self._reduce(f, name, axis=axis,
-                                    numeric_only=numeric_only,
-                                    skipna=skipna, ddof=ddof)
-            stat_func.__name__ = name
-            return stat_func
-
         cls.sem = _make_stat_function_ddof(
-            'sem',
+            'sem', name, name2, axis_descr,
             "Return unbiased standard error of the mean over "
             "requested axis.\n\nNormalized by N-1 by default. "
             "This can be changed using the ddof argument",
             nanops.nansem)
         cls.var = _make_stat_function_ddof(
-            'var',
+            'var', name, name2, axis_descr,
             "Return unbiased variance over requested "
             "axis.\n\nNormalized by N-1 by default. "
             "This can be changed using the ddof argument",
             nanops.nanvar)
         cls.std = _make_stat_function_ddof(
-            'std',
+            'std', name, name2, axis_descr,
             "Return unbiased standard deviation over requested "
             "axis.\n\nNormalized by N-1 by default. "
             "This can be changed using the ddof argument",
@@ -4679,7 +4645,10 @@ equivalent of the ``numpy.ndarray`` method ``argmin``.""", nanops.nanmin)
 
         @Substitution(outname='compounded',
                       desc="Return the compound percentage of the values for "
-                           "the requested axis")
+                           "the requested axis",
+                      name1=name,
+                      name2=name2,
+                      axis_descr=axis_descr)
         @Appender(_num_doc)
         def compound(self, axis=None, skipna=None, level=None):
             if skipna is None:
@@ -4687,50 +4656,263 @@ equivalent of the ``numpy.ndarray`` method ``argmin``.""", nanops.nanmin)
             return (1 + self).prod(axis=axis, skipna=skipna, level=level) - 1
         cls.compound = compound
 
-        def _make_cum_function(name, accum_func, mask_a, mask_b):
-
-            @Substitution(outname=name)
-            @Appender("Return cumulative {0} over requested axis.".format(name)
-                      + _cnum_doc)
-            def func(self, axis=None, dtype=None, out=None, skipna=True,
-                     **kwargs):
-                if axis is None:
-                    axis = self._stat_axis_number
-                else:
-                    axis = self._get_axis_number(axis)
-
-                y = _values_from_object(self).copy()
-
-                if skipna and issubclass(y.dtype.type,
-                                         (np.datetime64, np.timedelta64)):
-                    result = accum_func(y, axis)
-                    mask = isnull(self)
-                    np.putmask(result, mask, pd.tslib.iNaT)
-                elif skipna and not issubclass(y.dtype.type, (np.integer, np.bool_)):
-                    mask = isnull(self)
-                    np.putmask(y, mask, mask_a)
-                    result = accum_func(y, axis)
-                    np.putmask(result, mask, mask_b)
-                else:
-                    result = accum_func(y, axis)
-
-                d = self._construct_axes_dict()
-                d['copy'] = False
-                return self._constructor(result, **d).__finalize__(self)
-
-            func.__name__ = name
-            return func
-
         cls.cummin = _make_cum_function(
-            'min', lambda y, axis: np.minimum.accumulate(y, axis),
+            'min', name, name2, axis_descr,
+            "cumulative minimum",
+            lambda y, axis: np.minimum.accumulate(y, axis),
             np.inf, np.nan)
         cls.cumsum = _make_cum_function(
-            'sum', lambda y, axis: y.cumsum(axis), 0., np.nan)
+            'sum', name, name2, axis_descr,
+            "cumulative sum",
+            lambda y, axis: y.cumsum(axis), 0., np.nan)
         cls.cumprod = _make_cum_function(
-            'prod', lambda y, axis: y.cumprod(axis), 1., np.nan)
+            'prod', name, name2, axis_descr,
+            "cumulative product",
+            lambda y, axis: y.cumprod(axis), 1., np.nan)
         cls.cummax = _make_cum_function(
-            'max', lambda y, axis: np.maximum.accumulate(y, axis),
+            'max', name, name2, axis_descr,
+            "cumulative max",
+            lambda y, axis: np.maximum.accumulate(y, axis),
             -np.inf, np.nan)
+
+        cls.sum = _make_stat_function(
+            'sum', name, name2, axis_descr,
+            'Return the sum of the values for the requested axis',
+            nanops.nansum)
+        cls.mean = _make_stat_function(
+            'mean', name, name2, axis_descr,
+            'Return the mean of the values for the requested axis',
+            nanops.nanmean)
+        cls.skew = _make_stat_function(
+            'skew', name, name2, axis_descr,
+            'Return unbiased skew over requested axis\nNormalized by N-1',
+            nanops.nanskew)
+        cls.kurt = _make_stat_function(
+            'kurt', name, name2, axis_descr,
+            'Return unbiased kurtosis over requested axis using Fisher''s '
+            'definition of\nkurtosis (kurtosis of normal == 0.0). Normalized '
+            'by N-1\n',
+            nanops.nankurt)
+        cls.kurtosis = cls.kurt
+        cls.prod = _make_stat_function(
+            'prod', name, name2, axis_descr,
+            'Return the product of the values for the requested axis',
+            nanops.nanprod)
+        cls.product = cls.prod
+        cls.median = _make_stat_function(
+            'median', name, name2, axis_descr,
+            'Return the median of the values for the requested axis',
+            nanops.nanmedian)
+        cls.max = _make_stat_function('max',  name, name2, axis_descr,
+                                      """This method returns the maximum of the values in the object. If you
+                                      want the *index* of the maximum, use ``idxmax``. This is the
+                                      equivalent of the ``numpy.ndarray`` method ``argmax``.""",
+                                      nanops.nanmax)
+        cls.min = _make_stat_function('min',  name, name2, axis_descr,
+                                      """This method returns the minimum of the values in the object. If you
+                                      want the *index* of the minimum, use ``idxmin``. This is the
+                                      equivalent of the ``numpy.ndarray`` method ``argmin``.""",
+                                      nanops.nanmin)
+
+    @classmethod
+    def _add_series_only_operations(cls):
+        """ add the series only operations to the cls; evaluate the doc strings again """
+
+        axis_descr, name, name2 = _doc_parms(cls)
+
+        def nanptp(values, axis=0, skipna=True):
+            nmax = nanops.nanmax(values, axis, skipna)
+            nmin = nanops.nanmin(values, axis, skipna)
+            return nmax - nmin
+
+        cls.ptp = _make_stat_function('ptp', name, name2, axis_descr,
+                                      """
+                                      Returns the difference between the maximum value and the minimum
+                                      value in the object. This is the equivalent of the ``numpy.ndarray``
+                                      method ``ptp``.""", nanptp)
+
+
+def _doc_parms(cls):
+    """ return a tuple of the doc parms """
+    axis_descr = "{%s}" % ', '.join([
+        "{0} ({1})".format(a, i) for i, a in enumerate(cls._AXIS_ORDERS)
+        ])
+    name = (cls._constructor_sliced.__name__
+            if cls._AXIS_LEN > 1 else 'scalar')
+    name2 = cls.__name__
+    return axis_descr, name, name2
+
+_num_doc = """
+
+%(desc)s
+
+Parameters
+----------
+axis : %(axis_descr)s
+skipna : boolean, default True
+    Exclude NA/null values. If an entire row/column is NA, the result
+    will be NA
+level : int or level name, default None
+    If the axis is a MultiIndex (hierarchical), count along a
+    particular level, collapsing into a %(name1)s
+numeric_only : boolean, default None
+    Include only float, int, boolean data. If None, will attempt to use
+    everything, then use only numeric data
+
+Returns
+-------
+%(outname)s : %(name1)s or %(name2)s (if level specified)\n"""
+
+_num_ddof_doc = """
+
+%(desc)s
+
+Parameters
+----------
+axis : %(axis_descr)s
+skipna : boolean, default True
+    Exclude NA/null values. If an entire row/column is NA, the result
+    will be NA
+level : int or level name, default None
+    If the axis is a MultiIndex (hierarchical), count along a
+    particular level, collapsing into a %(name1)s
+ddof : int, default 1
+    degrees of freedom
+numeric_only : boolean, default None
+    Include only float, int, boolean data. If None, will attempt to use
+    everything, then use only numeric data
+
+Returns
+-------
+%(outname)s : %(name1)s or %(name2)s (if level specified)\n"""
+
+_bool_doc = """
+
+%(desc)s
+
+Parameters
+----------
+axis : %(axis_descr)s
+skipna : boolean, default True
+    Exclude NA/null values. If an entire row/column is NA, the result
+    will be NA
+level : int or level name, default None
+    If the axis is a MultiIndex (hierarchical), count along a
+    particular level, collapsing into a %(name1)s
+bool_only : boolean, default None
+    Include only boolean data. If None, will attempt to use everything,
+    then use only boolean data
+
+Returns
+-------
+%(outname)s : %(name1)s or %(name2)s (if level specified)\n"""
+
+_cnum_doc = """
+
+Parameters
+----------
+axis : %(axis_descr)s
+skipna : boolean, default True
+    Exclude NA/null values. If an entire row/column is NA, the result
+    will be NA
+
+Returns
+-------
+%(outname)s : %(name1)s\n"""
+
+def _make_stat_function(name, name1, name2, axis_descr, desc, f):
+
+    @Substitution(outname=name, desc=desc, name1=name1, name2=name2, axis_descr=axis_descr)
+    @Appender(_num_doc)
+    def stat_func(self, axis=None, skipna=None, level=None,
+                  numeric_only=None, **kwargs):
+        if skipna is None:
+            skipna = True
+        if axis is None:
+            axis = self._stat_axis_number
+        if level is not None:
+            return self._agg_by_level(name, axis=axis, level=level,
+                                      skipna=skipna)
+        return self._reduce(f, name, axis=axis,
+                            skipna=skipna, numeric_only=numeric_only)
+    stat_func.__name__ = name
+    return stat_func
+
+def _make_stat_function_ddof(name, name1, name2, axis_descr, desc, f):
+
+    @Substitution(outname=name, desc=desc, name1=name1, name2=name2, axis_descr=axis_descr)
+    @Appender(_num_ddof_doc)
+    def stat_func(self, axis=None, skipna=None, level=None, ddof=1,
+                  numeric_only=None, **kwargs):
+        if skipna is None:
+            skipna = True
+        if axis is None:
+            axis = self._stat_axis_number
+        if level is not None:
+            return self._agg_by_level(name, axis=axis, level=level,
+                                      skipna=skipna, ddof=ddof)
+        return self._reduce(f, name, axis=axis,
+                            numeric_only=numeric_only,
+                            skipna=skipna, ddof=ddof)
+    stat_func.__name__ = name
+    return stat_func
+
+def _make_cum_function(name, name1, name2, axis_descr, desc, accum_func, mask_a, mask_b):
+
+    @Substitution(outname=name, desc=desc, name1=name1, name2=name2, axis_descr=axis_descr)
+    @Appender("Return cumulative {0} over requested axis.".format(name)
+              + _cnum_doc)
+    def func(self, axis=None, dtype=None, out=None, skipna=True,
+             **kwargs):
+        if axis is None:
+            axis = self._stat_axis_number
+        else:
+            axis = self._get_axis_number(axis)
+
+        y = _values_from_object(self).copy()
+
+        if skipna and issubclass(y.dtype.type,
+                                 (np.datetime64, np.timedelta64)):
+            result = accum_func(y, axis)
+            mask = isnull(self)
+            np.putmask(result, mask, pd.tslib.iNaT)
+        elif skipna and not issubclass(y.dtype.type, (np.integer, np.bool_)):
+            mask = isnull(self)
+            np.putmask(y, mask, mask_a)
+            result = accum_func(y, axis)
+            np.putmask(result, mask, mask_b)
+        else:
+            result = accum_func(y, axis)
+
+        d = self._construct_axes_dict()
+        d['copy'] = False
+        return self._constructor(result, **d).__finalize__(self)
+
+    func.__name__ = name
+    return func
+
+def _make_logical_function(name, name1, name2, axis_descr, desc, f):
+
+    @Substitution(outname=name, desc=desc, name1=name1, name2=name2, axis_descr=axis_descr)
+    @Appender(_bool_doc)
+    def logical_func(self, axis=None, bool_only=None, skipna=None,
+                     level=None, **kwargs):
+        if skipna is None:
+            skipna = True
+        if axis is None:
+            axis = self._stat_axis_number
+        if level is not None:
+            if bool_only is not None:
+                raise NotImplementedError(
+                    "Option bool_only is not implemented with option "
+                    "level.")
+            return self._agg_by_level(name, axis=axis, level=level,
+                                              skipna=skipna)
+        return self._reduce(f, axis=axis, skipna=skipna,
+                            numeric_only=bool_only, filter_type='bool',
+                            name=name)
+    logical_func.__name__ = name
+    return logical_func
 
 # install the indexerse
 for _name, _indexer in indexing.get_indexers_list():

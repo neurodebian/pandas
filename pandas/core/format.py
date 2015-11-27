@@ -13,6 +13,7 @@ from pandas.compat import(StringIO, lzip, range, map, zip, reduce, u,
                           OrderedDict)
 from pandas.util.terminal import get_terminal_size
 from pandas.core.config import get_option, set_option
+from pandas.io.common import _get_handle, UnicodeWriter, _expand_user
 import pandas.core.common as com
 import pandas.lib as lib
 from pandas.tslib import iNaT, Timestamp, Timedelta, format_array_from_datetime
@@ -23,6 +24,7 @@ import numpy as np
 
 import itertools
 import csv
+import warnings
 
 common_docstring = """
     Parameters
@@ -341,7 +343,7 @@ class DataFrameFormatter(TableFormatter):
                  index_names=True, line_width=None, max_rows=None,
                  max_cols=None, show_dimensions=False, **kwds):
         self.frame = frame
-        self.buf = buf if buf is not None else StringIO()
+        self.buf = _expand_user(buf) if buf is not None else StringIO()
         self.show_index_names = index_names
 
         if sparsify is None:
@@ -1259,18 +1261,22 @@ class CSVFormatter(object):
 
     def __init__(self, obj, path_or_buf=None, sep=",", na_rep='', float_format=None,
                  cols=None, header=True, index=True, index_label=None,
-                 mode='w', nanRep=None, encoding=None, quoting=None,
+                 mode='w', nanRep=None, encoding=None, compression=None, quoting=None,
                  line_terminator='\n', chunksize=None, engine=None,
                  tupleize_cols=False, quotechar='"', date_format=None,
                  doublequote=True, escapechar=None, decimal='.'):
 
-        self.engine = engine  # remove for 0.13
+        if engine is not None:
+            warnings.warn("'engine' keyword is deprecated and "
+                          "will be removed in a future version",
+                          FutureWarning, stacklevel=3)
+        self.engine = engine  # remove for 0.18
         self.obj = obj
 
         if path_or_buf is None:
             path_or_buf = StringIO()
 
-        self.path_or_buf = path_or_buf
+        self.path_or_buf = _expand_user(path_or_buf)
         self.sep = sep
         self.na_rep = na_rep
         self.float_format = float_format
@@ -1281,6 +1287,7 @@ class CSVFormatter(object):
         self.index_label = index_label
         self.mode = mode
         self.encoding = encoding
+        self.compression = compression
 
         if quoting is None:
             quoting = csv.QUOTE_MINIMAL
@@ -1320,7 +1327,7 @@ class CSVFormatter(object):
                                             date_format=date_format,
                                             quoting=self.quoting)
             else:
-                cols = np.asarray(list(cols))
+                cols = list(cols)
             self.obj = self.obj.loc[:, cols]
 
         # update columns to include possible multiplicity of dupes
@@ -1332,7 +1339,7 @@ class CSVFormatter(object):
                                         date_format=date_format,
                                         quoting=self.quoting)
         else:
-            cols = np.asarray(list(cols))
+            cols = list(cols)
 
         # save it
         self.cols = cols
@@ -1469,8 +1476,9 @@ class CSVFormatter(object):
             f = self.path_or_buf
             close = False
         else:
-            f = com._get_handle(self.path_or_buf, self.mode,
-                                encoding=self.encoding)
+            f = _get_handle(self.path_or_buf, self.mode,
+                                encoding=self.encoding,
+                                compression=self.compression)
             close = True
 
         try:
@@ -1481,7 +1489,7 @@ class CSVFormatter(object):
                                  quotechar=self.quotechar)
             if self.encoding is not None:
                 writer_kwargs['encoding'] = self.encoding
-                self.writer = com.UnicodeWriter(f, **writer_kwargs)
+                self.writer = UnicodeWriter(f, **writer_kwargs)
             else:
                 self.writer = csv.writer(f, **writer_kwargs)
 
@@ -1700,9 +1708,9 @@ class ExcelFormatter(object):
         if lib.checknull(val):
             val = self.na_rep
         elif com.is_float(val):
-            if np.isposinf(val):
+            if lib.isposinf_scalar(val):
                 val = self.inf_rep
-            elif np.isneginf(val):
+            elif lib.isneginf_scalar(val):
                 val = '-%s' % self.inf_rep
             elif self.float_format is not None:
                 val = float(self.float_format % val)
@@ -1721,7 +1729,7 @@ class ExcelFormatter(object):
             return
 
         columns = self.columns
-        level_strs = columns.format(sparsify=True, adjoin=False, names=False)
+        level_strs = columns.format(sparsify=self.merge_cells, adjoin=False, names=False)
         level_lengths = _get_level_lengths(level_strs)
         coloffset = 0
         lnum = 0
@@ -1865,8 +1873,9 @@ class ExcelFormatter(object):
 
             # MultiIndex columns require an extra row
             # with index names (blank if None) for
-            # unambigous round-trip
-            if isinstance(self.columns, MultiIndex):
+            # unambigous round-trip, unless not merging,
+            # in which case the names all go on one row Issue #11328
+            if isinstance(self.columns, MultiIndex) and self.merge_cells:
                 self.rowcounter += 1
 
             # if index labels are not empty go ahead and dump

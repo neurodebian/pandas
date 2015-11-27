@@ -224,7 +224,7 @@ Dependencies
 Recommended Dependencies
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-* `numexpr <http://code.google.com/p/numexpr/>`__: for accelerating certain numerical operations.
+* `numexpr <https://github.com/pydata/numexpr>`__: for accelerating certain numerical operations.
   ``numexpr`` uses multiple cores as well as smart chunking and caching to achieve large speedups.
   If installed, must be Version 2.1 or higher.
 
@@ -254,6 +254,7 @@ Optional Dependencies
    * Needed for Excel I/O
 * `XlsxWriter <https://pypi.python.org/pypi/XlsxWriter>`__
    * Alternative Excel writer
+* `Jinja2 <http://jinja.pocoo.org/>`__: Template engine for conditional HTML formatting.
 * `boto <https://pypi.python.org/pypi/boto>`__: necessary for Amazon S3
   access.
 * `blosc <https://pypi.python.org/pypi/blosc>`__: for msgpack compression using ``blosc``

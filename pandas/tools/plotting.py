@@ -638,7 +638,7 @@ def bootstrap_plot(series, fig=None, size=50, samples=500, **kwds):
 @deprecate_kwarg(old_arg_name='data', new_arg_name='frame', stacklevel=3)
 def parallel_coordinates(frame, class_column, cols=None, ax=None, color=None,
                          use_columns=False, xticks=None, colormap=None,
-                         axvlines=True, **kwds):
+                         axvlines=True, axvlines_kwds={'linewidth':1,'color':'black'}, **kwds):
     """Parallel coordinates plotting.
 
     Parameters
@@ -660,6 +660,8 @@ def parallel_coordinates(frame, class_column, cols=None, ax=None, color=None,
         Colormap to use for line colors.
     axvlines: bool, optional
         If true, vertical lines will be added at each xtick
+    axvlines_kwds: keywords, optional
+        Options to be passed to axvline method for vertical lines
     kwds: keywords
         Options to pass to matplotlib plotting method
 
@@ -726,7 +728,7 @@ def parallel_coordinates(frame, class_column, cols=None, ax=None, color=None,
 
     if axvlines:
         for i in x:
-            ax.axvline(i, linewidth=1, color='black')
+            ax.axvline(i, **axvlines_kwds)
 
     ax.set_xticks(x)
     ax.set_xticklabels(df.columns)
@@ -985,11 +987,11 @@ class MPLPlot(object):
         self._make_plot()
         self._add_table()
         self._make_legend()
+        self._adorn_subplots()
 
         for ax in self.axes:
             self._post_plot_logic_common(ax, self.data)
             self._post_plot_logic(ax, self.data)
-        self._adorn_subplots()
 
     def _args_adjust(self):
         pass
@@ -1135,7 +1137,7 @@ class MPLPlot(object):
     def _adorn_subplots(self):
         """Common post process unrelated to data"""
         if len(self.axes) > 0:
-            all_axes = self._get_axes()
+            all_axes = self._get_subplots()
             nrows, ncols = self._get_axes_layout()
             _handle_shared_axes(axarr=all_axes, nplots=len(all_axes),
                                 naxes=nrows * ncols, nrows=nrows,
@@ -1467,11 +1469,13 @@ class MPLPlot(object):
                     errors[kw] = err
         return errors
 
-    def _get_axes(self):
-        return self.axes[0].get_figure().get_axes()
+    def _get_subplots(self):
+        from matplotlib.axes import Subplot
+        return [ax for ax in self.axes[0].get_figure().get_axes()
+                    if isinstance(ax, Subplot)]
 
     def _get_axes_layout(self):
-        axes = self._get_axes()
+        axes = self._get_subplots()
         x_set = set()
         y_set = set()
         for ax in axes:

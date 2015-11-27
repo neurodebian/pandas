@@ -1,6 +1,6 @@
 python-dateutil
 pytz
-numpy=1.9.3
+numpy
 openpyxl
 xlsxwriter
 xlrd
@@ -12,6 +12,7 @@ pytables
 html5lib
 lxml
 matplotlib
+jinja2
 
 # currently causing some warnings
 #sqlalchemy

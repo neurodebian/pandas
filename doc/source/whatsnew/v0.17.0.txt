@@ -517,7 +517,7 @@ Other enhancements
 
 - Allow passing `kwargs` to the interpolation methods (:issue:`10378`).
 
-- Improved error message when concatenating an empty iterable of ``Dataframe``s (:issue:`9157`)
+- Improved error message when concatenating an empty iterable of ``Dataframe`` objects (:issue:`9157`)
 
 - ``pd.read_csv`` can now read bz2-compressed files incrementally, and the C parser can read bz2-compressed files from AWS S3 (:issue:`11070`, :issue:`11072`).
 
@@ -526,6 +526,7 @@ Other enhancements
 - Read CSV files from AWS S3 incrementally, instead of first downloading the entire file. (Full file download still required for compressed files in Python 2.)  (:issue:`11070`, :issue:`11073`)
 
 - ``pd.read_csv`` is now able to infer compression type for files read from AWS S3 storage (:issue:`11070`, :issue:`11074`).
+
 
 .. _whatsnew_0170.api:
 

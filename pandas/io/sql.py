@@ -14,7 +14,7 @@ import numpy as np
 
 import pandas.lib as lib
 import pandas.core.common as com
-from pandas.compat import lzip, map, zip, raise_with_traceback, string_types
+from pandas.compat import lzip, map, zip, raise_with_traceback, string_types, text_type
 from pandas.core.api import DataFrame, Series
 from pandas.core.common import isnull
 from pandas.core.base import PandasObject
@@ -309,8 +309,8 @@ def read_sql_table(table_name, con, schema=None, index_col=None,
     schema : string, default None
         Name of SQL schema in database to query (if database flavor
         supports this). If None, use default schema (default).
-    index_col : string, optional, default: None
-        Column to set as index
+    index_col : string or list of strings, optional, default: None
+        Column(s) to set as index(MultiIndex)
     coerce_float : boolean, default True
         Attempt to convert values to non-string, non-numeric objects (like
         decimal.Decimal) to floating point. Can result in loss of Precision.
@@ -384,8 +384,8 @@ def read_sql_query(sql, con, index_col=None, coerce_float=True, params=None,
         Using SQLAlchemy makes it possible to use any DB supported by that
         library.
         If a DBAPI2 object, only sqlite3 is supported.
-    index_col : string, optional, default: None
-        Column name to use as index for the returned DataFrame object.
+    index_col : string or list of strings, optional, default: None
+        Column(s) to set as index(MultiIndex)
     coerce_float : boolean, default True
         Attempt to convert values to non-string, non-numeric objects (like
         decimal.Decimal) to floating point, useful for SQL result sets
@@ -443,8 +443,8 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
         Using SQLAlchemy makes it possible to use any DB supported by that
         library.
         If a DBAPI2 object, only sqlite3 is supported.
-    index_col : string, optional, default: None
-        column name to use as index for the returned DataFrame object.
+    index_col : string or list of strings, optional, default: None
+        Column(s) to set as index(MultiIndex)
     coerce_float : boolean, default True
         Attempt to convert values to non-string, non-numeric objects (like
         decimal.Decimal) to floating point, useful for SQL result sets
@@ -711,7 +711,7 @@ class SQLTable(PandasObject):
         else:
             temp = self.frame
 
-        column_names = list(map(str, temp.columns))
+        column_names = list(map(text_type, temp.columns))
         ncols = len(column_names)
         data_list = [None] * ncols
         blocks = temp._data.blocks
@@ -853,7 +853,7 @@ class SQLTable(PandasObject):
                 column_names_and_types.append((idx_label, idx_type, True))
 
         column_names_and_types += [
-            (str(self.frame.columns[i]),
+            (text_type(self.frame.columns[i]),
              dtype_mapper(self.frame.iloc[:, i]),
              False)
             for i in range(len(self.frame.columns))
@@ -1400,7 +1400,7 @@ class SQLiteTable(SQLTable):
                 conn.execute(stmt)
 
     def insert_statement(self):
-        names = list(map(str, self.frame.columns))
+        names = list(map(text_type, self.frame.columns))
         flv = self.pd_sql.flavor
         wld = _SQL_WILDCARD[flv]  # wildcard char
         escape = _SQL_GET_IDENTIFIER[flv]

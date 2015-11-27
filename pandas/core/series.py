@@ -27,11 +27,12 @@ from pandas.core.common import (isnull, notnull, is_bool_indexer,
                                 _maybe_box_datetimelike, ABCDataFrame,
                                 _dict_compat)
 from pandas.core.index import (Index, MultiIndex, InvalidIndexError,
-                               _ensure_index)
+                               Float64Index, _ensure_index)
 from pandas.core.indexing import check_bool_indexer, maybe_convert_indices
 from pandas.core import generic, base
 from pandas.core.internals import SingleBlockManager
 from pandas.core.categorical import Categorical, CategoricalAccessor
+import pandas.core.strings as strings
 from pandas.tseries.common import (maybe_to_datetimelike,
                                    CombinedDatetimelikeProperties)
 from pandas.tseries.index import DatetimeIndex
@@ -85,7 +86,7 @@ def _coerce_method(converter):
 # Series class
 
 
-class Series(base.IndexOpsMixin, generic.NDFrame):
+class Series(base.IndexOpsMixin, strings.StringAccessorMixin, generic.NDFrame,):
 
     """
     One-dimensional ndarray with axis labels (including time series).
@@ -171,17 +172,22 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
                         index = Index(_try_sort(data))
                 try:
                     if isinstance(index, DatetimeIndex):
-                        # coerce back to datetime objects for lookup
-                        data = _dict_compat(data)
-                        data = lib.fast_multiget(data, index.astype('O'),
-                                                 default=np.nan)
+                        if len(data):
+                            # coerce back to datetime objects for lookup
+                            data = _dict_compat(data)
+                            data = lib.fast_multiget(data, index.astype('O'),
+                                                     default=np.nan)
+                        else:
+                            data = np.nan
                     elif isinstance(index, PeriodIndex):
-                        data = [data.get(i, nan) for i in index]
+                        data = [data.get(i, nan)
+                                for i in index] if data else np.nan
                     else:
                         data = lib.fast_multiget(data, index.values,
                                                  default=np.nan)
                 except TypeError:
-                    data = [data.get(i, nan) for i in index]
+                    data = [data.get(i, nan)
+                            for i in index] if data else np.nan
 
             elif isinstance(data, SingleBlockManager):
                 if index is None:
@@ -1271,14 +1277,13 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
         def multi(values, qs):
             if com.is_list_like(qs):
                 values = [_quantile(values, x*100) for x in qs]
+                # let empty result to be Float64Index
+                qs = Float64Index(qs)
                 return self._constructor(values, index=qs, name=self.name)
             else:
                 return _quantile(values, qs*100)
 
         return self._maybe_box(lambda values: multi(values, q), dropna=True)
-
-    def ptp(self, axis=None, out=None):
-        return _values_from_object(self).ptp(axis, out)
 
     def corr(self, other, method='pearson',
              min_periods=None):
@@ -1676,8 +1681,12 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
                                                    ascending=ascending)
 
         new_values = self._values.take(indexer)
-        return self._constructor(new_values,
-                                 index=new_index).__finalize__(self)
+        result =  self._constructor(new_values, index=new_index)
+
+        if inplace:
+            self._update_inplace(result)
+        else:
+            return result.__finalize__(self)
 
     def sort(self, axis=0, ascending=True, kind='quicksort', na_position='last', inplace=True):
         """
@@ -2277,6 +2286,35 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
             raise ValueError("cannot reindex series on non-zero axis!")
         return self.reindex(index=labels, **kwargs)
 
+    def memory_usage(self, index=False, deep=False):
+        """Memory usage of the Series
+
+        Parameters
+        ----------
+        index : bool
+            Specifies whether to include memory usage of Series index
+        deep : bool
+            Introspect the data deeply, interrogate
+            `object` dtypes for system-level memory consumption
+
+        Returns
+        -------
+        scalar bytes of memory consumed
+
+        Notes
+        -----
+        Memory usage does not include memory consumed by elements that
+        are not components of the array if deep=False
+
+        See Also
+        --------
+        numpy.ndarray.nbytes
+        """
+        v = super(Series, self).memory_usage(deep=deep)
+        if index:
+            v += self.index.memory_usage(deep=deep)
+        return v
+
     def take(self, indices, axis=0, convert=True, is_copy=False):
         """
         return Series corresponding to requested indices
@@ -2501,11 +2539,19 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
                     'argument "{0}"'.format(list(kwargs.keys())[0]))
 
         axis = self._get_axis_number(axis or 0)
-        result = remove_na(self)
-        if inplace:
-            self._update_inplace(result)
+
+        if self._can_hold_na:
+            result = remove_na(self)
+            if inplace:
+                self._update_inplace(result)
+            else:
+                return result
         else:
-            return result
+            if inplace:
+                # do nothing
+                pass
+            else:
+                return self.copy()
 
     valid = lambda self, inplace=False, **kwargs: self.dropna(inplace=inplace,
                                                               **kwargs)
@@ -2660,12 +2706,10 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
 
     def _dir_additions(self):
         rv = set()
-        # these accessors are mutually exclusive, so break loop when one exists
         for accessor in self._accessors:
             try:
                 getattr(self, accessor)
                 rv.add(accessor)
-                break
             except AttributeError:
                 pass
         return rv
@@ -2673,6 +2717,7 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
 Series._setup_axes(['index'], info_axis=0, stat_axis=0,
                    aliases={'rows': 0})
 Series._add_numeric_operations()
+Series._add_series_only_operations()
 _INDEX_TYPES = ndarray, Index, list, tuple
 
 #------------------------------------------------------------------------------

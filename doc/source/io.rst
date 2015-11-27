@@ -79,9 +79,10 @@ for some advanced strategies
 
 They can take a number of arguments:
 
-  - ``filepath_or_buffer``: Either a string path to a file, URL
+  - ``filepath_or_buffer``: Either a path to a file (a :class:`python:str`,
+    :class:`python:pathlib.Path`, or :class:`py:py._path.local.LocalPath`), URL
     (including http, ftp, and S3 locations), or any object with a ``read``
-    method (such as an open file or ``StringIO``).
+    method (such as an open file or :class:`~python:io.StringIO`).
   - ``sep`` or ``delimiter``: A delimiter / separator to split fields
     on. With ``sep=None``, ``read_csv`` will try to infer the delimiter
     automatically in some cases by "sniffing".
@@ -2005,7 +2006,7 @@ file, and the ``sheetname`` indicating which sheet to parse.
 ``ExcelFile`` class
 +++++++++++++++++++
 
-To faciliate working with multiple sheets from the same file, the ``ExcelFile``
+To facilitate working with multiple sheets from the same file, the ``ExcelFile``
 class can be used to wrap the file and can be be passed into ``read_excel``
 There will be a performance benefit for reading multiple sheets as the file is
 read into memory only once.
@@ -3070,6 +3071,33 @@ indexed dimension as the ``where``.
    i = store.root.df.table.cols.index.index
    i.optlevel, i.kind
 
+Ofentimes when appending large amounts of data to a store, it is useful to turn off index creation for each append, then recreate at the end.
+
+.. ipython:: python
+
+   df_1 = DataFrame(randn(10,2),columns=list('AB'))
+   df_2 = DataFrame(randn(10,2),columns=list('AB'))
+
+   st = pd.HDFStore('appends.h5',mode='w')
+   st.append('df', df_1, data_columns=['B'], index=False)
+   st.append('df', df_2, data_columns=['B'], index=False)
+   st.get_storer('df').table
+
+Then create the index when finished appending.
+
+.. ipython:: python
+
+   st.create_table_index('df', columns=['B'], optlevel=9, kind='full')
+   st.get_storer('df').table
+
+   st.close()
+
+.. ipython:: python
+   :suppress:
+   :okexcept:
+
+   os.remove('appends.h5')
+
 See `here <http://stackoverflow.com/questions/17893370/ptrepack-sortby-needs-full-index>`__ for how to create a completely-sorted-index (CSI) on an existing store.
 
 Query via Data Columns
@@ -3312,8 +3340,9 @@ the table using a ``where`` that selects all but the missing data.
 
    Please note that HDF5 **DOES NOT RECLAIM SPACE** in the h5 files
    automatically. Thus, repeatedly deleting (or removing nodes) and adding
-   again **WILL TEND TO INCREASE THE FILE SIZE**. To *clean* the file, use
-   :ref:`ptrepack <io.hdf5-ptrepack>`
+   again, **WILL TEND TO INCREASE THE FILE SIZE**.
+
+   To *repack and clean* the file, use :ref:`ptrepack <io.hdf5-ptrepack>`
 
 .. _io.hdf5-notes:
 

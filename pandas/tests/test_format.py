@@ -191,13 +191,14 @@ class TestDataFrameFormatting(tm.TestCase):
             self.assertEqual(repr(df),  '     0    1\n0  0.1  0.5\n1  0.5 -0.1')
 
     def test_repr_obeys_max_seq_limit(self):
-        import pandas.core.common as com
-
         with option_context("display.max_seq_items",2000):
             self.assertTrue(len(com.pprint_thing(lrange(1000))) > 1000)
 
         with option_context("display.max_seq_items",5):
-            self.assertTrue(len(com.pprint_thing(lrange(1000)))< 100)
+            self.assertTrue(len(com.pprint_thing(lrange(1000))) < 100)
+
+    def test_repr_set(self):
+        self.assertEqual(com.pprint_thing(set([1])), '{1}')
 
     def test_repr_is_valid_construction_code(self):
         # for the case of Index, where the repr is traditional rather then stylized
@@ -2951,6 +2952,23 @@ $1$,$2$
         self.assertEqual(df_day.to_csv(), expected_default_day)
         self.assertEqual(df_day.to_csv(date_format='%Y-%m-%d'), expected_default_day)
 
+        # testing if date_format parameter is taken into account for
+        # multi-indexed dataframes (GH 7791)
+        df_sec['B'] = 0
+        df_sec['C'] = 1
+        expected_ymd_sec = 'A,B,C\n2013-01-01,0,1\n'
+        df_sec_grouped = df_sec.groupby([pd.Grouper(key='A', freq='1h'), 'B'])
+        self.assertEqual(
+            df_sec_grouped.mean().to_csv(date_format='%Y-%m-%d'),
+            expected_ymd_sec
+        )
+
+    # deprecation GH11274
+    def test_to_csv_engine_kw_deprecation(self):
+        with tm.assert_produces_warning(FutureWarning):
+            df = DataFrame({'col1' : [1], 'col2' : ['a'], 'col3' : [10.1] })
+            df.to_csv(engine='python')
+
     def test_round_dataframe(self):
 
         # GH 2665
@@ -3060,6 +3078,19 @@ $1$,$2$
 
         # Make sure this doesn't break existing Series.round
         tm.assert_series_equal(df['col1'].round(1), expected_rounded['col1'])
+
+    def test_round_issue(self):
+        # GH11611
+
+        df = pd.DataFrame(np.random.random([3, 3]), columns=['A', 'B', 'C'],
+                          index=['first', 'second', 'third'])
+
+        dfs = pd.concat((df, df), axis=1)
+        rounded = dfs.round()
+        self.assertTrue(rounded.index.equals(dfs.index))
+
+        decimals = pd.Series([1, 0, 2], index=['A', 'B', 'A'])
+        self.assertRaises(ValueError, df.round, decimals)
 
 class TestSeriesFormatting(tm.TestCase):
     _multiprocess_can_split_ = True
