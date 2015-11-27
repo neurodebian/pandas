@@ -1,3 +1,10 @@
+pandas (0.17.0+git8-gcac4ad2-3) UNRELEASED; urgency=medium
+
+  * debian/rules
+    - fixed deletion of moved away .so files
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 27 Nov 2015 10:52:49 -0500
+
 pandas (0.17.0+git8-gcac4ad2-2) unstable; urgency=medium
 
   * Bug fix: install also msgpack/*.so extensions to -lib packages
