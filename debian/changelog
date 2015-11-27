@@ -1,5 +1,6 @@
-pandas (0.17.0+git8-gcac4ad2-3) UNRELEASED; urgency=medium
+pandas (0.17.1-1) unstable; urgency=medium
 
+  * Fresh upstream bugfix release
   * debian/rules
     - fixed deletion of moved away .so files
 
