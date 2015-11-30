@@ -133,7 +133,7 @@ endif
 _dh_python%:
 	[ -e /usr/bin/dh_numpy$(*:2=) ] && dh_numpy$(*:2=) -p$(PACKAGE$*_NAME)-lib || :
 	dh_python$*
-	find debian/python*-pandas/usr/lib -name "*.so" -delete
+	-find debian/python*-pandas -name "*.so" -delete
 
 ## "Instantiate" both rules so dh sees them
 override_dh_python2: _dh_python2
