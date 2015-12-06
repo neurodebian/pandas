@@ -1,3 +1,11 @@
+pandas (0.17.1-2) unstable; urgency=medium
+
+  * debian/control
+    - make -statsmodels and -tables optional build-depends on those platforms
+      where they are N/A atm.  Added bdepends on python3-tables since available
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Sun, 06 Dec 2015 12:58:26 -0500
+
 pandas (0.17.1-1) unstable; urgency=medium
 
   * Fresh upstream bugfix release
