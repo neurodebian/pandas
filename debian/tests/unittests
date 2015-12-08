@@ -7,5 +7,5 @@ cd "$ADTTMP"
 
 for py in $pys; do
 	echo "=== python$py ==="
-	xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" nosetests-$py -a '!network' -v pandas 2>&1
+	LC_ALL=C.UTF-8 xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" nosetests-$py -a '!network' -v pandas 2>&1
 done
