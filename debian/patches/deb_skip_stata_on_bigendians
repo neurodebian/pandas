@@ -4,8 +4,8 @@
  from pandas import compat
  
  
-+from pandas.util.misc import is_little_endian
-+if not is_little_endian():
++from pandas.compat import is_platform_little_endian
++if not is_platform_little_endian():
 +    raise nose.SkipTest("known failure of test_stata on non-little endian")
 +
  class TestStata(tm.TestCase):
