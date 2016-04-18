@@ -1,3 +1,9 @@
+<div align="center">
+  <img src="http://pandas.pydata.org/_static/pandas_horizontal_web.png"><br>
+</div>
+
+-----------------
+
 # pandas: powerful Python data analysis toolkit
 
 <table>
@@ -20,9 +26,20 @@
   <td>Build Status</td>
   <td>
     <a href="https://travis-ci.org/pydata/pandas">
-    <img src="https://travis-ci.org/pydata/pandas.svg?branch=master" alt="build status" />
+    <img src="https://travis-ci.org/pydata/pandas.svg?branch=master" alt="travis build status" />
     </a>
   </td>
+</tr>
+  <td></td>
+  <td>
+    <a href="https://ci.appveyor.com/project/jreback/pandas-465">
+    <img src="https://ci.appveyor.com/api/projects/status/iblk29s98quexwxi/branch/master?svg=true" alt="appveyor build status" />
+    </a>
+  </td>
+</tr>
+<tr>
+  <td>Coverage</td>
+  <td><img src="https://codecov.io/github/pydata/pandas/coverage.svg?branch=master" alt="coverage" /></td>
 </tr>
 <tr>
   <td>Conda</td>

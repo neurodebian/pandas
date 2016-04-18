@@ -452,7 +452,8 @@ def extract_ordinals(ndarray[object] values, freq):
         p = values[i]
         ordinals[i] = p.ordinal
         if p.freqstr != freqstr:
-            raise ValueError(_DIFFERENT_FREQ_INDEX.format(freqstr, p.freqstr))
+            msg = _DIFFERENT_FREQ_INDEX.format(freqstr, p.freqstr)
+            raise IncompatibleFrequency(msg)
 
     return ordinals
 
@@ -627,6 +628,11 @@ cdef ndarray[int64_t] localize_dt64arr_to_period(ndarray[int64_t] stamps,
 _DIFFERENT_FREQ = "Input has different freq={1} from Period(freq={0})"
 _DIFFERENT_FREQ_INDEX = "Input has different freq={1} from PeriodIndex(freq={0})"
 
+
+class IncompatibleFrequency(ValueError):
+    pass
+
+
 cdef class Period(object):
     """
     Represents an period of time
@@ -657,6 +663,7 @@ cdef class Period(object):
 
         if isinstance(freq, compat.string_types):
             from pandas.tseries.frequencies import _period_alias_dict
+            freq = freq.upper()
             freq = _period_alias_dict.get(freq, freq)
         elif isinstance(freq, (int, tuple)):
             from pandas.tseries.frequencies import get_freq_code as _gfc
@@ -767,7 +774,7 @@ cdef class Period(object):
             from pandas.tseries.frequencies import get_freq_code as _gfc
             if other.freq != self.freq:
                 msg = _DIFFERENT_FREQ.format(self.freqstr, other.freqstr)
-                raise ValueError(msg)
+                raise IncompatibleFrequency(msg)
             if self.ordinal == tslib.iNaT or other.ordinal == tslib.iNaT:
                 return _nat_scalar_rules[op]
             return PyObject_RichCompareBool(self.ordinal, other.ordinal, op)
@@ -808,7 +815,7 @@ cdef class Period(object):
                     ordinal = self.ordinal + other.n
                 return Period(ordinal=ordinal, freq=self.freq)
             msg = _DIFFERENT_FREQ.format(self.freqstr, other.freqstr)
-            raise ValueError(msg)
+            raise IncompatibleFrequency(msg)
         else: # pragma no cover
             return NotImplemented
 
@@ -889,7 +896,8 @@ cdef class Period(object):
             ordinal = self.ordinal
         else:
             # freq.n can't be negative or 0
-            ordinal = (self + self.freq.n).start_time.value - 1
+            # ordinal = (self + self.freq.n).start_time.value - 1
+            ordinal = (self + 1).start_time.value - 1
         return Timestamp(ordinal)
 
     def to_timestamp(self, freq=None, how='start', tz=None):

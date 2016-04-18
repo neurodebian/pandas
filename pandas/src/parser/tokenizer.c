@@ -111,7 +111,7 @@ static void *grow_buffer(void *buffer, int length, int *capacity,
     void *newbuffer = buffer;
 
     // Can we fit potentially nbytes tokens (+ null terminators) in the stream?
-    while ( (length + space > cap) && (newbuffer != NULL) ){
+    while ( (length + space >= cap) && (newbuffer != NULL) ){
         cap = cap? cap << 1 : 2;
         buffer = newbuffer;
         newbuffer = safe_realloc(newbuffer, elsize * cap);
@@ -408,7 +408,7 @@ static int push_char(parser_t *self, char c) {
     return 0;
 }
 
-static int P_INLINE end_field(parser_t *self) {
+int P_INLINE end_field(parser_t *self) {
     // XXX cruft
 //    self->numeric_field = 0;
     if (self->words_len >= self->words_cap) {
@@ -494,7 +494,8 @@ static int end_line(parser_t *self) {
     /* printf("Line: %d, Fields: %d, Ex-fields: %d\n", self->lines, fields, ex_fields); */
 
     if (!(self->lines <= self->header_end + 1)
-        && (self->expected_fields < 0 && fields > ex_fields)) {
+        && (self->expected_fields < 0 && fields > ex_fields)
+        && !(self->usecols)) {
         // increment file line count
         self->file_lines++;
 
@@ -2185,7 +2186,7 @@ double xstrtod(const char *str, char **endptr, char decimal,
     p++;
     num_digits++;
 
-    p += (tsep != '\0' & *p == tsep);
+    p += (tsep != '\0' && *p == tsep);
   }
 
   // Process decimal part
@@ -2225,10 +2226,12 @@ double xstrtod(const char *str, char **endptr, char decimal,
     }
 
     // Process string of digits
+    num_digits = 0;
     n = 0;
     while (isdigit(*p))
     {
       n = n * 10 + (*p - '0');
+      num_digits++;
       p++;
     }
 
@@ -2236,6 +2239,10 @@ double xstrtod(const char *str, char **endptr, char decimal,
       exponent -= n;
     else
       exponent += n;
+
+    // If no digits, after the 'e'/'E', un-consume it
+    if (num_digits == 0)
+        p--;
   }
 
 
@@ -2352,7 +2359,7 @@ double precise_xstrtod(const char *str, char **endptr, char decimal,
             ++exponent;
 
         p++;
-        p += (tsep != '\0' & *p == tsep);
+        p += (tsep != '\0' && *p == tsep);
     }
 
     // Process decimal part
@@ -2396,10 +2403,12 @@ double precise_xstrtod(const char *str, char **endptr, char decimal,
         }
 
         // Process string of digits
+        num_digits = 0;
         n = 0;
         while (isdigit(*p))
         {
             n = n * 10 + (*p - '0');
+            num_digits++;
             p++;
         }
 
@@ -2407,6 +2416,10 @@ double precise_xstrtod(const char *str, char **endptr, char decimal,
             exponent -= n;
         else
             exponent += n;
+
+        // If no digits, after the 'e'/'E', un-consume it
+        if (num_digits == 0)
+            p--;
     }
 
     if (exponent > 308)

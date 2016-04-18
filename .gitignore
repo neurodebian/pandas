@@ -43,6 +43,7 @@ dist
 # Egg metadata
 *.egg-info
 .eggs
+.pypirc
 
 # tox testing tool
 .tox
@@ -66,6 +67,7 @@ Thumbs.db
 # Data files #
 ##############
 *.dta
+*.xpt
 *.h5
 pandas/io/*.dat
 pandas/io/*.json

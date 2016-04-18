@@ -41,11 +41,11 @@ See LICENSE for the license
 
 #ifndef P_INLINE
   #if defined(__GNUC__)
-    #define P_INLINE __inline__
+    #define P_INLINE static __inline__
   #elif defined(_MSC_VER)
     #define P_INLINE
   #elif defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
-    #define P_INLINE inline
+    #define P_INLINE static inline
   #else
     #define P_INLINE
   #endif
@@ -184,6 +184,8 @@ typedef struct parser_t {
     int allow_embedded_newline;
     int strict;                 /* raise exception on bad CSV */
 
+    int usecols; // Boolean: 1: usecols provided, 0: none provided
+
     int expected_fields;
     int error_bad_lines;
     int warn_bad_lines;
@@ -267,7 +269,7 @@ double xstrtod(const char *p, char **q, char decimal, char sci, char tsep, int s
 double precise_xstrtod(const char *p, char **q, char decimal, char sci, char tsep, int skip_trailing);
 double round_trip(const char *p, char **q, char decimal, char sci, char tsep, int skip_trailing);
 //int P_INLINE to_complex(char *item, double *p_real, double *p_imag, char sci, char decimal);
-int P_INLINE to_longlong(char *item, long long *p_value);
+//int P_INLINE to_longlong(char *item, long long *p_value);
 //int P_INLINE to_longlong_thousands(char *item, long long *p_value, char tsep);
 int to_boolean(const char *item, uint8_t *val);
 

@@ -53,6 +53,10 @@ advanced indexing.
    but instead subclass ``PandasObject``, similarly to the rest of the pandas objects. This should be
    a transparent change with only very limited API implications (See the :ref:`Internal Refactoring <whatsnew_0150.refactoring>`)
 
+.. warning::
+
+   Indexing on an integer-based Index with floats has been clarified in 0.18.0, for a summary of the changes, see :ref:`here <whatsnew_0180.float_indexers>`.
+
 See the :ref:`MultiIndex / Advanced Indexing <advanced>` for ``MultiIndex`` and more advanced indexing documentation.
 
 See the :ref:`cookbook<cookbook.selection>` for some advanced strategies
@@ -138,7 +142,7 @@ lower-dimensional slices. Thus,
 
     Series; ``series[label]``; scalar value
     DataFrame; ``frame[colname]``; ``Series`` corresponding to colname
-    Panel; ``panel[itemname]``; ``DataFrame`` corresponing to the itemname
+    Panel; ``panel[itemname]``; ``DataFrame`` corresponding to the itemname
 
 Here we construct a simple time series data set to use for illustrating the
 indexing functionality:
@@ -186,7 +190,7 @@ Attribute Access
 
 .. _indexing.attribute_access:
 
-You may access an index on a ``Series``, column on a ``DataFrame``, and a item on a ``Panel`` directly
+You may access an index on a ``Series``, column on a ``DataFrame``, and an item on a ``Panel`` directly
 as an attribute:
 
 .. ipython:: python
@@ -293,7 +297,7 @@ Selection By Label
      dfl = pd.DataFrame(np.random.randn(5,4), columns=list('ABCD'), index=pd.date_range('20130101',periods=5))
      dfl
 
-  .. code-block:: python
+  .. code-block:: ipython
 
      In [4]: dfl.loc[2:3]
      TypeError: cannot do slice indexing on <class 'pandas.tseries.index.DatetimeIndex'> with these indexers [2] of <type 'int'>
@@ -1355,7 +1359,7 @@ operators. Difference is provided via the ``.difference()`` method.
    a & b
    a.difference(b)
 
-Also available is the ``sym_diff (^)`` operation, which returns elements
+Also available is the ``symmetric_difference (^)`` operation, which returns elements
 that appear in either ``idx1`` or ``idx2`` but not both. This is
 equivalent to the Index created by ``idx1.difference(idx2).union(idx2.difference(idx1))``,
 with duplicates dropped.
@@ -1364,7 +1368,7 @@ with duplicates dropped.
 
    idx1 = pd.Index([1, 2, 3, 4])
    idx2 = pd.Index([2, 3, 4, 5])
-   idx1.sym_diff(idx2)
+   idx1.symmetric_difference(idx2)
    idx1 ^ idx2
 
 Missing values
@@ -1513,7 +1517,7 @@ Compare these two access methods:
 These both yield the same results, so which should you use? It is instructive to understand the order
 of operations on these and why method 2 (``.loc``) is much preferred over method 1 (chained ``[]``)
 
-``dfmi['one']`` selects the first level of the columns and returns a data frame that is singly-indexed.
+``dfmi['one']`` selects the first level of the columns and returns a DataFrame that is singly-indexed.
 Then another python operation ``dfmi_with_one['second']`` selects the series indexed by ``'second'`` happens.
 This is indicated by the variable ``dfmi_with_one`` because pandas sees these operations as separate events.
 e.g. separate calls to ``__getitem__``, so it has to treat them as linear operations, they happen one after another.
@@ -1522,23 +1526,58 @@ Contrast this to ``df.loc[:,('one','second')]`` which passes a nested tuple of `
 ``__getitem__``. This allows pandas to deal with this as a single entity. Furthermore this order of operations *can* be significantly
 faster, and allows one to index *both* axes if so desired.
 
-Why does the assignment when using chained indexing fail!
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Why does assignment fail when using chained indexing?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-So, why does this show the ``SettingWithCopy`` warning / and possibly not work when you do chained indexing and assignment:
+The problem in the previous section is just a performance issue. What's up with
+the ``SettingWithCopy`` warning? We don't **usually** throw warnings around when
+you do something that might cost a few extra milliseconds!
+
+But it turns out that assigning to the product of chained indexing has
+inherently unpredictable results. To see this, think about how the Python
+interpreter executes this code:
+
+.. code-block:: python
+
+   dfmi.loc[:,('one','second')] = value
+   # becomes
+   dfmi.loc.__setitem__((slice(None), ('one', 'second')), value)
+
+But this code is handled differently:
 
 .. code-block:: python
 
    dfmi['one']['second'] = value
+   # becomes
+   dfmi.__getitem__('one').__setitem__('second', value)
 
-Since the chained indexing is 2 calls, it is possible that either call may return a **copy** of the data because of the way it is sliced.
-Thus when setting, you are actually setting a **copy**, and not the original frame data. It is impossible for pandas to figure this out because their are 2 separate python operations that are not connected.
+See that ``__getitem__`` in there? Outside of simple cases, it's very hard to
+predict whether it will return a view or a copy (it depends on the memory layout
+of the array, about which *pandas* makes no guarantees), and therefore whether
+the ``__setitem__`` will modify ``dfmi`` or a temporary object that gets thrown
+out immediately afterward. **That's** what ``SettingWithCopy`` is warning you
+about!
 
-The ``SettingWithCopy`` warning is a 'heuristic' to detect this (meaning it tends to catch most cases but is simply a lightweight check). Figuring this out for real is way complicated.
+.. note:: You may be wondering whether we should be concerned about the ``loc``
+   property in the first example. But ``dfmi.loc`` is guaranteed to be ``dfmi``
+   itself with modified indexing behavior, so ``dfmi.loc.__getitem__`` /
+   ``dfmi.loc.__setitem__`` operate on ``dfmi`` directly. Of course,
+   ``dfmi.loc.__getitem__(idx)`` may be a view or a copy of ``dfmi``.
 
-The ``.loc`` operation is a single python operation, and thus can select a slice (which still may be a copy), but allows pandas to assign that slice back into the frame after it is modified, thus setting the values as you would think.
+Sometimes a ``SettingWithCopy`` warning will arise at times when there's no
+obvious chained indexing going on. **These** are the bugs that
+``SettingWithCopy`` is designed to catch! Pandas is probably trying to warn you
+that you've done this:
 
-The reason for having the ``SettingWithCopy`` warning is this. Sometimes when you slice an array you will simply get a view back, which means you can set it no problem. However, even a single dtyped array can generate a copy if it is sliced in a particular way. A multi-dtyped DataFrame (meaning it has say ``float`` and ``object`` data), will almost always yield a copy. Whether a view is created is dependent on the memory layout of the array.
+.. code-block:: python
+
+   def do_something(df):
+      foo = df[['bar', 'baz']]  # Is foo a view? A copy? Nobody knows!
+      # ... many lines here ...
+      foo['quux'] = value       # We don't know whether this will modify df or not!
+      return foo
+
+Yikes!
 
 Evaluation order matters
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1590,6 +1629,7 @@ This is the correct access method
 This *can* work at times, but is not guaranteed, and so should be avoided
 
 .. ipython:: python
+   :okwarning:
 
    dfc = dfc.copy()
    dfc['A'][0] = 111

@@ -100,7 +100,7 @@ cdef class IndexEngine:
         hash(val)
         return val in self.mapping
 
-    cpdef get_value(self, ndarray arr, object key):
+    cpdef get_value(self, ndarray arr, object key, object tz=None):
         '''
         arr : 1-dimensional ndarray
         '''
@@ -113,7 +113,7 @@ cdef class IndexEngine:
             return arr[loc]
         else:
             if arr.descr.type_num == NPY_DATETIME:
-                return Timestamp(util.get_value_at(arr, loc))
+                return Timestamp(util.get_value_at(arr, loc), tz=tz)
             elif arr.descr.type_num == NPY_TIMEDELTA:
                 return Timedelta(util.get_value_at(arr, loc))
             return util.get_value_at(arr, loc)
@@ -136,7 +136,7 @@ cdef class IndexEngine:
 
     cpdef get_loc(self, object val):
         if is_definitely_invalid_key(val):
-            raise TypeError
+            raise TypeError("'{val}' is an invalid key".format(val=val))
 
         if self.over_size_threshold and self.is_monotonic_increasing:
             if not self.is_unique:

@@ -1,0 +1,323 @@
+.. _whatsnew_0181:
+
+v0.18.1 (April ??, 2016)
+------------------------
+
+This is a minor bug-fix release from 0.18.0 and includes a large number of
+bug fixes along several new features, enhancements, and performance improvements.
+We recommend that all users upgrade to this version.
+
+Highlights include:
+
+- Custom business hour offset, see :ref:`here <whatsnew_0181.enhancements.custombusinesshour>`.
+
+
+.. contents:: What's new in v0.18.1
+    :local:
+    :backlinks: none
+
+.. _whatsnew_0181.new_features:
+
+New features
+~~~~~~~~~~~~
+
+.. _whatsnew_0181.enhancements.custombusinesshour:
+
+Custom Business Hour
+^^^^^^^^^^^^^^^^^^^^
+
+The ``CustomBusinessHour`` is a mixture of ``BusinessHour`` and ``CustomBusinessDay`` which
+allows you to specify arbitrary holidays. For details,
+see :ref:`Custom Business Hour <timeseries.custombusinesshour>` (:issue:`11514`)
+
+.. ipython:: python
+
+    from pandas.tseries.offsets import CustomBusinessHour
+    from pandas.tseries.holiday import USFederalHolidayCalendar
+    bhour_us = CustomBusinessHour(calendar=USFederalHolidayCalendar())
+    # Friday before MLK Day
+    dt = datetime(2014, 1, 17, 15)
+
+    dt + bhour_us
+
+    # Tuesday after MLK Day (Monday is skipped because it's a holiday)
+    dt + bhour_us * 2
+
+.. _whatsnew_0181.enhancements:
+
+Enhancements
+~~~~~~~~~~~~
+
+.. _whatsnew_0181.partial_string_indexing:
+
+Partial string indexing on ``DateTimeIndex`` when part of a ``MultiIndex``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Partial string indexing now matches on ``DateTimeIndex`` when part of a ``MultiIndex`` (:issue:`10331`)
+
+.. ipython:: python
+
+   dft2 = pd.DataFrame(np.random.randn(20, 1),
+                       columns=['A'],
+                       index=pd.MultiIndex.from_product([pd.date_range('20130101',
+                                                                       periods=10,
+                                                                       freq='12H'),
+                                                        ['a', 'b']]))
+   dft2
+   dft2.loc['2013-01-05']
+   idx = pd.IndexSlice
+   dft2 = dft2.swaplevel(0, 1).sort_index()
+   dft2.loc[idx[:, '2013-01-05'], :]
+
+.. _whatsnew_0181.other:
+
+Other Enhancements
+^^^^^^^^^^^^^^^^^^
+
+- ``pd.read_csv()`` now supports opening ZIP files that contains a single CSV, via extension inference or explict ``compression='zip'`` (:issue:`12175`)
+- ``pd.read_csv()`` now supports opening files using xz compression, via extension inference or explicit ``compression='xz'`` is specified; ``xz`` compressions is also supported by ``DataFrame.to_csv`` in the same way (:issue:`11852`)
+- ``pd.read_msgpack()`` now always gives writeable ndarrays even when compression is used (:issue:`12359`).
+- ``interpolate()`` now supports ``method='akima'`` (:issue:`7588`).
+- ``Index.take`` now handles ``allow_fill`` and ``fill_value`` consistently (:issue:`12631`)
+
+.. ipython:: python
+
+   idx = pd.Index([1., 2., 3., 4.], dtype='float')
+   idx.take([2, -1])     # default, allow_fill=True, fill_value=None
+   idx.take([2, -1], fill_value=True)
+
+- ``Index`` now supports ``.str.get_dummies()`` which returns ``MultiIndex``, see :ref:`Creating Indicator Variables <text.indicator>` (:issue:`10008`, :issue:`10103`)
+
+.. ipython:: python
+
+   idx = pd.Index(['a|b', 'a|c', 'b|c'])
+   idx.str.get_dummies('|')
+
+
+.. _whatsnew_0181.sparse:
+
+Sparse changes
+~~~~~~~~~~~~~~
+
+These changes conform sparse handling to return the correct types and work to make a smoother experience with indexing.
+
+``SparseArray.take`` now returns scalar for scalar input, ``SparseArray`` for others. Also now it handles negative indexer as the same rule as ``Index`` (:issue:`10560`, :issue:`12796`)
+
+.. ipython:: python
+
+   s = pd.SparseArray([np.nan, np.nan, 1, 2, 3, np.nan, 4, 5, np.nan, 6])
+   s.take(0)
+   s.take([1, 2, 3])
+
+- Bug in ``SparseSeries.__getitem__`` with ``Ellipsis`` raises ``KeyError`` (:issue:`9467`)
+- Bug in ``SparseSeries.loc[]`` with list-like input raises ``TypeError`` (:issue:`10560`)
+- Bug in ``SparseSeries.iloc[]`` with scalar input may raise ``IndexError`` (:issue:`10560`)
+- Bug in ``SparseSeries.loc[]``, ``.iloc[]`` with ``slice`` returns ``SparseArray``, rather than ``SparseSeries`` (:issue:`10560`)
+- Bug in ``SparseDataFrame.loc[]``, ``.iloc[]`` may results in dense ``Series``, rather than ``SparseSeries`` (:issue:`12787`)
+- Bug in ``SparseSeries.__repr__`` raises ``TypeError`` when it is longer than ``max_rows`` (:issue:`10560`)
+- Bug in ``SparseSeries.shape`` ignores ``fill_value`` (:issue:`10452`)
+- Bug in ``SparseSeries.reindex`` incorrectly handle ``fill_value`` (:issue:`12797`)
+- Bug in ``SparseArray.to_frame()`` results in ``DataFrame``, rather than ``SparseDataFrame`` (:issue:`9850`)
+- Bug in ``SparseArray.to_dense()`` does not preserve ``dtype`` (:issue:`10648`)
+- Bug in ``SparseArray.to_dense()`` incorrectly handle ``fill_value`` (:issue:`12797`)
+
+.. _whatsnew_0181.api:
+
+API changes
+~~~~~~~~~~~
+- ``.searchsorted()`` for ``Index`` and ``TimedeltaIndex`` now accept a ``sorter`` argument to maintain compatibility with numpy's ``searchsorted`` function (:issue:`12238`)
+
+- ``Period`` and ``PeriodIndex`` now raises ``IncompatibleFrequency`` error which inherits ``ValueError`` rather than raw ``ValueError`` (:issue:`12615`)
+
+
+
+- The default for ``.query()/.eval()`` is now ``engine=None``, which will use ``numexpr`` if it's installed; otherwise it will fallback to the ``python`` engine. This mimics the pre-0.18.1 behavior if ``numexpr`` is installed (and which Previously, if numexpr was not installed, ``.query()/.eval()`` would raise). (:issue:`12749`)
+
+
+- ``pd.show_versions()`` now includes ``pandas_datareader`` version (:issue:`12740`)
+- Provide a proper ``__name__`` and ``__qualname__`` attributes for generic functions (:issue:`12021`)
+- ``pd.concat(ignore_index=True)`` now uses ``RangeIndex`` as default (:issue:`12695`)
+
+.. _whatsnew_0181.apply_resample:
+
+Using ``.apply`` on groupby resampling
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Using ``apply`` on resampling groupby operations (using a ``pd.TimeGrouper``) now has the same output types as similar ``apply`` calls on other groupby operations. (:issue:`11742`).
+
+.. ipython:: python
+
+    df = pd.DataFrame({'date': pd.to_datetime(['10/10/2000', '11/10/2000']), 'value': [10, 13]})
+    df
+
+Previous behavior:
+
+.. code-block:: ipython
+
+    In [1]: df.groupby(pd.TimeGrouper(key='date', freq='M')).apply(lambda x: x.value.sum())
+    Out[1]:
+    ...
+    TypeError: cannot concatenate a non-NDFrame object
+
+    # Output is a Series
+    In [2]: df.groupby(pd.TimeGrouper(key='date', freq='M')).apply(lambda x: x[['value']].sum())
+    Out[2]:
+    date
+    2000-10-31  value    10
+    2000-11-30  value    13
+    dtype: int64
+
+New Behavior:
+
+.. ipython:: python
+
+    # Output is a Series
+    df.groupby(pd.TimeGrouper(key='date', freq='M')).apply(lambda x: x.value.sum())
+
+    # Output is a DataFrame
+    df.groupby(pd.TimeGrouper(key='date', freq='M')).apply(lambda x: x[['value']].sum())
+
+.. _whatsnew_0181.read_csv_exceptions:
+
+Changes in ``read_csv`` exceptions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In order to standardize the ``read_csv`` API for both the C and Python engines, both will now raise an
+``EmptyDataError``, a subclass of ``ValueError``, in response to empty columns or header (:issue:`12493`, :issue:`12506`)
+
+Previous behaviour:
+
+.. code-block:: python
+
+   In [1]: df = pd.read_csv(StringIO(''), engine='c')
+   ...
+   ValueError: No columns to parse from file
+
+   In [2]: df = pd.read_csv(StringIO(''), engine='python')
+   ...
+   StopIteration
+
+New behaviour:
+
+.. code-block:: python
+
+   In [1]: df = pd.read_csv(StringIO(''), engine='c')
+   ...
+   pandas.io.common.EmptyDataError: No columns to parse from file
+
+   In [2]: df = pd.read_csv(StringIO(''), engine='python')
+   ...
+   pandas.io.common.EmptyDataError: No columns to parse from file
+
+In addition to this error change, several others have been made as well:
+
+- ``CParserError`` is now a ``ValueError`` instead of just an ``Exception`` (:issue:`12551`)
+- A ``CParserError`` is now raised instead of a generic ``Exception`` in ``read_csv`` when the C engine cannot parse a column
+- A ``ValueError`` is now raised instead of a generic ``Exception`` in ``read_csv`` when the C engine encounters a ``NaN`` value in an integer column
+- A ``ValueError`` is now raised instead of a generic ``Exception`` in ``read_csv`` when ``true_values`` is specified, and the C engine encounters an element in a column containing unencodable bytes
+- ``pandas.parser.OverflowError`` exception has been removed and has been replaced with Python's built-in ``OverflowError`` exception
+- ``read_csv`` no longer allows a combination of strings and integers for the ``usecols`` parameter (:issue:`12678`)
+
+.. _whatsnew_0181.deprecations:
+
+Deprecations
+^^^^^^^^^^^^
+
+- The method name ``Index.sym_diff()`` is deprecated and can be replaced by ``Index.symmetric_difference()`` (:issue:`12591`)
+- The method name ``Categorical.sort()`` is deprecated in favor of ``Categorical.sort_values()`` (:issue:`12882`)
+
+
+
+
+
+
+
+
+
+
+.. _whatsnew_0181.performance:
+
+Performance Improvements
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+- Improved performance of ``DataFrame.to_sql`` when checking case sensitivity for tables. Now only checks if table has been created correctly when table name is not lower case. (:issue:`12876`)
+
+
+
+
+
+
+
+.. _whatsnew_0181.bug_fixes:
+
+Bug Fixes
+~~~~~~~~~
+- ``usecols`` parameter in ``pd.read_csv`` is now respected even when the lines of a CSV file are not even (:issue:`12203`)
+- Bug in ``groupby.transform(..)`` when ``axis=1`` is specified with a non-monotonic ordered index (:issue:`12713`)
+- Bug in ``Period`` and ``PeriodIndex`` creation raises ``KeyError`` if ``freq="Minute"`` is specified. Note that "Minute" freq is deprecated in v0.17.0, and recommended to use ``freq="T"`` instead (:issue:`11854`)
+- Bug in ``.resample(...).count()`` with a ``PeriodIndex`` always raising a ``TypeError`` (:issue:`12774`)
+- Bug in ``.resample(...)`` with a ``PeriodIndex`` casting to a ``DatetimeIndex`` when empty (:issue:`12868`)
+- Bug in ``.resample(...)`` with a ``PeriodIndex`` when resampling to an existing frequency (:issue:`12770`)
+- Bug in printing data which contains ``Period`` with different ``freq`` raises ``ValueError`` (:issue:`12615`)
+- Bug in numpy compatibility of ``np.round()`` on a ``Series`` (:issue:`12600`)
+- Bug in ``Series`` construction with ``Categorical`` and ``dtype='category'`` is specified (:issue:`12574`)
+- Bugs in concatenation with a coercable dtype was too aggressive. (:issue:`12411`, :issue:`12045`, :issue:`11594`, :issue:`10571`)
+- Bug in ``float_format`` option with option not being validated as a callable. (:issue:`12706`)
+- Bug in ``GroupBy.filter`` when ``dropna=False`` and no groups fulfilled the criteria (:issue:`12768`)
+- Bug in ``__name__`` of ``.cum*`` functions (:issue:`12021`)
+
+
+- Bug in ``.drop()`` with a non-unique ``MultiIndex``. (:issue:`12701`)
+- Bug in ``.concat`` of datetime tz-aware and naive DataFrames (:issue:`12467`)
+
+
+- Bug in ``Timestamp.__repr__`` that caused ``pprint`` to fail in nested structures (:issue:`12622`)
+- Bug in ``Timedelta.min`` and ``Timedelta.max``, the properties now report the true minimum/maximum ``timedeltas`` as recognized by Pandas. See :ref:`documentation <timedeltas.limitations>`. (:issue:`12727`)
+- Bug in ``.quantile()`` with interpolation may coerce to ``float`` unexpectedly (:issue:`12772`)
+- Bug in ``.quantile()`` with empty Series may return scalar rather than empty Series (:issue:`12772`)
+
+
+
+- Bug in equality testing with a ``Categorical`` in a ``DataFrame`` (:issue:`12564`)
+- Bug in ``GroupBy.first()``, ``.last()`` returns incorrect row when ``TimeGrouper`` is used (:issue:`7453`)
+
+
+
+
+
+
+
+- Bug in ``value_counts`` when ``normalize=True`` and ``dropna=True`` where nulls still contributed to the normalized count (:issue:`12558`)
+- Bug in ``Panel.fillna()`` ignoring ``inplace=True`` (:issue:`12633`)
+- Bug in ``read_csv`` when specifying ``names``, ```usecols``, and ``parse_dates`` simultaneously with the C engine (:issue:`9755`)
+- Bug in ``Series.rename``, ``DataFrame.rename`` and ``DataFrame.rename_axis`` not treating ``Series`` as mappings to relabel (:issue:`12623`).
+- Clean in ``.rolling.min`` and ``.rolling.max`` to enhance dtype handling (:issue:`12373`)
+
+
+
+
+
+
+
+- Bug in ``.str`` accessor methods may raise ``ValueError`` if input has ``name`` and the result is ``DataFrame`` or ``MultiIndex`` (:issue:`12617`)
+- Bug in ``DataFrame.last_valid_index()`` and ``DataFrame.first_valid_index()`` on empty frames (:issue:`12800`)
+
+
+- Bug in ``CategoricalIndex.get_loc`` returns different result from regular ``Index`` (:issue:`12531`)
+- Bug in ``PeriodIndex.resample`` where name not propagated (:issue:`12769`)
+
+
+
+- Bug in ``concat`` raises ``AttributeError`` when input data contains tz-aware datetime and timedelta (:issue:`12620`)
+- Bug in ``concat`` doesn't handle empty ``Series`` properly (:issue:`11082`)
+
+
+- Bug in ``pivot_table`` when ``margins=True`` and ``dropna=True`` where nulls still contributed to margin count (:issue:`12577`)
+
+- Bug in ``Series.name`` when ``name`` attribute can be a hashable type (:issue:`12610`)
+- Bug in ``.describe()`` resets categorical columns information (:issue:`11558`)
+- Bug where ``loffset`` argument was not applied when calling ``resample().count()`` on a timeseries (:issue:`12725`)
+- ``pd.read_excel()`` now accepts path objects (e.g. ``pathlib.Path``, ``py.path.local``) for the file path, in line with other ``read_*`` functions (:issue:`12655`)
+- ``pd.read_excel()`` now accepts column names associated with keyword argument ``names``(:issue `12870`)

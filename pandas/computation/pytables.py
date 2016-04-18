@@ -7,12 +7,12 @@ from functools import partial
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
-from pandas.compat import u, string_types, PY3, DeepChainMap
-from pandas.core.base import StringMixin
 import pandas.core.common as com
+from pandas.compat import u, string_types, DeepChainMap
+from pandas.core.base import StringMixin
+from pandas.formats.printing import pprint_thing, pprint_thing_encoded
 from pandas.computation import expr, ops
 from pandas.computation.ops import is_term, UndefinedVariableError
-from pandas.computation.scope import _ensure_scope
 from pandas.computation.expr import BaseExprVisitor
 from pandas.computation.common import _ensure_decoded
 from pandas.tseries.timedeltas import _coerce_scalar_to_timedelta_type
@@ -147,17 +147,17 @@ class BinOp(ops.BinOp):
     @property
     def kind(self):
         """ the kind of my field """
-        return getattr(self.queryables.get(self.lhs),'kind',None)
+        return getattr(self.queryables.get(self.lhs), 'kind', None)
 
     @property
     def meta(self):
         """ the meta of my field """
-        return getattr(self.queryables.get(self.lhs),'meta',None)
+        return getattr(self.queryables.get(self.lhs), 'meta', None)
 
     @property
     def metadata(self):
         """ the metadata of my field """
-        return getattr(self.queryables.get(self.lhs),'metadata',None)
+        return getattr(self.queryables.get(self.lhs), 'metadata', None)
 
     def generate(self, v):
         """ create and return the op string for this TermValue """
@@ -170,10 +170,10 @@ class BinOp(ops.BinOp):
 
         def stringify(value):
             if self.encoding is not None:
-                encoder = partial(com.pprint_thing_encoded,
+                encoder = partial(pprint_thing_encoded,
                                   encoding=self.encoding)
             else:
-                encoder = com.pprint_thing
+                encoder = pprint_thing
             return encoder(value)
 
         kind = _ensure_decoded(self.kind)
@@ -195,7 +195,7 @@ class BinOp(ops.BinOp):
             return TermValue(int(v), v, kind)
         elif meta == u('category'):
             metadata = com._values_from_object(self.metadata)
-            result = metadata.searchsorted(v,side='left')
+            result = metadata.searchsorted(v, side='left')
             return TermValue(result, result, u('integer'))
         elif kind == u('integer'):
             v = int(float(v))
@@ -225,8 +225,8 @@ class BinOp(ops.BinOp):
 class FilterBinOp(BinOp):
 
     def __unicode__(self):
-        return com.pprint_thing("[Filter : [{0}] -> "
-                                "[{1}]".format(self.filter[0], self.filter[1]))
+        return pprint_thing("[Filter : [{0}] -> "
+                            "[{1}]".format(self.filter[0], self.filter[1]))
 
     def invert(self):
         """ invert the filter """
@@ -297,7 +297,7 @@ class JointFilterBinOp(FilterBinOp):
 class ConditionBinOp(BinOp):
 
     def __unicode__(self):
-        return com.pprint_thing("[Condition : [{0}]]".format(self.condition))
+        return pprint_thing("[Condition : [{0}]]".format(self.condition))
 
     def invert(self):
         """ invert the condition """
@@ -504,7 +504,7 @@ class Expr(expr.Expr):
                 else:
                     w = self.parse_back_compat(w)
                     where[idx] = w
-            where = ' & ' .join(["(%s)" % w for w in where])
+            where = ' & ' .join(["(%s)" % w for w in where])  # noqa
 
         self.expr = where
         self.env = Scope(scope_level + 1, local_dict=local_dict)
@@ -526,7 +526,7 @@ class Expr(expr.Expr):
                     "where must be passed as a string if op/value are passed")
             warnings.warn("passing a dict to Expr is deprecated, "
                           "pass the where as a single string",
-                          DeprecationWarning)
+                          FutureWarning, stacklevel=10)
         if isinstance(w, tuple):
             if len(w) == 2:
                 w, value = w
@@ -535,7 +535,7 @@ class Expr(expr.Expr):
                 w, op, value = w
             warnings.warn("passing a tuple into Expr is deprecated, "
                           "pass the where as a single string",
-                          DeprecationWarning, stacklevel=10)
+                          FutureWarning, stacklevel=10)
 
         if op is not None:
             if not isinstance(w, string_types):
@@ -551,12 +551,14 @@ class Expr(expr.Expr):
 
                 # stringify with quotes these values
                 def convert(v):
-                    if isinstance(v, (datetime,np.datetime64,timedelta,np.timedelta64)) or hasattr(v, 'timetuple'):
+                    if (isinstance(v, (datetime, np.datetime64,
+                                       timedelta, np.timedelta64)) or
+                            hasattr(v, 'timetuple')):
                         return "'{0}'".format(v)
                     return v
 
-                if isinstance(value, (list,tuple)):
-                    value = [ convert(v) for v in value ]
+                if isinstance(value, (list, tuple)):
+                    value = [convert(v) for v in value]
                 else:
                     value = convert(value)
 
@@ -564,14 +566,14 @@ class Expr(expr.Expr):
 
             warnings.warn("passing multiple values to Expr is deprecated, "
                           "pass the where as a single string",
-                          DeprecationWarning)
+                          FutureWarning, stacklevel=10)
 
         return w
 
     def __unicode__(self):
         if self.terms is not None:
-            return com.pprint_thing(self.terms)
-        return com.pprint_thing(self.expr)
+            return pprint_thing(self.terms)
+        return pprint_thing(self.expr)
 
     def evaluate(self):
         """ create and return the numexpr condition and filter """

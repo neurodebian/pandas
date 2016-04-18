@@ -107,6 +107,7 @@ All options also have a default value, and you can use ``reset_option`` to do ju
 It's also possible to reset multiple options at once (using a regex):
 
 .. ipython:: python
+   :okwarning:
 
    pd.reset_option("^display")
 
@@ -129,7 +130,7 @@ Setting Startup Options in python/ipython Environment
 
 Using startup scripts for the python/ipython environment to import pandas and set options makes working with pandas more efficient.  To do this, create a .py or .ipy script in the startup directory of the desired profile.  An example where the startup folder is in a default ipython profile can be found at:
 
-.. code-block:: python
+.. code-block:: none
 
   $IPYTHONDIR/profile_default/startup
 
@@ -266,8 +267,10 @@ Options are 'right', and 'left'.
 
 
 
-List of Options
----------------
+.. _options.available:
+
+Available Options
+-----------------
 
 ========================== ============ ==================================
 Option                     Default      Function
@@ -307,6 +310,13 @@ display.large_repr         truncate     For DataFrames exceeding max_rows/max_co
                                         or switch to the view from df.info()
                                         (the behaviour in earlier versions of pandas).
                                         allowable settings, ['truncate', 'info']
+display.latex.repr         False        Whether to produce a latex DataFrame
+                                        representation for jupyter frontends
+                                        that support it.
+display.latex.escape       True         Escapes special caracters in Dataframes, when
+                                        using the to_latex method.
+display.latex.longtable    False        Specifies if the to_latex method of a Dataframe
+                                        uses the longtable format.
 display.line_width         80           Deprecated. Use `display.width` instead.
 display.max_columns        20           max_rows and max_columns are used
                                         in __repr__() methods to decide if
@@ -354,12 +364,6 @@ display.max_seq_items      100          when pretty-printing a long sequence,
 display.memory_usage       True         This specifies if the memory usage of
                                         a DataFrame should be displayed when the
                                         df.info() method is invoked.
-display.mpl_style          None         Setting this to 'default' will modify
-                                        the rcParams used by matplotlib
-                                        to give plots a more pleasing visual
-                                        style by default. Setting this to
-                                        None/False restores the values to
-                                        their initial value.
 display.multi_sparse       True         "Sparsify" MultiIndex display (don't
                                         display repeated elements in outer
                                         levels within groups)
@@ -436,6 +440,7 @@ For instance:
 
 .. ipython:: python
    :suppress:
+   :okwarning:
 
    pd.reset_option('^display\.')
 

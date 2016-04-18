@@ -9,7 +9,8 @@ from contextlib import contextmanager, closing
 
 from pandas.compat import StringIO, BytesIO, string_types, text_type
 from pandas import compat
-from pandas.core.common import pprint_thing, is_number
+from pandas.formats.printing import pprint_thing
+from pandas.core.common import is_number, AbstractMethodError
 
 
 try:
@@ -30,20 +31,19 @@ if compat.PY3:
     from urllib.request import urlopen, pathname2url
     _urlopen = urlopen
     from urllib.parse import urlparse as parse_url
-    import urllib.parse as compat_parse
     from urllib.parse import (uses_relative, uses_netloc, uses_params,
                               urlencode, urljoin)
     from urllib.error import URLError
-    from http.client import HTTPException
+    from http.client import HTTPException  # noqa
 else:
     from urllib2 import urlopen as _urlopen
-    from urllib import urlencode, pathname2url
+    from urllib import urlencode, pathname2url  # noqa
     from urlparse import urlparse as parse_url
     from urlparse import uses_relative, uses_netloc, uses_params, urljoin
-    from urllib2 import URLError
-    from httplib import HTTPException
-    from contextlib import contextmanager, closing
-    from functools import wraps
+    from urllib2 import URLError  # noqa
+    from httplib import HTTPException  # noqa
+    from contextlib import contextmanager, closing  # noqa
+    from functools import wraps  # noqa
 
     # @wraps(_urlopen)
     @contextmanager
@@ -56,16 +56,57 @@ _VALID_URLS = set(uses_relative + uses_netloc + uses_params)
 _VALID_URLS.discard('')
 
 
-class PerformanceWarning(Warning):
+class CParserError(ValueError):
+    """
+    Exception that is thrown by the C engine when it encounters
+    a parsing error in `pd.read_csv`
+    """
     pass
 
 
 class DtypeWarning(Warning):
+    """
+    Warning that is raised whenever `pd.read_csv` encounters non-
+    uniform dtypes in a column(s) of a given CSV file
+    """
     pass
+
+
+class EmptyDataError(ValueError):
+    """
+    Exception that is thrown in `pd.read_csv` (by both the C and
+    Python engines) when empty data or header is encountered
+    """
+    pass
+
+
+class ParserWarning(Warning):
+    """
+    Warning that is raised in `pd.read_csv` whenever it is necessary
+    to change parsers (generally from 'c' to 'python') contrary to the
+    one specified by the user due to lack of support or functionality for
+    parsing particular attributes of a CSV file with the requsted engine
+    """
+    pass
+
+
+class BaseIterator(object):
+    """Subclass this and provide a "__next__()" method to obtain an iterator.
+    Useful only when the object being iterated is non-reusable (e.g. OK for a
+    parser, not for an in-memory table, yes for its iterator)."""
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        raise AbstractMethodError(self)
+
+if not compat.PY3:
+    BaseIterator.next = lambda self: self.__next__()
 
 
 try:
     from boto.s3 import key
+
     class BotoFileLikeReader(key.Key):
         """boto Key modified to be more file-like
 
@@ -78,10 +119,12 @@ try:
         Also adds a `readline` function which will split the returned
         values by the `\n` character.
         """
+
         def __init__(self, *args, **kwargs):
             encoding = kwargs.pop("encoding", None)  # Python 2 compat
             super(BotoFileLikeReader, self).__init__(*args, **kwargs)
-            self.finished_read = False  # Add a flag to mark the end of the read.
+            # Add a flag to mark the end of the read.
+            self.finished_read = False
             self.buffer = ""
             self.lines = []
             if encoding is None and compat.PY3:
@@ -121,7 +164,8 @@ try:
                     raise StopIteration
 
             if self.encoding:
-                self.buffer = "{}{}".format(self.buffer, self.read(8192).decode(self.encoding))
+                self.buffer = "{}{}".format(
+                    self.buffer, self.read(8192).decode(self.encoding))
             else:
                 self.buffer = "{}{}".format(self.buffer, self.read(8192))
 
@@ -132,6 +176,10 @@ try:
             return self.readline()
 except ImportError:
     # boto is only needed for reading from S3.
+    pass
+except TypeError:
+    # boto/boto3 issues
+    # GH11915
     pass
 
 
@@ -211,12 +259,14 @@ def _expand_user(filepath_or_buffer):
         return os.path.expanduser(filepath_or_buffer)
     return filepath_or_buffer
 
+
 def _validate_header_arg(header):
     if isinstance(header, bool):
         raise TypeError("Passing a bool to header is invalid. "
                         "Use header=None for no header or "
                         "header=int or list-like of ints to specify "
                         "the row(s) making up the column names")
+
 
 def _stringify_path(filepath_or_buffer):
     """Return the argument coerced to a string if it was a pathlib.Path
@@ -263,8 +313,9 @@ def get_filepath_or_buffer(filepath_or_buffer, encoding=None,
             else:
                 compression = None
         # cat on the compression to the tuple returned by the function
-        to_return = list(maybe_read_encoded_stream(req, encoding, compression)) + \
-                    [compression]
+        to_return = (list(maybe_read_encoded_stream(req, encoding,
+                                                    compression)) +
+                     [compression])
         return tuple(to_return)
 
     if _is_s3_url(filepath_or_buffer):
@@ -272,14 +323,15 @@ def get_filepath_or_buffer(filepath_or_buffer, encoding=None,
             import boto
         except:
             raise ImportError("boto is required to handle s3 files")
-        # Assuming AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+        # Assuming AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_S3_HOST
         # are environment variables
         parsed_url = parse_url(filepath_or_buffer)
+        s3_host = os.environ.get('AWS_S3_HOST', 's3.amazonaws.com')
 
         try:
-            conn = boto.connect_s3()
+            conn = boto.connect_s3(host=s3_host)
         except boto.exception.NoAuthHandlerFound:
-            conn = boto.connect_s3(anon=True)
+            conn = boto.connect_s3(host=s3_host, anon=True)
 
         b = conn.get_bucket(parsed_url.netloc, validate=False)
         if compat.PY2 and (compression == 'gzip' or
@@ -339,6 +391,24 @@ def _get_handle(path, mode, encoding=None, compression=None):
         elif compression == 'bz2':
             import bz2
             f = bz2.BZ2File(path, mode)
+        elif compression == 'zip':
+            import zipfile
+            zip_file = zipfile.ZipFile(path)
+            zip_names = zip_file.namelist()
+
+            if len(zip_names) == 1:
+                file_name = zip_names.pop()
+                f = zip_file.open(file_name)
+            elif len(zip_names) == 0:
+                raise ValueError('Zero files found in ZIP file {}'
+                                 .format(path))
+            else:
+                raise ValueError('Multiple files found in ZIP file.'
+                                 ' Only one file per ZIP :{}'
+                                 .format(zip_names))
+        elif compression == 'xz':
+            lzma = compat.import_lzma()
+            f = lzma.LZMAFile(path, mode)
         else:
             raise ValueError('Unrecognized compression type: %s' %
                              compression)
@@ -358,7 +428,7 @@ def _get_handle(path, mode, encoding=None, compression=None):
     return f
 
 
-class UTF8Recoder:
+class UTF8Recoder(BaseIterator):
 
     """
     Iterator that reads an encoded stream and reencodes the input to UTF-8
@@ -366,9 +436,6 @@ class UTF8Recoder:
 
     def __init__(self, f, encoding):
         self.reader = codecs.getreader(encoding)(f)
-
-    def __iter__(self):
-        return self
 
     def read(self, bytes=-1):
         return self.reader.read(bytes).encode("utf-8")
@@ -379,9 +446,6 @@ class UTF8Recoder:
     def next(self):
         return next(self.reader).encode("utf-8")
 
-    # Python 3 iterator
-    __next__ = next
-
 
 if compat.PY3:  # pragma: no cover
     def UnicodeReader(f, dialect=csv.excel, encoding="utf-8", **kwds):
@@ -391,7 +455,7 @@ if compat.PY3:  # pragma: no cover
     def UnicodeWriter(f, dialect=csv.excel, encoding="utf-8", **kwds):
         return csv.writer(f, dialect=dialect, **kwds)
 else:
-    class UnicodeReader:
+    class UnicodeReader(BaseIterator):
 
         """
         A CSV reader which will iterate over lines in the CSV file "f",
@@ -405,15 +469,9 @@ else:
             f = UTF8Recoder(f, encoding)
             self.reader = csv.reader(f, dialect=dialect, **kwds)
 
-        def next(self):
+        def __next__(self):
             row = next(self.reader)
             return [compat.text_type(s, "utf-8") for s in row]
-
-        # python 3 iterator
-        __next__ = next
-
-        def __iter__(self):  # pragma: no cover
-            return self
 
     class UnicodeWriter:
 

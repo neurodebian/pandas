@@ -14,19 +14,21 @@ env:
 
 git:
     # for cloning
-    depth: 100
+    depth: 300
 
 matrix:
     fast_finish: true
     include:
-    - python: 2.6
+    - language: objective-c
+      os: osx
+      compiler: clang
+      osx_image: xcode6.4
       env:
-      - JOB_NAME: "26_nslow_nnet"
-      - NOSE_ARGS="not slow and not network and not disabled"
-      - CLIPBOARD=xclip
-      - LOCALE_OVERRIDE="it_IT.UTF-8"
-      - BUILD_TYPE=conda
-      - INSTALL_TEST=true
+        - JOB_NAME: "35_osx"
+        - NOSE_ARGS="not slow and not network and not disabled"
+        - BUILD_TYPE=conda
+        - JOB_TAG=_OSX
+        - TRAVIS_PYTHON_VERSION=3.5
     - python: 2.7
       env:
       - JOB_NAME: "27_slow_nnet_LOCALE"
@@ -34,43 +36,32 @@ matrix:
       - LOCALE_OVERRIDE="zh_CN.GB18030"
       - FULL_DEPS=true
       - JOB_TAG=_LOCALE
-      - BUILD_TYPE=conda
     - python: 2.7
       env:
       - JOB_NAME: "27_nslow"
       - NOSE_ARGS="not slow and not disabled"
       - FULL_DEPS=true
       - CLIPBOARD_GUI=gtk2
-      - BUILD_TYPE=conda
-      - DOC_BUILD=true # if rst files were changed, build docs in parallel with tests
+      - LINT=true
     - python: 3.4
       env:
       - JOB_NAME: "34_nslow"
       - NOSE_ARGS="not slow and not disabled"
       - FULL_DEPS=true
       - CLIPBOARD=xsel
-      - BUILD_TYPE=conda
     - python: 3.5
       env:
       - JOB_NAME: "35_nslow"
       - NOSE_ARGS="not slow and not network and not disabled"
       - FULL_DEPS=true
       - CLIPBOARD=xsel
-      - BUILD_TYPE=conda
-    - python: 3.3
-      env:
-      - JOB_NAME: "33_nslow"
-      - NOSE_ARGS="not slow and not disabled"
-      - FULL_DEPS=true
-      - CLIPBOARD=xsel
-      - BUILD_TYPE=conda
+      - COVERAGE=true
     - python: 2.7
       env:
       - JOB_NAME: "27_slow"
       - JOB_TAG=_SLOW
       - NOSE_ARGS="slow and not network and not disabled"
       - FULL_DEPS=true
-      - BUILD_TYPE=conda
     - python: 3.4
       env:
       - JOB_NAME: "34_slow"
@@ -78,46 +69,39 @@ matrix:
       - NOSE_ARGS="slow and not network and not disabled"
       - FULL_DEPS=true
       - CLIPBOARD=xsel
-      - BUILD_TYPE=conda
     - python: 2.7
       env:
       - JOB_NAME: "27_build_test_conda"
       - JOB_TAG=_BUILD_TEST
       - NOSE_ARGS="not slow and not disabled"
       - FULL_DEPS=true
-      - BUILD_TYPE=conda
       - BUILD_TEST=true
-    - python: 2.7
+    - python: 3.5
       env:
-      - JOB_NAME: "27_build_test_pydata"
-      - JOB_TAG=_BUILD_TEST
-      - NOSE_ARGS="not slow and not disabled"
-      - FULL_DEPS=true
-      - BUILD_TYPE=pydata
-      - BUILD_TEST=true
-    - python: 2.7
-      env:
-      - JOB_NAME: "27_numpy_master"
-      - JOB_TAG=_NUMPY_DEV_master
+      - JOB_NAME: "35_numpy_dev"
+      - JOB_TAG=_NUMPY_DEV
       - NOSE_ARGS="not slow and not network and not disabled"
-      - NUMPY_BUILD=master
-      - BUILD_TYPE=pydata
       - PANDAS_TESTING_MODE="deprecate"
+    - python: 2.7
+      env:
+      - JOB_NAME: "27_nslow_nnet_COMPAT"
+      - NOSE_ARGS="not slow and not network and not disabled"
+      - LOCALE_OVERRIDE="it_IT.UTF-8"
+      - INSTALL_TEST=true
+      - JOB_TAG=_COMPAT
+    - python: 2.7
+      env:
+      - JOB_NAME: "doc_build"
+      - FULL_DEPS=true
+      - DOC_BUILD=true # if rst files were changed, build docs in parallel with tests
+      - JOB_TAG=_DOC_BUILD
     allow_failures:
-      - python: 3.3
-        env:
-        - JOB_NAME: "33_nslow"
-        - NOSE_ARGS="not slow and not disabled"
-        - FULL_DEPS=true
-        - CLIPBOARD=xsel
-        - BUILD_TYPE=conda
       - python: 2.7
         env:
         - JOB_NAME: "27_slow"
         - JOB_TAG=_SLOW
         - NOSE_ARGS="slow and not network and not disabled"
         - FULL_DEPS=true
-        - BUILD_TYPE=conda
       - python: 3.4
         env:
         - JOB_NAME: "34_slow"
@@ -125,66 +109,72 @@ matrix:
         - NOSE_ARGS="slow and not network and not disabled"
         - FULL_DEPS=true
         - CLIPBOARD=xsel
-        - BUILD_TYPE=conda
-      - python: 2.7
-        env:
-        - JOB_NAME: "27_numpy_master"
-        - JOB_TAG=_NUMPY_DEV_master
-        - NOSE_ARGS="not slow and not network and not disabled"
-        - NUMPY_BUILD=master
-        - BUILD_TYPE=pydata
-        - PANDAS_TESTING_MODE="deprecate"
       - python: 2.7
         env:
         - JOB_NAME: "27_build_test_conda"
         - JOB_TAG=_BUILD_TEST
         - NOSE_ARGS="not slow and not disabled"
         - FULL_DEPS=true
-        - BUILD_TYPE=conda
         - BUILD_TEST=true
+      - python: 3.5
+        env:
+        - JOB_NAME: "35_numpy_dev"
+        - JOB_TAG=_NUMPY_DEV
+        - NOSE_ARGS="not slow and not network and not disabled"
+        - PANDAS_TESTING_MODE="deprecate"
       - python: 2.7
         env:
-        - JOB_NAME: "27_build_test_pydata"
-        - JOB_TAG=_BUILD_TEST
-        - NOSE_ARGS="not slow and not disabled"
+        - JOB_NAME: "27_nslow_nnet_COMPAT"
+        - NOSE_ARGS="not slow and not network and not disabled"
+        - LOCALE_OVERRIDE="it_IT.UTF-8"
+        - INSTALL_TEST=true
+        - JOB_TAG=_COMPAT
+      - python: 2.7
+        env:
+        - JOB_NAME: "doc_build"
         - FULL_DEPS=true
-        - BUILD_TYPE=pydata
-        - BUILD_TEST=true
+        - DOC_BUILD=true
+        - JOB_TAG=_DOC_BUILD
 
 before_install:
   - echo "before_install"
   - echo $VIRTUAL_ENV
   - export PATH="$HOME/miniconda/bin:$PATH"
-  - sudo apt-get install ccache
   - df -h
   - date
   - pwd
   - uname -a
   - python -V
-  - ci/before_install.sh
-  # Xvfb stuff for clipboard functionality; see the travis-ci documentation
+# git info & get tags
+  - git --version
+  - git tag
+  - ci/before_install_travis.sh
   - export DISPLAY=:99.0
-  - sh -e /etc/init.d/xvfb start
 
 install:
-  - echo "install"
+  - echo "install start"
   - ci/prep_ccache.sh
-  - ci/install_${BUILD_TYPE}.sh
+  - ci/install_travis.sh
   - ci/submit_ccache.sh
+  - echo "install done"
 
 before_script:
-  - mysql -e 'create database pandas_nosetest;'
-  - psql -c 'create database pandas_nosetest;' -U postgres
+  - source activate pandas && pip install codecov
+  - ci/install_db.sh
 
 script:
-  - echo "script"
-  - ci/run_build_docs.sh &
+  - echo "script start"
+  - ci/run_build_docs.sh
   - ci/script.sh
-# nothing here, or failed tests won't fail travis
+  - ci/lint.sh
+  - echo "script done"
+
+after_success:
+  - source activate pandas && codecov
 
 after_script:
+  - echo "after_script start"
   - ci/install_test.sh
-  - if [ -f /tmp/doc.log ]; then cat /tmp/doc.log; fi
   - source activate pandas && ci/print_versions.py
   - ci/print_skipped.py /tmp/nosetests.xml
-  - ci/after_script.sh
+  - echo "after_script done"

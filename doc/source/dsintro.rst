@@ -10,10 +10,7 @@
    pd.options.display.max_rows = 15
 
    import matplotlib
-   try:
-      matplotlib.style.use('ggplot')
-   except AttributeError:
-      pd.options.display.mpl_style = 'default'
+   matplotlib.style.use('ggplot')
    import matplotlib.pyplot as plt
    plt.close('all')
 
@@ -46,7 +43,7 @@ Series
 
 .. warning::
 
-   In 0.13.0 ``Series`` has internaly been refactored to no longer sub-class ``ndarray``
+   In 0.13.0 ``Series`` has internally been refactored to no longer sub-class ``ndarray``
    but instead subclass ``NDFrame``, similarly to the rest of the pandas containers. This should be
    a transparent change with only very limited API implications (See the :ref:`Internal Refactoring<whatsnew_0130.refactoring>`)
 
@@ -213,6 +210,17 @@ Series can also have a ``name`` attribute:
 
 The Series ``name`` will be assigned automatically in many cases, in particular
 when taking 1D slices of DataFrame as you will see below.
+
+.. versionadded:: 0.18.0
+
+You can rename a Series with the :meth:`pandas.Series.rename` method.
+
+.. ipython:: python
+
+   s2 = s.rename("different")
+   s2.name
+
+Note that ``s`` and ``s2`` refer to different objects.
 
 .. _basics.dataframe:
 
@@ -684,6 +692,7 @@ R package):
 
 .. ipython:: python
    :suppress:
+   :okwarning:
 
    # restore GlobalPrintConfig
    pd.reset_option('^display\.')
@@ -711,10 +720,25 @@ option:
 
    pd.DataFrame(np.random.randn(3, 12))
 
+You can adjust the max width of the individual columns by setting ``display.max_colwidth``
+
+.. ipython:: python
+
+   datafile={'filename': ['filename_01','filename_02'],
+             'path': ["media/user_name/storage/folder_01/filename_01",
+                      "media/user_name/storage/folder_02/filename_02"]}
+
+   pd.set_option('display.max_colwidth',30)
+   pd.DataFrame(datafile)
+
+   pd.set_option('display.max_colwidth',100)
+   pd.DataFrame(datafile)
+
 .. ipython:: python
    :suppress:
 
    pd.reset_option('display.width')
+   pd.reset_option('display.max_colwidth')
 
 You can also disable this feature via the ``expand_frame_repr`` option.
 This will print the table in one block.

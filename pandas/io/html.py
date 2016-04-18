@@ -7,24 +7,26 @@ import os
 import re
 import numbers
 import collections
-import warnings
 
 from distutils.version import LooseVersion
 
 import numpy as np
 
-from pandas.io.common import _is_url, urlopen, parse_url, _validate_header_arg
+from pandas.io.common import (EmptyDataError, _is_url, urlopen,
+                              parse_url, _validate_header_arg)
 from pandas.io.parsers import TextParser
 from pandas.compat import (lrange, lmap, u, string_types, iteritems,
                            raise_with_traceback, binary_type)
 from pandas.core import common as com
 from pandas import Series
 from pandas.core.common import AbstractMethodError
+from pandas.formats.printing import pprint_thing
 
 _IMPORTS = False
 _HAS_BS4 = False
 _HAS_LXML = False
 _HAS_HTML5LIB = False
+
 
 def _importers():
     # import things we need
@@ -39,19 +41,19 @@ def _importers():
     global _HAS_BS4, _HAS_LXML, _HAS_HTML5LIB
 
     try:
-        import bs4
+        import bs4  # noqa
         _HAS_BS4 = True
     except ImportError:
         pass
 
     try:
-        import lxml
+        import lxml  # noqa
         _HAS_LXML = True
     except ImportError:
         pass
 
     try:
-        import html5lib
+        import html5lib  # noqa
         _HAS_HTML5LIB = True
     except ImportError:
         pass
@@ -183,6 +185,7 @@ class _HtmlFrameParser(object):
     See each method's respective documentation for details on their
     functionality.
     """
+
     def __init__(self, io, match, attrs, encoding):
         self.io = io
         self.match = match
@@ -385,6 +388,7 @@ class _BeautifulSoupHtml5LibFrameParser(_HtmlFrameParser):
     Documentation strings for this class are in the base class
     :class:`pandas.io.html._HtmlFrameParser`.
     """
+
     def __init__(self, *args, **kwargs):
         super(_BeautifulSoupHtml5LibFrameParser, self).__init__(*args,
                                                                 **kwargs)
@@ -488,6 +492,7 @@ class _LxmlFrameParser(_HtmlFrameParser):
     Documentation strings for this class are in the base class
     :class:`_HtmlFrameParser`.
     """
+
     def __init__(self, *args, **kwargs):
         super(_LxmlFrameParser, self).__init__(*args, **kwargs)
 
@@ -662,7 +667,8 @@ def _parser_dispatch(flavor):
         if not _HAS_HTML5LIB:
             raise ImportError("html5lib not found, please install it")
         if not _HAS_BS4:
-            raise ImportError("BeautifulSoup4 (bs4) not found, please install it")
+            raise ImportError(
+                "BeautifulSoup4 (bs4) not found, please install it")
         import bs4
         if bs4.__version__ == LooseVersion('4.2.0'):
             raise ValueError("You're using a version"
@@ -679,7 +685,7 @@ def _parser_dispatch(flavor):
 
 
 def _print_as_set(s):
-    return '{%s}' % ', '.join([com.pprint_thing(el) for el in s])
+    return '{%s}' % ', '.join([pprint_thing(el) for el in s])
 
 
 def _validate_flavor(flavor):
@@ -737,7 +743,7 @@ def _parse(flavor, io, match, header, index_col, skiprows,
                                       parse_dates=parse_dates,
                                       tupleize_cols=tupleize_cols,
                                       thousands=thousands))
-        except StopIteration: # empty table
+        except EmptyDataError:  # empty table
             continue
     return ret
 

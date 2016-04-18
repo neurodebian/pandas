@@ -68,7 +68,7 @@ Here's the function in pure python:
 
 We achieve our result by using ``apply`` (row-wise):
 
-.. code-block:: python
+.. code-block:: ipython
 
    In [7]: %timeit df.apply(lambda x: integrate_f(x['a'], x['b'], x['N']), axis=1)
    10 loops, best of 3: 174 ms per loop
@@ -98,8 +98,9 @@ First we're going to need to import the cython magic function to ipython (for
 cython versions >=0.21 you can use ``%load_ext Cython``):
 
 .. ipython:: python
+   :okwarning:
 
-   %load_ext cythonmagic
+   %load_ext Cython
 
 
 Now, let's simply copy our functions over to cython as is (the suffix
@@ -124,7 +125,7 @@ is here to distinguish between function versions):
   to be using bleeding edge ipython for paste to play well with cell magics.
 
 
-.. code-block:: python
+.. code-block:: ipython
 
    In [4]: %timeit df.apply(lambda x: integrate_f_plain(x['a'], x['b'], x['N']), axis=1)
    10 loops, best of 3: 85.5 ms per loop
@@ -153,7 +154,7 @@ We get another huge improvement simply by providing type information:
       ...:     return s * dx
       ...:
 
-.. code-block:: python
+.. code-block:: ipython
 
    In [4]: %timeit df.apply(lambda x: integrate_f_typed(x['a'], x['b'], x['N']), axis=1)
    10 loops, best of 3: 20.3 ms per loop
@@ -233,7 +234,7 @@ the rows, applying our ``integrate_f_typed``, and putting this in the zeros arra
     Loops like this would be *extremely* slow in python, but in Cython looping
     over numpy arrays is *fast*.
 
-.. code-block:: python
+.. code-block:: ipython
 
    In [4]: %timeit apply_integrate_f(df['a'].values, df['b'].values, df['N'].values)
    1000 loops, best of 3: 1.25 ms per loop
@@ -283,7 +284,7 @@ advanced cython techniques:
       ...:     return res
       ...:
 
-.. code-block:: python
+.. code-block:: ipython
 
    In [4]: %timeit apply_integrate_f_wrap(df['a'].values, df['b'].values, df['N'].values)
    1000 loops, best of 3: 987 us per loop
@@ -347,7 +348,7 @@ Using ``numba`` to just-in-time compile your code. We simply take the plain pyth
 
 Note that we directly pass ``numpy`` arrays to the numba function. ``compute_numba`` is just a wrapper that provides a nicer interface by passing/returning pandas objects.
 
-.. code-block:: python
+.. code-block:: ipython
 
     In [4]: %timeit compute_numba(df)
     1000 loops, best of 3: 798 us per loop
@@ -570,17 +571,50 @@ prefix the name of the :class:`~pandas.DataFrame` to the column(s) you're
 interested in evaluating.
 
 In addition, you can perform assignment of columns within an expression.
-This allows for *formulaic evaluation*. Only a single assignment is permitted.
-The assignment target can be a new column name or an existing column name, and
-it must be a valid Python identifier.
+This allows for *formulaic evaluation*.  The assignment target can be a
+new column name or an existing column name, and it must be a valid Python
+identifier.
+
+.. versionadded:: 0.18.0
+
+The ``inplace`` keyword determines whether this assignment will performed
+on the original ``DataFrame`` or return a copy with the new column.
+
+.. warning::
+
+   For backwards compatability, ``inplace`` defaults to ``True`` if not
+   specified. This will change in a future version of pandas - if your
+   code depends on an inplace assignment you should update to explicitly
+   set ``inplace=True``
 
 .. ipython:: python
 
    df = pd.DataFrame(dict(a=range(5), b=range(5, 10)))
-   df.eval('c = a + b')
-   df.eval('d = a + b + c')
-   df.eval('a = 1')
+   df.eval('c = a + b', inplace=True)
+   df.eval('d = a + b + c', inplace=True)
+   df.eval('a = 1', inplace=True)
    df
+
+When ``inplace`` is set to ``False``, a copy of the ``DataFrame`` with the
+new or modified columns is returned and the original frame is unchanged.
+
+.. ipython:: python
+
+   df
+   df.eval('e = a - c', inplace=False)
+   df
+
+.. versionadded:: 0.18.0
+
+As a convenience, multiple assignments can be performed by using a
+multi-line string.
+
+.. ipython:: python
+
+   df.eval("""
+   c = a + b
+   d = a + b + c
+   a = 1""", inplace=False)
 
 The equivalent in standard Python would be
 
@@ -591,6 +625,23 @@ The equivalent in standard Python would be
    df['d'] = df.a + df.b + df.c
    df['a'] = 1
    df
+
+.. versionadded:: 0.18.0
+
+The ``query`` method gained the ``inplace`` keyword which determines
+whether the query modifies the original frame.
+
+.. ipython:: python
+
+   df = pd.DataFrame(dict(a=range(5), b=range(5, 10)))
+   df.query('a > 2')
+   df.query('a > 2', inplace=True)
+   df
+
+.. warning::
+
+   Unlike with ``eval``, the default value for ``inplace`` for ``query``
+   is ``False``.  This is consistent with prior versions of pandas.
 
 Local Variables
 ~~~~~~~~~~~~~~~
@@ -745,7 +796,7 @@ Technical Minutia Regarding Expression Evaluation
 
 Expressions that would result in an object dtype or involve datetime operations
 (because of ``NaT``) must be evaluated in Python space. The main reason for
-this behavior is to maintain backwards compatbility with versions of numpy <
+this behavior is to maintain backwards compatibility with versions of numpy <
 1.7. In those versions of ``numpy`` a call to ``ndarray.astype(str)`` will
 truncate any strings that are more than 60 characters in length. Second, we
 can't pass ``object`` arrays to ``numexpr`` thus string comparisons must be

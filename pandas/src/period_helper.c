@@ -30,8 +30,6 @@ static int floordiv(int x, int divisor) {
     }
 }
 
-static asfreq_info NULL_AF_INFO;
-
 /* Table with day offsets for each month (0-based, without and with leap) */
 static int month_offset[2][13] = {
     { 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365 },
@@ -283,23 +281,23 @@ static int daytime_conversion_factors[][2] = {
 
 static npy_int64** daytime_conversion_factor_matrix = NULL;
 
-PANDAS_INLINE static int max_value(int a, int b) {
+PANDAS_INLINE int max_value(int a, int b) {
     return a > b ? a : b;
 }
 
-PANDAS_INLINE static int min_value(int a, int b) {
+PANDAS_INLINE int min_value(int a, int b) {
     return a < b ? a : b;
 }
 
-PANDAS_INLINE static int get_freq_group(int freq) {
+PANDAS_INLINE int get_freq_group(int freq) {
     return (freq/1000)*1000;
 }
 
-PANDAS_INLINE static int get_freq_group_index(int freq) {
+PANDAS_INLINE int get_freq_group_index(int freq) {
     return freq/1000;
 }
 
-static int calc_conversion_factors_matrix_size() {
+static int calc_conversion_factors_matrix_size(void) {
     int matrix_size = 0;
     int index;
     for (index=0;; index++) {
@@ -348,7 +346,7 @@ static npy_int64 calculate_conversion_factor(int start_value, int end_value) {
     return conversion_factor;
 }
 
-static void populate_conversion_factors_matrix() {
+static void populate_conversion_factors_matrix(void) {
     int row_index_index;
 	int row_value, row_index;
     int column_index_index;
@@ -399,7 +397,7 @@ PANDAS_INLINE npy_int64 downsample_daytime(npy_int64 ordinal, asfreq_info *af_in
     return ordinal / (af_info->intraday_conversion_factor);
 }
 
-PANDAS_INLINE static npy_int64 transform_via_day(npy_int64 ordinal, char relation, asfreq_info *af_info, freq_conv_func first_func, freq_conv_func second_func) {
+PANDAS_INLINE npy_int64 transform_via_day(npy_int64 ordinal, char relation, asfreq_info *af_info, freq_conv_func first_func, freq_conv_func second_func) {
     //printf("transform_via_day(%ld, %ld, %d)\n", ordinal, af_info->intraday_conversion_factor, af_info->intraday_conversion_upsample);
 	npy_int64 result;
 

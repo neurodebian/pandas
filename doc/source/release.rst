@@ -12,7 +12,7 @@
    import matplotlib.pyplot as plt
    plt.close('all')
 
-   options.display.max_rows=15
+   pd.options.display.max_rows=15
    import pandas.util.testing as tm
 
 *************
@@ -36,6 +36,156 @@ analysis / manipulation tool available in any language.
 * Source code: http://github.com/pydata/pandas
 * Binary installers on PyPI: http://pypi.python.org/pypi/pandas
 * Documentation: http://pandas.pydata.org
+
+pandas 0.18.1
+-------------
+
+**Release date:** (April ??, 2016)
+
+This is a minor release from 0.18.0 and includes a large number of bug fixes
+along with several new features, enhancements, and performance improvements.
+
+Highlights include:
+
+See the :ref:`v0.18.1 Whatsnew <whatsnew_0181>` overview for an extensive list
+of all enhancements and bugs that have been fixed in 0.18.1.
+
+Thanks
+~~~~~~
+
+pandas 0.18.0
+-------------
+
+**Release date:** (March 13, 2016)
+
+This is a major release from 0.17.1 and includes a small number of API changes, several new features,
+enhancements, and performance improvements along with a large number of bug fixes. We recommend that all
+users upgrade to this version.
+
+Highlights include:
+
+- Moving and expanding window functions are now methods on Series and DataFrame,
+  similar to ``.groupby``, see :ref:`here <whatsnew_0180.enhancements.moments>`.
+- Adding support for a ``RangeIndex`` as a specialized form of the ``Int64Index``
+  for memory savings, see :ref:`here <whatsnew_0180.enhancements.rangeindex>`.
+- API breaking change to the ``.resample`` method to make it more ``.groupby``
+  like, see :ref:`here <whatsnew_0180.breaking.resample>`.
+- Removal of support for positional indexing with floats, which was deprecated
+  since 0.14.0. This will now raise a ``TypeError``, see :ref:`here <whatsnew_0180.float_indexers>`.
+- The ``.to_xarray()`` function has been added for compatibility with the
+  `xarray package <http://xarray.pydata.org/en/stable/>`__, see :ref:`here <whatsnew_0180.enhancements.xarray>`.
+- The ``read_sas`` function has been enhanced to read ``sas7bdat`` files, see :ref:`here <whatsnew_0180.enhancements.sas>`.
+- Addition of the :ref:`.str.extractall() method <whatsnew_0180.enhancements.extract>`,
+  and API changes to the :ref:`.str.extract() method <whatsnew_0180.enhancements.extract>`
+  and :ref:`.str.cat() method <whatsnew_0180.enhancements.strcat>`.
+- ``pd.test()`` top-level nose test runner is available (:issue:`4327`).
+
+See the :ref:`v0.18.0 Whatsnew <whatsnew_0180>` overview for an extensive list
+of all enhancements and bugs that have been fixed in 0.17.1.
+
+Thanks
+~~~~~~
+
+- ARF
+- Alex Alekseyev
+- Andrew McPherson
+- Andrew Rosenfeld
+- Anthonios Partheniou
+- Anton I. Sipos
+- Ben
+- Ben North
+- Bran Yang
+- Chris
+- Chris Carroux
+- Christopher C. Aycock
+- Christopher Scanlin
+- Cody
+- Da Wang
+- Daniel Grady
+- Dorozhko Anton
+- Dr-Irv
+- Erik M. Bray
+- Evan Wright
+- Francis T. O'Donovan
+- Frank Cleary
+- Gianluca Rossi
+- Graham Jeffries
+- Guillaume Horel
+- Henry Hammond
+- Isaac Schwabacher
+- Jean-Mathieu Deschenes
+- Jeff Reback
+- Joe Jevnik
+- John Freeman
+- John Fremlin
+- Jonas Hoersch
+- Joris Van den Bossche
+- Joris Vankerschaver
+- Justin Lecher
+- Justin Lin
+- Ka Wo Chen
+- Keming Zhang
+- Kerby Shedden
+- Kyle
+- Marco Farrugia
+- MasonGallo
+- MattRijk
+- Matthew Lurie
+- Maximilian Roos
+- Mayank Asthana
+- Mortada Mehyar
+- Moussa Taifi
+- Navreet Gill
+- Nicolas Bonnotte
+- Paul Reiners
+- Philip Gura
+- Pietro Battiston
+- RahulHP
+- Randy Carnevale
+- Rinoc Johnson
+- Rishipuri
+- Sangmin Park
+- Scott E Lasley
+- Sereger13
+- Shannon Wang
+- Skipper Seabold
+- Thierry Moisan
+- Thomas A Caswell
+- Toby Dylan Hocking
+- Tom Augspurger
+- Travis
+- Trent Hauck
+- Tux1
+- Varun
+- Wes McKinney
+- Will Thompson
+- Yoav Ram
+- Yoong Kang Lim
+- Yoshiki Vázquez Baeza
+- Young Joong Kim
+- Younggun Kim
+- Yuval Langer
+- alex argunov
+- behzad nouri
+- boombard
+- brian-pantano
+- chromy
+- daniel
+- dgram0
+- gfyoung
+- hack-c
+- hcontrast
+- jfoo
+- kaustuv deolal
+- llllllllll
+- ranarag
+- rockg
+- scls19fr
+- seales
+- sinhrks
+- srib
+- surveymedia.ca
+- tworec
 
 pandas 0.17.1
 -------------
@@ -1371,7 +1521,7 @@ API Changes
   of the future import. You can use ``//`` and ``floordiv`` to do integer
   division.
 
-.. code-block:: python
+.. code-block:: ipython
 
    In [3]: arr = np.array([1, 2, 3, 4])
 

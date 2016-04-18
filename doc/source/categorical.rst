@@ -178,9 +178,26 @@ It's also possible to pass in the categories in a specific order:
 
 .. note::
 
-    New categorical data are NOT automatically ordered. You must explicity pass ``ordered=True`` to
+    New categorical data are NOT automatically ordered. You must explicitly pass ``ordered=True`` to
     indicate an ordered ``Categorical``.
 
+
+.. note::
+
+    The result of ``Series.unique()`` is not always the same as ``Series.cat.categories``,
+    because ``Series.unique()`` has a couple of guarantees, namely that it returns categories
+    in the order of appearance, and it only includes values that are actually present.
+
+    .. ipython:: python
+
+         s = pd.Series(list('babc')).astype('category', categories=list('abcd'))
+         s
+
+         # categories
+         s.cat.categories
+
+         # uniques
+         s.unique()
 
 Renaming categories
 ~~~~~~~~~~~~~~~~~~~
@@ -335,14 +352,14 @@ necessarily make the sort order the same as the categories order.
 .. note::
 
     If the `Categorical` is not ordered, ``Series.min()`` and ``Series.max()`` will raise
-    `TypeError`. Numeric operations like ``+``, ``-``, ``*``, ``/`` and operations based on them
-    (e.g.``Series.median()``, which would need to compute the mean between two values if the length
-    of an array is even) do not work and raise a `TypeError`.
+    ``TypeError``. Numeric operations like ``+``, ``-``, ``*``, ``/`` and operations based on them
+    (e.g. ``Series.median()``, which would need to compute the mean between two values if the length
+    of an array is even) do not work and raise a ``TypeError``.
 
 Multi Column Sorting
 ~~~~~~~~~~~~~~~~~~~~
 
-A categorical dtyped column will partcipate in a multi-column sort in a similar manner to other columns.
+A categorical dtyped column will participate in a multi-column sort in a similar manner to other columns.
 The ordering of the categorical is determined by the ``categories`` of that column.
 
 .. ipython:: python

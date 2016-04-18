@@ -132,11 +132,11 @@ typedef double khfloat64_t;
 
 #ifndef PANDAS_INLINE
   #if defined(__GNUC__)
-    #define PANDAS_INLINE __inline__
+    #define PANDAS_INLINE static __inline__
   #elif defined(_MSC_VER)
-    #define PANDAS_INLINE __inline
+    #define PANDAS_INLINE static __inline
   #elif defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
-    #define PANDAS_INLINE inline
+    #define PANDAS_INLINE static inline
   #else
     #define PANDAS_INLINE
   #endif
@@ -152,7 +152,7 @@ typedef khint_t khiter_t;
 #define __ac_set_isempty_false(flag, i) (flag[i>>5]&=~(1ul<<(i&0x1fU)))
 #define __ac_set_isempty_true(flag, i) (flag[i>>5]|=(1ul<<(i&0x1fU)))
 #define __ac_set_isboth_false(flag, i) __ac_set_isempty_false(flag, i)
-#define __ac_set_isdel_true(flag, i) (0)
+#define __ac_set_isdel_true(flag, i) ((void)0)
 
 #ifdef KHASH_LINEAR
 #define __ac_inc(k, m) 1
@@ -324,7 +324,7 @@ static const double __ac_HASH_UPPER = 0.77;
 	}
 
 #define KHASH_INIT(name, khkey_t, khval_t, kh_is_map, __hash_func, __hash_equal) \
-	KHASH_INIT2(name, static PANDAS_INLINE, khkey_t, khval_t, kh_is_map, __hash_func, __hash_equal)
+	KHASH_INIT2(name, PANDAS_INLINE, khkey_t, khval_t, kh_is_map, __hash_func, __hash_equal)
 
 /* --- BEGIN OF HASH FUNCTIONS --- */
 
@@ -354,7 +354,7 @@ static const double __ac_HASH_UPPER = 0.77;
   @param  s     Pointer to a null terminated string
   @return       The hash value
  */
-static PANDAS_INLINE khint_t __ac_X31_hash_string(const char *s)
+PANDAS_INLINE khint_t __ac_X31_hash_string(const char *s)
 {
 	khint_t h = *s;
 	if (h) for (++s ; *s; ++s) h = (h << 5) - h + *s;
@@ -371,7 +371,7 @@ static PANDAS_INLINE khint_t __ac_X31_hash_string(const char *s)
  */
 #define kh_str_hash_equal(a, b) (strcmp(a, b) == 0)
 
-static PANDAS_INLINE khint_t __ac_Wang_hash(khint_t key)
+PANDAS_INLINE khint_t __ac_Wang_hash(khint_t key)
 {
     key += ~(key << 15);
     key ^=  (key >> 10);

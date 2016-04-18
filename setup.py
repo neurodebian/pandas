@@ -14,6 +14,15 @@ import re
 import platform
 from distutils.version import LooseVersion
 
+def is_platform_windows():
+    return sys.platform == 'win32' or sys.platform == 'cygwin'
+
+def is_platform_linux():
+    return sys.platform == 'linux2'
+
+def is_platform_mac():
+    return sys.platform == 'darwin'
+
 # versioning
 import versioneer
 cmdclass = versioneer.get_cmdclass()
@@ -178,9 +187,7 @@ CLASSIFIERS = [
     'Programming Language :: Python',
     'Programming Language :: Python :: 2',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 2.6',
     'Programming Language :: Python :: 2.7',
-    'Programming Language :: Python :: 3.3',
     'Programming Language :: Python :: 3.4',
     'Programming Language :: Python :: 3.5',
     'Programming Language :: Cython',
@@ -200,6 +207,7 @@ class CleanCommand(Command):
         base = pjoin('pandas','src')
         dt = pjoin(base,'datetime')
         src = base
+        util = pjoin('pandas','util')
         parser = pjoin(base,'parser')
         ujson_python = pjoin(base,'ujson','python')
         ujson_lib = pjoin(base,'ujson','lib')
@@ -213,6 +221,7 @@ class CleanCommand(Command):
                                pjoin(ujson_python,'JSONtoObj.c'),
                                pjoin(ujson_lib,'ultrajsonenc.c'),
                                pjoin(ujson_lib,'ultrajsondec.c'),
+                               pjoin(util,'move.c'),
                                ]
 
         for root, dirs, files in os.walk('pandas'):
@@ -264,7 +273,8 @@ class CheckSDist(sdist_class):
                  'pandas/parser.pyx',
                  'pandas/src/period.pyx',
                  'pandas/src/sparse.pyx',
-                 'pandas/src/testing.pyx']
+                 'pandas/src/testing.pyx',
+                 'pandas/io/sas/saslib.pyx']
 
     def initialize_options(self):
         sdist_class.initialize_options(self)
@@ -292,7 +302,7 @@ class CheckSDist(sdist_class):
 class CheckingBuildExt(build_ext):
     """
     Subclass build_ext to get clearer report if Cython is necessary.
-    Also, add some platform based compiler flags.
+
     """
 
     def check_cython_extensions(self, extensions):
@@ -306,26 +316,7 @@ class CheckingBuildExt(build_ext):
 
     def build_extensions(self):
         self.check_cython_extensions(self.extensions)
-        self.add_gnu_inline_flag(self.extensions)
         build_ext.build_extensions(self)
-
-    def add_gnu_inline_flag(self, extensions):
-        '''
-        Add CFLAGS `-fgnu89-inline` for clang on FreeBSD 10+
-        '''
-        if not platform.system() == 'FreeBSD':
-            return
-
-        try:
-            bsd_release = float(platform.release().split('-')[0])
-        except ValueError:  # unknow freebsd version
-            return
-
-        if bsd_release < 10:  # 9 or earlier still using gcc42
-            return
-
-        for ext in extensions:
-            ext.extra_compile_args += ['-fgnu89-inline']
 
 
 class CythonCommand(build_ext):
@@ -395,6 +386,11 @@ common_include = ['pandas/src/klib', 'pandas/src']
 def pxd(name):
     return os.path.abspath(pjoin('pandas', name + '.pxd'))
 
+# args to ignore warnings
+if is_platform_windows():
+    extra_compile_args=[]
+else:
+    extra_compile_args=['-Wno-unused-function']
 
 lib_depends = lib_depends + ['pandas/src/numpy_helper.h',
                              'pandas/src/parse_helper.h']
@@ -406,7 +402,7 @@ tseries_depends = ['pandas/src/datetime/np_datetime.h',
 
 
 # some linux distros require it
-libraries = ['m'] if 'win32' not in sys.platform else []
+libraries = ['m'] if not is_platform_windows() else []
 
 ext_data = dict(
     lib={'pyxfile': 'lib',
@@ -429,15 +425,20 @@ ext_data = dict(
            'sources': ['pandas/src/datetime/np_datetime.c',
                        'pandas/src/datetime/np_datetime_strings.c']},
     algos={'pyxfile': 'algos',
+           'pxdfiles': ['src/skiplist'],
            'depends': [srcpath('generated', suffix='.pyx'),
-                       srcpath('join', suffix='.pyx')]},
+                       srcpath('join', suffix='.pyx'),
+                       'pandas/src/skiplist.pyx',
+                       'pandas/src/skiplist.h']},
     parser={'pyxfile': 'parser',
             'depends': ['pandas/src/parser/tokenizer.h',
                         'pandas/src/parser/io.h',
                         'pandas/src/numpy_helper.h'],
             'sources': ['pandas/src/parser/tokenizer.c',
-                        'pandas/src/parser/io.c']}
+                        'pandas/src/parser/io.c']},
 )
+
+ext_data["io.sas.saslib"] = {'pyxfile': 'io/sas/saslib'}
 
 extensions = []
 
@@ -454,7 +455,8 @@ for name, data in ext_data.items():
     obj = Extension('pandas.%s' % name,
                     sources=sources,
                     depends=data.get('depends', []),
-                    include_dirs=include)
+                    include_dirs=include,
+                    extra_compile_args=extra_compile_args)
 
     extensions.append(obj)
 
@@ -462,19 +464,21 @@ for name, data in ext_data.items():
 sparse_ext = Extension('pandas._sparse',
                        sources=[srcpath('sparse', suffix=suffix)],
                        include_dirs=[],
-                       libraries=libraries)
+                       libraries=libraries,
+                       extra_compile_args=extra_compile_args)
 
 extensions.extend([sparse_ext])
 
 testing_ext = Extension('pandas._testing',
                        sources=[srcpath('testing', suffix=suffix)],
                        include_dirs=[],
-                       libraries=libraries)
+                       libraries=libraries,
+                       extra_compile_args=extra_compile_args)
 
 extensions.extend([testing_ext])
 
 #----------------------------------------------------------------------
-# msgpack stuff here
+# msgpack
 
 if sys.byteorder == 'big':
     macros = [('__BIG_ENDIAN__', '1')]
@@ -482,21 +486,31 @@ else:
     macros = [('__LITTLE_ENDIAN__', '1')]
 
 packer_ext = Extension('pandas.msgpack._packer',
+                        depends=['pandas/src/msgpack/pack.h',
+                                 'pandas/src/msgpack/pack_template.h'],
                         sources = [srcpath('_packer',
                                    suffix=suffix if suffix == '.pyx' else '.cpp',
                                    subdir='msgpack')],
                         language='c++',
                         include_dirs=['pandas/src/msgpack'] + common_include,
-                        define_macros=macros)
+                        define_macros=macros,
+                        extra_compile_args=extra_compile_args)
 unpacker_ext = Extension('pandas.msgpack._unpacker',
+                        depends=['pandas/src/msgpack/unpack.h',
+                                 'pandas/src/msgpack/unpack_define.h',
+                                 'pandas/src/msgpack/unpack_template.h'],
                         sources = [srcpath('_unpacker',
                                    suffix=suffix if suffix == '.pyx' else '.cpp',
                                    subdir='msgpack')],
                         language='c++',
                         include_dirs=['pandas/src/msgpack'] + common_include,
-                        define_macros=macros)
+                        define_macros=macros,
+                        extra_compile_args=extra_compile_args)
 extensions.append(packer_ext)
 extensions.append(unpacker_ext)
+
+#----------------------------------------------------------------------
+# ujson
 
 if suffix == '.pyx' and 'setuptools' in sys.modules:
     # undo dumb setuptools bug clobbering .pyx sources back to .c
@@ -518,10 +532,18 @@ ujson_ext = Extension('pandas.json',
                       include_dirs=['pandas/src/ujson/python',
                                     'pandas/src/ujson/lib',
                                     'pandas/src/datetime'] + common_include,
-                      extra_compile_args=['-D_GNU_SOURCE'])
+                      extra_compile_args=['-D_GNU_SOURCE'] + extra_compile_args)
 
 
 extensions.append(ujson_ext)
+
+#----------------------------------------------------------------------
+# util
+# extension for pseudo-safely moving bytes into mutable buffers
+_move_ext = Extension('pandas.util._move',
+                      depends=[],
+                      sources=['pandas/util/move.c'])
+extensions.append(_move_ext)
 
 
 if _have_setuptools:
@@ -538,7 +560,10 @@ setup(name=DISTNAME,
                 'pandas.computation',
                 'pandas.computation.tests',
                 'pandas.core',
+                'pandas.indexes',
                 'pandas.io',
+                'pandas.io.sas',
+                'pandas.formats',
                 'pandas.rpy',
                 'pandas.sandbox',
                 'pandas.sparse',
@@ -546,11 +571,17 @@ setup(name=DISTNAME,
                 'pandas.stats',
                 'pandas.util',
                 'pandas.tests',
+                'pandas.tests.frame',
+                'pandas.tests.indexes',
+                'pandas.tests.series',
+                'pandas.tests.formats',
+                'pandas.tests.types',
                 'pandas.tests.test_msgpack',
                 'pandas.tools',
                 'pandas.tools.tests',
                 'pandas.tseries',
                 'pandas.tseries.tests',
+                'pandas.types',
                 'pandas.io.tests',
                 'pandas.io.tests.test_json',
                 'pandas.stats.tests',
@@ -560,7 +591,7 @@ setup(name=DISTNAME,
                                   'tests/data/legacy_pickle/*/*.pickle',
                                   'tests/data/legacy_msgpack/*/*.msgpack',
                                   'tests/data/*.csv*',
-                                  'tests/data/*.XPT',
+                                  'tests/data/*.xpt',
                                   'tests/data/*.dta',
                                   'tests/data/*.txt',
                                   'tests/data/*.xls',
@@ -573,6 +604,8 @@ setup(name=DISTNAME,
                     'pandas.tools': ['tests/*.csv'],
                     'pandas.tests': ['data/*.pickle',
                                      'data/*.csv'],
+                    'pandas.tests.formats': ['data/*.csv'],
+                    'pandas.tests.indexes': ['data/*.pickle'],
                     'pandas.tseries.tests': ['data/*.pickle',
                                              'data/*.csv']
                     },

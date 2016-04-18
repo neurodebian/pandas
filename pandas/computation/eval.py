@@ -3,13 +3,14 @@
 """Top level ``eval`` module.
 """
 
+import warnings
 import tokenize
-from pandas.core import common as com
+from pandas.formats.printing import pprint_thing
+from pandas.computation import _NUMEXPR_INSTALLED
 from pandas.computation.expr import Expr, _parsers, tokenize_string
 from pandas.computation.scope import _ensure_scope
-from pandas.compat import DeepChainMap, builtins
+from pandas.compat import string_types
 from pandas.computation.engines import _engines
-from distutils.version import LooseVersion
 
 
 def _check_engine(engine):
@@ -25,7 +26,19 @@ def _check_engine(engine):
       * If an invalid engine is passed
     ImportError
       * If numexpr was requested but doesn't exist
+
+    Returns
+    -------
+    string engine
+
     """
+
+    if engine is None:
+        if _NUMEXPR_INSTALLED:
+            engine = 'numexpr'
+        else:
+            engine = 'python'
+
     if engine not in _engines:
         raise KeyError('Invalid engine {0!r} passed, valid engines are'
                        ' {1}'.format(engine, list(_engines.keys())))
@@ -34,17 +47,13 @@ def _check_engine(engine):
     # that won't necessarily be import-able)
     # Could potentially be done on engine instantiation
     if engine == 'numexpr':
-        try:
-            import numexpr
-        except ImportError:
-            raise ImportError("'numexpr' not found. Cannot use "
+        if not _NUMEXPR_INSTALLED:
+            raise ImportError("'numexpr' is not installed or an "
+                              "unsupported version. Cannot use "
                               "engine='numexpr' for query/eval "
                               "if 'numexpr' is not installed")
-        else:
-            ne_version = numexpr.__version__
-            if ne_version < LooseVersion('2.1'):
-                raise ImportError("'numexpr' version is %s, "
-                                  "must be >= 2.1" % ne_version)
+
+    return engine
 
 
 def _check_parser(parser):
@@ -113,7 +122,7 @@ def _convert_expression(expr):
     ValueError
       * If the expression is empty.
     """
-    s = com.pprint_thing(expr)
+    s = pprint_thing(expr)
     _check_expression(s)
     return s
 
@@ -136,9 +145,9 @@ def _check_for_locals(expr, stack_level, parser):
                 raise SyntaxError(msg)
 
 
-def eval(expr, parser='pandas', engine='numexpr', truediv=True,
+def eval(expr, parser='pandas', engine=None, truediv=True,
          local_dict=None, global_dict=None, resolvers=(), level=0,
-         target=None):
+         target=None, inplace=None):
     """Evaluate a Python expression as a string using various backends.
 
     The following arithmetic operations are supported: ``+``, ``-``, ``*``,
@@ -165,10 +174,11 @@ def eval(expr, parser='pandas', engine='numexpr', truediv=True,
         ``'python'`` parser to retain strict Python semantics.  See the
         :ref:`enhancing performance <enhancingperf.eval>` documentation for
         more details.
-    engine : string, default 'numexpr', {'python', 'numexpr'}
+    engine : string or None, default 'numexpr', {'python', 'numexpr'}
 
         The engine used to evaluate the expression. Supported engines are
 
+        - None         : tries to use ``numexpr``, falls back to ``python``
         - ``'numexpr'``: This default engine evaluates pandas objects using
                          numexpr for large speed ups in complex expressions
                          with large frames.
@@ -196,6 +206,13 @@ def eval(expr, parser='pandas', engine='numexpr', truediv=True,
         scope. Most users will **not** need to change this parameter.
     target : a target object for assignment, optional, default is None
         essentially this is a passed in resolver
+    inplace : bool, default True
+        If expression mutates, whether to modify object inplace or return
+        copy with mutation.
+
+        WARNING: inplace=None currently falls back to to True, but
+        in a future version, will default to False.  Use inplace=True
+        explicitly rather than relying on the default.
 
     Returns
     -------
@@ -214,29 +231,78 @@ def eval(expr, parser='pandas', engine='numexpr', truediv=True,
     pandas.DataFrame.query
     pandas.DataFrame.eval
     """
-    expr = _convert_expression(expr)
-    _check_engine(engine)
-    _check_parser(parser)
-    _check_resolvers(resolvers)
-    _check_for_locals(expr, level, parser)
+    first_expr = True
+    if isinstance(expr, string_types):
+        exprs = [e for e in expr.splitlines() if e != '']
+    else:
+        exprs = [expr]
+    multi_line = len(exprs) > 1
 
-    # get our (possibly passed-in) scope
-    level += 1
-    env = _ensure_scope(level, global_dict=global_dict,
-                        local_dict=local_dict, resolvers=resolvers,
-                        target=target)
+    if multi_line and target is None:
+        raise ValueError("multi-line expressions are only valid in the "
+                         "context of data, use DataFrame.eval")
 
-    parsed_expr = Expr(expr, engine=engine, parser=parser, env=env,
-                       truediv=truediv)
+    first_expr = True
+    for expr in exprs:
+        expr = _convert_expression(expr)
+        engine = _check_engine(engine)
+        _check_parser(parser)
+        _check_resolvers(resolvers)
+        _check_for_locals(expr, level, parser)
 
-    # construct the engine and evaluate the parsed expression
-    eng = _engines[engine]
-    eng_inst = eng(parsed_expr)
-    ret = eng_inst.evaluate()
+        # get our (possibly passed-in) scope
+        level += 1
+        env = _ensure_scope(level, global_dict=global_dict,
+                            local_dict=local_dict, resolvers=resolvers,
+                            target=target)
 
-    # assign if needed
-    if env.target is not None and parsed_expr.assigner is not None:
-        env.target[parsed_expr.assigner] = ret
-        return None
+        parsed_expr = Expr(expr, engine=engine, parser=parser, env=env,
+                           truediv=truediv)
+
+        # construct the engine and evaluate the parsed expression
+        eng = _engines[engine]
+        eng_inst = eng(parsed_expr)
+        ret = eng_inst.evaluate()
+
+        if parsed_expr.assigner is None and multi_line:
+            raise ValueError("Multi-line expressions are only valid"
+                             " if all expressions contain an assignment")
+
+        # assign if needed
+        if env.target is not None and parsed_expr.assigner is not None:
+            if inplace is None:
+                warnings.warn(
+                    "eval expressions containing an assignment currently"
+                    "default to operating inplace.\nThis will change in "
+                    "a future version of pandas, use inplace=True to "
+                    "avoid this warning.",
+                    FutureWarning, stacklevel=3)
+                inplace = True
+
+            # if returning a copy, copy only on the first assignment
+            if not inplace and first_expr:
+                target = env.target.copy()
+            else:
+                target = env.target
+
+            target[parsed_expr.assigner] = ret
+
+            if not resolvers:
+                resolvers = ({parsed_expr.assigner: ret},)
+            else:
+                # existing resolver needs updated to handle
+                # case of mutating existing column in copy
+                for resolver in resolvers:
+                    if parsed_expr.assigner in resolver:
+                        resolver[parsed_expr.assigner] = ret
+                        break
+                else:
+                    resolvers += ({parsed_expr.assigner: ret},)
+
+            ret = None
+            first_expr = False
+
+    if not inplace and inplace is not None:
+        return target
 
     return ret

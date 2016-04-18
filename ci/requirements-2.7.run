@@ -1,4 +1,4 @@
-dateutil=2.1
+python-dateutil=2.4.1
 pytz=2013b
 numpy=1.9.3
 xlwt=0.7.5
@@ -20,3 +20,4 @@ html5lib=1.0b2
 beautiful-soup=4.2.1
 statsmodels
 jinja2=2.8
+xarray

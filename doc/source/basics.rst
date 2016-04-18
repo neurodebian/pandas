@@ -272,7 +272,7 @@ To evaluate single-element pandas objects in a boolean context, use the method
 
    .. code-block:: python
 
-       >>>if df:
+       >>> if df:
             ...
 
    Or
@@ -352,7 +352,7 @@ objects of the same length:
 Trying to compare ``Index`` or ``Series`` objects of different lengths will
 raise a ValueError:
 
-.. code-block:: python
+.. code-block:: ipython
 
     In [55]: pd.Series(['foo', 'bar', 'baz']) == pd.Series(['foo', 'bar'])
     ValueError: Series lengths must match to compare
@@ -370,6 +370,7 @@ be broadcast:
 or it can return False if broadcasting can not be done:
 
 .. ipython:: python
+   :okwarning:
 
     np.array([1, 2, 3]) == np.array([1, 2])
 
@@ -483,11 +484,11 @@ optional ``level`` parameter which applies only if the object has a
     ``mode``, Mode
     ``abs``, Absolute Value
     ``prod``, Product of values
-    ``std``, Unbiased standard deviation
+    ``std``, Bessel-corrected sample standard deviation
     ``var``, Unbiased variance
-    ``sem``, Unbiased standard error of the mean
-    ``skew``, Unbiased skewness (3rd moment)
-    ``kurt``, Unbiased kurtosis (4th moment)
+    ``sem``, Standard error of the mean
+    ``skew``, Sample skewness (3rd moment)
+    ``kurt``, Sample kurtosis (4th moment)
     ``quantile``, Sample quantile (value at %)
     ``cumsum``, Cumulative sum
     ``cumprod``, Cumulative product
@@ -1097,7 +1098,7 @@ Note that the same result could have been achieved using
    ts2.reindex(ts.index).fillna(method='ffill')
 
 :meth:`~Series.reindex` will raise a ValueError if the index is not monotonic
-increasing or descreasing. :meth:`~Series.fillna` and :meth:`~Series.interpolate`
+increasing or decreasing. :meth:`~Series.fillna` and :meth:`~Series.interpolate`
 will not make any checks on the order of the index.
 
 .. _basics.limits_on_reindex_fill:
@@ -1170,6 +1171,15 @@ The :meth:`~DataFrame.rename` method also provides an ``inplace`` named
 parameter that is by default ``False`` and copies the underlying data. Pass
 ``inplace=True`` to rename the data in place.
 
+.. versionadded:: 0.18.0
+
+Finally, :meth:`~Series.rename` also accepts a scalar or list-like
+for altering the ``Series.name`` attribute.
+
+.. ipython:: python
+
+   s.rename("scalar-name")
+
 .. _basics.rename_axis:
 
 The Panel class has a related :meth:`~Panel.rename_axis` class which can rename
@@ -1212,7 +1222,7 @@ To iterate over the rows of a DataFrame, you can use the following methods:
   This converts the rows to Series objects, which can change the dtypes and has some
   performance implications.
 * :meth:`~DataFrame.itertuples`: Iterate over the rows of a DataFrame
-  as namedtuples of the values.  This is a lot faster as
+  as namedtuples of the values.  This is a lot faster than
   :meth:`~DataFrame.iterrows`, and is in most cases preferable to use
   to iterate over the values of a DataFrame.
 
@@ -1344,7 +1354,7 @@ and is generally faster as :meth:`~DataFrame.iterrows`.
 
 .. note::
 
-   The columns names will be renamed to positional names if they are
+   The column names will be renamed to positional names if they are
    invalid Python identifiers, repeated, or start with an underscore.
    With a large number of columns (>255), regular tuples are returned.
 
@@ -1748,7 +1758,7 @@ but occasionally has non-dates intermixed and you want to represent as missing.
                  'foo', 1.0, 1, pd.Timestamp('20010104'),
                  '20010105'], dtype='O')
    s
-   s.convert_objects(convert_dates='coerce')
+   pd.to_datetime(s, errors='coerce')
 
 In addition, :meth:`~DataFrame.convert_objects` will attempt the *soft* conversion of any *object* dtypes, meaning that if all
 the objects in a Series are of the same type, the Series will have that dtype.

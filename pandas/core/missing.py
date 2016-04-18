@@ -2,18 +2,62 @@
 Routines for filling missing data
 """
 
-from functools import partial
-
 import numpy as np
 
-import pandas as pd
 import pandas.core.common as com
 import pandas.algos as algos
 import pandas.lib as lib
 from pandas.compat import range
 
 
-def _clean_fill_method(method, allow_nearest=False):
+def mask_missing(arr, values_to_mask):
+    """
+    Return a masking array of same size/shape as arr
+    with entries equaling any member of values_to_mask set to True
+    """
+    if not isinstance(values_to_mask, (list, np.ndarray)):
+        values_to_mask = [values_to_mask]
+
+    try:
+        values_to_mask = np.array(values_to_mask, dtype=arr.dtype)
+    except Exception:
+        values_to_mask = np.array(values_to_mask, dtype=object)
+
+    na_mask = com.isnull(values_to_mask)
+    nonna = values_to_mask[~na_mask]
+
+    mask = None
+    for x in nonna:
+        if mask is None:
+
+            # numpy elementwise comparison warning
+            if com.is_numeric_v_string_like(arr, x):
+                mask = False
+            else:
+                mask = arr == x
+
+            # if x is a string and arr is not, then we get False and we must
+            # expand the mask to size arr.shape
+            if lib.isscalar(mask):
+                mask = np.zeros(arr.shape, dtype=bool)
+        else:
+
+            # numpy elementwise comparison warning
+            if com.is_numeric_v_string_like(arr, x):
+                mask |= False
+            else:
+                mask |= arr == x
+
+    if na_mask.any():
+        if mask is None:
+            mask = com.isnull(arr)
+        else:
+            mask |= com.isnull(arr)
+
+    return mask
+
+
+def clean_fill_method(method, allow_nearest=False):
     if method is None:
         return None
     method = method.lower()
@@ -28,18 +72,17 @@ def _clean_fill_method(method, allow_nearest=False):
         valid_methods.append('nearest')
         expecting = 'pad (ffill), backfill (bfill) or nearest'
     if method not in valid_methods:
-        msg = ('Invalid fill method. Expecting %s. Got %s'
-               % (expecting, method))
+        msg = ('Invalid fill method. Expecting %s. Got %s' %
+               (expecting, method))
         raise ValueError(msg)
     return method
 
 
-def _clean_interp_method(method, **kwargs):
+def clean_interp_method(method, **kwargs):
     order = kwargs.get('order')
     valid = ['linear', 'time', 'index', 'values', 'nearest', 'zero', 'slinear',
-             'quadratic', 'cubic', 'barycentric', 'polynomial',
-             'krogh', 'piecewise_polynomial',
-             'pchip', 'spline']
+             'quadratic', 'cubic', 'barycentric', 'polynomial', 'krogh',
+             'piecewise_polynomial', 'pchip', 'akima', 'spline']
     if method in ('spline', 'polynomial') and order is None:
         raise ValueError("You must specify the order of the spline or "
                          "polynomial.")
@@ -50,8 +93,8 @@ def _clean_interp_method(method, **kwargs):
 
 
 def interpolate_1d(xvalues, yvalues, method='linear', limit=None,
-                   limit_direction='forward',
-                   fill_value=None, bounds_error=False, order=None, **kwargs):
+                   limit_direction='forward', fill_value=None,
+                   bounds_error=False, order=None, **kwargs):
     """
     Logic for the 1-d interpolation.  The result should be 1-d, inputs
     xvalues and yvalues will each be 1-d arrays of the same length.
@@ -76,7 +119,7 @@ def interpolate_1d(xvalues, yvalues, method='linear', limit=None,
 
     if method == 'time':
         if not getattr(xvalues, 'is_all_dates', None):
-        # if not issubclass(xvalues.dtype.type, np.datetime64):
+            # if not issubclass(xvalues.dtype.type, np.datetime64):
             raise ValueError('time-weighted interpolation only works '
                              'on Series or DataFrames with a '
                              'DatetimeIndex')
@@ -91,22 +134,21 @@ def interpolate_1d(xvalues, yvalues, method='linear', limit=None,
     valid_limit_directions = ['forward', 'backward', 'both']
     limit_direction = limit_direction.lower()
     if limit_direction not in valid_limit_directions:
-        msg = 'Invalid limit_direction: expecting one of %r, got %r.' % (
-            valid_limit_directions, limit_direction)
-        raise ValueError(msg)
+        raise ValueError('Invalid limit_direction: expecting one of %r, got '
+                         '%r.' % (valid_limit_directions, limit_direction))
 
     from pandas import Series
     ys = Series(yvalues)
     start_nans = set(range(ys.first_valid_index()))
     end_nans = set(range(1 + ys.last_valid_index(), len(valid)))
 
-    # This is a list of the indexes in the series whose yvalue is currently NaN,
-    # but whose interpolated yvalue will be overwritten with NaN after computing
-    # the interpolation. For each index in this list, one of these conditions is
-    # true of the corresponding NaN in the yvalues:
+    # This is a list of the indexes in the series whose yvalue is currently
+    # NaN, but whose interpolated yvalue will be overwritten with NaN after
+    # computing the interpolation. For each index in this list, one of these
+    # conditions is true of the corresponding NaN in the yvalues:
     #
-    # a) It is one of a chain of NaNs at the beginning of the series, and either
-    #    limit is not specified or limit_direction is 'forward'.
+    # a) It is one of a chain of NaNs at the beginning of the series, and
+    #    either limit is not specified or limit_direction is 'forward'.
     # b) It is one of a chain of NaNs at the end of the series, and limit is
     #    specified and limit_direction is 'backward' or 'both'.
     # c) Limit is nonzero and it is further than limit from the nearest non-NaN
@@ -118,9 +160,11 @@ def interpolate_1d(xvalues, yvalues, method='linear', limit=None,
 
     if limit:
         if limit_direction == 'forward':
-            violate_limit = sorted(start_nans | set(_interp_limit(invalid, limit, 0)))
+            violate_limit = sorted(start_nans | set(_interp_limit(invalid,
+                                                                  limit, 0)))
         if limit_direction == 'backward':
-            violate_limit = sorted(end_nans | set(_interp_limit(invalid, 0, limit)))
+            violate_limit = sorted(end_nans | set(_interp_limit(invalid, 0,
+                                                                limit)))
         if limit_direction == 'both':
             violate_limit = sorted(_interp_limit(invalid, limit, limit))
 
@@ -144,16 +188,19 @@ def interpolate_1d(xvalues, yvalues, method='linear', limit=None,
 
     sp_methods = ['nearest', 'zero', 'slinear', 'quadratic', 'cubic',
                   'barycentric', 'krogh', 'spline', 'polynomial',
-                  'piecewise_polynomial', 'pchip']
+                  'piecewise_polynomial', 'pchip', 'akima']
     if method in sp_methods:
         inds = np.asarray(xvalues)
         # hack for DatetimeIndex, #1646
         if issubclass(inds.dtype.type, np.datetime64):
             inds = inds.view(np.int64)
-        result[invalid] = _interpolate_scipy_wrapper(
-            inds[valid], yvalues[valid], inds[invalid], method=method,
-            fill_value=fill_value,
-            bounds_error=bounds_error, order=order, **kwargs)
+        result[invalid] = _interpolate_scipy_wrapper(inds[valid],
+                                                     yvalues[valid],
+                                                     inds[invalid],
+                                                     method=method,
+                                                     fill_value=fill_value,
+                                                     bounds_error=bounds_error,
+                                                     order=order, **kwargs)
         result[violate_limit] = np.nan
         return result
 
@@ -167,7 +214,8 @@ def _interpolate_scipy_wrapper(x, y, new_x, method, fill_value=None,
     """
     try:
         from scipy import interpolate
-        from pandas import DatetimeIndex
+        # TODO: Why is DatetimeIndex being imported here?
+        from pandas import DatetimeIndex  # noqa
     except ImportError:
         raise ImportError('{0} interpolation requires Scipy'.format(method))
 
@@ -184,12 +232,19 @@ def _interpolate_scipy_wrapper(x, y, new_x, method, fill_value=None,
         # GH 5975, scipy.interp1d can't hande datetime64s
         x, new_x = x._values.astype('i8'), new_x.astype('i8')
 
-    try:
-        alt_methods['pchip'] = interpolate.pchip_interpolate
-    except AttributeError:
-        if method == 'pchip':
-            raise ImportError("Your version of scipy does not support "
+    if method == 'pchip':
+        try:
+            alt_methods['pchip'] = interpolate.pchip_interpolate
+        except AttributeError:
+            raise ImportError("Your version of Scipy does not support "
                               "PCHIP interpolation.")
+    elif method == 'akima':
+        try:
+            from scipy.interpolate import Akima1DInterpolator  # noqa
+            alt_methods['akima'] = _akima_interpolate
+        except ImportError:
+            raise ImportError("Your version of Scipy does not support "
+                              "Akima interpolation.")
 
     interp1d_methods = ['nearest', 'zero', 'slinear', 'quadratic', 'cubic',
                         'polynomial']
@@ -219,7 +274,58 @@ def _interpolate_scipy_wrapper(x, y, new_x, method, fill_value=None,
     return new_y
 
 
-def interpolate_2d(values, method='pad', axis=0, limit=None, fill_value=None, dtype=None):
+def _akima_interpolate(xi, yi, x, der=0, axis=0):
+    """
+    Convenience function for akima interpolation.
+    xi and yi are arrays of values used to approximate some function f,
+    with ``yi = f(xi)``.
+
+    See `Akima1DInterpolator` for details.
+
+    Parameters
+    ----------
+    xi : array_like
+        A sorted list of x-coordinates, of length N.
+    yi :  array_like
+        A 1-D array of real values.  `yi`'s length along the interpolation
+        axis must be equal to the length of `xi`. If N-D array, use axis
+        parameter to select correct axis.
+    x : scalar or array_like
+        Of length M.
+    der : int or list, optional
+        How many derivatives to extract; None for all potentially
+        nonzero derivatives (that is a number equal to the number
+        of points), or a list of derivatives to extract. This number
+        includes the function value as 0th derivative.
+    axis : int, optional
+        Axis in the yi array corresponding to the x-coordinate values.
+
+    See Also
+    --------
+    scipy.interpolate.Akima1DInterpolator
+
+    Returns
+    -------
+    y : scalar or array_like
+        The result, of length R or length M or M by R,
+
+    """
+    from scipy import interpolate
+    try:
+        P = interpolate.Akima1DInterpolator(xi, yi, axis=axis)
+    except TypeError:
+        # Scipy earlier than 0.17.0 missing axis
+        P = interpolate.Akima1DInterpolator(xi, yi)
+    if der == 0:
+        return P(x)
+    elif interpolate._isscalar(der):
+        return P(x, der=der)
+    else:
+        return [P(x, nu) for nu in der]
+
+
+def interpolate_2d(values, method='pad', axis=0, limit=None, fill_value=None,
+                   dtype=None):
     """ perform an actual interpolation of values, values will be make 2-d if
     needed fills inplace, returns the result
     """
@@ -232,18 +338,20 @@ def interpolate_2d(values, method='pad', axis=0, limit=None, fill_value=None, dt
         if axis != 0:  # pragma: no cover
             raise AssertionError("cannot interpolate on a ndim == 1 with "
                                  "axis != 0")
-        values = values.reshape(tuple((1,) + values.shape))
+        values = values.reshape(tuple((1, ) + values.shape))
 
     if fill_value is None:
         mask = None
     else:  # todo create faster fill func without masking
-        mask = com.mask_missing(transf(values), fill_value)
+        mask = mask_missing(transf(values), fill_value)
 
-    method = _clean_fill_method(method)
+    method = clean_fill_method(method)
     if method == 'pad':
-        values = transf(pad_2d(transf(values), limit=limit, mask=mask, dtype=dtype))
+        values = transf(pad_2d(
+            transf(values), limit=limit, mask=mask, dtype=dtype))
     else:
-        values = transf(backfill_2d(transf(values), limit=limit, mask=mask, dtype=dtype))
+        values = transf(backfill_2d(
+            transf(values), limit=limit, mask=mask, dtype=dtype))
 
     # reshape back
     if ndim == 1:
@@ -256,13 +364,13 @@ def _interp_wrapper(f, wrap_dtype, na_override=None):
     def wrapper(arr, mask, limit=None):
         view = arr.view(wrap_dtype)
         f(view, mask, limit=limit)
+
     return wrapper
 
 
 _pad_1d_datetime = _interp_wrapper(algos.pad_inplace_int64, np.int64)
 _pad_2d_datetime = _interp_wrapper(algos.pad_2d_inplace_int64, np.int64)
-_backfill_1d_datetime = _interp_wrapper(algos.backfill_inplace_int64,
-                                        np.int64)
+_backfill_1d_datetime = _interp_wrapper(algos.backfill_inplace_int64, np.int64)
 _backfill_2d_datetime = _interp_wrapper(algos.backfill_2d_inplace_int64,
                                         np.int64)
 
@@ -381,10 +489,64 @@ def backfill_2d(values, limit=None, mask=None, dtype=None):
 _fill_methods = {'pad': pad_1d, 'backfill': backfill_1d}
 
 
-def _get_fill_func(method):
-    method = _clean_fill_method(method)
+def get_fill_func(method):
+    method = clean_fill_method(method)
     return _fill_methods[method]
 
 
-def _clean_reindex_fill_method(method):
-    return _clean_fill_method(method, allow_nearest=True)
+def clean_reindex_fill_method(method):
+    return clean_fill_method(method, allow_nearest=True)
+
+
+def fill_zeros(result, x, y, name, fill):
+    """
+    if this is a reversed op, then flip x,y
+
+    if we have an integer value (or array in y)
+    and we have 0's, fill them with the fill,
+    return the result
+
+    mask the nan's from x
+    """
+    if fill is None or com.is_float_dtype(result):
+        return result
+
+    if name.startswith(('r', '__r')):
+        x, y = y, x
+
+    is_typed_variable = (hasattr(y, 'dtype') or hasattr(y, 'type'))
+    is_scalar = lib.isscalar(y)
+
+    if not is_typed_variable and not is_scalar:
+        return result
+
+    if is_scalar:
+        y = np.array(y)
+
+    if com.is_integer_dtype(y):
+
+        if (y == 0).any():
+
+            # GH 7325, mask and nans must be broadcastable (also: PR 9308)
+            # Raveling and then reshaping makes np.putmask faster
+            mask = ((y == 0) & ~np.isnan(result)).ravel()
+
+            shape = result.shape
+            result = result.astype('float64', copy=False).ravel()
+
+            np.putmask(result, mask, fill)
+
+            # if we have a fill of inf, then sign it correctly
+            # (GH 6178 and PR 9308)
+            if np.isinf(fill):
+                signs = np.sign(y if name.startswith(('r', '__r')) else x)
+                negative_inf_mask = (signs.ravel() < 0) & mask
+                np.putmask(result, negative_inf_mask, -fill)
+
+            if "floordiv" in name:  # (PR 9308)
+                nan_mask = ((y == 0) & (x == 0)).ravel()
+                np.putmask(result, nan_mask, np.nan)
+
+            result = result.reshape(shape)
+
+    return result

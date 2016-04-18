@@ -26,7 +26,7 @@ API changes
 
   previous behavior:
 
-  .. code-block:: python
+  .. code-block:: ipython
 
      In [6]: s.dt.hour
      Out[6]:
@@ -57,7 +57,7 @@ API changes
 
   previous behavior:
 
-  .. code-block:: python
+  .. code-block:: ipython
 
      In [4]: df.groupby(ts, as_index=False).max()
      Out[4]:
@@ -83,7 +83,7 @@ API changes
 
   previous behavior (excludes 1st column from output):
 
-  .. code-block:: python
+  .. code-block:: ipython
 
      In [4]: gr.apply(sum)
      Out[4]:
@@ -108,21 +108,20 @@ API changes
 
   previous behavior:
 
-  .. code-block:: python
+  .. code-block:: ipython
 
-    In [8]: s.loc[3.5:1.5]
-    KeyError: 3.5
+     In [8]: s.loc[3.5:1.5]
+     KeyError: 3.5
 
   current behavior:
 
   .. ipython:: python
 
-    s.loc[3.5:1.5]
-
+     s.loc[3.5:1.5]
 
 - ``io.data.Options`` has been fixed for a change in the format of the Yahoo Options page (:issue:`8612`), (:issue:`8741`)
 
-  .. note:: 
+  .. note::
 
     As a result of a change in Yahoo's option page layout, when an expiry date is given,
     ``Options`` methods now return data for a single expiry date.  Previously, methods returned all
@@ -146,6 +145,7 @@ API changes
   Current behavior:
 
   .. ipython:: python
+     :okwarning:
 
      from pandas.io.data import Options
      aapl = Options('aapl','yahoo')
@@ -180,7 +180,7 @@ Enhancements
 
   previous behavior:
 
-  .. code-block:: python
+  .. code-block:: ipython
 
      In [7]: pd.concat(deque((df1, df2)))
      TypeError: first argument must be a list-like of pandas objects, you passed an object of type "deque"
@@ -199,7 +199,7 @@ Enhancements
 
   previous behavior:
 
-  .. code-block:: python
+  .. code-block:: ipython
 
      # this was underreported in prior versions
      In [1]: dfi.memory_usage(index=True)
@@ -274,4 +274,3 @@ Bug Fixes
 - Bug in Setting by indexer to a scalar value with a mixed-dtype `Panel4d` was failing (:issue:`8702`)
 - Bug where ``DataReader``'s would fail if one of the symbols passed was invalid.  Now returns data for valid symbols and np.nan for invalid (:issue:`8494`)
 - Bug in ``get_quote_yahoo`` that wouldn't allow non-float return values (:issue:`5229`).
-

@@ -9,19 +9,10 @@ Offer fast expression evaluation through numexpr
 import warnings
 import numpy as np
 from pandas.core.common import _values_from_object
-from distutils.version import LooseVersion
+from pandas.computation import _NUMEXPR_INSTALLED
 
-try:
+if _NUMEXPR_INSTALLED:
     import numexpr as ne
-    ver = ne.__version__
-    _NUMEXPR_INSTALLED = ver >= LooseVersion('2.1')
-    if not _NUMEXPR_INSTALLED:
-        warnings.warn("The installed version of numexpr {ver} is not supported "
-                      "in pandas and will be not be used\nThe minimum supported "
-                      "version is 2.1\n".format(ver=ver), UserWarning)
-
-except ImportError:  # pragma: no cover
-    _NUMEXPR_INSTALLED = False
 
 _TEST_MODE = None
 _TEST_RESULT = None
@@ -96,8 +87,8 @@ def _can_use_numexpr(op, op_str, a, b, dtype_check):
     return False
 
 
-def _evaluate_numexpr(op, op_str, a, b, raise_on_error=False, truediv=True, reversed=False,
-                      **eval_kwargs):
+def _evaluate_numexpr(op, op_str, a, b, raise_on_error=False, truediv=True,
+                      reversed=False, **eval_kwargs):
     result = None
 
     if _can_use_numexpr(op, op_str, a, b, 'evaluate'):
@@ -106,7 +97,7 @@ def _evaluate_numexpr(op, op_str, a, b, raise_on_error=False, truediv=True, reve
             # we were originally called by a reversed op
             # method
             if reversed:
-                a,b = b,a
+                a, b = b, a
 
             a_value = getattr(a, "values", a)
             b_value = getattr(b, "values", b)

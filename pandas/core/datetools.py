@@ -1,5 +1,7 @@
 """A collection of random tools for dealing with dates in Python"""
 
+# flake8: noqa
+
 from pandas.tseries.tools import *
 from pandas.tseries.offsets import *
 from pandas.tseries.frequencies import *

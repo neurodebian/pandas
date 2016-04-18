@@ -346,8 +346,6 @@ convert_datetimestruct_local_to_utc(pandas_datetimestruct *out_dts_utc,
 /*
  * Parses (almost) standard ISO 8601 date strings. The differences are:
  *
- * + The date "20100312" is parsed as the year 20100312, not as
- *   equivalent to "2010-03-12". The '-' in the dates are not optional.
  * + Only seconds may have a decimal point, with up to 18 digits after it
  *   (maximum attoseconds precision).
  * + Either a 'T' as in ISO 8601 or a ' ' may be used to separate
@@ -357,6 +355,8 @@ convert_datetimestruct_local_to_utc(pandas_datetimestruct *out_dts_utc,
  * + Doesn't handle 24:00:00 as synonym for midnight (00:00:00) tomorrow
  * + Accepts special values "NaT" (not a time), "Today", (current
  *   day according to local time) and "Now" (current time in UTC).
+ * + ':' separator between hours, minutes, and seconds is optional. When
+ *   omitted, each component must be 2 digits if it appears. (GH-10041)
  *
  * 'str' must be a NULL-terminated string, and 'len' must be its length.
  * 'unit' should contain -1 if the unit is unknown, or the unit
@@ -395,6 +395,22 @@ parse_iso_8601_datetime(char *str, int len,
     int i, numdigits;
     char *substr, sublen;
     PANDAS_DATETIMEUNIT bestunit;
+
+    /* If year-month-day are separated by a valid separator,
+     * months/days without leading zeroes will be parsed
+     * (though not iso8601). If the components aren't separated,
+     * 4 (YYYY) or 8 (YYYYMMDD) digits are expected. 6 digits are
+     * forbidden here (but parsed as YYMMDD elsewhere).
+    */
+    int has_ymd_sep = 0;
+    char ymd_sep = '\0';
+    char valid_ymd_sep[] = {'-', '.', '/', '\\', ' '};
+    int valid_ymd_sep_len = sizeof(valid_ymd_sep);
+
+    /* hour-minute-second may or may not separated by ':'. If not, then
+     * each component must be 2 digits. */
+    int has_hms_sep = 0;
+    int hour_was_2_digits = 0;
 
     /* Initialize the output to all zeros */
     memset(out, 0, sizeof(pandas_datetimestruct));
@@ -523,12 +539,16 @@ parse_iso_8601_datetime(char *str, int len,
         goto parse_error;
     }
 
-    /* PARSE THE YEAR (digits until the '-' character) */
+    /* PARSE THE YEAR (4 digits) */
     out->year = 0;
-    while (sublen > 0 && isdigit(*substr)) {
-        out->year = 10 * out->year + (*substr - '0');
-        ++substr;
-        --sublen;
+    if (sublen >= 4 && isdigit(substr[0]) && isdigit(substr[1]) &&
+        isdigit(substr[2]) && isdigit(substr[3])) {
+
+        out->year = 1000 * (substr[0] - '0') + 100 * (substr[1] - '0') +
+          10 * (substr[2] - '0') + (substr[3] - '0');
+
+        substr += 4;
+        sublen -= 4;;
     }
 
     /* Negate the year if necessary */
@@ -538,7 +558,7 @@ parse_iso_8601_datetime(char *str, int len,
     /* Check whether it's a leap-year */
     year_leap = is_leapyear(out->year);
 
-    /* Next character must be a '-' or the end of the string */
+    /* Next character must be a separator, start of month, or end of string */
     if (sublen == 0) {
         if (out_local != NULL) {
             *out_local = 0;
@@ -546,71 +566,91 @@ parse_iso_8601_datetime(char *str, int len,
         bestunit = PANDAS_FR_Y;
         goto finish;
     }
-    else if (*substr == '-') {
+
+    if (!isdigit(*substr)) {
+        for (i = 0; i < valid_ymd_sep_len; ++i) {
+            if (*substr == valid_ymd_sep[i]) {
+                break;
+            }
+        }
+        if (i == valid_ymd_sep_len) {
+            goto parse_error;
+        }
+        has_ymd_sep = 1;
+        ymd_sep = valid_ymd_sep[i];
+        ++substr;
+        --sublen;
+        /* Cannot have trailing separator */
+        if (sublen == 0 || !isdigit(*substr)) {
+            goto parse_error;
+        }
+    }
+
+    /* PARSE THE MONTH */
+    /* First digit required */
+    out->month = (*substr - '0');
+    ++substr;
+    --sublen;
+    /* Second digit optional if there was a separator */
+    if (isdigit(*substr)) {
+        out->month = 10 * out->month + (*substr - '0');
         ++substr;
         --sublen;
     }
-    else {
+    else if (!has_ymd_sep) {
         goto parse_error;
     }
+    if (out->month < 1 || out->month > 12) {
+        PyErr_Format(PyExc_ValueError,
+                     "Month out of range in datetime string \"%s\"", str);
+        goto error;
+    }
 
-    /* Can't have a trailing '-' */
+    /* Next character must be the separator, start of day, or end of string */
     if (sublen == 0) {
-        goto parse_error;
-    }
-
-    /* PARSE THE MONTH (2 digits) */
-    if (sublen >= 2 && isdigit(substr[0]) && isdigit(substr[1])) {
-        out->month = 10 * (substr[0] - '0') + (substr[1] - '0');
-
-        if (out->month < 1 || out->month > 12) {
-            PyErr_Format(PyExc_ValueError,
-                        "Month out of range in datetime string \"%s\"", str);
-            goto error;
+        /* Forbid YYYYMM. Parsed instead as YYMMDD by someone else. */
+        if (!has_ymd_sep) {
+          goto parse_error;
         }
-        substr += 2;
-        sublen -= 2;
-    }
-    else {
-        goto parse_error;
-    }
-
-    /* Next character must be a '-' or the end of the string */
-    if (sublen == 0) {
         if (out_local != NULL) {
             *out_local = 0;
         }
         bestunit = PANDAS_FR_M;
         goto finish;
     }
-    else if (*substr == '-') {
+
+    if (has_ymd_sep) {
+        /* Must have separator, but cannot be trailing */
+        if (*substr != ymd_sep || sublen == 1) {
+            goto parse_error;
+        }
         ++substr;
         --sublen;
     }
-    else {
+
+    /* PARSE THE DAY */
+    /* First digit required */
+    if (!isdigit(*substr)) {
+         goto parse_error;
+    }
+    out->day = (*substr - '0');
+    ++substr;
+    --sublen;
+    /* Second digit optional if there was a separator */
+    if (isdigit(*substr)) {
+        out->day = 10 * out->day + (*substr - '0');
+        ++substr;
+        --sublen;
+    }
+    else if (!has_ymd_sep) {
         goto parse_error;
     }
-
-    /* Can't have a trailing '-' */
-    if (sublen == 0) {
-        goto parse_error;
-    }
-
-    /* PARSE THE DAY (2 digits) */
-    if (sublen >= 2 && isdigit(substr[0]) && isdigit(substr[1])) {
-        out->day = 10 * (substr[0] - '0') + (substr[1] - '0');
-
-        if (out->day < 1 ||
-                    out->day > days_per_month_table[year_leap][out->month-1]) {
-            PyErr_Format(PyExc_ValueError,
-                        "Day out of range in datetime string \"%s\"", str);
-            goto error;
-        }
-        substr += 2;
-        sublen -= 2;
-    }
-    else {
-        goto parse_error;
+    if (out->day < 1 ||
+        out->day > days_per_month_table[year_leap][out->month-1])
+    {
+        PyErr_Format(PyExc_ValueError,
+                     "Day out of range in datetime string \"%s\"", str);
+        goto error;
     }
 
     /* Next character must be a 'T', ' ', or end of string */
@@ -621,89 +661,119 @@ parse_iso_8601_datetime(char *str, int len,
         bestunit = PANDAS_FR_D;
         goto finish;
     }
-    else if (*substr != 'T' && *substr != ' ') {
+
+    if ((*substr != 'T' && *substr != ' ') || sublen == 1) {
         goto parse_error;
     }
-    else {
+    ++substr;
+    --sublen;
+
+    /* PARSE THE HOURS */
+    /* First digit required */
+    if (!isdigit(*substr)) {
+        goto parse_error;
+    }
+    out->hour = (*substr - '0');
+    ++substr;
+    --sublen;
+    /* Second digit optional */
+    if (isdigit(*substr)) {
+        hour_was_2_digits = 1;
+        out->hour = 10 * out->hour + (*substr - '0');
         ++substr;
         --sublen;
-    }
-
-    /* PARSE THE HOURS (2 digits) */
-    if (sublen >= 2 && isdigit(substr[0]) && isdigit(substr[1])) {
-        out->hour = 10 * (substr[0] - '0') + (substr[1] - '0');
-
-        if (out->hour < 0 || out->hour >= 24) {
+        if (out->hour >= 24) {
             PyErr_Format(PyExc_ValueError,
                         "Hours out of range in datetime string \"%s\"", str);
             goto error;
         }
-        substr += 2;
-        sublen -= 2;
-    }
-    else {
-        goto parse_error;
     }
 
     /* Next character must be a ':' or the end of the string */
-    if (sublen > 0 && *substr == ':') {
+    if (sublen == 0) {
+        if (!hour_was_2_digits) {
+            goto parse_error;
+        }
+        bestunit = PANDAS_FR_h;
+        goto finish;
+    }
+
+    if (*substr == ':') {
+        has_hms_sep = 1;
         ++substr;
         --sublen;
+        /* Cannot have a trailing separator */
+        if (sublen == 0 || !isdigit(*substr)) {
+            goto parse_error;
+        }
     }
-    else {
+    else if (!isdigit(*substr)) {
+        if (!hour_was_2_digits) {
+            goto parse_error;
+        }
         bestunit = PANDAS_FR_h;
         goto parse_timezone;
     }
 
-    /* Can't have a trailing ':' */
-    if (sublen == 0) {
-        goto parse_error;
-    }
-
-    /* PARSE THE MINUTES (2 digits) */
-    if (sublen >= 2 && isdigit(substr[0]) && isdigit(substr[1])) {
-        out->min = 10 * (substr[0] - '0') + (substr[1] - '0');
-
-        if (out->hour < 0 || out->min >= 60) {
-            PyErr_Format(PyExc_ValueError,
-                        "Minutes out of range in datetime string \"%s\"", str);
-            goto error;
-        }
-        substr += 2;
-        sublen -= 2;
-    }
-    else {
-        goto parse_error;
-    }
-
-    /* Next character must be a ':' or the end of the string */
-    if (sublen > 0 && *substr == ':') {
+    /* PARSE THE MINUTES */
+    /* First digit required */
+    out->min = (*substr - '0');
+    ++substr;
+    --sublen;
+    /* Second digit optional if there was a separator */
+    if (isdigit(*substr)) {
+        out->min = 10 * out->min + (*substr - '0');
         ++substr;
         --sublen;
+        if (out->min >= 60) {
+            PyErr_Format(PyExc_ValueError,
+                         "Minutes out of range in datetime string \"%s\"", str);
+            goto error;
+        }
+    }
+    else if (!has_hms_sep) {
+        goto parse_error;
+    }
+
+    if (sublen == 0) {
+        bestunit = PANDAS_FR_m;
+        goto finish;
+    }
+
+    /* If we make it through this condition block, then the next
+     * character is a digit. */
+    if (has_hms_sep && *substr == ':') {
+        ++substr;
+        --sublen;
+        /* Cannot have a trailing ':' */
+        if (sublen == 0 || !isdigit(*substr)) {
+            goto parse_error;
+        }
+    }
+    else if (!has_hms_sep && isdigit(*substr)) {
     }
     else {
         bestunit = PANDAS_FR_m;
         goto parse_timezone;
     }
 
-    /* Can't have a trailing ':' */
-    if (sublen == 0) {
-        goto parse_error;
-    }
-
-    /* PARSE THE SECONDS (2 digits) */
-    if (sublen >= 2 && isdigit(substr[0]) && isdigit(substr[1])) {
-        out->sec = 10 * (substr[0] - '0') + (substr[1] - '0');
-
-        if (out->sec < 0 || out->sec >= 60) {
+    /* PARSE THE SECONDS */
+    /* First digit required */
+    out->sec = (*substr - '0');
+    ++substr;
+    --sublen;
+    /* Second digit optional if there was a separator */
+    if (isdigit(*substr)) {
+        out->sec = 10 * out->sec + (*substr - '0');
+        ++substr;
+        --sublen;
+        if (out->sec >= 60) {
             PyErr_Format(PyExc_ValueError,
-                        "Seconds out of range in datetime string \"%s\"", str);
+                         "Seconds out of range in datetime string \"%s\"", str);
             goto error;
         }
-        substr += 2;
-        sublen -= 2;
     }
-    else {
+    else if (!has_hms_sep) {
         goto parse_error;
     }
 
@@ -781,6 +851,12 @@ parse_iso_8601_datetime(char *str, int len,
     }
 
 parse_timezone:
+    /* trim any whitepsace between time/timeezone */
+    while (sublen > 0 && isspace(*substr)) {
+      ++substr;
+      --sublen;
+    }
+
     if (sublen == 0) {
         // Unlike NumPy, treating no time zone as naive
         goto finish;
@@ -832,6 +908,11 @@ parse_timezone:
                 goto error;
             }
         }
+        else if (sublen >= 1 && isdigit(substr[0])) {
+            offset_hour = substr[0] - '0';
+            ++substr;
+            --sublen;
+        }
         else {
             goto parse_error;
         }
@@ -856,6 +937,11 @@ parse_timezone:
                     goto error;
                 }
             }
+            else if (sublen >= 1 && isdigit(substr[0])) {
+                offset_minute = substr[0] - '0';
+                ++substr;
+                --sublen;
+            }
             else {
                 goto parse_error;
             }
@@ -869,7 +955,7 @@ parse_timezone:
         if (out_local != NULL) {
             *out_local = 1;
             // Unlike NumPy, do not change internal value to local time
-            *out_tzoffset = 60 * offset_hour - offset_minute;
+            *out_tzoffset = 60 * offset_hour + offset_minute;
         }
     }
 

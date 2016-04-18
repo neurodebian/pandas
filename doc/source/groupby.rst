@@ -10,10 +10,7 @@
    import pandas as pd
    pd.options.display.max_rows = 15
    import matplotlib
-   try:
-      matplotlib.style.use('ggplot')
-   except AttributeError:
-      pd.options.display.mpl_style = 'default'
+   matplotlib.style.use('ggplot')
    import matplotlib.pyplot as plt
    plt.close('all')
 
@@ -220,7 +217,7 @@ the length of the ``groups`` dict, so it is largely just a convenience:
    weight = np.random.normal(166, 20, size=n)
    height = np.random.normal(60, 10, size=n)
    time = pd.date_range('1/1/2000', periods=n)
-   gender = tm.choice(['male', 'female'], size=n)
+   gender = np.random.choice(['male', 'female'], size=n)
    df = pd.DataFrame({'height': height, 'weight': weight,
                       'gender': gender}, index=time)
 
@@ -519,7 +516,7 @@ to standardize the data within each group:
 
    index = pd.date_range('10/1/1999', periods=1100)
    ts = pd.Series(np.random.normal(0.5, 2, 1100), index)
-   ts = pd.rolling_mean(ts, 100, 100).dropna()
+   ts = ts.rolling(window=100,min_periods=100).mean().dropna()
 
    ts.head()
    ts.tail()
@@ -649,7 +646,7 @@ For dataframes with multiple columns, filters should explicitly specify a column
 .. note::
 
    Some functions when applied to a groupby object will act as a **filter** on the input, returning
-   a reduced shape of the original (and potentitally eliminating groups), but with the index unchanged.
+   a reduced shape of the original (and potentially eliminating groups), but with the index unchanged.
    Passing ``as_index=False`` will not affect these transformation methods.
 
    For example: ``head, tail``.
@@ -750,7 +747,7 @@ The dimension of the returned result can also change:
 .. ipython:: python
 
     def f(x):
-      return pd.Series([ x, x**2 ], index = ['x', 'x^s'])
+      return pd.Series([ x, x**2 ], index = ['x', 'x^2'])
     s = pd.Series(np.random.rand(5))
     s
     s.apply(f)
@@ -974,7 +971,7 @@ Plotting
 ~~~~~~~~
 
 Groupby also works with some plotting methods.  For example, suppose we
-suspect that some features in a DataFrame my differ by group, in this case,
+suspect that some features in a DataFrame may differ by group, in this case,
 the values in column 1 where the group is "B" are 3 higher on average.
 
 .. ipython:: python

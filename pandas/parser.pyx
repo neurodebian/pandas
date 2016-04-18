@@ -10,7 +10,7 @@ import warnings
 from cpython cimport (PyObject, PyBytes_FromString,
                       PyBytes_AsString, PyBytes_Check,
                       PyUnicode_Check, PyUnicode_AsUTF8String)
-from io.common import DtypeWarning
+from io.common import CParserError, DtypeWarning, EmptyDataError
 
 
 cdef extern from "Python.h":
@@ -143,6 +143,8 @@ cdef extern from "parser/tokenizer.h":
         int allow_embedded_newline
         int strict                 # raise exception on bad CSV */
 
+        int usecols
+
         int expected_fields
         int error_bad_lines
         int warn_bad_lines
@@ -256,6 +258,7 @@ cdef class TextReader:
         parser_t *parser
         object file_handle, na_fvalues
         object true_values, false_values
+        object dsource
         bint na_filter, verbose, has_usecols, has_mi_columns
         int parser_start
         list clocks
@@ -349,6 +352,8 @@ cdef class TextReader:
 
         self.compression = compression
         self.memory_map = memory_map
+
+        self.parser.usecols = (usecols is not None)
 
         self._setup_parser_source(source)
         parser_set_default_options(self.parser)
@@ -515,7 +520,7 @@ cdef class TextReader:
         self.header, self.table_width = self._get_header()
 
         if not self.table_width:
-            raise ValueError("No columns to parse from file")
+            raise EmptyDataError("No columns to parse from file")
 
         # compute buffer_lines as function of table width
         heuristic = 2**20 // self.table_width
@@ -530,6 +535,15 @@ cdef class TextReader:
         parser_free(self.parser)
         kh_destroy_str(self.true_set)
         kh_destroy_str(self.false_set)
+
+    def close(self):
+        # we need to properly close an open derived
+        # filehandle here, e.g. and UTFRecoder
+        if self.dsource is not None:
+            try:
+                self.dsource.close()
+            except:
+                pass
 
     def set_error_bad_lines(self, int status):
         self.parser.error_bad_lines = status
@@ -563,6 +577,29 @@ cdef class TextReader:
                 else:
                     raise ValueError('Python 2 cannot read bz2 from open file '
                                      'handle')
+            elif self.compression == 'zip':
+                import zipfile
+                zip_file = zipfile.ZipFile(source)
+                zip_names = zip_file.namelist()
+
+                if len(zip_names) == 1:
+                    file_name = zip_names.pop()
+                    source = zip_file.open(file_name)
+
+                elif len(zip_names) == 0:
+                    raise ValueError('Zero files found in compressed '
+                                     'zip file %s', source)
+                else:
+                    raise ValueError('Multiple files found in compressed '
+                                     'zip file %s', str(zip_names))
+            elif self.compression == 'xz':
+                from pandas import compat
+                lzma = compat.import_lzma()
+
+                if isinstance(source, basestring):
+                    source = lzma.LZMAFile(source, 'rb')
+                else:
+                    source = lzma.LZMAFile(filename=source)
             else:
                 raise ValueError('Unrecognized compression type: %s' %
                                  self.compression)
@@ -607,6 +644,8 @@ cdef class TextReader:
         else:
             raise IOError('Expected file path name or file-like object,'
                           ' got %s type' % type(source))
+
+        self.dsource = source
 
     cdef _get_header(self):
         # header is now a list of lists, so field_count should use header[0]
@@ -982,7 +1021,7 @@ cdef class TextReader:
                 col_res = downcast_int64(col_res, self.use_unsigned)
 
             if col_res is None:
-                raise Exception('Unable to parse column %d' % i)
+                raise CParserError('Unable to parse column %d' % i)
 
             results[i] = col_res
 
@@ -1070,7 +1109,7 @@ cdef class TextReader:
                                           na_filter, na_hashset)
             if user_dtype and na_count is not None:
                 if na_count > 0:
-                    raise Exception("Integer column has NA values in "
+                    raise ValueError("Integer column has NA values in "
                                     "column {column}".format(column=i))
 
             if result is not None and dtype[1:] != 'i8':
@@ -1207,13 +1246,6 @@ cdef class TextReader:
                     return self.header[0][j]
             else:
                 return None
-
-class CParserError(Exception):
-    pass
-
-
-class OverflowError(ValueError):
-    pass
 
 cdef object _true_values = [b'True', b'TRUE', b'true']
 cdef object _false_values = [b'False', b'FALSE', b'false']
@@ -1788,7 +1820,7 @@ cdef kh_str_t* kset_from_list(list values) except NULL:
 
         # None creeps in sometimes, which isn't possible here
         if not PyBytes_Check(val):
-            raise Exception('Must be all encoded bytes')
+            raise ValueError('Must be all encoded bytes')
 
         k = kh_put_str(table, PyBytes_AsString(val), &ret)
 
