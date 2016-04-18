@@ -1,4 +1,4 @@
-pandas (0.17.1+git114-g6c692ae-1) unstable; urgency=medium
+pandas (0.18.0+git114-g6c692ae-1) unstable; urgency=medium
 
   * debian/control
     - added python{,3}-pkg-resources to direct Depends for the packages
