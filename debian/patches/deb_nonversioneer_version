@@ -1,7 +1,7 @@
 --- a/pandas/__init__.py
 +++ b/pandas/__init__.py
-@@ -57,7 +57,4 @@ from pandas.util.print_versions import s
- import pandas.util.testing
+@@ -58,7 +58,4 @@ test = NoseTester().test
+ del NoseTester
  
  # use the closest tagged version if possible
 -from ._version import get_versions
