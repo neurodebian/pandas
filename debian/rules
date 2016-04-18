@@ -29,8 +29,10 @@ EXCLUDE_TESTS := --exclude 'test_(bar_log|set_locale|constructor_compound_dtypes
 EXCLUDE_TESTS2 :=
 EXCLUDE_TESTS3.2 :=
 #--exclude "test_bootstrap_plot"
-EXCLUDE_TESTS3.3 :=
+EXCLUDE_TESTS3.3 := --exclude 'test_to_latex_filename'
 #--exclude "test_(bootstrap_plot|quoting|cant_compare_tz_naive_w_aware|more_flexible_frame_multi_function|yahoo)"
+EXCLUDE_TESTS3.4 := $(EXCLUDE_TESTS3.3)
+EXCLUDE_TESTS3.5 := $(EXCLUDE_TESTS3.3)
 
 # MPLVER := $(shell dpkg -l python-matplotlib | awk '/^ii/{print $$3;}' || echo 0)
 # $(shell dpkg --compare-versions $(MPLVER) lt 1.0 && echo '|test_hist|test_plot|test_boxplot|test_corr_rank' || echo '')
