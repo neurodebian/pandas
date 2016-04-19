@@ -25,7 +25,7 @@ UVER_PYSHORT := $(shell echo $(UVER_PY) | sed -e 's,+git.*,,g')
 MIN_CYTHONVER = 0.20.2
 
 # Some unittests might need to be excluded for different Python versions
-EXCLUDE_TESTS := --exclude 'test_(bar_log|set_locale|constructor_compound_dtypes|invalid_index_types)'
+EXCLUDE_TESTS := --exclude 'test_(bar_log|set_locale|constructor_compound_dtypes|invalid_index_types|searchsorted_sorter|sparse_max_row)'
 EXCLUDE_TESTS2 :=
 EXCLUDE_TESTS3.2 :=
 #--exclude "test_bootstrap_plot"
