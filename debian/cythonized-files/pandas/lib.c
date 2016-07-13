@@ -929,7 +929,7 @@ struct __pyx_obj_6pandas_3lib_BlockPlacement {
  * 
  * 
  * cdef class Reducer:             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Performs generic reduction operation on a C or Fortran-contiguous ndarray
  */
 struct __pyx_obj_6pandas_3lib_Reducer {
@@ -951,7 +951,7 @@ struct __pyx_obj_6pandas_3lib_Reducer {
  * 
  * 
  * cdef class SeriesBinGrouper:             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Performs grouping operation according to bin edges, rather than labels
  */
 struct __pyx_obj_6pandas_3lib_SeriesBinGrouper {
@@ -976,7 +976,7 @@ struct __pyx_obj_6pandas_3lib_SeriesBinGrouper {
  * 
  * 
  * cdef class SeriesGrouper:             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Performs generic grouping operation while avoiding ndarray construction
  */
 struct __pyx_obj_6pandas_3lib_SeriesGrouper {
@@ -1001,7 +1001,7 @@ struct __pyx_obj_6pandas_3lib_SeriesGrouper {
  *     return res
  * 
  * cdef class Slider:             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Only handles contiguous data for now
  */
 struct __pyx_obj_6pandas_3lib_Slider {
@@ -1020,7 +1020,7 @@ struct __pyx_obj_6pandas_3lib_Slider {
  *     return results, mutated
  * 
  * cdef class BlockSlider:             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Only capable of sliding on axis=0
  */
 struct __pyx_obj_6pandas_3lib_BlockSlider {
@@ -1249,7 +1249,7 @@ static struct __pyx_vtabstruct_6pandas_3lib_BlockPlacement *__pyx_vtabptr_6panda
  *     return res
  * 
  * cdef class Slider:             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Only handles contiguous data for now
  */
 
@@ -1266,7 +1266,7 @@ static struct __pyx_vtabstruct_6pandas_3lib_Slider *__pyx_vtabptr_6pandas_3lib_S
  *     return results, mutated
  * 
  * cdef class BlockSlider:             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Only capable of sliding on axis=0
  */
 
@@ -2222,7 +2222,7 @@ static CYTHON_INLINE PyObject *__pyx_f_8datetime__dts_to_pydatetime(pandas_datet
 /* Module declarations from 'pandas.tslib' */
 static int (*__pyx_vp_6pandas_5tslib__nat_scalar_rules)[6] = 0;
 #define __pyx_v_6pandas_5tslib__nat_scalar_rules (*__pyx_vp_6pandas_5tslib__nat_scalar_rules)
-static PyObject *(*__pyx_f_6pandas_5tslib_convert_to_tsobject)(PyObject *, PyObject *, PyObject *); /*proto*/
+static PyObject *(*__pyx_f_6pandas_5tslib_convert_to_tsobject)(PyObject *, PyObject *, PyObject *, int, int); /*proto*/
 static PyObject *(*__pyx_f_6pandas_5tslib_convert_to_timedelta64)(PyObject *, PyObject *, PyObject *); /*proto*/
 static int (*__pyx_f_6pandas_5tslib__check_all_nulls)(PyObject *); /*proto*/
 
@@ -4294,7 +4294,7 @@ static PyObject *__pyx_pf_6pandas_3lib_values_from_object(CYTHON_UNUSED PyObject
  *     return o
  * 
  * cpdef map_indices_list(list index):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Produce a dict mapping the values of the input array to their respective
  */
 
@@ -4314,7 +4314,7 @@ static PyObject *__pyx_f_6pandas_3lib_map_indices_list(PyObject *__pyx_v_index, 
   __Pyx_RefNannySetupContext("map_indices_list", 0);
 
   /* "pandas/lib.pyx":108
- *     '''
+ *     """
  *     cdef Py_ssize_t i, length
  *     cdef dict result = {}             # <<<<<<<<<<<<<<
  * 
@@ -4385,7 +4385,7 @@ static PyObject *__pyx_f_6pandas_3lib_map_indices_list(PyObject *__pyx_v_index, 
  *     return o
  * 
  * cpdef map_indices_list(list index):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Produce a dict mapping the values of the input array to their respective
  */
 
@@ -4816,7 +4816,7 @@ static PyObject *__pyx_pf_6pandas_3lib_4ismember_nans(CYTHON_UNUSED PyObject *__
  * 
  * 
  * def ismember(ndarray arr, set values):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Checks whether
  */
 
@@ -5082,7 +5082,7 @@ static PyObject *__pyx_pf_6pandas_3lib_6ismember(CYTHON_UNUSED PyObject *__pyx_s
  * 
  * 
  * def ismember(ndarray arr, set values):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Checks whether
  */
 
@@ -5114,7 +5114,7 @@ static PyObject *__pyx_pf_6pandas_3lib_6ismember(CYTHON_UNUSED PyObject *__pyx_s
  *     return result.view(np.bool_)
  * 
  * def ismember_int64(ndarray[int64_t] arr, set values):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Checks whether
  */
 
@@ -5389,7 +5389,7 @@ static PyObject *__pyx_pf_6pandas_3lib_8ismember_int64(CYTHON_UNUSED PyObject *_
  *     return result.view(np.bool_)
  * 
  * def ismember_int64(ndarray[int64_t] arr, set values):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Checks whether
  */
 
@@ -8814,7 +8814,7 @@ static PyObject *__pyx_pf_6pandas_3lib_38isnullobj2d_old(CYTHON_UNUSED PyObject 
  * @cython.wraparound(False)
  * @cython.boundscheck(False)
  * cpdef ndarray[object] list_to_object_array(list obj):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Convert list to object ndarray. Seriously can\'t believe I had to write this
  */
 
@@ -8846,7 +8846,7 @@ static PyArrayObject *__pyx_f_6pandas_3lib_list_to_object_array(PyObject *__pyx_
   __pyx_pybuffernd_arr.rcbuffer = &__pyx_pybuffer_arr;
 
   /* "pandas/lib.pyx":412
- *     '''
+ *     """
  *     cdef:
  *         Py_ssize_t i, n = len(obj)             # <<<<<<<<<<<<<<
  *         ndarray[object] arr = np.empty(n, dtype=object)
@@ -8949,7 +8949,7 @@ static PyArrayObject *__pyx_f_6pandas_3lib_list_to_object_array(PyObject *__pyx_
  * @cython.wraparound(False)
  * @cython.boundscheck(False)
  * cpdef ndarray[object] list_to_object_array(list obj):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Convert list to object ndarray. Seriously can\'t believe I had to write this
  */
 
@@ -10698,7 +10698,7 @@ static PyObject *__pyx_pf_6pandas_3lib_50dicts_to_array(CYTHON_UNUSED PyObject *
  *     return result
  * 
  * def fast_zip(list ndarrays):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     For zipping multiple ndarrays into an ndarray of tuples
  */
 
@@ -11120,7 +11120,7 @@ static PyObject *__pyx_pf_6pandas_3lib_52fast_zip(CYTHON_UNUSED PyObject *__pyx_
  *     return result
  * 
  * def fast_zip(list ndarrays):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     For zipping multiple ndarrays into an ndarray of tuples
  */
 
@@ -17098,7 +17098,7 @@ static PyObject *__pyx_pf_6pandas_3lib_80astype_str(CYTHON_UNUSED PyObject *__py
  *     return result
  * 
  * def clean_index_list(list obj):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Utility used in pandas.core.index._ensure_index
  */
 
@@ -17522,7 +17522,7 @@ static PyObject *__pyx_pf_6pandas_3lib_82clean_index_list(CYTHON_UNUSED PyObject
  *     return result
  * 
  * def clean_index_list(list obj):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Utility used in pandas.core.index._ensure_index
  */
 
@@ -23723,7 +23723,7 @@ static Py_hash_t __pyx_pf_6pandas_3lib_11_PandasNull_2__hash__(CYTHON_UNUSED str
  * pandas_null = _PandasNull()
  * 
  * def fast_zip_fillna(list ndarrays, fill_value=pandas_null):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     For zipping multiple ndarrays into an ndarray of tuples
  */
 
@@ -24255,7 +24255,7 @@ static PyObject *__pyx_pf_6pandas_3lib_108fast_zip_fillna(CYTHON_UNUSED PyObject
  * pandas_null = _PandasNull()
  * 
  * def fast_zip_fillna(list ndarrays, fill_value=pandas_null):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     For zipping multiple ndarrays into an ndarray of tuples
  */
 
@@ -40167,8 +40167,8 @@ static int __pyx_pf_6pandas_3lib_13SeriesGrouper_4name_4__del__(struct __pyx_obj
  * 
  * 
  * cdef inline _extract_result(object res):             # <<<<<<<<<<<<<<
- *     ''' extract the result object, it might be a 0-dim ndarray
- *         or a len-1 0-dim, or a scalar '''
+ *     """ extract the result object, it might be a 0-dim ndarray
+ *         or a len-1 0-dim, or a scalar """
  */
 
 static CYTHON_INLINE PyObject *__pyx_f_6pandas_3lib__extract_result(PyObject *__pyx_v_res) {
@@ -40188,8 +40188,8 @@ static CYTHON_INLINE PyObject *__pyx_f_6pandas_3lib__extract_result(PyObject *__
   __Pyx_INCREF(__pyx_v_res);
 
   /* "pandas/src/reduce.pyx":414
- *     ''' extract the result object, it might be a 0-dim ndarray
- *         or a len-1 0-dim, or a scalar '''
+ *     """ extract the result object, it might be a 0-dim ndarray
+ *         or a len-1 0-dim, or a scalar """
  *     if hasattr(res,'values'):             # <<<<<<<<<<<<<<
  *        res = res.values
  *     if not np.isscalar(res):
@@ -40199,7 +40199,7 @@ static CYTHON_INLINE PyObject *__pyx_f_6pandas_3lib__extract_result(PyObject *__
   if (__pyx_t_2) {
 
     /* "pandas/src/reduce.pyx":415
- *         or a len-1 0-dim, or a scalar '''
+ *         or a len-1 0-dim, or a scalar """
  *     if hasattr(res,'values'):
  *        res = res.values             # <<<<<<<<<<<<<<
  *     if not np.isscalar(res):
@@ -40211,8 +40211,8 @@ static CYTHON_INLINE PyObject *__pyx_f_6pandas_3lib__extract_result(PyObject *__
     __pyx_t_3 = 0;
 
     /* "pandas/src/reduce.pyx":414
- *     ''' extract the result object, it might be a 0-dim ndarray
- *         or a len-1 0-dim, or a scalar '''
+ *     """ extract the result object, it might be a 0-dim ndarray
+ *         or a len-1 0-dim, or a scalar """
  *     if hasattr(res,'values'):             # <<<<<<<<<<<<<<
  *        res = res.values
  *     if not np.isscalar(res):
@@ -40409,8 +40409,8 @@ static CYTHON_INLINE PyObject *__pyx_f_6pandas_3lib__extract_result(PyObject *__
  * 
  * 
  * cdef inline _extract_result(object res):             # <<<<<<<<<<<<<<
- *     ''' extract the result object, it might be a 0-dim ndarray
- *         or a len-1 0-dim, or a scalar '''
+ *     """ extract the result object, it might be a 0-dim ndarray
+ *         or a len-1 0-dim, or a scalar """
  */
 
   /* function exit code */
@@ -40894,7 +40894,7 @@ static PyObject *__pyx_pf_6pandas_3lib_6Slider_2advance(struct __pyx_obj_6pandas
  *         self.buf.data = <char*> self.buf.data + self.stride * k
  * 
  *     cdef move(self, int start, int end):             # <<<<<<<<<<<<<<
- *         '''
+ *         """
  *         For slicing
  */
 
@@ -40905,7 +40905,7 @@ static PyObject *__pyx_f_6pandas_3lib_6Slider_move(struct __pyx_obj_6pandas_3lib
 
   /* "pandas/src/reduce.pyx":458
  *         For slicing
- *         '''
+ *         """
  *         self.buf.data = self.values.data + self.stride * start             # <<<<<<<<<<<<<<
  *         self.buf.shape[0] = end - start
  * 
@@ -40913,7 +40913,7 @@ static PyObject *__pyx_f_6pandas_3lib_6Slider_move(struct __pyx_obj_6pandas_3lib
   __pyx_v_self->buf->data = (__pyx_v_self->values->data + (__pyx_v_self->stride * __pyx_v_start));
 
   /* "pandas/src/reduce.pyx":459
- *         '''
+ *         """
  *         self.buf.data = self.values.data + self.stride * start
  *         self.buf.shape[0] = end - start             # <<<<<<<<<<<<<<
  * 
@@ -40925,7 +40925,7 @@ static PyObject *__pyx_f_6pandas_3lib_6Slider_move(struct __pyx_obj_6pandas_3lib
  *         self.buf.data = <char*> self.buf.data + self.stride * k
  * 
  *     cdef move(self, int start, int end):             # <<<<<<<<<<<<<<
- *         '''
+ *         """
  *         For slicing
  */
 
@@ -52765,7 +52765,7 @@ static PyObject *__pyx_pf_6pandas_3lib_181is_period_array(CYTHON_UNUSED PyObject
  * 
  * def maybe_convert_numeric(object[:] values, set na_values,             # <<<<<<<<<<<<<<
  *                           bint convert_empty=True, bint coerce_numeric=False):
- *     '''
+ *     """
  */
 
 /* Python wrapper */
@@ -52841,7 +52841,7 @@ static PyObject *__pyx_pw_6pandas_3lib_184maybe_convert_numeric(PyObject *__pyx_
  * 
  * def maybe_convert_numeric(object[:] values, set na_values,
  *                           bint convert_empty=True, bint coerce_numeric=False):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Type inference function-- convert strings to numeric (potentially) and
  */
       __pyx_v_convert_empty = ((int)1);
@@ -52868,7 +52868,7 @@ static PyObject *__pyx_pw_6pandas_3lib_184maybe_convert_numeric(PyObject *__pyx_
  * 
  * def maybe_convert_numeric(object[:] values, set na_values,             # <<<<<<<<<<<<<<
  *                           bint convert_empty=True, bint coerce_numeric=False):
- *     '''
+ *     """
  */
 
   /* function exit code */
@@ -54171,7 +54171,7 @@ static PyObject *__pyx_pf_6pandas_3lib_183maybe_convert_numeric(CYTHON_UNUSED Py
  * 
  * def maybe_convert_numeric(object[:] values, set na_values,             # <<<<<<<<<<<<<<
  *                           bint convert_empty=True, bint coerce_numeric=False):
- *     '''
+ *     """
  */
 
   /* function exit code */
@@ -55198,7 +55198,7 @@ static PyObject *__pyx_pf_6pandas_3lib_185maybe_convert_objects(CYTHON_UNUSED Py
  *             seen_float = 1
  *         elif util.is_datetime64_object(val):             # <<<<<<<<<<<<<<
  *             if convert_datetime:
- *                 idatetimes[i] = convert_to_tsobject(val, None, None).value
+ *                 idatetimes[i] = convert_to_tsobject(val, None, None, 0, 0).value
  */
     __pyx_t_20 = (is_datetime64_object(__pyx_v_val) != 0);
     if (__pyx_t_20) {
@@ -55207,7 +55207,7 @@ static PyObject *__pyx_pf_6pandas_3lib_185maybe_convert_objects(CYTHON_UNUSED Py
  *             seen_float = 1
  *         elif util.is_datetime64_object(val):
  *             if convert_datetime:             # <<<<<<<<<<<<<<
- *                 idatetimes[i] = convert_to_tsobject(val, None, None).value
+ *                 idatetimes[i] = convert_to_tsobject(val, None, None, 0, 0).value
  *                 seen_datetime = 1
  */
       __pyx_t_20 = (__pyx_v_convert_datetime != 0);
@@ -55216,11 +55216,11 @@ static PyObject *__pyx_pf_6pandas_3lib_185maybe_convert_objects(CYTHON_UNUSED Py
         /* "pandas/src/inference.pyx":686
  *         elif util.is_datetime64_object(val):
  *             if convert_datetime:
- *                 idatetimes[i] = convert_to_tsobject(val, None, None).value             # <<<<<<<<<<<<<<
+ *                 idatetimes[i] = convert_to_tsobject(val, None, None, 0, 0).value             # <<<<<<<<<<<<<<
  *                 seen_datetime = 1
  *             else:
  */
-        __pyx_t_2 = __pyx_f_6pandas_5tslib_convert_to_tsobject(__pyx_v_val, Py_None, Py_None); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 686; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+        __pyx_t_2 = __pyx_f_6pandas_5tslib_convert_to_tsobject(__pyx_v_val, Py_None, Py_None, 0, 0); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 686; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
         __Pyx_GOTREF(__pyx_t_2);
         __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_value); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 686; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
         __Pyx_GOTREF(__pyx_t_3);
@@ -55241,7 +55241,7 @@ static PyObject *__pyx_pf_6pandas_3lib_185maybe_convert_objects(CYTHON_UNUSED Py
 
         /* "pandas/src/inference.pyx":687
  *             if convert_datetime:
- *                 idatetimes[i] = convert_to_tsobject(val, None, None).value
+ *                 idatetimes[i] = convert_to_tsobject(val, None, None, 0, 0).value
  *                 seen_datetime = 1             # <<<<<<<<<<<<<<
  *             else:
  *                 seen_object = 1
@@ -55252,7 +55252,7 @@ static PyObject *__pyx_pf_6pandas_3lib_185maybe_convert_objects(CYTHON_UNUSED Py
  *             seen_float = 1
  *         elif util.is_datetime64_object(val):
  *             if convert_datetime:             # <<<<<<<<<<<<<<
- *                 idatetimes[i] = convert_to_tsobject(val, None, None).value
+ *                 idatetimes[i] = convert_to_tsobject(val, None, None, 0, 0).value
  *                 seen_datetime = 1
  */
         goto __pyx_L8;
@@ -55284,7 +55284,7 @@ static PyObject *__pyx_pf_6pandas_3lib_185maybe_convert_objects(CYTHON_UNUSED Py
  *             seen_float = 1
  *         elif util.is_datetime64_object(val):             # <<<<<<<<<<<<<<
  *             if convert_datetime:
- *                 idatetimes[i] = convert_to_tsobject(val, None, None).value
+ *                 idatetimes[i] = convert_to_tsobject(val, None, None, 0, 0).value
  */
       goto __pyx_L7;
     }
@@ -55657,7 +55657,7 @@ static PyObject *__pyx_pf_6pandas_3lib_185maybe_convert_objects(CYTHON_UNUSED Py
  *         elif PyDateTime_Check(val) or util.is_datetime64_object(val):
  *             if convert_datetime:             # <<<<<<<<<<<<<<
  *                 seen_datetime = 1
- *                 idatetimes[i] = convert_to_tsobject(val, None, None).value
+ *                 idatetimes[i] = convert_to_tsobject(val, None, None, 0, 0).value
  */
       __pyx_t_20 = (__pyx_v_convert_datetime != 0);
       if (__pyx_t_20) {
@@ -55666,7 +55666,7 @@ static PyObject *__pyx_pf_6pandas_3lib_185maybe_convert_objects(CYTHON_UNUSED Py
  *         elif PyDateTime_Check(val) or util.is_datetime64_object(val):
  *             if convert_datetime:
  *                 seen_datetime = 1             # <<<<<<<<<<<<<<
- *                 idatetimes[i] = convert_to_tsobject(val, None, None).value
+ *                 idatetimes[i] = convert_to_tsobject(val, None, None, 0, 0).value
  *             else:
  */
         __pyx_v_seen_datetime = 1;
@@ -55674,11 +55674,11 @@ static PyObject *__pyx_pf_6pandas_3lib_185maybe_convert_objects(CYTHON_UNUSED Py
         /* "pandas/src/inference.pyx":715
  *             if convert_datetime:
  *                 seen_datetime = 1
- *                 idatetimes[i] = convert_to_tsobject(val, None, None).value             # <<<<<<<<<<<<<<
+ *                 idatetimes[i] = convert_to_tsobject(val, None, None, 0, 0).value             # <<<<<<<<<<<<<<
  *             else:
  *                 seen_object = 1
  */
-        __pyx_t_4 = __pyx_f_6pandas_5tslib_convert_to_tsobject(__pyx_v_val, Py_None, Py_None); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 715; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+        __pyx_t_4 = __pyx_f_6pandas_5tslib_convert_to_tsobject(__pyx_v_val, Py_None, Py_None, 0, 0); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 715; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
         __Pyx_GOTREF(__pyx_t_4);
         __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_n_s_value); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 715; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
         __Pyx_GOTREF(__pyx_t_2);
@@ -55702,13 +55702,13 @@ static PyObject *__pyx_pf_6pandas_3lib_185maybe_convert_objects(CYTHON_UNUSED Py
  *         elif PyDateTime_Check(val) or util.is_datetime64_object(val):
  *             if convert_datetime:             # <<<<<<<<<<<<<<
  *                 seen_datetime = 1
- *                 idatetimes[i] = convert_to_tsobject(val, None, None).value
+ *                 idatetimes[i] = convert_to_tsobject(val, None, None, 0, 0).value
  */
         goto __pyx_L23;
       }
 
       /* "pandas/src/inference.pyx":717
- *                 idatetimes[i] = convert_to_tsobject(val, None, None).value
+ *                 idatetimes[i] = convert_to_tsobject(val, None, None, 0, 0).value
  *             else:
  *                 seen_object = 1             # <<<<<<<<<<<<<<
  *                 break
@@ -62324,7 +62324,7 @@ static PyObject *__pyx_pf_6pandas_3lib_199maybe_convert_bool(CYTHON_UNUSED PyObj
  * 
  * def map_infer_mask(ndarray arr, object f, ndarray[uint8_t] mask,             # <<<<<<<<<<<<<<
  *                    bint convert=1):
- *     '''
+ *     """
  */
 
 /* Python wrapper */
@@ -62792,7 +62792,7 @@ static PyObject *__pyx_pf_6pandas_3lib_201map_infer_mask(CYTHON_UNUSED PyObject 
  * 
  * def map_infer_mask(ndarray arr, object f, ndarray[uint8_t] mask,             # <<<<<<<<<<<<<<
  *                    bint convert=1):
- *     '''
+ *     """
  */
 
   /* function exit code */
@@ -62825,7 +62825,7 @@ static PyObject *__pyx_pf_6pandas_3lib_201map_infer_mask(CYTHON_UNUSED PyObject 
  *     return result
  * 
  * def map_infer(ndarray arr, object f, bint convert=1):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Substitute for np.vectorize with pandas-friendly dtype inference
  */
 
@@ -63223,7 +63223,7 @@ static PyObject *__pyx_pf_6pandas_3lib_203map_infer(CYTHON_UNUSED PyObject *__py
  *     return result
  * 
  * def map_infer(ndarray arr, object f, bint convert=1):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Substitute for np.vectorize with pandas-friendly dtype inference
  */
 
@@ -84463,7 +84463,7 @@ static int __Pyx_InitCachedConstants(void) {
  * 
  * 
  * def ismember(ndarray arr, set values):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Checks whether
  */
   __pyx_tuple__90 = PyTuple_Pack(6, __pyx_n_s_arr, __pyx_n_s_values, __pyx_n_s_i, __pyx_n_s_n, __pyx_n_s_result, __pyx_n_s_val); if (unlikely(!__pyx_tuple__90)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 136; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -84475,7 +84475,7 @@ static int __Pyx_InitCachedConstants(void) {
  *     return result.view(np.bool_)
  * 
  * def ismember_int64(ndarray[int64_t] arr, set values):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Checks whether
  */
   __pyx_tuple__92 = PyTuple_Pack(6, __pyx_n_s_arr, __pyx_n_s_values, __pyx_n_s_i, __pyx_n_s_n, __pyx_n_s_result, __pyx_n_s_v); if (unlikely(!__pyx_tuple__92)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 162; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -84655,7 +84655,7 @@ static int __Pyx_InitCachedConstants(void) {
  *     return result
  * 
  * def fast_zip(list ndarrays):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     For zipping multiple ndarrays into an ndarray of tuples
  */
   __pyx_tuple__122 = PyTuple_Pack(10, __pyx_n_s_ndarrays, __pyx_n_s_i, __pyx_n_s_j, __pyx_n_s_k, __pyx_n_s_n, __pyx_n_s_result, __pyx_n_s_it, __pyx_n_s_val, __pyx_n_s_tup, __pyx_n_s_arr); if (unlikely(!__pyx_tuple__122)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 544; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -84799,7 +84799,7 @@ static int __Pyx_InitCachedConstants(void) {
  *     return result
  * 
  * def clean_index_list(list obj):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Utility used in pandas.core.index._ensure_index
  */
   __pyx_tuple__146 = PyTuple_Pack(6, __pyx_n_s_obj, __pyx_n_s_converted, __pyx_n_s_i, __pyx_n_s_n, __pyx_n_s_v, __pyx_n_s_all_arrays); if (unlikely(!__pyx_tuple__146)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 961; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -84955,7 +84955,7 @@ static int __Pyx_InitCachedConstants(void) {
  * pandas_null = _PandasNull()
  * 
  * def fast_zip_fillna(list ndarrays, fill_value=pandas_null):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     For zipping multiple ndarrays into an ndarray of tuples
  */
   __pyx_tuple__172 = PyTuple_Pack(11, __pyx_n_s_ndarrays, __pyx_n_s_fill_value, __pyx_n_s_i, __pyx_n_s_j, __pyx_n_s_k, __pyx_n_s_n, __pyx_n_s_result, __pyx_n_s_it, __pyx_n_s_val, __pyx_n_s_tup, __pyx_n_s_arr); if (unlikely(!__pyx_tuple__172)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1327; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -85340,7 +85340,7 @@ static int __Pyx_InitCachedConstants(void) {
  * 
  * def maybe_convert_numeric(object[:] values, set na_values,             # <<<<<<<<<<<<<<
  *                           bint convert_empty=True, bint coerce_numeric=False):
- *     '''
+ *     """
  */
   __pyx_tuple__236 = PyTuple_Pack(19, __pyx_n_s_values, __pyx_n_s_na_values, __pyx_n_s_convert_empty, __pyx_n_s_coerce_numeric, __pyx_n_s_status, __pyx_n_s_maybe_int, __pyx_n_s_i, __pyx_n_s_n, __pyx_n_s_floats, __pyx_n_s_complexes, __pyx_n_s_ints, __pyx_n_s_bools, __pyx_n_s_seen_float, __pyx_n_s_seen_complex, __pyx_n_s_seen_int, __pyx_n_s_seen_bool, __pyx_n_s_val, __pyx_n_s_fval, __pyx_n_s_as_int); if (unlikely(!__pyx_tuple__236)) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 549; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_tuple__236);
@@ -85448,7 +85448,7 @@ static int __Pyx_InitCachedConstants(void) {
  * 
  * def map_infer_mask(ndarray arr, object f, ndarray[uint8_t] mask,             # <<<<<<<<<<<<<<
  *                    bint convert=1):
- *     '''
+ *     """
  */
   __pyx_tuple__254 = PyTuple_Pack(8, __pyx_n_s_arr, __pyx_n_s_f, __pyx_n_s_mask, __pyx_n_s_convert, __pyx_n_s_i, __pyx_n_s_n, __pyx_n_s_result, __pyx_n_s_val); if (unlikely(!__pyx_tuple__254)) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 1025; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_tuple__254);
@@ -85459,7 +85459,7 @@ static int __Pyx_InitCachedConstants(void) {
  *     return result
  * 
  * def map_infer(ndarray arr, object f, bint convert=1):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Substitute for np.vectorize with pandas-friendly dtype inference
  */
   __pyx_tuple__256 = PyTuple_Pack(7, __pyx_n_s_arr, __pyx_n_s_f, __pyx_n_s_convert, __pyx_n_s_i, __pyx_n_s_n, __pyx_n_s_result, __pyx_n_s_val); if (unlikely(!__pyx_tuple__256)) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 1067; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -85808,7 +85808,7 @@ PyMODINIT_FUNC PyInit_lib(void)
   Py_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   /*--- Function import code ---*/
   __pyx_t_2 = __Pyx_ImportModule("pandas.tslib"); if (!__pyx_t_2) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  if (__Pyx_ImportFunction(__pyx_t_2, "convert_to_tsobject", (void (**)(void))&__pyx_f_6pandas_5tslib_convert_to_tsobject, "PyObject *(PyObject *, PyObject *, PyObject *)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (__Pyx_ImportFunction(__pyx_t_2, "convert_to_tsobject", (void (**)(void))&__pyx_f_6pandas_5tslib_convert_to_tsobject, "PyObject *(PyObject *, PyObject *, PyObject *, int, int)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   if (__Pyx_ImportFunction(__pyx_t_2, "convert_to_timedelta64", (void (**)(void))&__pyx_f_6pandas_5tslib_convert_to_timedelta64, "PyObject *(PyObject *, PyObject *, PyObject *)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   if (__Pyx_ImportFunction(__pyx_t_2, "_check_all_nulls", (void (**)(void))&__pyx_f_6pandas_5tslib__check_all_nulls, "int (PyObject *)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   Py_DECREF(__pyx_t_2); __pyx_t_2 = 0;
@@ -86044,7 +86044,7 @@ PyMODINIT_FUNC PyInit_lib(void)
  * 
  * 
  * def ismember(ndarray arr, set values):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Checks whether
  */
   __pyx_t_3 = PyCFunction_NewEx(&__pyx_mdef_6pandas_3lib_7ismember, NULL, __pyx_n_s_pandas_lib); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 136; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -86056,7 +86056,7 @@ PyMODINIT_FUNC PyInit_lib(void)
  *     return result.view(np.bool_)
  * 
  * def ismember_int64(ndarray[int64_t] arr, set values):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Checks whether
  */
   __pyx_t_3 = PyCFunction_NewEx(&__pyx_mdef_6pandas_3lib_9ismember_int64, NULL, __pyx_n_s_pandas_lib); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 162; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -86291,7 +86291,7 @@ PyMODINIT_FUNC PyInit_lib(void)
  *     return result
  * 
  * def fast_zip(list ndarrays):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     For zipping multiple ndarrays into an ndarray of tuples
  */
   __pyx_t_3 = PyCFunction_NewEx(&__pyx_mdef_6pandas_3lib_53fast_zip, NULL, __pyx_n_s_pandas_lib); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 544; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -86435,7 +86435,7 @@ PyMODINIT_FUNC PyInit_lib(void)
  *     return result
  * 
  * def clean_index_list(list obj):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Utility used in pandas.core.index._ensure_index
  */
   __pyx_t_3 = PyCFunction_NewEx(&__pyx_mdef_6pandas_3lib_83clean_index_list, NULL, __pyx_n_s_pandas_lib); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 961; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -86623,7 +86623,7 @@ PyMODINIT_FUNC PyInit_lib(void)
  * pandas_null = _PandasNull()
  * 
  * def fast_zip_fillna(list ndarrays, fill_value=pandas_null):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     For zipping multiple ndarrays into an ndarray of tuples
  */
   __pyx_t_9 = __Pyx_GetModuleGlobalName(__pyx_n_s_pandas_null); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1327; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -87759,7 +87759,7 @@ PyMODINIT_FUNC PyInit_lib(void)
  * 
  * def maybe_convert_numeric(object[:] values, set na_values,             # <<<<<<<<<<<<<<
  *                           bint convert_empty=True, bint coerce_numeric=False):
- *     '''
+ *     """
  */
   __pyx_t_9 = PyCFunction_NewEx(&__pyx_mdef_6pandas_3lib_184maybe_convert_numeric, NULL, __pyx_n_s_pandas_lib); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 549; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_9);
@@ -87867,7 +87867,7 @@ PyMODINIT_FUNC PyInit_lib(void)
  * 
  * def map_infer_mask(ndarray arr, object f, ndarray[uint8_t] mask,             # <<<<<<<<<<<<<<
  *                    bint convert=1):
- *     '''
+ *     """
  */
   __pyx_t_9 = PyCFunction_NewEx(&__pyx_mdef_6pandas_3lib_202map_infer_mask, NULL, __pyx_n_s_pandas_lib); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 1025; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_9);
@@ -87878,7 +87878,7 @@ PyMODINIT_FUNC PyInit_lib(void)
  *     return result
  * 
  * def map_infer(ndarray arr, object f, bint convert=1):             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  *     Substitute for np.vectorize with pandas-friendly dtype inference
  */
   __pyx_t_9 = PyCFunction_NewEx(&__pyx_mdef_6pandas_3lib_204map_infer, NULL, __pyx_n_s_pandas_lib); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 1067; __pyx_clineno = __LINE__; goto __pyx_L1_error;}

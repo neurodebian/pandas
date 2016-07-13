@@ -782,7 +782,7 @@ typedef npy_cdouble __pyx_t_5numpy_complex_t;
  * 
  * 
  * cdef class TextReader:             # <<<<<<<<<<<<<<
- *     '''
+ *     """
  * 
  */
 struct __pyx_obj_6pandas_6parser_TextReader {
