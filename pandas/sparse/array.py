@@ -7,15 +7,18 @@ from __future__ import division
 from numpy import nan, ndarray
 import numpy as np
 
+import pandas as pd
 from pandas.core.base import PandasObject
 import pandas.core.common as com
 
 from pandas import compat, lib
 from pandas.compat import range
+from pandas.compat.numpy import function as nv
 
 from pandas._sparse import SparseIndex, BlockIndex, IntIndex
 import pandas._sparse as splib
 import pandas.index as _index
+import pandas.core.algorithms as algos
 import pandas.core.ops as ops
 import pandas.formats.printing as printing
 from pandas.util.decorators import Appender
@@ -46,9 +49,8 @@ def _arith_method(op, name, str_rep=None, default_axis=None, fill_zeros=None,
         elif lib.isscalar(other):
             new_fill_value = op(np.float64(self.fill_value), np.float64(other))
 
-            return SparseArray(op(self.sp_values, other),
-                               sparse_index=self.sp_index,
-                               fill_value=new_fill_value)
+            return _wrap_result(name, op(self.sp_values, other),
+                                self.sp_index, new_fill_value)
         else:  # pragma: no cover
             raise TypeError('operation with %s not supported' % type(other))
 
@@ -59,49 +61,40 @@ def _arith_method(op, name, str_rep=None, default_axis=None, fill_zeros=None,
 
 
 def _sparse_array_op(left, right, op, name):
-    if np.isnan(left.fill_value):
-        sparse_op = lambda a, b: _sparse_nanop(a, b, name)
-    else:
-        sparse_op = lambda a, b: _sparse_fillop(a, b, name)
-
     if left.sp_index.equals(right.sp_index):
         result = op(left.sp_values, right.sp_values)
         result_index = left.sp_index
     else:
-        result, result_index = sparse_op(left, right)
-
+        sparse_op = getattr(splib, 'sparse_%s' % name)
+        result, result_index = sparse_op(left.sp_values, left.sp_index,
+                                         left.fill_value, right.sp_values,
+                                         right.sp_index, right.fill_value)
     try:
         fill_value = op(left.fill_value, right.fill_value)
     except:
         fill_value = nan
-
-    return SparseArray(result, sparse_index=result_index,
-                       fill_value=fill_value)
+    return _wrap_result(name, result, result_index, fill_value)
 
 
-def _sparse_nanop(this, other, name):
-    sparse_op = getattr(splib, 'sparse_nan%s' % name)
-    result, result_index = sparse_op(this.sp_values, this.sp_index,
-                                     other.sp_values, other.sp_index)
-
-    return result, result_index
-
-
-def _sparse_fillop(this, other, name):
-    sparse_op = getattr(splib, 'sparse_%s' % name)
-    result, result_index = sparse_op(this.sp_values, this.sp_index,
-                                     this.fill_value, other.sp_values,
-                                     other.sp_index, other.fill_value)
-
-    return result, result_index
+def _wrap_result(name, data, sparse_index, fill_value):
+    """ wrap op result to have correct dtype """
+    if name in ('eq', 'ne', 'lt', 'gt', 'le', 'ge'):
+        # ToDo: We can remove this condition when removing
+        # SparseArray's dtype default when closing GH 667
+        return SparseArray(data, sparse_index=sparse_index,
+                           fill_value=fill_value,
+                           dtype=np.bool)
+    else:
+        return SparseArray(data, sparse_index=sparse_index,
+                           fill_value=fill_value)
 
 
 class SparseArray(PandasObject, np.ndarray):
-    """Data structure for labeled, sparse floating point data
+    """Data structure for labeled, sparse floating point 1-D data
 
     Parameters
     ----------
-    data : {array-like, Series, SparseSeries, dict}
+    data : {array-like (1-D), Series, SparseSeries, dict}
     kind : {'block', 'integer'}
     fill_value : float
         Defaults to NaN (code for missing)
@@ -151,7 +144,7 @@ class SparseArray(PandasObject, np.ndarray):
                 values, sparse_index = make_sparse(data, kind=kind,
                                                    fill_value=fill_value)
             else:
-                values = data
+                values = _sanitize_values(data)
                 if len(values) != sparse_index.npoints:
                     raise AssertionError("Non array-like type {0} must have"
                                          " the same length as the"
@@ -176,6 +169,12 @@ class SparseArray(PandasObject, np.ndarray):
 
     @classmethod
     def _simple_new(cls, data, sp_index, fill_value):
+        if (com.is_integer_dtype(data) and com.is_float(fill_value) and
+           sp_index.ngaps > 0):
+            # if float fill_value is being included in dense repr,
+            # convert values to float
+            data = data.astype(float)
+
         result = data.view(cls)
 
         if not isinstance(sp_index, SparseIndex):
@@ -283,14 +282,18 @@ class SparseArray(PandasObject, np.ndarray):
         """
         if com.is_integer(key):
             return self._get_val_at(key)
+        elif isinstance(key, tuple):
+            data_slice = self.values[key]
         else:
             if isinstance(key, SparseArray):
                 key = np.asarray(key)
+
             if hasattr(key, '__len__') and len(self) != len(key):
                 return self.take(key)
             else:
                 data_slice = self.values[key]
-            return self._constructor(data_slice)
+
+        return self._constructor(data_slice)
 
     def __getslice__(self, i, j):
         if i < 0:
@@ -316,9 +319,15 @@ class SparseArray(PandasObject, np.ndarray):
 
     @Appender(_index_shared_docs['take'] % _sparray_doc_kwargs)
     def take(self, indices, axis=0, allow_fill=True,
-             fill_value=None):
+             fill_value=None, **kwargs):
+        """
+        Sparse-compatible version of ndarray.take
 
-        # Sparse-compatible version of ndarray.take, returns SparseArray
+        Returns
+        -------
+        taken : ndarray
+        """
+        nv.validate_take(tuple(), kwargs)
 
         if axis:
             raise ValueError("axis must be 0, input was {0}".format(axis))
@@ -453,7 +462,7 @@ class SparseArray(PandasObject, np.ndarray):
             return self._simple_new(new_values, self.sp_index,
                                     fill_value=self.fill_value)
 
-    def sum(self, axis=None, dtype=None, out=None):
+    def sum(self, axis=0, *args, **kwargs):
         """
         Sum of non-NA/null values
 
@@ -461,6 +470,7 @@ class SparseArray(PandasObject, np.ndarray):
         -------
         sum : float
         """
+        nv.validate_sum(args, kwargs)
         valid_vals = self._valid_sp_values
         sp_sum = valid_vals.sum()
         if self._null_fill_value:
@@ -469,23 +479,25 @@ class SparseArray(PandasObject, np.ndarray):
             nsparse = self.sp_index.ngaps
             return sp_sum + self.fill_value * nsparse
 
-    def cumsum(self, axis=0, dtype=None, out=None):
+    def cumsum(self, axis=0, *args, **kwargs):
         """
         Cumulative sum of values. Preserves locations of NaN values
-
-        Extra parameters are to preserve ndarray interface.
 
         Returns
         -------
         cumsum : Series
         """
+        nv.validate_cumsum(args, kwargs)
+
+        # TODO: gh-12855 - return a SparseArray here
         if com.notnull(self.fill_value):
             return self.to_dense().cumsum()
+
         # TODO: what if sp_values contains NaN??
         return SparseArray(self.sp_values.cumsum(), sparse_index=self.sp_index,
                            fill_value=self.fill_value)
 
-    def mean(self, axis=None, dtype=None, out=None):
+    def mean(self, axis=0, *args, **kwargs):
         """
         Mean of non-NA/null values
 
@@ -493,6 +505,7 @@ class SparseArray(PandasObject, np.ndarray):
         -------
         mean : float
         """
+        nv.validate_mean(args, kwargs)
         valid_vals = self._valid_sp_values
         sp_sum = valid_vals.sum()
         ct = len(valid_vals)
@@ -502,6 +515,42 @@ class SparseArray(PandasObject, np.ndarray):
         else:
             nsparse = self.sp_index.ngaps
             return (sp_sum + self.fill_value * nsparse) / (ct + nsparse)
+
+    def value_counts(self, dropna=True):
+        """
+        Returns a Series containing counts of unique values.
+
+        Parameters
+        ----------
+        dropna : boolean, default True
+            Don't include counts of NaN, even if NaN is in sp_values.
+
+        Returns
+        -------
+        counts : Series
+        """
+        keys, counts = algos._value_counts_arraylike(self.sp_values,
+                                                     dropna=dropna)
+        fcounts = self.sp_index.ngaps
+        if fcounts > 0:
+            if self._null_fill_value and dropna:
+                pass
+            else:
+                if self._null_fill_value:
+                    mask = pd.isnull(keys)
+                else:
+                    mask = keys == self.fill_value
+
+                if mask.any():
+                    counts[mask] += fcounts
+                else:
+                    keys = np.insert(keys, 0, self.fill_value)
+                    counts = np.insert(counts, 0, fcounts)
+
+        if not isinstance(keys, pd.Index):
+            keys = pd.Index(keys)
+        result = pd.Series(counts, index=keys)
+        return result
 
 
 def _maybe_to_dense(obj):
@@ -520,6 +569,33 @@ def _maybe_to_sparse(array):
     return array
 
 
+def _sanitize_values(arr):
+    """
+    return an ndarray for our input,
+    in a platform independent manner
+    """
+
+    if hasattr(arr, 'values'):
+        arr = arr.values
+    else:
+
+        # scalar
+        if lib.isscalar(arr):
+            arr = [arr]
+
+        # ndarray
+        if isinstance(arr, np.ndarray):
+            pass
+
+        elif com.is_list_like(arr) and len(arr) > 0:
+            arr = com._possibly_convert_platform(arr)
+
+        else:
+            arr = np.asarray(arr)
+
+    return arr
+
+
 def make_sparse(arr, kind='block', fill_value=nan):
     """
     Convert ndarray to sparse format
@@ -534,14 +610,11 @@ def make_sparse(arr, kind='block', fill_value=nan):
     -------
     (sparse_values, index) : (ndarray, SparseIndex)
     """
-    if hasattr(arr, 'values'):
-        arr = arr.values
-    else:
-        if lib.isscalar(arr):
-            arr = [arr]
-        arr = np.asarray(arr)
 
-    length = len(arr)
+    arr = _sanitize_values(arr)
+
+    if arr.ndim > 1:
+        raise TypeError("expected dimension <= 1 data")
 
     if np.isnan(fill_value):
         mask = ~np.isnan(arr)
@@ -573,47 +646,5 @@ def _make_index(length, indices, kind):
 
 
 ops.add_special_arithmetic_methods(SparseArray, arith_method=_arith_method,
+                                   comp_method=_arith_method,
                                    use_numexpr=False)
-
-
-def _concat_compat(to_concat, axis=0):
-    """
-    provide concatenation of an sparse/dense array of arrays each of which is a
-    single dtype
-
-    Parameters
-    ----------
-    to_concat : array of arrays
-    axis : axis to provide concatenation
-
-    Returns
-    -------
-    a single array, preserving the combined dtypes
-    """
-
-    def convert_sparse(x, axis):
-        # coerce to native type
-        if isinstance(x, SparseArray):
-            x = x.get_values()
-        x = x.ravel()
-        if axis > 0:
-            x = np.atleast_2d(x)
-        return x
-
-    typs = com.get_dtype_kinds(to_concat)
-
-    # we have more than one type here, so densify and regular concat
-    to_concat = [convert_sparse(x, axis) for x in to_concat]
-    result = np.concatenate(to_concat, axis=axis)
-
-    if not len(typs - set(['sparse', 'f', 'i'])):
-
-        # we can remain sparse
-        result = SparseArray(result.ravel())
-
-    else:
-
-        # coerce to object if needed
-        result = result.astype('object')
-
-    return result

@@ -21,6 +21,7 @@ from pandas.tseries.offsets import Minute, BDay
 from pandas.tseries.period import period_range, PeriodIndex, Period
 from pandas.tseries.resample import (DatetimeIndex, TimeGrouper,
                                      DatetimeIndexResampler)
+from pandas.tseries.frequencies import to_offset
 from pandas.tseries.tdi import timedelta_range
 from pandas.util.testing import (assert_series_equal, assert_almost_equal,
                                  assert_frame_equal)
@@ -33,6 +34,16 @@ downsample_methods = ['min', 'max', 'first', 'last', 'sum', 'mean', 'sem',
 upsample_methods = ['count', 'size']
 series_methods = ['nunique']
 resample_methods = downsample_methods + upsample_methods + series_methods
+
+
+def _simple_ts(start, end, freq='D'):
+    rng = date_range(start, end, freq=freq)
+    return Series(np.random.randn(len(rng)), index=rng)
+
+
+def _simple_pts(start, end, freq='D'):
+    rng = period_range(start, end, freq=freq)
+    return Series(np.random.randn(len(rng)), index=rng)
 
 
 class TestResampleAPI(tm.TestCase):
@@ -196,14 +207,6 @@ class TestResampleAPI(tm.TestCase):
             lambda x: x.resample('1D').ffill())[['val']]
         assert_frame_equal(result, expected)
 
-        # deferred operations are currently disabled
-        # GH 12486
-        #
-        # with tm.assert_produces_warning(FutureWarning,
-        #                                check_stacklevel=False):
-        #    result = df.groupby('group').resample('1D').ffill()
-        #    assert_frame_equal(result, expected)
-
     def test_plot_api(self):
         tm._skip_if_no_mpl()
 
@@ -344,6 +347,9 @@ class TestResampleAPI(tm.TestCase):
         expected = r.bfill()
         result = r.fillna(method='bfill')
         assert_series_equal(result, expected)
+
+        with self.assertRaises(ValueError):
+            r.fillna(0)
 
     def test_apply_without_aggregation(self):
 
@@ -566,14 +572,69 @@ class TestResampleAPI(tm.TestCase):
         assert_frame_equal(result, expected)
 
 
-class TestResample(tm.TestCase):
+class Base(object):
+    """
+    base class for resampling testing, calling
+    .create_series() generates a series of each index type
+    """
+    def create_index(self, *args, **kwargs):
+        """ return the _index_factory created using the args, kwargs """
+        factory = self._index_factory()
+        return factory(*args, **kwargs)
+
+    def test_asfreq_downsample(self):
+        s = self.create_series()
+
+        result = s.resample('2D').asfreq()
+        expected = s.reindex(s.index.take(np.arange(0, len(s.index), 2)))
+        expected.index.freq = to_offset('2D')
+        assert_series_equal(result, expected)
+
+        frame = s.to_frame('value')
+        result = frame.resample('2D').asfreq()
+        expected = frame.reindex(
+            frame.index.take(np.arange(0, len(frame.index), 2)))
+        expected.index.freq = to_offset('2D')
+        assert_frame_equal(result, expected)
+
+    def test_asfreq_upsample(self):
+        s = self.create_series()
+
+        result = s.resample('1H').asfreq()
+        new_index = self.create_index(s.index[0], s.index[-1], freq='1H')
+        expected = s.reindex(new_index)
+        assert_series_equal(result, expected)
+
+        frame = s.to_frame('value')
+        result = frame.resample('1H').asfreq()
+        new_index = self.create_index(frame.index[0],
+                                      frame.index[-1], freq='1H')
+        expected = frame.reindex(new_index)
+        assert_frame_equal(result, expected)
+
+    def test_resample_interpolate(self):
+        # # 12925
+        df = self.create_series().to_frame('value')
+        assert_frame_equal(
+            df.resample('1T').asfreq().interpolate(),
+            df.resample('1T').interpolate())
+
+
+class TestDatetimeIndex(Base, tm.TestCase):
     _multiprocess_can_split_ = True
+    _index_factory = lambda x: date_range
 
     def setUp(self):
         dti = DatetimeIndex(start=datetime(2005, 1, 1),
                             end=datetime(2005, 1, 10), freq='Min')
 
         self.series = Series(np.random.rand(len(dti)), dti)
+
+    def create_series(self):
+        i = date_range(datetime(2005, 1, 1),
+                       datetime(2005, 1, 10), freq='D')
+
+        return Series(np.arange(len(i)), index=i, name='dti')
 
     def test_custom_grouper(self):
 
@@ -976,6 +1037,21 @@ class TestResample(tm.TestCase):
 
         self.assertEqual(result.index.name, 'index')
 
+    def test_resample_how_method(self):
+        # GH9915
+        s = pd.Series([11, 22],
+                      index=[Timestamp('2015-03-31 21:48:52.672000'),
+                             Timestamp('2015-03-31 21:49:52.739000')])
+        expected = pd.Series([11, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, 22],
+                             index=[Timestamp('2015-03-31 21:48:50'),
+                                    Timestamp('2015-03-31 21:49:00'),
+                                    Timestamp('2015-03-31 21:49:10'),
+                                    Timestamp('2015-03-31 21:49:20'),
+                                    Timestamp('2015-03-31 21:49:30'),
+                                    Timestamp('2015-03-31 21:49:40'),
+                                    Timestamp('2015-03-31 21:49:50')])
+        assert_series_equal(s.resample("10S").mean(), expected)
+
     def test_resample_extra_index_point(self):
         # GH 9756
         index = DatetimeIndex(start='20150101', end='20150331', freq='BM')
@@ -1344,8 +1420,25 @@ class TestResample(tm.TestCase):
                         # (ex: doing mean with dtype of np.object)
                         pass
 
-        # this should also tests nunique (IOW, use resample_methods)
+        # this should also tests nunique
+        # (IOW, use resample_methods)
         # when GH12886 is closed
+
+    def test_resample_segfault(self):
+        # GH 8573
+        # segfaulting in older versions
+        all_wins_and_wagers = [
+            (1, datetime(2013, 10, 1, 16, 20), 1, 0),
+            (2, datetime(2013, 10, 1, 16, 10), 1, 0),
+            (2, datetime(2013, 10, 1, 18, 15), 1, 0),
+            (2, datetime(2013, 10, 1, 16, 10, 31), 1, 0)]
+
+        df = pd.DataFrame.from_records(all_wins_and_wagers,
+                                       columns=("ID", "timestamp", "A", "B")
+                                       ).set_index("timestamp")
+        result = df.groupby("ID").resample("5min").sum()
+        expected = df.groupby("ID").apply(lambda x: x.resample("5min").sum())
+        assert_frame_equal(result, expected)
 
     def test_resample_dtype_preservation(self):
 
@@ -1640,10 +1733,6 @@ class TestResample(tm.TestCase):
             result = r.ID.nunique()
             assert_series_equal(result, expected)
 
-        # TODO
-        # this should have name
-        # https://github.com/pydata/pandas/issues/12363
-        expected.name = None
         result = df.ID.resample('D').nunique()
         assert_series_equal(result, expected)
 
@@ -1758,18 +1847,61 @@ class TestResample(tm.TestCase):
             'D Frequency')
 
 
-def _simple_ts(start, end, freq='D'):
-    rng = date_range(start, end, freq=freq)
-    return Series(np.random.randn(len(rng)), index=rng)
-
-
-def _simple_pts(start, end, freq='D'):
-    rng = period_range(start, end, freq=freq)
-    return Series(np.random.randn(len(rng)), index=rng)
-
-
-class TestResamplePeriodIndex(tm.TestCase):
+class TestPeriodIndex(Base, tm.TestCase):
     _multiprocess_can_split_ = True
+    _index_factory = lambda x: period_range
+
+    def create_series(self):
+        i = period_range(datetime(2005, 1, 1),
+                         datetime(2005, 1, 10), freq='D')
+
+        return Series(np.arange(len(i)), index=i, name='pi')
+
+    def test_asfreq_downsample(self):
+
+        # series
+        s = self.create_series()
+        expected = s.reindex(s.index.take(np.arange(0, len(s.index), 2)))
+        expected.index = expected.index.to_timestamp()
+        expected.index.freq = to_offset('2D')
+
+        # this is a bug, this *should* return a PeriodIndex
+        # directly
+        # GH 12884
+        result = s.resample('2D').asfreq()
+        assert_series_equal(result, expected)
+
+        # frame
+        frame = s.to_frame('value')
+        expected = frame.reindex(
+            frame.index.take(np.arange(0, len(frame.index), 2)))
+        expected.index = expected.index.to_timestamp()
+        expected.index.freq = to_offset('2D')
+        result = frame.resample('2D').asfreq()
+        assert_frame_equal(result, expected)
+
+    def test_asfreq_upsample(self):
+
+        # this is a bug, this *should* return a PeriodIndex
+        # directly
+        # GH 12884
+        s = self.create_series()
+        new_index = date_range(s.index[0].to_timestamp(how='start'),
+                               (s.index[-1] + 1).to_timestamp(how='start'),
+                               freq='1H',
+                               closed='left')
+        expected = s.to_timestamp().reindex(new_index).to_period()
+        result = s.resample('1H').asfreq()
+        assert_series_equal(result, expected)
+
+        frame = s.to_frame('value')
+        new_index = date_range(frame.index[0].to_timestamp(how='start'),
+                               (frame.index[-1] + 1).to_timestamp(how='start'),
+                               freq='1H',
+                               closed='left')
+        expected = frame.to_timestamp().reindex(new_index).to_period()
+        result = frame.resample('1H').asfreq()
+        assert_frame_equal(result, expected)
 
     def test_annual_upsample_D_s_f(self):
         self._check_annual_upsample_cases('D', 'start', 'ffill')
@@ -2294,6 +2426,169 @@ class TestResamplePeriodIndex(tm.TestCase):
             index=index)
         result = df.resample('7D').sum()
         assert_frame_equal(result, expected)
+
+
+class TestTimedeltaIndex(Base, tm.TestCase):
+    _multiprocess_can_split_ = True
+    _index_factory = lambda x: timedelta_range
+
+    def create_series(self):
+        i = timedelta_range('1 day',
+                            '10 day', freq='D')
+
+        return Series(np.arange(len(i)), index=i, name='tdi')
+
+    def test_asfreq_bug(self):
+
+        import datetime as dt
+        df = DataFrame(data=[1, 3],
+                       index=[dt.timedelta(), dt.timedelta(minutes=3)])
+        result = df.resample('1T').asfreq()
+        expected = DataFrame(data=[1, np.nan, np.nan, 3],
+                             index=timedelta_range('0 day',
+                                                   periods=4,
+                                                   freq='1T'))
+        assert_frame_equal(result, expected)
+
+
+class TestResamplerGrouper(tm.TestCase):
+
+    def setUp(self):
+        self.frame = DataFrame({'A': [1] * 20 + [2] * 12 + [3] * 8,
+                                'B': np.arange(40)},
+                               index=date_range('1/1/2000',
+                                                freq='s',
+                                                periods=40))
+
+    def test_back_compat_v180(self):
+
+        df = self.frame
+        for how in ['sum', 'mean', 'prod', 'min', 'max', 'var', 'std']:
+            with tm.assert_produces_warning(FutureWarning,
+                                            check_stacklevel=False):
+                result = df.groupby('A').resample('4s', how=how)
+                expected = getattr(df.groupby('A').resample('4s'), how)()
+                assert_frame_equal(result, expected)
+
+        with tm.assert_produces_warning(FutureWarning,
+                                        check_stacklevel=False):
+            result = df.groupby('A').resample('4s', how='mean',
+                                              fill_method='ffill')
+            expected = df.groupby('A').resample('4s').mean().ffill()
+            assert_frame_equal(result, expected)
+
+    def test_deferred_with_groupby(self):
+
+        # GH 12486
+        # support deferred resample ops with groupby
+        data = [['2010-01-01', 'A', 2], ['2010-01-02', 'A', 3],
+                ['2010-01-05', 'A', 8], ['2010-01-10', 'A', 7],
+                ['2010-01-13', 'A', 3], ['2010-01-01', 'B', 5],
+                ['2010-01-03', 'B', 2], ['2010-01-04', 'B', 1],
+                ['2010-01-11', 'B', 7], ['2010-01-14', 'B', 3]]
+
+        df = DataFrame(data, columns=['date', 'id', 'score'])
+        df.date = pd.to_datetime(df.date)
+        f = lambda x: x.set_index('date').resample('D').asfreq()
+        expected = df.groupby('id').apply(f)
+        result = df.set_index('date').groupby('id').resample('D').asfreq()
+        assert_frame_equal(result, expected)
+
+        df = DataFrame({'date': pd.date_range(start='2016-01-01',
+                                              periods=4,
+                                              freq='W'),
+                        'group': [1, 1, 2, 2],
+                        'val': [5, 6, 7, 8]}).set_index('date')
+
+        f = lambda x: x.resample('1D').ffill()
+        expected = df.groupby('group').apply(f)
+        result = df.groupby('group').resample('1D').ffill()
+        assert_frame_equal(result, expected)
+
+    def test_getitem(self):
+        g = self.frame.groupby('A')
+
+        expected = g.B.apply(lambda x: x.resample('2s').mean())
+
+        result = g.resample('2s').B.mean()
+        assert_series_equal(result, expected)
+
+        result = g.B.resample('2s').mean()
+        assert_series_equal(result, expected)
+
+        result = g.resample('2s').mean().B
+        assert_series_equal(result, expected)
+
+    def test_methods(self):
+        g = self.frame.groupby('A')
+        r = g.resample('2s')
+
+        for f in ['first', 'last', 'median', 'sem', 'sum', 'mean',
+                  'min', 'max']:
+            result = getattr(r, f)()
+            expected = g.apply(lambda x: getattr(x.resample('2s'), f)())
+            assert_frame_equal(result, expected)
+
+        for f in ['size']:
+            result = getattr(r, f)()
+            expected = g.apply(lambda x: getattr(x.resample('2s'), f)())
+            assert_series_equal(result, expected)
+
+        for f in ['count']:
+            result = getattr(r, f)()
+            expected = g.apply(lambda x: getattr(x.resample('2s'), f)())
+            assert_frame_equal(result, expected)
+
+        # series only
+        for f in ['nunique']:
+            result = getattr(r.B, f)()
+            expected = g.B.apply(lambda x: getattr(x.resample('2s'), f)())
+            assert_series_equal(result, expected)
+
+        for f in ['backfill', 'ffill', 'asfreq']:
+            result = getattr(r, f)()
+            expected = g.apply(lambda x: getattr(x.resample('2s'), f)())
+            assert_frame_equal(result, expected)
+
+        result = r.ohlc()
+        expected = g.apply(lambda x: x.resample('2s').ohlc())
+        assert_frame_equal(result, expected)
+
+        for f in ['std', 'var']:
+            result = getattr(r, f)(ddof=1)
+            expected = g.apply(lambda x: getattr(x.resample('2s'), f)(ddof=1))
+            assert_frame_equal(result, expected)
+
+    def test_apply(self):
+
+        g = self.frame.groupby('A')
+        r = g.resample('2s')
+
+        # reduction
+        expected = g.resample('2s').sum()
+
+        def f(x):
+            return x.resample('2s').sum()
+        result = r.apply(f)
+        assert_frame_equal(result, expected)
+
+        def f(x):
+            return x.resample('2s').apply(lambda y: y.sum())
+        result = g.apply(f)
+        assert_frame_equal(result, expected)
+
+    def test_consistency_with_window(self):
+
+        # consistent return values with window
+        df = self.frame
+        expected = pd.Int64Index([1, 2, 3], name='A')
+        result = df.groupby('A').resample('2s').mean()
+        self.assertEqual(result.index.nlevels, 2)
+        tm.assert_index_equal(result.index.levels[0], expected)
+
+        result = df.groupby('A').rolling(20).mean()
+        self.assertEqual(result.index.nlevels, 2)
+        tm.assert_index_equal(result.index.levels[0], expected)
 
 
 class TestTimeGrouper(tm.TestCase):

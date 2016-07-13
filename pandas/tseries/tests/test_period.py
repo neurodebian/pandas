@@ -23,13 +23,13 @@ import pandas as pd
 import numpy as np
 from numpy.random import randn
 from pandas.compat import range, lrange, lmap, zip, text_type, PY3, iteritems
-from pandas.compat.numpy_compat import np_datetime64_compat
+from pandas.compat.numpy import np_datetime64_compat
 
 from pandas import (Series, DataFrame,
                     _np_version_under1p9, _np_version_under1p12)
 from pandas import tslib
-from pandas.util.testing import (assert_series_equal, assert_almost_equal,
-                                 assertRaisesRegexp)
+from pandas.util.testing import (assert_index_equal, assert_series_equal,
+                                 assert_almost_equal, assertRaisesRegexp)
 import pandas.util.testing as tm
 
 
@@ -2289,6 +2289,28 @@ class TestPeriodIndex(tm.TestCase):
         vals = np.array(vals)
         self.assertRaises(ValueError, PeriodIndex, vals)
 
+    def test_repeat(self):
+        index = period_range('20010101', periods=2)
+        expected = PeriodIndex([
+            Period('2001-01-01'), Period('2001-01-01'),
+            Period('2001-01-02'), Period('2001-01-02'),
+        ])
+
+        assert_index_equal(index.repeat(2), expected)
+
+    def test_numpy_repeat(self):
+        index = period_range('20010101', periods=2)
+        expected = PeriodIndex([
+            Period('2001-01-01'), Period('2001-01-01'),
+            Period('2001-01-02'), Period('2001-01-02'),
+        ])
+
+        assert_index_equal(np.repeat(index, 2), expected)
+
+        msg = "the 'axis' parameter is not supported"
+        assertRaisesRegexp(ValueError, msg, np.repeat,
+                           index, 2, axis=1)
+
     def test_shift(self):
         pi1 = PeriodIndex(freq='A', start='1/1/2001', end='12/1/2009')
         pi2 = PeriodIndex(freq='A', start='1/1/2002', end='12/1/2010')
@@ -3143,16 +3165,6 @@ class TestPeriodIndex(tm.TestCase):
 
         result = index.to_datetime()
         self.assertEqual(result[0], Timestamp('1/1/2012'))
-
-    def test_to_datetime_dimensions(self):
-        # GH 11776
-        df = DataFrame({'a': ['1/1/2012', '1/2/2012'],
-                        'b': ['12/30/2012', '12/31/2012']})
-        with tm.assertRaisesRegexp(TypeError, "1-d array"):
-            to_datetime(df)
-        for errors in ['ignore', 'raise', 'coerce']:
-            with tm.assertRaisesRegexp(TypeError, "1-d array"):
-                to_datetime(df, errors=errors)
 
     def test_get_loc_msg(self):
         idx = period_range('2000-1-1', freq='A', periods=10)

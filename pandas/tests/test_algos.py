@@ -11,6 +11,7 @@ from pandas import compat
 import pandas.core.algorithms as algos
 import pandas.util.testing as tm
 import pandas.hashtable as hashtable
+from pandas.compat.numpy import np_array_datetime64_compat
 
 
 class TestMatch(tm.TestCase):
@@ -275,9 +276,10 @@ class TestUnique(tm.TestCase):
 
     def test_datetime64_dtype_array_returned(self):
         # GH 9431
-        expected = np.array(['2015-01-03T00:00:00.000000000+0000',
-                             '2015-01-01T00:00:00.000000000+0000'],
-                            dtype='M8[ns]')
+        expected = np_array_datetime64_compat(
+            ['2015-01-03T00:00:00.000000000+0000',
+             '2015-01-01T00:00:00.000000000+0000'],
+            dtype='M8[ns]')
 
         dt_index = pd.to_datetime(['2015-01-03T00:00:00.000000000+0000',
                                    '2015-01-01T00:00:00.000000000+0000',
@@ -343,11 +345,19 @@ class TestIsin(tm.TestCase):
         expected = np.array([True, False])
         tm.assert_numpy_array_equal(result, expected)
 
+        result = algos.isin(pd.Series([1, 2]), set([1]))
+        expected = np.array([True, False])
+        tm.assert_numpy_array_equal(result, expected)
+
         result = algos.isin(['a', 'b'], ['a'])
         expected = np.array([True, False])
         tm.assert_numpy_array_equal(result, expected)
 
         result = algos.isin(pd.Series(['a', 'b']), pd.Series(['a']))
+        expected = np.array([True, False])
+        tm.assert_numpy_array_equal(result, expected)
+
+        result = algos.isin(pd.Series(['a', 'b']), set(['a']))
         expected = np.array([True, False])
         tm.assert_numpy_array_equal(result, expected)
 
@@ -364,9 +374,21 @@ class TestIsin(tm.TestCase):
         expected = np.array([True, True, False])
         tm.assert_numpy_array_equal(result, expected)
 
+        result = algos.isin(arr, set(arr[0:2]))
+        expected = np.array([True, True, False])
+        tm.assert_numpy_array_equal(result, expected)
+
         arr = pd.timedelta_range('1 day', periods=3).values
         result = algos.isin(arr, [arr[0]])
         expected = np.array([True, False, False])
+        tm.assert_numpy_array_equal(result, expected)
+
+        result = algos.isin(arr, arr[0:2])
+        expected = np.array([True, True, False])
+        tm.assert_numpy_array_equal(result, expected)
+
+        result = algos.isin(arr, set(arr[0:2]))
+        expected = np.array([True, True, False])
         tm.assert_numpy_array_equal(result, expected)
 
     def test_large(self):

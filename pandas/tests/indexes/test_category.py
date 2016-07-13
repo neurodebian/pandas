@@ -201,6 +201,33 @@ class TestCategoricalIndex(Base, tm.TestCase):
         self.assertEqual(ci.min(), 'c')
         self.assertEqual(ci.max(), 'b')
 
+    def test_map(self):
+        ci = pd.CategoricalIndex(list('ABABC'), categories=list('CBA'),
+                                 ordered=True)
+        result = ci.map(lambda x: x.lower())
+        exp = pd.Categorical(list('ababc'), categories=list('cba'),
+                             ordered=True)
+        tm.assert_categorical_equal(result, exp)
+
+        ci = pd.CategoricalIndex(list('ABABC'), categories=list('BAC'),
+                                 ordered=False, name='XXX')
+        result = ci.map(lambda x: x.lower())
+        exp = pd.Categorical(list('ababc'), categories=list('bac'),
+                             ordered=False)
+        tm.assert_categorical_equal(result, exp)
+
+        tm.assert_numpy_array_equal(ci.map(lambda x: 1), np.array([1] * 5))
+
+        # change categories dtype
+        ci = pd.CategoricalIndex(list('ABABC'), categories=list('BAC'),
+                                 ordered=False)
+        def f(x):
+            return {'A': 10, 'B': 20, 'C': 30}.get(x)
+        result = ci.map(f)
+        exp = pd.Categorical([10, 20, 10, 20, 30], categories=[20, 10, 30],
+                             ordered=False)
+        tm.assert_categorical_equal(result, exp)
+
     def test_append(self):
 
         ci = self.create_index()
@@ -805,3 +832,19 @@ class TestCategoricalIndex(Base, tm.TestCase):
 
         with tm.assertRaises(IndexError):
             idx.take(np.array([1, -5]))
+
+    def test_take_invalid_kwargs(self):
+        idx = pd.CategoricalIndex([1, 2, 3], name='foo')
+        indices = [1, 0, -1]
+
+        msg = "take\(\) got an unexpected keyword argument 'foo'"
+        tm.assertRaisesRegexp(TypeError, msg, idx.take,
+                              indices, foo=2)
+
+        msg = "the 'out' parameter is not supported"
+        tm.assertRaisesRegexp(ValueError, msg, idx.take,
+                              indices, out=indices)
+
+        msg = "the 'mode' parameter is not supported"
+        tm.assertRaisesRegexp(ValueError, msg, idx.take,
+                              indices, mode='clip')

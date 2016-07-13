@@ -26,6 +26,7 @@ from pandas.tseries.timedeltas import to_timedelta
 from pandas.util.decorators import (Appender, cache_readonly,
                                     deprecate_kwarg, Substitution)
 import pandas.core.common as com
+import pandas.types.concat as _concat
 import pandas.tseries.offsets as offsets
 import pandas.tseries.tools as tools
 
@@ -61,6 +62,9 @@ def _field_accessor(name, field, docstring=None):
 
             result = tslib.get_start_end_field(
                 values, field, self.freqstr, month_kw)
+        elif field in ['weekday_name']:
+            result = tslib.get_date_name_field(values, field)
+            return self._maybe_mask_results(result)
         else:
             result = tslib.get_date_field(values, field)
 
@@ -208,7 +212,7 @@ class DatetimeIndex(DatelikeOps, TimelikeOps, DatetimeIndexOpsMixin,
                          'daysinmonth', 'date', 'time', 'microsecond',
                          'nanosecond', 'is_month_start', 'is_month_end',
                          'is_quarter_start', 'is_quarter_end', 'is_year_start',
-                         'is_year_end', 'tz', 'freq']
+                         'is_year_end', 'tz', 'freq', 'weekday_name']
     _is_numeric_dtype = False
     _infer_as_myclass = True
 
@@ -1151,7 +1155,7 @@ class DatetimeIndex(DatelikeOps, TimelikeOps, DatetimeIndexOpsMixin,
             if left_end < right_end:
                 loc = right.searchsorted(left_end, side='right')
                 right_chunk = right.values[loc:]
-                dates = com._concat_compat((left.values, right_chunk))
+                dates = _concat._concat_compat((left.values, right_chunk))
                 return self._shallow_copy(dates)
             else:
                 return left
@@ -1564,6 +1568,12 @@ class DatetimeIndex(DatelikeOps, TimelikeOps, DatetimeIndexOpsMixin,
         'dow',
         "The day of the week with Monday=0, Sunday=6")
     weekday = dayofweek
+
+    weekday_name = _field_accessor(
+        'weekday_name',
+        'weekday_name',
+        "The name of day in a week (ex: Friday)\n\n.. versionadded:: 0.18.1")
+
     dayofyear = _field_accessor(
         'dayofyear',
         'doy',
@@ -2138,9 +2148,9 @@ def cdate_range(start=None, end=None, periods=None, freq='C', tz=None,
 
 
 def _to_m8(key, tz=None):
-    '''
+    """
     Timestamp-like => dt64
-    '''
+    """
     if not isinstance(key, Timestamp):
         # this also converts strings
         key = Timestamp(key, tz=tz)
@@ -2219,7 +2229,7 @@ def _process_concat_data(to_concat, name):
             # well, technically not a "class" anymore...oh well
             klass = DatetimeIndex._simple_new
             kwargs = {'tz': tz}
-            concat = com._concat_compat
+            concat = _concat._concat_compat
     else:
         for i, x in enumerate(to_concat):
             if isinstance(x, DatetimeIndex):

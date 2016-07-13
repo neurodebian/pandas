@@ -576,10 +576,7 @@ class TestPandasContainer(tm.TestCase):
         df = DataFrame([[1, 2, 3], [4, 5, 6]])
         result = read_json(df.to_json())
 
-        self.assertEqual(result.index.dtype, np.float64)
-        self.assertEqual(result.columns.dtype, np.float64)
-        assert_frame_equal(result, df, check_index_type=False,
-                           check_column_type=False)
+        assert_frame_equal(result, df)
 
         df = DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6]}, index=['A', 'B', 'C'])
         result = read_json(df.to_json())
@@ -617,6 +614,7 @@ class TestPandasContainer(tm.TestCase):
 
         df['foo'] = 1.
         json = df.to_json(date_unit='ns')
+
         result = read_json(json, convert_dates=False)
         expected = df.copy()
         expected['date'] = expected['date'].values.view('i8')
@@ -776,23 +774,20 @@ DataFrame\\.index values are different \\(100\\.0 %\\)
 
         s = Series([timedelta(23), timedelta(seconds=5)])
         self.assertEqual(s.dtype, 'timedelta64[ns]')
-        # index will be float dtype
-        assert_series_equal(s, pd.read_json(s.to_json(), typ='series')
-                            .apply(converter),
-                            check_index_type=False)
+
+        result = pd.read_json(s.to_json(), typ='series').apply(converter)
+        assert_series_equal(result, s)
 
         s = Series([timedelta(23), timedelta(seconds=5)],
-                   index=pd.Index([0, 1], dtype=float))
+                   index=pd.Index([0, 1]))
         self.assertEqual(s.dtype, 'timedelta64[ns]')
-        assert_series_equal(s, pd.read_json(
-            s.to_json(), typ='series').apply(converter))
+        result = pd.read_json(s.to_json(), typ='series').apply(converter)
+        assert_series_equal(result, s)
 
         frame = DataFrame([timedelta(23), timedelta(seconds=5)])
         self.assertEqual(frame[0].dtype, 'timedelta64[ns]')
         assert_frame_equal(frame, pd.read_json(frame.to_json())
-                           .apply(converter),
-                           check_index_type=False,
-                           check_column_type=False)
+                           .apply(converter))
 
         frame = DataFrame({'a': [timedelta(days=23), timedelta(seconds=5)],
                            'b': [1, 2],
@@ -801,7 +796,7 @@ DataFrame\\.index values are different \\(100\\.0 %\\)
         result = pd.read_json(frame.to_json(date_unit='ns'))
         result['a'] = pd.to_timedelta(result.a, unit='ns')
         result['c'] = pd.to_datetime(result.c)
-        assert_frame_equal(frame, result, check_index_type=False)
+        assert_frame_equal(frame, result)
 
     def test_mixed_timedelta_datetime(self):
         frame = DataFrame({'a': [timedelta(23), pd.Timestamp('20130101')]},
@@ -815,10 +810,38 @@ DataFrame\\.index values are different \\(100\\.0 %\\)
 
     def test_default_handler(self):
         value = object()
-        frame = DataFrame({'a': ['a', value]})
-        expected = frame.applymap(str)
+        frame = DataFrame({'a': [7, value]})
+        expected = DataFrame({'a': [7, str(value)]})
         result = pd.read_json(frame.to_json(default_handler=str))
         assert_frame_equal(expected, result, check_index_type=False)
+
+    def test_default_handler_indirect(self):
+        from pandas.io.json import dumps
+
+        def default(obj):
+            if isinstance(obj, complex):
+                return [('mathjs', 'Complex'),
+                        ('re', obj.real),
+                        ('im', obj.imag)]
+            return str(obj)
+        df_list = [9, DataFrame({'a': [1, 'STR', complex(4, -5)],
+                                 'b': [float('nan'), None, 'N/A']},
+                                columns=['a', 'b'])]
+        expected = ('[9,[[1,null],["STR",null],[[["mathjs","Complex"],'
+                    '["re",4.0],["im",-5.0]],"N\\/A"]]]')
+        self.assertEqual(expected, dumps(df_list, default_handler=default,
+                                         orient="values"))
+
+    def test_default_handler_numpy_unsupported_dtype(self):
+        # GH12554 to_json raises 'Unhandled numpy dtype 15'
+        df = DataFrame({'a': [1, 2.3, complex(4, -5)],
+                        'b': [float('nan'), None, complex(1.2, 0)]},
+                       columns=['a', 'b'])
+        expected = ('[["(1+0j)","(nan+0j)"],'
+                    '["(2.3+0j)","(nan+0j)"],'
+                    '["(4-5j)","(1.2+0j)"]]')
+        self.assertEqual(expected, df.to_json(default_handler=str,
+                                              orient="values"))
 
     def test_default_handler_raises(self):
         def my_handler_raises(obj):
@@ -826,6 +849,102 @@ DataFrame\\.index values are different \\(100\\.0 %\\)
         self.assertRaises(TypeError,
                           DataFrame({'a': [1, 2, object()]}).to_json,
                           default_handler=my_handler_raises)
+        self.assertRaises(TypeError,
+                          DataFrame({'a': [1, 2, complex(4, -5)]}).to_json,
+                          default_handler=my_handler_raises)
+
+    def test_categorical(self):
+        # GH4377 df.to_json segfaults with non-ndarray blocks
+        df = DataFrame({"A": ["a", "b", "c", "a", "b", "b", "a"]})
+        df["B"] = df["A"]
+        expected = df.to_json()
+
+        df["B"] = df["A"].astype('category')
+        self.assertEqual(expected, df.to_json())
+
+        s = df["A"]
+        sc = df["B"]
+        self.assertEqual(s.to_json(), sc.to_json())
+
+    def test_datetime_tz(self):
+        # GH4377 df.to_json segfaults with non-ndarray blocks
+        tz_range = pd.date_range('20130101', periods=3, tz='US/Eastern')
+        tz_naive = tz_range.tz_convert('utc').tz_localize(None)
+
+        df = DataFrame({
+            'A': tz_range,
+            'B': pd.date_range('20130101', periods=3)})
+
+        df_naive = df.copy()
+        df_naive['A'] = tz_naive
+        expected = df_naive.to_json()
+        self.assertEqual(expected, df.to_json())
+
+        stz = Series(tz_range)
+        s_naive = Series(tz_naive)
+        self.assertEqual(stz.to_json(), s_naive.to_json())
+
+    def test_sparse(self):
+        # GH4377 df.to_json segfaults with non-ndarray blocks
+        df = pd.DataFrame(np.random.randn(10, 4))
+        df.ix[:8] = np.nan
+
+        sdf = df.to_sparse()
+        expected = df.to_json()
+        self.assertEqual(expected, sdf.to_json())
+
+        s = pd.Series(np.random.randn(10))
+        s.ix[:8] = np.nan
+        ss = s.to_sparse()
+
+        expected = s.to_json()
+        self.assertEqual(expected, ss.to_json())
+
+    def test_tz_is_utc(self):
+        exp = '"2013-01-10T05:00:00.000Z"'
+
+        ts = Timestamp('2013-01-10 05:00:00Z')
+        self.assertEqual(exp, pd.json.dumps(ts, iso_dates=True))
+        dt = ts.to_datetime()
+        self.assertEqual(exp, pd.json.dumps(dt, iso_dates=True))
+
+        ts = Timestamp('2013-01-10 00:00:00', tz='US/Eastern')
+        self.assertEqual(exp, pd.json.dumps(ts, iso_dates=True))
+        dt = ts.to_datetime()
+        self.assertEqual(exp, pd.json.dumps(dt, iso_dates=True))
+
+        ts = Timestamp('2013-01-10 00:00:00-0500')
+        self.assertEqual(exp, pd.json.dumps(ts, iso_dates=True))
+        dt = ts.to_datetime()
+        self.assertEqual(exp, pd.json.dumps(dt, iso_dates=True))
+
+    def test_tz_range_is_utc(self):
+        exp = '["2013-01-01T05:00:00.000Z","2013-01-02T05:00:00.000Z"]'
+        dfexp = ('{"DT":{'
+                 '"0":"2013-01-01T05:00:00.000Z",'
+                 '"1":"2013-01-02T05:00:00.000Z"}}')
+
+        tz_range = pd.date_range('2013-01-01 05:00:00Z', periods=2)
+        self.assertEqual(exp, pd.json.dumps(tz_range, iso_dates=True))
+        dti = pd.DatetimeIndex(tz_range)
+        self.assertEqual(exp, pd.json.dumps(dti, iso_dates=True))
+        df = DataFrame({'DT': dti})
+        self.assertEqual(dfexp, pd.json.dumps(df, iso_dates=True))
+
+        tz_range = pd.date_range('2013-01-01 00:00:00', periods=2,
+                                 tz='US/Eastern')
+        self.assertEqual(exp, pd.json.dumps(tz_range, iso_dates=True))
+        dti = pd.DatetimeIndex(tz_range)
+        self.assertEqual(exp, pd.json.dumps(dti, iso_dates=True))
+        df = DataFrame({'DT': dti})
+        self.assertEqual(dfexp, pd.json.dumps(df, iso_dates=True))
+
+        tz_range = pd.date_range('2013-01-01 00:00:00-0500', periods=2)
+        self.assertEqual(exp, pd.json.dumps(tz_range, iso_dates=True))
+        dti = pd.DatetimeIndex(tz_range)
+        self.assertEqual(exp, pd.json.dumps(dti, iso_dates=True))
+        df = DataFrame({'DT': dti})
+        self.assertEqual(dfexp, pd.json.dumps(df, iso_dates=True))
 
 
 if __name__ == '__main__':

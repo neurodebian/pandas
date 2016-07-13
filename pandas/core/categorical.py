@@ -12,13 +12,14 @@ from pandas.core.base import (PandasObject, PandasDelegate,
                               NoNewAttributesMixin, _shared_docs)
 import pandas.core.common as com
 from pandas.core.missing import interpolate_2d
+from pandas.compat.numpy import function as nv
 from pandas.util.decorators import (Appender, cache_readonly,
                                     deprecate_kwarg, Substitution)
 
 from pandas.core.common import (
     ABCSeries, ABCIndexClass, ABCCategoricalIndex, isnull, notnull,
     is_dtype_equal, is_categorical_dtype, is_integer_dtype,
-    _possibly_infer_to_datetimelike, get_dtype_kinds, is_list_like,
+    _possibly_infer_to_datetimelike, is_list_like,
     is_sequence, is_null_slice, is_bool, _ensure_object, _ensure_int64,
     _coerce_indexer_dtype)
 from pandas.types.api import CategoricalDtype
@@ -356,8 +357,13 @@ class Categorical(PandasObject):
         """ return the size of a single category """
         return self.categories.itemsize
 
-    def reshape(self, new_shape, **kwargs):
-        """ compat with .reshape """
+    def reshape(self, new_shape, *args, **kwargs):
+        """
+        An ndarray-compatible method that returns
+        `self` because categorical instances cannot
+        actually be reshaped.
+        """
+        nv.validate_reshape(args, kwargs)
         return self
 
     @property
@@ -883,6 +889,30 @@ class Categorical(PandasObject):
         if not inplace:
             return cat
 
+    def map(self, mapper):
+        """
+        Apply mapper function to its categories (not codes).
+
+        Parameters
+        ----------
+        mapper : callable
+            Function to be applied. When all categories are mapped
+            to different categories, the result will be Categorical which has
+            the same order property as the original. Otherwise, the result will
+            be np.ndarray.
+
+        Returns
+        -------
+        applied : Categorical or np.ndarray.
+        """
+        new_categories = self.categories.map(mapper)
+        try:
+            return Categorical.from_codes(self._codes.copy(),
+                                          categories=new_categories,
+                                          ordered=self.ordered)
+        except ValueError:
+            return np.take(new_categories, self._codes)
+
     __eq__ = _cat_compare_op('__eq__')
     __ne__ = _cat_compare_op('__ne__')
     __lt__ = _cat_compare_op('__lt__')
@@ -1063,6 +1093,13 @@ class Categorical(PandasObject):
         """
         return ~self.isnull()
 
+    def put(self, *args, **kwargs):
+        """
+        Replace specific elements in the Categorical with given values.
+        """
+        raise NotImplementedError(("'put' is not yet implemented "
+                                   "for Categorical"))
+
     def dropna(self):
         """
         Return the Categorical without null values.
@@ -1140,17 +1177,27 @@ class Categorical(PandasObject):
                             "you can use .as_ordered() to change the "
                             "Categorical to an ordered one\n".format(op=op))
 
-    def argsort(self, ascending=True, **kwargs):
-        """ Implements ndarray.argsort.
+    def argsort(self, ascending=True, *args, **kwargs):
+        """
+        Returns the indices that would sort the Categorical instance if
+        'sort_values' was called. This function is implemented to provide
+        compatibility with numpy ndarray objects.
 
-        For internal compatibility with numpy arrays.
-
-        Only ordered Categoricals can be argsorted!
+        While an ordering is applied to the category values, arg-sorting
+        in this context refers more to organizing and grouping together
+        based on matching category values. Thus, this function can be
+        called on an unordered Categorical instance unlike the functions
+        'Categorical.min' and 'Categorical.max'.
 
         Returns
         -------
         argsorted : numpy array
+
+        See also
+        --------
+        numpy.ndarray.argsort
         """
+        ascending = nv.validate_argsort_with_ascending(ascending, args, kwargs)
         result = np.argsort(self._codes.copy(), **kwargs)
         if not ascending:
             result = result[::-1]
@@ -1273,7 +1320,7 @@ class Categorical(PandasObject):
         return self.sort_values(inplace=inplace, ascending=ascending,
                                 na_position=na_position)
 
-    def sort(self, inplace=True, ascending=True, na_position='last'):
+    def sort(self, inplace=True, ascending=True, na_position='last', **kwargs):
         """
         DEPRECATED: use :meth:`Categorical.sort_values`. That function
         is just like this one, except that a new Categorical is returned
@@ -1286,6 +1333,7 @@ class Categorical(PandasObject):
         """
         warn("sort is deprecated, use sort_values(...)", FutureWarning,
              stacklevel=2)
+        nv.validate_sort(tuple(), kwargs)
         return self.sort_values(inplace=inplace, ascending=ascending,
                                 na_position=na_position)
 
@@ -1768,7 +1816,7 @@ class Categorical(PandasObject):
 
         return result
 
-    def repeat(self, repeats):
+    def repeat(self, repeats, *args, **kwargs):
         """
         Repeat elements of a Categorical.
 
@@ -1777,6 +1825,7 @@ class Categorical(PandasObject):
         numpy.ndarray.repeat
 
         """
+        nv.validate_repeat(args, kwargs)
         codes = self._codes.repeat(repeats)
         return Categorical(values=codes, categories=self.categories,
                            ordered=self.ordered, fastpath=True)
@@ -1873,59 +1922,3 @@ def _convert_to_list_like(list_like):
     else:
         # is this reached?
         return [list_like]
-
-
-def _concat_compat(to_concat, axis=0):
-    """Concatenate an object/categorical array of arrays, each of which is a
-    single dtype
-
-    Parameters
-    ----------
-    to_concat : array of arrays
-    axis : int
-        Axis to provide concatenation in the current implementation this is
-        always 0, e.g. we only have 1D categoricals
-
-    Returns
-    -------
-    Categorical
-        A single array, preserving the combined dtypes
-    """
-
-    def convert_categorical(x):
-        # coerce to object dtype
-        if is_categorical_dtype(x.dtype):
-            return x.get_values()
-        return x.ravel()
-
-    if get_dtype_kinds(to_concat) - set(['object', 'category']):
-        # convert to object type and perform a regular concat
-        from pandas.core.common import _concat_compat
-        return _concat_compat([np.array(x, copy=False, dtype=object)
-                               for x in to_concat], axis=0)
-
-    # we could have object blocks and categoricals here
-    # if we only have a single categoricals then combine everything
-    # else its a non-compat categorical
-    categoricals = [x for x in to_concat if is_categorical_dtype(x.dtype)]
-
-    # validate the categories
-    categories = categoricals[0]
-    rawcats = categories.categories
-    for x in categoricals[1:]:
-        if not categories.is_dtype_equal(x):
-            raise ValueError("incompatible categories in categorical concat")
-
-    # we've already checked that all categoricals are the same, so if their
-    # length is equal to the input then we have all the same categories
-    if len(categoricals) == len(to_concat):
-        # concating numeric types is much faster than concating object types
-        # and fastpath takes a shorter path through the constructor
-        return Categorical(np.concatenate([x.codes for x in to_concat],
-                                          axis=0),
-                           rawcats, ordered=categoricals[0].ordered,
-                           fastpath=True)
-    else:
-        concatted = np.concatenate(list(map(convert_categorical, to_concat)),
-                                   axis=0)
-        return Categorical(concatted, rawcats)

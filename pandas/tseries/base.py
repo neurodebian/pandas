@@ -6,9 +6,12 @@ import warnings
 from datetime import datetime, timedelta
 
 from pandas import compat
+from pandas.compat.numpy import function as nv
+
 import numpy as np
 from pandas.core import common as com, algorithms
-from pandas.core.common import is_integer, is_float, AbstractMethodError
+from pandas.core.common import (is_integer, is_float, is_bool_dtype,
+                                AbstractMethodError)
 import pandas.formats.printing as printing
 import pandas.tslib as tslib
 import pandas.lib as lib
@@ -87,7 +90,7 @@ class TimelikeOps(object):
         return result
 
     @Appender(_round_doc % "round")
-    def round(self, freq):
+    def round(self, freq, *args, **kwargs):
         return self._round(freq, np.round)
 
     @Appender(_round_doc % "floor")
@@ -123,6 +126,38 @@ class DatetimeIndexOpsMixin(object):
             return results
 
         return wrapper
+
+    def _evaluate_compare(self, other, op):
+        """
+        We have been called because a comparison between
+        8 aware arrays. numpy >= 1.11 will
+        now warn about NaT comparisons
+        """
+
+        # coerce to a similar object
+        if not isinstance(other, type(self)):
+            if not com.is_list_like(other):
+                # scalar
+                other = [other]
+            elif lib.isscalar(lib.item_from_zerodim(other)):
+                # ndarray scalar
+                other = [other.item()]
+            other = type(self)(other)
+
+        # compare
+        result = getattr(self.asi8, op)(other.asi8)
+
+        # technically we could support bool dtyped Index
+        # for now just return the indexing array directly
+        mask = (self._isnan) | (other._isnan)
+        if is_bool_dtype(result):
+            result[mask] = False
+            return result
+        try:
+            result[mask] = tslib.iNaT
+            return Index(result)
+        except TypeError:
+            return result
 
     @property
     def _box_func(self):
@@ -261,7 +296,9 @@ class DatetimeIndexOpsMixin(object):
             return self._simple_new(sorted_values, **attribs)
 
     @Appender(_index_shared_docs['take'])
-    def take(self, indices, axis=0, allow_fill=True, fill_value=None):
+    def take(self, indices, axis=0, allow_fill=True,
+             fill_value=None, **kwargs):
+        nv.validate_take(tuple(), kwargs)
         indices = com._ensure_int64(indices)
 
         maybe_slice = lib.maybe_indices_to_slice(indices, len(self))
@@ -340,14 +377,17 @@ class DatetimeIndexOpsMixin(object):
         """
         return list(self.asobject)
 
-    def min(self, axis=None):
+    def min(self, axis=None, *args, **kwargs):
         """
-        return the minimum value of the Index
+        Return the minimum value of the Index or minimum along
+        an axis.
 
         See also
         --------
         numpy.ndarray.min
         """
+        nv.validate_min(args, kwargs)
+
         try:
             i8 = self.asi8
 
@@ -364,14 +404,17 @@ class DatetimeIndexOpsMixin(object):
         except ValueError:
             return self._na_value
 
-    def argmin(self, axis=None):
+    def argmin(self, axis=None, *args, **kwargs):
         """
-        return a ndarray of the minimum argument indexer
+        Returns the indices of the minimum values along an axis.
+        See `numpy.ndarray.argmin` for more information on the
+        `axis` parameter.
 
         See also
         --------
         numpy.ndarray.argmin
         """
+        nv.validate_argmin(args, kwargs)
 
         i8 = self.asi8
         if self.hasnans:
@@ -382,14 +425,17 @@ class DatetimeIndexOpsMixin(object):
             i8[mask] = np.iinfo('int64').max
         return i8.argmin()
 
-    def max(self, axis=None):
+    def max(self, axis=None, *args, **kwargs):
         """
-        return the maximum value of the Index
+        Return the maximum value of the Index or maximum along
+        an axis.
 
         See also
         --------
         numpy.ndarray.max
         """
+        nv.validate_max(args, kwargs)
+
         try:
             i8 = self.asi8
 
@@ -406,14 +452,17 @@ class DatetimeIndexOpsMixin(object):
         except ValueError:
             return self._na_value
 
-    def argmax(self, axis=None):
+    def argmax(self, axis=None, *args, **kwargs):
         """
-        return a ndarray of the maximum argument indexer
+        Returns the indices of the maximum values along an axis.
+        See `numpy.ndarray.argmax` for more information on the
+        `axis` parameter.
 
         See also
         --------
         numpy.ndarray.argmax
         """
+        nv.validate_argmax(args, kwargs)
 
         i8 = self.asi8
         if self.hasnans:
@@ -655,10 +704,11 @@ class DatetimeIndexOpsMixin(object):
         return self._simple_new(result, name=self.name, freq=self.freq,
                                 tz=getattr(self, 'tz', None))
 
-    def repeat(self, repeats, axis=None):
+    def repeat(self, repeats, *args, **kwargs):
         """
         Analogous to ndarray.repeat
         """
+        nv.validate_repeat(args, kwargs)
         return self._shallow_copy(self.values.repeat(repeats), freq=None)
 
     def summary(self, name=None):

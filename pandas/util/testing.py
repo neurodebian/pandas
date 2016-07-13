@@ -888,11 +888,11 @@ def assertNotIsInstance(obj, cls, msg=''):
 
 
 def assert_categorical_equal(res, exp):
+    assertIsInstance(res, pd.Categorical, '[Categorical] ')
+    assertIsInstance(exp, pd.Categorical, '[Categorical] ')
 
-    if not array_equivalent(res.categories, exp.categories):
-        raise AssertionError(
-            'categories not equivalent: {0} vs {1}.'.format(res.categories,
-                                                            exp.categories))
+    assert_index_equal(res.categories, exp.categories)
+
     if not array_equivalent(res.codes, exp.codes):
         raise AssertionError(
             'codes not equivalent: {0} vs {1}.'.format(res.codes, exp.codes))
@@ -2419,12 +2419,28 @@ def test_parallel(num_threads=2, kwargs_list=None):
     return wrapper
 
 
+class SubclassedSeries(Series):
+    _metadata = ['testattr', 'name']
+
+    @property
+    def _constructor(self):
+        return SubclassedSeries
+
+    @property
+    def _constructor_expanddim(self):
+        return SubclassedDataFrame
+
+
 class SubclassedDataFrame(DataFrame):
     _metadata = ['testattr']
 
     @property
     def _constructor(self):
         return SubclassedDataFrame
+
+    @property
+    def _constructor_sliced(self):
+        return SubclassedSeries
 
 
 @contextmanager

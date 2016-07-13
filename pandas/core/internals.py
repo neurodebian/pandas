@@ -20,7 +20,7 @@ from pandas.core.common import (_possibly_downcast_to_dtype, isnull, _NS_DTYPE,
                                 _maybe_convert_string_to_object,
                                 _maybe_convert_scalar,
                                 is_categorical, is_datetimelike_v_numeric,
-                                is_numeric_v_string_like, is_internal_type)
+                                is_numeric_v_string_like, is_extension_type)
 import pandas.core.algorithms as algos
 from pandas.types.api import DatetimeTZDtype
 
@@ -30,6 +30,7 @@ from pandas.core.categorical import Categorical, maybe_to_categorical
 from pandas.tseries.index import DatetimeIndex
 from pandas.formats.printing import pprint_thing
 import pandas.core.common as com
+import pandas.types.concat as _concat
 import pandas.core.missing as missing
 import pandas.core.convert as convert
 from pandas.sparse.array import _maybe_to_sparse, SparseArray
@@ -1765,7 +1766,7 @@ class ObjectBlock(Block):
         return not (issubclass(value.dtype.type,
                                (np.integer, np.floating, np.complexfloating,
                                 np.datetime64, np.bool_)) or
-                    is_internal_type(value))
+                    is_extension_type(value))
 
     def replace(self, to_replace, value, inplace=False, filter=None,
                 regex=False, convert=True, mgr=None):
@@ -3388,10 +3389,10 @@ class BlockManager(PandasObject):
         # FIXME: refactor, clearly separate broadcasting & zip-like assignment
         #        can prob also fix the various if tests for sparse/categorical
 
-        value_is_internal_type = is_internal_type(value)
+        value_is_extension_type = is_extension_type(value)
 
         # categorical/spares/datetimetz
-        if value_is_internal_type:
+        if value_is_extension_type:
 
             def value_getitem(placement):
                 return value
@@ -3463,7 +3464,7 @@ class BlockManager(PandasObject):
             unfit_count = len(unfit_mgr_locs)
 
             new_blocks = []
-            if value_is_internal_type:
+            if value_is_extension_type:
                 # This code (ab-)uses the fact that sparse blocks contain only
                 # one item.
                 new_blocks.extend(
@@ -4646,7 +4647,7 @@ def concatenate_join_units(join_units, concat_axis, copy):
         if copy and concat_values.base is not None:
             concat_values = concat_values.copy()
     else:
-        concat_values = com._concat_compat(to_concat, axis=concat_axis)
+        concat_values = _concat._concat_compat(to_concat, axis=concat_axis)
 
     return concat_values
 
@@ -4871,6 +4872,11 @@ class JoinUnit(object):
         values = self.block.values
         if self.block.is_categorical:
             values_flat = values.categories
+        elif self.block.is_sparse:
+            # fill_value is not NaN and have holes
+            if not values._null_fill_value and values.sp_index.ngaps > 0:
+                return False
+            values_flat = values.ravel(order='K')
         else:
             values_flat = values.ravel(order='K')
         total_len = values_flat.shape[0]
@@ -4902,6 +4908,8 @@ class JoinUnit(object):
                 if getattr(self.block, 'is_datetimetz', False):
                     pass
                 elif getattr(self.block, 'is_categorical', False):
+                    pass
+                elif getattr(self.block, 'is_sparse', False):
                     pass
                 else:
                     missing_arr = np.empty(self.shape, dtype=empty_dtype)

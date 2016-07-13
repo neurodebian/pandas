@@ -3,6 +3,7 @@ import pandas.lib as lib
 import pandas.index as _index
 
 from pandas import compat
+from pandas.compat.numpy import function as nv
 from pandas.util.decorators import (Appender, cache_readonly,
                                     deprecate_kwarg)
 from pandas.core.config import get_option
@@ -460,13 +461,33 @@ class CategoricalIndex(Index, base.PandasDelegate):
         return None
 
     @Appender(_index_shared_docs['take'])
-    def take(self, indices, axis=0, allow_fill=True, fill_value=None):
+    def take(self, indices, axis=0, allow_fill=True,
+             fill_value=None, **kwargs):
+        nv.validate_take(tuple(), kwargs)
         indices = com._ensure_platform_int(indices)
         taken = self._assert_take_fillable(self.codes, indices,
                                            allow_fill=allow_fill,
                                            fill_value=fill_value,
                                            na_value=-1)
         return self._create_from_codes(taken)
+
+    def map(self, mapper):
+        """
+        Apply mapper function to its categories (not codes).
+
+        Parameters
+        ----------
+        mapper : callable
+            Function to be applied. When all categories are mapped
+            to different categories, the result will be Categorical which has
+            the same order property as the original. Otherwise, the result will
+            be np.ndarray.
+
+        Returns
+        -------
+        applied : Categorical or np.ndarray.
+        """
+        return self.values.map(mapper)
 
     def delete(self, loc):
         """

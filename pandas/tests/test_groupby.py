@@ -2,8 +2,6 @@
 from __future__ import print_function
 import nose
 
-from numpy.testing.decorators import slow
-
 from datetime import datetime
 from numpy import nan
 
@@ -167,8 +165,7 @@ class TestGroupBy(tm.TestCase):
         self.df.loc[self.df['A'] == 'foo', 'B'] = np.nan
         self.assertTrue(com.isnull(grouped['B'].first()['foo']))
         self.assertTrue(com.isnull(grouped['B'].last()['foo']))
-        self.assertTrue(com.isnull(grouped['B'].nth(0)[0])
-                        )  # not sure what this is testing
+        self.assertTrue(com.isnull(grouped['B'].nth(0)['foo']))
 
         # v0.14.0 whatsnew
         df = DataFrame([[1, np.nan], [1, 4], [5, 6]], columns=['A', 'B'])
@@ -221,12 +218,12 @@ class TestGroupBy(tm.TestCase):
 
         assert_frame_equal(g.nth(0), df.iloc[[0, 2]].set_index('A'))
         assert_frame_equal(g.nth(1), df.iloc[[1]].set_index('A'))
-        assert_frame_equal(g.nth(2), df.loc[[], ['B']])
+        assert_frame_equal(g.nth(2), df.loc[[]].set_index('A'))
         assert_frame_equal(g.nth(-1), df.iloc[[1, 2]].set_index('A'))
         assert_frame_equal(g.nth(-2), df.iloc[[0]].set_index('A'))
-        assert_frame_equal(g.nth(-3), df.loc[[], ['B']])
-        assert_series_equal(g.B.nth(0), df.B.iloc[[0, 2]])
-        assert_series_equal(g.B.nth(1), df.B.iloc[[1]])
+        assert_frame_equal(g.nth(-3), df.loc[[]].set_index('A'))
+        assert_series_equal(g.B.nth(0), df.set_index('A').B.iloc[[0, 2]])
+        assert_series_equal(g.B.nth(1), df.set_index('A').B.iloc[[1]])
         assert_frame_equal(g[['B']].nth(0),
                            df.ix[[0, 2], ['A', 'B']].set_index('A'))
 
@@ -262,11 +259,11 @@ class TestGroupBy(tm.TestCase):
                                 4: 0.70422799999999997}}).set_index(['color',
                                                                      'food'])
 
-        result = df.groupby(level=0).nth(2)
+        result = df.groupby(level=0, as_index=False).nth(2)
         expected = df.iloc[[-1]]
         assert_frame_equal(result, expected)
 
-        result = df.groupby(level=0).nth(3)
+        result = df.groupby(level=0, as_index=False).nth(3)
         expected = df.loc[[]]
         assert_frame_equal(result, expected)
 
@@ -290,8 +287,7 @@ class TestGroupBy(tm.TestCase):
         # as it keeps the order in the series (and not the group order)
         # related GH 7287
         expected = s.groupby(g, sort=False).first()
-        expected.index = pd.Index(range(1, 10), name=0)
-        result = s.groupby(g).nth(0, dropna='all')
+        result = s.groupby(g, sort=False).nth(0, dropna='all')
         assert_series_equal(result, expected)
 
         # doc example
@@ -316,14 +312,14 @@ class TestGroupBy(tm.TestCase):
         assert_frame_equal(
             g.nth([0, 1, -1]), df.iloc[[0, 1, 2, 3, 4]].set_index('A'))
         assert_frame_equal(g.nth([2]), df.iloc[[2]].set_index('A'))
-        assert_frame_equal(g.nth([3, 4]), df.loc[[], ['B']])
+        assert_frame_equal(g.nth([3, 4]), df.loc[[]].set_index('A'))
 
         business_dates = pd.date_range(start='4/1/2014', end='6/30/2014',
                                        freq='B')
         df = DataFrame(1, index=business_dates, columns=['a', 'b'])
         # get the first, fourth and last two business days for each month
-        result = df.groupby((df.index.year, df.index.month)).nth([0, 3, -2, -1
-                                                                  ])
+        key = (df.index.year, df.index.month)
+        result = df.groupby(key, as_index=False).nth([0, 3, -2, -1])
         expected_dates = pd.to_datetime(
             ['2014/4/1', '2014/4/4', '2014/4/29', '2014/4/30', '2014/5/1',
              '2014/5/6', '2014/5/29', '2014/5/30', '2014/6/2', '2014/6/5',
@@ -1877,7 +1873,6 @@ class TestGroupBy(tm.TestCase):
             check_nunique(frame, ['jim'])
             check_nunique(frame, ['jim', 'joe'])
 
-    @slow
     def test_series_groupby_value_counts(self):
         from itertools import product
 
@@ -1912,7 +1907,7 @@ class TestGroupBy(tm.TestCase):
 
         days = date_range('2015-08-24', periods=10)
 
-        for n, m in product((100, 10000), (5, 20)):
+        for n, m in product((100, 1000), (5, 20)):
             frame = DataFrame({
                 '1st': np.random.choice(
                     list('abcd'), n),
@@ -2474,6 +2469,17 @@ class TestGroupBy(tm.TestCase):
 
         result = a.groupby(level=0).sum()
         self.assertEqual(result.index.name, a.index.name)
+
+    def test_groupby_complex(self):
+        # GH 12902
+        a = Series(data=np.arange(4) * (1 + 2j), index=[0, 0, 1, 1])
+        expected = Series((1 + 2j, 5 + 10j))
+
+        result = a.groupby(level=0).sum()
+        assert_series_equal(result, expected)
+
+        result = a.sum(level=0)
+        assert_series_equal(result, expected)
 
     def test_level_preserve_order(self):
         grouped = self.mframe.groupby(level=0)
@@ -3084,6 +3090,20 @@ class TestGroupBy(tm.TestCase):
         testFunc = lambda x: np.sum(x) * 2
         self.assertEqual(result.agg(testFunc).name, 'C')
 
+    def test_consistency_name(self):
+        # GH 12363
+
+        df = DataFrame({'A': ['foo', 'bar', 'foo', 'bar',
+                              'foo', 'bar', 'foo', 'foo'],
+                        'B': ['one', 'one', 'two', 'two',
+                              'two', 'two', 'one', 'two'],
+                        'C': np.random.randn(8) + 1.0,
+                        'D': np.arange(8)})
+
+        expected = df.groupby(['A']).B.count()
+        result = df.B.groupby(df.A).count()
+        assert_series_equal(result, expected)
+
     def test_groupby_name_propagation(self):
         # GH 6124
         def summarize(df, name=None):
@@ -3254,7 +3274,7 @@ class TestGroupBy(tm.TestCase):
     def test_groupby_keys_same_size_as_index(self):
         # GH 11185
         freq = 's'
-        index = pd.date_range(start=np.datetime64('2015-09-29T11:34:44-0700'),
+        index = pd.date_range(start=pd.Timestamp('2015-09-29T11:34:44-0700'),
                               periods=2, freq=freq)
         df = pd.DataFrame([['A', 10], ['B', 15]], columns=[
             'metric', 'values'
@@ -3550,8 +3570,7 @@ class TestGroupBy(tm.TestCase):
             expected.append(piece.value.rank())
         expected = concat(expected, axis=0)
         expected = expected.reindex(result.index)
-        assert_series_equal(result, expected, check_names=False)
-        self.assertTrue(result.name is None)
+        assert_series_equal(result, expected)
 
         result = df.groupby(['key1', 'key2']).value.rank(pct=True)
 
@@ -3560,8 +3579,7 @@ class TestGroupBy(tm.TestCase):
             expected.append(piece.value.rank(pct=True))
         expected = concat(expected, axis=0)
         expected = expected.reindex(result.index)
-        assert_series_equal(result, expected, check_names=False)
-        self.assertTrue(result.name is None)
+        assert_series_equal(result, expected)
 
     def test_dont_clobber_name_column(self):
         df = DataFrame({'key': ['a', 'a', 'a', 'b', 'b', 'b'],
@@ -3593,8 +3611,7 @@ class TestGroupBy(tm.TestCase):
             pieces.append(group.sort_values()[:3])
 
         expected = concat(pieces)
-        assert_series_equal(result, expected, check_names=False)
-        self.assertTrue(result.name is None)
+        assert_series_equal(result, expected)
 
     def test_no_nonsense_name(self):
         # GH #995
@@ -4120,6 +4137,7 @@ class TestGroupBy(tm.TestCase):
                                      tz='America/Chicago'),
                            Timestamp('2000-01-01 16:50:00-0500',
                                      tz='America/New_York')],
+                          name='date',
                           dtype=object)
         assert_series_equal(result, expected)
 
@@ -4485,6 +4503,57 @@ class TestGroupBy(tm.TestCase):
         grouper = pd.tseries.resample.TimeGrouper('D')
         grouped = series.groupby(grouper)
         assert next(iter(grouped), None) is None
+
+    def test_aaa_groupby_with_small_elem(self):
+        # GH 8542
+        # length=2
+        df = pd.DataFrame({'event': ['start', 'start'],
+                           'change': [1234, 5678]},
+                          index=pd.DatetimeIndex(['2014-09-10', '2013-10-10']))
+        grouped = df.groupby([pd.TimeGrouper(freq='M'), 'event'])
+        self.assertEqual(len(grouped.groups), 2)
+        self.assertEqual(grouped.ngroups, 2)
+        self.assertIn((pd.Timestamp('2014-09-30'), 'start'), grouped.groups)
+        self.assertIn((pd.Timestamp('2013-10-31'), 'start'), grouped.groups)
+
+        res = grouped.get_group((pd.Timestamp('2014-09-30'), 'start'))
+        tm.assert_frame_equal(res, df.iloc[[0], :])
+        res = grouped.get_group((pd.Timestamp('2013-10-31'), 'start'))
+        tm.assert_frame_equal(res, df.iloc[[1], :])
+
+        df = pd.DataFrame({'event': ['start', 'start', 'start'],
+                           'change': [1234, 5678, 9123]},
+                          index=pd.DatetimeIndex(['2014-09-10', '2013-10-10',
+                                                  '2014-09-15']))
+        grouped = df.groupby([pd.TimeGrouper(freq='M'), 'event'])
+        self.assertEqual(len(grouped.groups), 2)
+        self.assertEqual(grouped.ngroups, 2)
+        self.assertIn((pd.Timestamp('2014-09-30'), 'start'), grouped.groups)
+        self.assertIn((pd.Timestamp('2013-10-31'), 'start'), grouped.groups)
+
+        res = grouped.get_group((pd.Timestamp('2014-09-30'), 'start'))
+        tm.assert_frame_equal(res, df.iloc[[0, 2], :])
+        res = grouped.get_group((pd.Timestamp('2013-10-31'), 'start'))
+        tm.assert_frame_equal(res, df.iloc[[1], :])
+
+        # length=3
+        df = pd.DataFrame({'event': ['start', 'start', 'start'],
+                           'change': [1234, 5678, 9123]},
+                          index=pd.DatetimeIndex(['2014-09-10', '2013-10-10',
+                                                  '2014-08-05']))
+        grouped = df.groupby([pd.TimeGrouper(freq='M'), 'event'])
+        self.assertEqual(len(grouped.groups), 3)
+        self.assertEqual(grouped.ngroups, 3)
+        self.assertIn((pd.Timestamp('2014-09-30'), 'start'), grouped.groups)
+        self.assertIn((pd.Timestamp('2013-10-31'), 'start'), grouped.groups)
+        self.assertIn((pd.Timestamp('2014-08-31'), 'start'), grouped.groups)
+
+        res = grouped.get_group((pd.Timestamp('2014-09-30'), 'start'))
+        tm.assert_frame_equal(res, df.iloc[[0], :])
+        res = grouped.get_group((pd.Timestamp('2013-10-31'), 'start'))
+        tm.assert_frame_equal(res, df.iloc[[1], :])
+        res = grouped.get_group((pd.Timestamp('2014-08-31'), 'start'))
+        tm.assert_frame_equal(res, df.iloc[[2], :])
 
     def test_groupby_with_timezone_selection(self):
         # GH 11616
@@ -5732,7 +5801,7 @@ class TestGroupBy(tm.TestCase):
              'cumcount', 'all', 'shift', 'skew', 'bfill', 'ffill', 'take',
              'tshift', 'pct_change', 'any', 'mad', 'corr', 'corrwith', 'cov',
              'dtypes', 'ndim', 'diff', 'idxmax', 'idxmin',
-             'ffill', 'bfill', 'pad', 'backfill'])
+             'ffill', 'bfill', 'pad', 'backfill', 'rolling', 'expanding'])
         self.assertEqual(results, expected)
 
     def test_lexsort_indexer(self):

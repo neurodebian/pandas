@@ -78,6 +78,31 @@ class TestMultiIndex(Base, tm.TestCase):
         self.assertTrue((i.labels[0] >= 0).all())
         self.assertTrue((i.labels[1] >= 0).all())
 
+    def test_repeat(self):
+        reps = 2
+        numbers = [1, 2, 3]
+        names = np.array(['foo', 'bar'])
+
+        m = MultiIndex.from_product([
+            numbers, names], names=names)
+        expected = MultiIndex.from_product([
+            numbers, names.repeat(reps)], names=names)
+        tm.assert_index_equal(m.repeat(reps), expected)
+
+    def test_numpy_repeat(self):
+        reps = 2
+        numbers = [1, 2, 3]
+        names = np.array(['foo', 'bar'])
+
+        m = MultiIndex.from_product([
+            numbers, names], names=names)
+        expected = MultiIndex.from_product([
+            numbers, names.repeat(reps)], names=names)
+        tm.assert_index_equal(np.repeat(m, reps), expected)
+
+        msg = "the 'axis' parameter is not supported"
+        tm.assertRaisesRegexp(ValueError, msg, np.repeat, m, reps, axis=1)
+
     def test_set_name_methods(self):
         # so long as these are synonyms, we don't need to test set_names
         self.assertEqual(self.index.rename, self.index.set_names)
@@ -472,7 +497,7 @@ class TestMultiIndex(Base, tm.TestCase):
                 self.index.copy().labels = [[0, 0, 0, 0], [0, 0]]
 
     def assert_multiindex_copied(self, copy, original):
-        # levels shoudl be (at least, shallow copied)
+        # levels should be (at least, shallow copied)
         assert_copy(copy.levels, original.levels)
 
         assert_almost_equal(copy.labels, original.labels)
@@ -1595,6 +1620,24 @@ class TestMultiIndex(Base, tm.TestCase):
         with tm.assertRaises(IndexError):
             idx.take(np.array([1, -5]))
 
+    def take_invalid_kwargs(self):
+        vals = [['A', 'B'],
+                [pd.Timestamp('2011-01-01'), pd.Timestamp('2011-01-02')]]
+        idx = pd.MultiIndex.from_product(vals, names=['str', 'dt'])
+        indices = [1, 2]
+
+        msg = "take\(\) got an unexpected keyword argument 'foo'"
+        tm.assertRaisesRegexp(TypeError, msg, idx.take,
+                              indices, foo=2)
+
+        msg = "the 'out' parameter is not supported"
+        tm.assertRaisesRegexp(ValueError, msg, idx.take,
+                              indices, out=indices)
+
+        msg = "the 'mode' parameter is not supported"
+        tm.assertRaisesRegexp(ValueError, msg, idx.take,
+                              indices, mode='clip')
+
     def test_join_level(self):
         def _check_how(other, how):
             join_index, lidx, ridx = other.join(self.index, how=how,
@@ -2052,6 +2095,23 @@ class TestMultiIndex(Base, tm.TestCase):
         # GH9785
         self.assertTrue((self.index == self.index).all())
 
+    def test_large_multiindex_error(self):
+        # GH12527
+        df_below_1000000 = pd.DataFrame(
+            1, index=pd.MultiIndex.from_product([[1, 2], range(499999)]),
+            columns=['dest'])
+        with assertRaises(KeyError):
+            df_below_1000000.loc[(-1, 0), 'dest']
+        with assertRaises(KeyError):
+            df_below_1000000.loc[(3, 0), 'dest']
+        df_above_1000000 = pd.DataFrame(
+            1, index=pd.MultiIndex.from_product([[1, 2], range(500001)]),
+            columns=['dest'])
+        with assertRaises(KeyError):
+            df_above_1000000.loc[(-1, 0), 'dest']
+        with assertRaises(KeyError):
+            df_above_1000000.loc[(3, 0), 'dest']
+
     def test_partial_string_timestamp_multiindex(self):
         # GH10331
         dr = pd.date_range('2016-01-01', '2016-01-03', freq='12H')
@@ -2078,12 +2138,15 @@ class TestMultiIndex(Base, tm.TestCase):
         #                     c  14
 
         # partial string matching on a single index
-        df_swap = df.swaplevel(0, 1).sort_index()
-        just_a = df_swap.loc['a']
-        result = just_a.loc['2016-01-01']
-        expected = df.loc[idx[:, 'a'], :].iloc[0:2]
-        expected.index = expected.index.droplevel(1)
-        tm.assert_frame_equal(result, expected)
+        for df_swap in (df.swaplevel(),
+                        df.swaplevel(0),
+                        df.swaplevel(0, 1)):
+            df_swap = df_swap.sort_index()
+            just_a = df_swap.loc['a']
+            result = just_a.loc['2016-01-01']
+            expected = df.loc[idx[:, 'a'], :].iloc[0:2]
+            expected.index = expected.index.droplevel(1)
+            tm.assert_frame_equal(result, expected)
 
         # indexing with IndexSlice
         result = df.loc[idx['2016-01-01':'2016-02-01', :], :]
@@ -2130,3 +2193,26 @@ class TestMultiIndex(Base, tm.TestCase):
         # Slicing date on first level should break (of course)
         with assertRaises(KeyError):
             df_swap.loc['2016-01-01']
+
+    def test_rangeindex_fallback_coercion_bug(self):
+        # GH 12893
+        foo = pd.DataFrame(np.arange(100).reshape((10, 10)))
+        bar = pd.DataFrame(np.arange(100).reshape((10, 10)))
+        df = pd.concat({'foo': foo.stack(), 'bar': bar.stack()}, axis=1)
+        df.index.names = ['fizz', 'buzz']
+
+        str(df)
+        expected = pd.DataFrame({'bar': np.arange(100),
+                                 'foo': np.arange(100)},
+                                index=pd.MultiIndex.from_product(
+                                    [range(10), range(10)],
+                                    names=['fizz', 'buzz']))
+        tm.assert_frame_equal(df, expected, check_like=True)
+
+        result = df.index.get_level_values('fizz')
+        expected = pd.Int64Index(np.arange(10), name='fizz').repeat(10)
+        tm.assert_index_equal(result, expected)
+
+        result = df.index.get_level_values('buzz')
+        expected = pd.Int64Index(np.tile(np.arange(10), 10), name='buzz')
+        tm.assert_index_equal(result, expected)

@@ -2,6 +2,8 @@
 SQL-style merge routines
 """
 
+import warnings
+
 import numpy as np
 from pandas.compat import range, lrange, lzip, zip, map, filter
 import pandas.compat as compat
@@ -19,6 +21,7 @@ from pandas.core.common import ABCSeries
 
 import pandas.core.algorithms as algos
 import pandas.core.common as com
+import pandas.types.concat as _concat
 
 import pandas.algos as _algos
 import pandas.hashtable as _hash
@@ -193,6 +196,13 @@ class _MergeOperation(object):
             raise ValueError(
                 'can not merge DataFrame with instance of '
                 'type {0}'.format(type(right)))
+
+        # warn user when merging between different levels
+        if left.columns.nlevels != right.columns.nlevels:
+            msg = ('merging between different levels can give an unintended '
+                   'result ({0} levels on the left, {1} on the right)')
+            msg = msg.format(left.columns.nlevels, right.columns.nlevels)
+            warnings.warn(msg, UserWarning)
 
         # note this function has side effects
         (self.left_join_keys,
@@ -986,21 +996,24 @@ class _Concatenator(object):
                     values = [x._values for x in non_empties]
                 else:
                     values = [x._values for x in self.objs]
-                new_data = com._concat_compat(values)
+                new_data = _concat._concat_compat(values)
 
                 name = com._consensus_name_attr(self.objs)
-                return (Series(new_data, index=self.new_axes[0],
-                               name=name,
-                               dtype=new_data.dtype)
+                cons = _concat._get_series_result_type(new_data)
+
+                return (cons(new_data, index=self.new_axes[0],
+                             name=name, dtype=new_data.dtype)
                         .__finalize__(self, method='concat'))
 
             # combine as columns in a frame
             else:
                 data = dict(zip(range(len(self.objs)), self.objs))
+                cons = _concat._get_series_result_type(data)
+
                 index, columns = self.new_axes
-                tmpdf = DataFrame(data, index=index)
-                tmpdf.columns = columns
-                return tmpdf.__finalize__(self, method='concat')
+                df = cons(data, index=index)
+                df.columns = columns
+                return df.__finalize__(self, method='concat')
 
         # combine block managers
         else:
@@ -1019,13 +1032,15 @@ class _Concatenator(object):
 
                 mgrs_indexers.append((obj._data, indexers))
 
-            new_data = concatenate_block_managers(
-                mgrs_indexers, self.new_axes,
-                concat_axis=self.axis, copy=self.copy)
+            new_data = concatenate_block_managers(mgrs_indexers,
+                                                  self.new_axes,
+                                                  concat_axis=self.axis,
+                                                  copy=self.copy)
             if not self.copy:
                 new_data._consolidate_inplace()
 
-            return (self.objs[0]._from_axes(new_data, self.new_axes)
+            cons = _concat._get_frame_result_type(new_data, self.objs)
+            return (cons._from_axes(new_data, self.new_axes)
                     .__finalize__(self, method='concat'))
 
     def _get_result_dim(self):
@@ -1131,6 +1146,7 @@ def _concat_indexes(indexes):
 
 
 def _make_concat_multiindex(indexes, keys, levels=None, names=None):
+
     if ((levels is None and isinstance(keys[0], tuple)) or
             (levels is not None and len(levels) > 1)):
         zipped = lzip(*keys)
