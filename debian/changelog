@@ -1,6 +1,9 @@
 pandas (0.18.1-1) unstable; urgency=medium
 
   * Fresh upstream release
+  * debian/patches/changeset_46af7cf0f8e0477f6cc7454aa786a573228f0ac3.diff
+    - to allow also AttributeError exception being thrown in the tests
+      (Closes: #827938)
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 13 Jul 2016 10:42:00 -0400
 
