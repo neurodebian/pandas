@@ -1,6 +1,6 @@
 --- a/pandas/__init__.py
 +++ b/pandas/__init__.py
-@@ -58,7 +58,4 @@ test = NoseTester().test
+@@ -59,7 +59,4 @@ test = NoseTester().test
  del NoseTester
  
  # use the closest tagged version if possible
