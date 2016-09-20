@@ -54,7 +54,8 @@ class TestTextReader(tm.TestCase):
             f.close()
 
     def test_StringIO(self):
-        text = open(self.csv1, 'rb').read()
+        with open(self.csv1, 'rb') as f:
+            text = f.read()
         src = BytesIO(text)
         reader = TextReader(src, header=None)
         reader.read()
@@ -76,8 +77,12 @@ class TestTextReader(tm.TestCase):
                             header=None)
         result = reader.read()
 
-        self.assert_numpy_array_equal(result[0], ['a', 'a', 'a', 'a'])
-        self.assert_numpy_array_equal(result[1], ['b', 'b', 'b', 'b'])
+        self.assert_numpy_array_equal(result[0],
+                                      np.array(['a', 'a', 'a', 'a'],
+                                               dtype=np.object_))
+        self.assert_numpy_array_equal(result[1],
+                                      np.array(['b', 'b', 'b', 'b'],
+                                               dtype=np.object_))
 
     def test_parse_booleans(self):
         data = 'True\nFalse\nTrue\nTrue'
@@ -94,8 +99,10 @@ class TestTextReader(tm.TestCase):
                             header=None)
         result = reader.read()
 
-        self.assert_numpy_array_equal(result[0], ['a', 'a', 'a'])
-        self.assert_numpy_array_equal(result[1], ['b', 'b', 'b'])
+        self.assert_numpy_array_equal(result[0], np.array(['a', 'a', 'a'],
+                                                          dtype=np.object_))
+        self.assert_numpy_array_equal(result[1], np.array(['b', 'b', 'b'],
+                                                          dtype=np.object_))
 
     def test_embedded_newline(self):
         data = 'a\n"hello\nthere"\nthis'
@@ -103,7 +110,7 @@ class TestTextReader(tm.TestCase):
         reader = TextReader(StringIO(data), header=None)
         result = reader.read()
 
-        expected = ['a', 'hello\nthere', 'this']
+        expected = np.array(['a', 'hello\nthere', 'this'], dtype=np.object_)
         self.assert_numpy_array_equal(result[0], expected)
 
     def test_euro_decimal(self):
@@ -113,7 +120,7 @@ class TestTextReader(tm.TestCase):
                             decimal=',', header=None)
         result = reader.read()
 
-        expected = [12345.67, 345.678]
+        expected = np.array([12345.67, 345.678])
         tm.assert_almost_equal(result[0], expected)
 
     def test_integer_thousands(self):
@@ -123,7 +130,7 @@ class TestTextReader(tm.TestCase):
                             thousands=',', header=None)
         result = reader.read()
 
-        expected = [123456, 12500]
+        expected = np.array([123456, 12500], dtype=np.int64)
         tm.assert_almost_equal(result[0], expected)
 
     def test_integer_thousands_alt(self):
@@ -194,11 +201,6 @@ class TestTextReader(tm.TestCase):
                           delimiter=',', header=5, as_recarray=True)
 
     def test_header_not_enough_lines_as_recarray(self):
-
-        if compat.is_platform_windows():
-            raise nose.SkipTest(
-                "segfaults on win-64, only when all tests are run")
-
         data = ('skip this\n'
                 'skip this\n'
                 'a,b,c\n'
@@ -272,10 +274,6 @@ aa,2
 aaa,3
 aaaa,4
 aaaaa,5"""
-
-        if compat.is_platform_windows():
-            raise nose.SkipTest(
-                "segfaults on win-64, only when all tests are run")
 
         def _make_reader(**kwds):
             return TextReader(StringIO(data), delimiter=',', header=None,

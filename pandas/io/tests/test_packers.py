@@ -1,6 +1,5 @@
 import nose
 
-import warnings
 import os
 import datetime
 import numpy as np
@@ -8,7 +7,7 @@ import sys
 from distutils.version import LooseVersion
 
 from pandas import compat
-from pandas.compat import u
+from pandas.compat import u, PY3
 from pandas import (Series, DataFrame, Panel, MultiIndex, bdate_range,
                     date_range, period_range, Index, Categorical)
 from pandas.core.common import PerformanceWarning
@@ -58,6 +57,19 @@ def check_arbitrary(a, b):
         assert_series_equal(a, b)
     elif isinstance(a, Index):
         assert_index_equal(a, b)
+    elif isinstance(a, Categorical):
+        # Temp,
+        # Categorical.categories is changed from str to bytes in PY3
+        # maybe the same as GH 13591
+        if PY3 and b.categories.inferred_type == 'string':
+            pass
+        else:
+            tm.assert_categorical_equal(a, b)
+    elif a is NaT:
+        assert b is NaT
+    elif isinstance(a, Timestamp):
+        assert a == b
+        assert a.freq == b.freq
     else:
         assert(a == b)
 
@@ -150,7 +162,11 @@ class TestNumpy(TestPackers):
     def test_list_numpy_float(self):
         x = [np.float32(np.random.rand()) for i in range(5)]
         x_rec = self.encode_decode(x)
-        tm.assert_almost_equal(x, x_rec)
+        # current msgpack cannot distinguish list/tuple
+        tm.assert_almost_equal(tuple(x), x_rec)
+
+        x_rec = self.encode_decode(tuple(x))
+        tm.assert_almost_equal(tuple(x), x_rec)
 
     def test_list_numpy_float_complex(self):
         if not hasattr(np, 'complex128'):
@@ -165,7 +181,11 @@ class TestNumpy(TestPackers):
     def test_list_float(self):
         x = [np.random.rand() for i in range(5)]
         x_rec = self.encode_decode(x)
-        tm.assert_almost_equal(x, x_rec)
+        # current msgpack cannot distinguish list/tuple
+        tm.assert_almost_equal(tuple(x), x_rec)
+
+        x_rec = self.encode_decode(tuple(x))
+        tm.assert_almost_equal(tuple(x), x_rec)
 
     def test_list_float_complex(self):
         x = [np.random.rand() for i in range(5)] + \
@@ -217,7 +237,11 @@ class TestNumpy(TestPackers):
     def test_list_mixed(self):
         x = [1.0, np.float32(3.5), np.complex128(4.25), u('foo')]
         x_rec = self.encode_decode(x)
-        tm.assert_almost_equal(x, x_rec)
+        # current msgpack cannot distinguish list/tuple
+        tm.assert_almost_equal(tuple(x), x_rec)
+
+        x_rec = self.encode_decode(tuple(x))
+        tm.assert_almost_equal(tuple(x), x_rec)
 
 
 class TestBasic(TestPackers):
@@ -286,30 +310,30 @@ class TestIndex(TestPackers):
 
         for s, i in self.d.items():
             i_rec = self.encode_decode(i)
-            self.assertTrue(i.equals(i_rec))
+            self.assert_index_equal(i, i_rec)
 
         # datetime with no freq (GH5506)
         i = Index([Timestamp('20130101'), Timestamp('20130103')])
         i_rec = self.encode_decode(i)
-        self.assertTrue(i.equals(i_rec))
+        self.assert_index_equal(i, i_rec)
 
         # datetime with timezone
         i = Index([Timestamp('20130101 9:00:00'), Timestamp(
             '20130103 11:00:00')]).tz_localize('US/Eastern')
         i_rec = self.encode_decode(i)
-        self.assertTrue(i.equals(i_rec))
+        self.assert_index_equal(i, i_rec)
 
     def test_multi_index(self):
 
         for s, i in self.mi.items():
             i_rec = self.encode_decode(i)
-            self.assertTrue(i.equals(i_rec))
+            self.assert_index_equal(i, i_rec)
 
     def test_unicode(self):
         i = tm.makeUnicodeIndex(100)
 
         i_rec = self.encode_decode(i)
-        self.assertTrue(i.equals(i_rec))
+        self.assert_index_equal(i, i_rec)
 
 
 class TestSeries(TestPackers):
@@ -518,25 +542,6 @@ class TestSparse(TestPackers):
         self._check_roundtrip(ss3, tm.assert_frame_equal,
                               check_frame_type=True)
 
-    def test_sparse_panel(self):
-
-        with warnings.catch_warnings(record=True):
-
-            items = ['x', 'y', 'z']
-            p = Panel(dict((i, tm.makeDataFrame().ix[:2, :2]) for i in items))
-            sp = p.to_sparse()
-
-            self._check_roundtrip(sp, tm.assert_panel_equal,
-                                  check_panel_type=True)
-
-            sp2 = p.to_sparse(kind='integer')
-            self._check_roundtrip(sp2, tm.assert_panel_equal,
-                                  check_panel_type=True)
-
-            sp3 = p.to_sparse(fill_value=0)
-            self._check_roundtrip(sp3, tm.assert_panel_equal,
-                                  check_panel_type=True)
-
 
 class TestCompression(TestPackers):
     """See https://github.com/pydata/pandas/pull/9783
@@ -659,14 +664,14 @@ class TestCompression(TestPackers):
         with tm.assert_produces_warning(None):
             empty_unpacked = self.encode_decode(empty, compress=compress)
 
-        np.testing.assert_array_equal(empty_unpacked, empty)
+        tm.assert_numpy_array_equal(empty_unpacked, empty)
         self.assertTrue(empty_unpacked.flags.writeable)
 
         char = np.array([ord(b'a')], dtype='uint8')
         with tm.assert_produces_warning(None):
             char_unpacked = self.encode_decode(char, compress=compress)
 
-        np.testing.assert_array_equal(char_unpacked, char)
+        tm.assert_numpy_array_equal(char_unpacked, char)
         self.assertTrue(char_unpacked.flags.writeable)
         # if this test fails I am sorry because the interpreter is now in a
         # bad state where b'a' points to 98 == ord(b'b').
@@ -676,7 +681,7 @@ class TestCompression(TestPackers):
         # always be the same (unless we were able to mutate the shared
         # character singleton in which case ord(b'a') == ord(b'b').
         self.assertEqual(ord(b'a'), ord(u'a'))
-        np.testing.assert_array_equal(
+        tm.assert_numpy_array_equal(
             char_unpacked,
             np.array([ord(b'b')], dtype='uint8'),
         )
@@ -803,8 +808,8 @@ TestPackers
         for typ, v in self.minimum_structure.items():
             assert typ in data, '"{0}" not found in unpacked data'.format(typ)
             for kind in v:
-                assert kind in data[
-                    typ], '"{0}" not found in data["{1}"]'.format(kind, typ)
+                msg = '"{0}" not found in data["{1}"]'.format(kind, typ)
+                assert kind in data[typ], msg
 
     def compare(self, vf, version):
         # GH12277 encoding default used to be latin-1, now utf-8
@@ -827,8 +832,8 @@ TestPackers
 
                 # use a specific comparator
                 # if available
-                comparator = getattr(
-                    self, "compare_{typ}_{dt}".format(typ=typ, dt=dt), None)
+                comp_method = "compare_{typ}_{dt}".format(typ=typ, dt=dt)
+                comparator = getattr(self, comp_method, None)
                 if comparator is not None:
                     comparator(result, expected, typ, version)
                 else:
@@ -860,9 +865,8 @@ TestPackers
         n = 0
         for f in os.listdir(pth):
             # GH12142 0.17 files packed in P2 can't be read in P3
-            if (compat.PY3 and
-                    version.startswith('0.17.') and
-                    f.split('.')[-4][-1] == '2'):
+            if (compat.PY3 and version.startswith('0.17.') and
+               f.split('.')[-4][-1] == '2'):
                 continue
             vf = os.path.join(pth, f)
             try:

@@ -191,6 +191,26 @@ raised. Multiple columns can also be set in this manner:
 You may find this useful for applying a transform (in-place) to a subset of the
 columns.
 
+.. warning::
+
+   pandas aligns all AXES when setting ``Series`` and ``DataFrame`` from ``.loc``, ``.iloc`` and ``.ix``.
+
+   This will **not** modify ``df`` because the column alignment is before value assignment.
+
+   .. ipython:: python
+
+      df[['A', 'B']]
+      df.loc[:,['B', 'A']] = df[['A', 'B']]
+      df[['A', 'B']]
+
+   The correct way is to use raw values
+
+   .. ipython:: python
+
+      df.loc[:,['B', 'A']] = df[['A', 'B']].values
+      df[['A', 'B']]
+
+
 Attribute Access
 ----------------
 
@@ -808,6 +828,8 @@ To select a row where each column meets its own criterion:
 
   df[row_mask]
 
+.. _indexing.where_mask:
+
 The :meth:`~pandas.DataFrame.where` Method and Masking
 ------------------------------------------------------
 
@@ -870,6 +892,15 @@ without creating a copy:
    df_orig = df.copy()
    df_orig.where(df > 0, -df, inplace=True);
    df_orig
+
+.. note::
+
+   The signature for :func:`DataFrame.where` differs from :func:`numpy.where`.
+   Roughly ``df1.where(m, df2)`` is equivalent to ``np.where(m, df1, df2)``.
+
+   .. ipython:: python
+
+      df.where(df < 0, -df) == np.where(df < 0, df, -df)
 
 **alignment**
 

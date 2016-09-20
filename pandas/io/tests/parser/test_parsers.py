@@ -11,6 +11,7 @@ from pandas.core.common import AbstractMethodError
 from .common import ParserTests
 from .header import HeaderTests
 from .comment import CommentTests
+from .quoting import QuotingTests
 from .usecols import UsecolsTests
 from .skiprows import SkipRowsTests
 from .index_col import IndexColTests
@@ -28,7 +29,7 @@ class BaseParser(CommentTests, CompressionTests,
                  IndexColTests, MultithreadTests,
                  NAvaluesTests, ParseDatesTests,
                  ParserTests, SkipRowsTests,
-                 UsecolsTests):
+                 UsecolsTests, QuotingTests):
     def read_csv(self, *args, **kwargs):
         raise NotImplementedError
 
@@ -43,6 +44,7 @@ class BaseParser(CommentTests, CompressionTests,
         self.csv1 = os.path.join(self.dirpath, 'test1.csv')
         self.csv2 = os.path.join(self.dirpath, 'test2.csv')
         self.xls1 = os.path.join(self.dirpath, 'test.xls')
+        self.csv_shiftjs = os.path.join(self.dirpath, 'sauron.SHIFT_JIS.csv')
 
 
 class TestCParserHighMemory(BaseParser, CParserTests, tm.TestCase):
@@ -72,25 +74,16 @@ class TestCParserLowMemory(BaseParser, CParserTests, tm.TestCase):
         kwds = kwds.copy()
         kwds['engine'] = self.engine
         kwds['low_memory'] = self.low_memory
-        kwds['buffer_lines'] = 2
         return read_csv(*args, **kwds)
 
     def read_table(self, *args, **kwds):
         kwds = kwds.copy()
         kwds['engine'] = self.engine
         kwds['low_memory'] = True
-        kwds['buffer_lines'] = 2
         return read_table(*args, **kwds)
 
 
 class TestPythonParser(BaseParser, PythonParserTests, tm.TestCase):
-    """
-    Class for Python parser testing. Unless specifically stated
-    as a PythonParser-specific issue, the goal is to eventually move
-    as many of these tests into ParserTests as soon as the C parser
-    can accept further specific arguments when parsing.
-    """
-
     engine = 'python'
     float_precision_choices = [None]
 

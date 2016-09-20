@@ -43,14 +43,14 @@ MyColumn
         df_pref = self.read_table(StringIO(data), sep=',', prefix='Field',
                                   header=None)
 
-        expected = [[1, 2, 3, 4, 5.],
-                    [6, 7, 8, 9, 10],
-                    [11, 12, 13, 14, 15]]
+        expected = np.array([[1, 2, 3, 4, 5],
+                             [6, 7, 8, 9, 10],
+                             [11, 12, 13, 14, 15]], dtype=np.int64)
         tm.assert_almost_equal(df_pref.values, expected)
 
-        self.assert_numpy_array_equal(
-            df_pref.columns, ['Field0', 'Field1', 'Field2',
-                              'Field3', 'Field4'])
+        self.assert_index_equal(df_pref.columns,
+                                Index(['Field0', 'Field1', 'Field2',
+                                       'Field3', 'Field4']))
 
     def test_header_with_index_col(self):
         data = """foo,1,2,3
@@ -115,10 +115,12 @@ R_l0_g4,R_l1_g4,R4C0,R4C1,R4C2
         # INVALID OPTIONS
 
         # no as_recarray
-        self.assertRaises(ValueError, self.read_csv,
-                          StringIO(data), header=[0, 1, 2, 3],
-                          index_col=[0, 1], as_recarray=True,
-                          tupleize_cols=False)
+        with tm.assert_produces_warning(
+                FutureWarning, check_stacklevel=False):
+            self.assertRaises(ValueError, self.read_csv,
+                              StringIO(data), header=[0, 1, 2, 3],
+                              index_col=[0, 1], as_recarray=True,
+                              tupleize_cols=False)
 
         # names
         self.assertRaises(ValueError, self.read_csv,
@@ -262,14 +264,14 @@ q,r,s,t,u,v
 
         names = ['foo', 'bar', 'baz', 'quux', 'panda']
         df2 = self.read_table(StringIO(data), sep=',', names=names)
-        expected = [[1, 2, 3, 4, 5.],
-                    [6, 7, 8, 9, 10],
-                    [11, 12, 13, 14, 15]]
+        expected = np.array([[1, 2, 3, 4, 5],
+                             [6, 7, 8, 9, 10],
+                             [11, 12, 13, 14, 15]], dtype=np.int64)
         tm.assert_almost_equal(df.values, expected)
         tm.assert_almost_equal(df.values, df2.values)
 
-        self.assert_numpy_array_equal(df_pref.columns,
-                                      ['X0', 'X1', 'X2', 'X3', 'X4'])
-        self.assert_numpy_array_equal(df.columns, lrange(5))
+        self.assert_index_equal(df_pref.columns,
+                                Index(['X0', 'X1', 'X2', 'X3', 'X4']))
+        self.assert_index_equal(df.columns, Index(lrange(5)))
 
-        self.assert_numpy_array_equal(df2.columns, names)
+        self.assert_index_equal(df2.columns, Index(names))

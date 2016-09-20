@@ -12,9 +12,10 @@ import numpy as np
 
 import pandas as pd
 import pandas.util.testing as tm
-from pandas import DataFrame, Series, Index, MultiIndex
+from pandas import DataFrame, Series, Index, MultiIndex, Categorical
 from pandas import compat
 from pandas.compat import StringIO, range, lrange
+from pandas.types.dtypes import CategoricalDtype
 
 
 class CParserTests(object):
@@ -60,12 +61,6 @@ class CParserTests(object):
         expected = DataFrame([[1, 2, 3], [4, 5, 6], [7, 8, 9]],
                              columns=['a', 'b', 'c'])
         tm.assert_frame_equal(df, expected)
-
-    def test_parse_dates_empty_string(self):
-        # see gh-2263
-        s = StringIO("Date, test\n2012-01-01, 1\n,2")
-        result = self.read_csv(s, parse_dates=["Date"], na_filter=False)
-        self.assertTrue(result['Date'].isnull()[1])
 
     def test_dtype_and_names_error(self):
         # see gh-8833: passing both dtype and names
@@ -141,6 +136,11 @@ nan 2
                               dtype={'A': 'timedelta64', 'B': 'float64'},
                               index_col=0)
 
+            # valid but unsupported - fixed width unicode string
+            self.assertRaises(TypeError, self.read_csv, path,
+                              dtype={'A': 'U8'},
+                              index_col=0)
+
         # see gh-12048: empty frame
         actual = self.read_csv(StringIO('A,B'), dtype=str)
         expected = DataFrame({'A': [], 'B': []}, index=[], dtype=str)
@@ -178,46 +178,6 @@ nan 2
         self.assertTrue(sum(precise_errors) <= sum(normal_errors))
         self.assertTrue(max(precise_errors) <= max(normal_errors))
 
-    def test_compact_ints(self):
-        if compat.is_platform_windows() and not self.low_memory:
-            raise nose.SkipTest(
-                "segfaults on win-64, only when all tests are run")
-
-        data = ('0,1,0,0\n'
-                '1,1,0,0\n'
-                '0,1,0,1')
-
-        result = self.read_csv(StringIO(data), delimiter=',', header=None,
-                               compact_ints=True, as_recarray=True)
-        ex_dtype = np.dtype([(str(i), 'i1') for i in range(4)])
-        self.assertEqual(result.dtype, ex_dtype)
-
-        result = self.read_csv(StringIO(data), delimiter=',', header=None,
-                               as_recarray=True, compact_ints=True,
-                               use_unsigned=True)
-        ex_dtype = np.dtype([(str(i), 'u1') for i in range(4)])
-        self.assertEqual(result.dtype, ex_dtype)
-
-    def test_compact_ints_as_recarray(self):
-        if compat.is_platform_windows() and self.low_memory:
-            raise nose.SkipTest(
-                "segfaults on win-64, only when all tests are run")
-
-        data = ('0,1,0,0\n'
-                '1,1,0,0\n'
-                '0,1,0,1')
-
-        result = self.read_csv(StringIO(data), delimiter=',', header=None,
-                               compact_ints=True, as_recarray=True)
-        ex_dtype = np.dtype([(str(i), 'i1') for i in range(4)])
-        self.assertEqual(result.dtype, ex_dtype)
-
-        result = self.read_csv(StringIO(data), delimiter=',', header=None,
-                               as_recarray=True, compact_ints=True,
-                               use_unsigned=True)
-        ex_dtype = np.dtype([(str(i), 'u1') for i in range(4)])
-        self.assertEqual(result.dtype, ex_dtype)
-
     def test_pass_dtype(self):
         data = """\
 one,two
@@ -229,6 +189,92 @@ one,two
         result = self.read_csv(StringIO(data), dtype={'one': 'u1', 1: 'S1'})
         self.assertEqual(result['one'].dtype, 'u1')
         self.assertEqual(result['two'].dtype, 'object')
+
+    def test_categorical_dtype(self):
+        # GH 10153
+        data = """a,b,c
+1,a,3.4
+1,a,3.4
+2,b,4.5"""
+        expected = pd.DataFrame({'a': Categorical(['1', '1', '2']),
+                                 'b': Categorical(['a', 'a', 'b']),
+                                 'c': Categorical(['3.4', '3.4', '4.5'])})
+        actual = self.read_csv(StringIO(data), dtype='category')
+        tm.assert_frame_equal(actual, expected)
+
+        actual = self.read_csv(StringIO(data), dtype=CategoricalDtype())
+        tm.assert_frame_equal(actual, expected)
+
+        actual = self.read_csv(StringIO(data), dtype={'a': 'category',
+                                                      'b': 'category',
+                                                      'c': CategoricalDtype()})
+        tm.assert_frame_equal(actual, expected)
+
+        actual = self.read_csv(StringIO(data), dtype={'b': 'category'})
+        expected = pd.DataFrame({'a': [1, 1, 2],
+                                 'b': Categorical(['a', 'a', 'b']),
+                                 'c': [3.4, 3.4, 4.5]})
+        tm.assert_frame_equal(actual, expected)
+
+        actual = self.read_csv(StringIO(data), dtype={1: 'category'})
+        tm.assert_frame_equal(actual, expected)
+
+        # unsorted
+        data = """a,b,c
+1,b,3.4
+1,b,3.4
+2,a,4.5"""
+        expected = pd.DataFrame({'a': Categorical(['1', '1', '2']),
+                                 'b': Categorical(['b', 'b', 'a']),
+                                 'c': Categorical(['3.4', '3.4', '4.5'])})
+        actual = self.read_csv(StringIO(data), dtype='category')
+        tm.assert_frame_equal(actual, expected)
+
+        # missing
+        data = """a,b,c
+1,b,3.4
+1,nan,3.4
+2,a,4.5"""
+        expected = pd.DataFrame({'a': Categorical(['1', '1', '2']),
+                                 'b': Categorical(['b', np.nan, 'a']),
+                                 'c': Categorical(['3.4', '3.4', '4.5'])})
+        actual = self.read_csv(StringIO(data), dtype='category')
+        tm.assert_frame_equal(actual, expected)
+
+    def test_categorical_dtype_encoding(self):
+        # GH 10153
+        pth = tm.get_data_path('unicode_series.csv')
+        encoding = 'latin-1'
+        expected = self.read_csv(pth, header=None, encoding=encoding)
+        expected[1] = Categorical(expected[1])
+        actual = self.read_csv(pth, header=None, encoding=encoding,
+                               dtype={1: 'category'})
+        tm.assert_frame_equal(actual, expected)
+
+        pth = tm.get_data_path('utf16_ex.txt')
+        encoding = 'utf-16'
+        expected = self.read_table(pth, encoding=encoding)
+        expected = expected.apply(Categorical)
+        actual = self.read_table(pth, encoding=encoding, dtype='category')
+        tm.assert_frame_equal(actual, expected)
+
+    def test_categorical_dtype_chunksize(self):
+        # GH 10153
+        data = """a,b
+1,a
+1,b
+1,b
+2,c"""
+        expecteds = [pd.DataFrame({'a': [1, 1],
+                                   'b': Categorical(['a', 'b'])}),
+                     pd.DataFrame({'a': [1, 2],
+                                   'b': Categorical(['b', 'c'])},
+                                  index=[2, 3])]
+        actuals = self.read_csv(StringIO(data), dtype={'b': 'category'},
+                                chunksize=2)
+
+        for actual, expected in zip(actuals, expecteds):
+            tm.assert_frame_equal(actual, expected)
 
     def test_pass_dtype_as_recarray(self):
         if compat.is_platform_windows() and self.low_memory:
@@ -242,10 +288,12 @@ one,two
 3,4.5
 4,5.5"""
 
-        result = self.read_csv(StringIO(data), dtype={'one': 'u1', 1: 'S1'},
-                               as_recarray=True)
-        self.assertEqual(result['one'].dtype, 'u1')
-        self.assertEqual(result['two'].dtype, 'S1')
+        with tm.assert_produces_warning(
+                FutureWarning, check_stacklevel=False):
+            result = self.read_csv(StringIO(data), dtype={
+                'one': 'u1', 1: 'S1'}, as_recarray=True)
+            self.assertEqual(result['one'].dtype, 'u1')
+            self.assertEqual(result['two'].dtype, 'S1')
 
     def test_empty_pass_dtype(self):
         data = 'one,two'
@@ -293,23 +341,18 @@ one,two
             {'one': np.empty(0, dtype='u1'), 'one.1': np.empty(0, dtype='f')})
         tm.assert_frame_equal(result, expected, check_index_type=False)
 
-    def test_empty_with_dup_column_pass_dtype_by_names(self):
+    def test_empty_with_dup_column_pass_dtype_by_indexes(self):
+        # see gh-9424
+        expected = pd.concat([Series([], name='one', dtype='u1'),
+                              Series([], name='one.1', dtype='f')], axis=1)
+
         data = 'one,one'
-        result = self.read_csv(
-            StringIO(data), mangle_dupe_cols=False, dtype={'one': 'u1'})
-        expected = pd.concat([Series([], name='one', dtype='u1')] * 2, axis=1)
+        result = self.read_csv(StringIO(data), dtype={0: 'u1', 1: 'f'})
         tm.assert_frame_equal(result, expected, check_index_type=False)
 
-    def test_empty_with_dup_column_pass_dtype_by_indexes(self):
-        # FIXME in gh-9424
-        raise nose.SkipTest(
-            "gh-9424; known failure read_csv with duplicate columns")
-
-        data = 'one,one'
-        result = self.read_csv(
-            StringIO(data), mangle_dupe_cols=False, dtype={0: 'u1', 1: 'f'})
-        expected = pd.concat([Series([], name='one', dtype='u1'),
-                              Series([], name='one', dtype='f')], axis=1)
+        data = ''
+        result = self.read_csv(StringIO(data), names=['one', 'one'],
+                               dtype={0: 'u1', 1: 'f'})
         tm.assert_frame_equal(result, expected, check_index_type=False)
 
     def test_usecols_dtypes(self):
@@ -334,10 +377,6 @@ one,two
         self.assertTrue((result.dtypes == [object, np.int, np.float]).all())
         self.assertTrue((result2.dtypes == [object, np.float]).all())
 
-    def test_memory_map(self):
-        # it works!
-        self.read_csv(self.csv1, memory_map=True)
-
     def test_disable_bool_parsing(self):
         # #2090
 
@@ -352,17 +391,6 @@ No,No,No"""
 
         result = self.read_csv(StringIO(data), dtype=object, na_filter=False)
         self.assertEqual(result['B'][2], '')
-
-    def test_euro_decimal_format(self):
-        data = """Id;Number1;Number2;Text1;Text2;Number3
-1;1521,1541;187101,9543;ABC;poi;4,738797819
-2;121,12;14897,76;DEF;uyt;0,377320872
-3;878,158;108013,434;GHI;rez;2,735694704"""
-
-        df2 = self.read_csv(StringIO(data), sep=';', decimal=',')
-        self.assertEqual(df2['Number1'].dtype, float)
-        self.assertEqual(df2['Number2'].dtype, float)
-        self.assertEqual(df2['Number3'].dtype, float)
 
     def test_custom_lineterminator(self):
         data = 'a,b,c~1,2,3~4,5,6'
@@ -381,15 +409,6 @@ No,No,No"""
         self.assertRaises(ValueError, self.read_csv, StringIO(data),
                           sep=",", skipinitialspace=True,
                           dtype={'DOY': np.int64})
-
-    def test_na_trailing_columns(self):
-        data = """Date,Currenncy,Symbol,Type,Units,UnitPrice,Cost,Tax
-2012-03-14,USD,AAPL,BUY,1000
-2012-05-12,USD,SBUX,SELL,500"""
-
-        result = self.read_csv(StringIO(data))
-        self.assertEqual(result['Date'][1], '2012-05-12')
-        self.assertTrue(result['UnitPrice'].isnull().all())
 
     def test_parse_ragged_csv(self):
         data = """1,2,3
@@ -435,49 +454,6 @@ No,No,No"""
         expected = self.read_csv(StringIO(data.replace('\r', '\n')))
         tm.assert_frame_equal(result, expected)
 
-    def test_raise_on_no_columns(self):
-        # single newline
-        data = "\n"
-        self.assertRaises(ValueError, self.read_csv, StringIO(data))
-
-        # test with more than a single newline
-        data = "\n\n\n"
-        self.assertRaises(ValueError, self.read_csv, StringIO(data))
-
-    def test_1000_sep_with_decimal(self):
-        data = """A|B|C
-1|2,334.01|5
-10|13|10.
-"""
-        expected = DataFrame({
-            'A': [1, 10],
-            'B': [2334.01, 13],
-            'C': [5, 10.]
-        })
-
-        tm.assert_equal(expected.A.dtype, 'int64')
-        tm.assert_equal(expected.B.dtype, 'float')
-        tm.assert_equal(expected.C.dtype, 'float')
-
-        df = self.read_csv(StringIO(data), sep='|', thousands=',', decimal='.')
-        tm.assert_frame_equal(df, expected)
-
-        df = self.read_table(StringIO(data), sep='|',
-                             thousands=',', decimal='.')
-        tm.assert_frame_equal(df, expected)
-
-        data_with_odd_sep = """A|B|C
-1|2.334,01|5
-10|13|10,
-"""
-        df = self.read_csv(StringIO(data_with_odd_sep),
-                           sep='|', thousands='.', decimal=',')
-        tm.assert_frame_equal(df, expected)
-
-        df = self.read_table(StringIO(data_with_odd_sep),
-                             sep='|', thousands='.', decimal=',')
-        tm.assert_frame_equal(df, expected)
-
     def test_grow_boundary_at_cap(self):
         # See gh-12494
         #
@@ -498,24 +474,90 @@ No,No,No"""
         for count in range(1, 101):
             test_empty_header_read(count)
 
-    def test_inf_parsing(self):
-        data = """\
-,A
-a,inf
-b,-inf
-c,Inf
-d,-Inf
-e,INF
-f,-INF
-g,INf
-h,-INf
-i,inF
-j,-inF"""
-        inf = float('inf')
-        expected = Series([inf, -inf] * 5)
+    def test_parse_trim_buffers(self):
+        # This test is part of a bugfix for issue #13703. It attmepts to
+        # to stress the system memory allocator, to cause it to move the
+        # stream buffer and either let the OS reclaim the region, or let
+        # other memory requests of parser otherwise modify the contents
+        # of memory space, where it was formely located.
+        # This test is designed to cause a `segfault` with unpatched
+        # `tokenizer.c`. Sometimes the test fails on `segfault`, other
+        # times it fails due to memory corruption, which causes the
+        # loaded DataFrame to differ from the expected one.
 
-        df = self.read_csv(StringIO(data), index_col=0)
-        tm.assert_almost_equal(df['A'].values, expected.values)
+        # Generate a large mixed-type CSV file on-the-fly (one record is
+        # approx 1.5KiB).
+        record_ = \
+            """9999-9,99:99,,,,ZZ,ZZ,,,ZZZ-ZZZZ,.Z-ZZZZ,-9.99,,,9.99,Z""" \
+            """ZZZZ,,-99,9,ZZZ-ZZZZ,ZZ-ZZZZ,,9.99,ZZZ-ZZZZZ,ZZZ-ZZZZZ,""" \
+            """ZZZ-ZZZZ,ZZZ-ZZZZ,ZZZ-ZZZZ,ZZZ-ZZZZ,ZZZ-ZZZZ,ZZZ-ZZZZ,9""" \
+            """99,ZZZ-ZZZZ,,ZZ-ZZZZ,,,,,ZZZZ,ZZZ-ZZZZZ,ZZZ-ZZZZ,,,9,9,""" \
+            """9,9,99,99,999,999,ZZZZZ,ZZZ-ZZZZZ,ZZZ-ZZZZ,9,ZZ-ZZZZ,9.""" \
+            """99,ZZ-ZZZZ,ZZ-ZZZZ,,,,ZZZZ,,,ZZ,ZZ,,,,,,,,,,,,,9,,,999.""" \
+            """99,999.99,,,ZZZZZ,,,Z9,,,,,,,ZZZ,ZZZ,,,,,,,,,,,ZZZZZ,ZZ""" \
+            """ZZZ,ZZZ-ZZZZZZ,ZZZ-ZZZZZZ,ZZ-ZZZZ,ZZ-ZZZZ,ZZ-ZZZZ,ZZ-ZZ""" \
+            """ZZ,,,999999,999999,ZZZ,ZZZ,,,ZZZ,ZZZ,999.99,999.99,,,,Z""" \
+            """ZZ-ZZZ,ZZZ-ZZZ,-9.99,-9.99,9,9,,99,,9.99,9.99,9,9,9.99,""" \
+            """9.99,,,,9.99,9.99,,99,,99,9.99,9.99,,,ZZZ,ZZZ,,999.99,,""" \
+            """999.99,ZZZ,ZZZ-ZZZZ,ZZZ-ZZZZ,,,ZZZZZ,ZZZZZ,ZZZ,ZZZ,9,9,""" \
+            """,,,,,ZZZ-ZZZZ,ZZZ999Z,,,999.99,,999.99,ZZZ-ZZZZ,,,9.999""" \
+            """,9.999,9.999,9.999,-9.999,-9.999,-9.999,-9.999,9.999,9.""" \
+            """999,9.999,9.999,9.999,9.999,9.999,9.999,99999,ZZZ-ZZZZ,""" \
+            """,9.99,ZZZ,,,,,,,,ZZZ,,,,,9,,,,9,,,,,,,,,,ZZZ-ZZZZ,ZZZ-Z""" \
+            """ZZZ,,ZZZZZ,ZZZZZ,ZZZZZ,ZZZZZ,,,9.99,,ZZ-ZZZZ,ZZ-ZZZZ,ZZ""" \
+            """,999,,,,ZZ-ZZZZ,ZZZ,ZZZ,ZZZ-ZZZZ,ZZZ-ZZZZ,,,99.99,99.99""" \
+            """,,,9.99,9.99,9.99,9.99,ZZZ-ZZZZ,,,ZZZ-ZZZZZ,,,,,-9.99,-""" \
+            """9.99,-9.99,-9.99,,,,,,,,,ZZZ-ZZZZ,,9,9.99,9.99,99ZZ,,-9""" \
+            """.99,-9.99,ZZZ-ZZZZ,,,,,,,ZZZ-ZZZZ,9.99,9.99,9999,,,,,,,""" \
+            """,,,-9.9,Z/Z-ZZZZ,999.99,9.99,,999.99,ZZ-ZZZZ,ZZ-ZZZZ,9.""" \
+            """99,9.99,9.99,9.99,9.99,9.99,,ZZZ-ZZZZZ,ZZZ-ZZZZZ,ZZZ-ZZ""" \
+            """ZZZ,ZZZ-ZZZZZ,ZZZ-ZZZZZ,ZZZ,ZZZ,ZZZ,ZZZ,9.99,,,-9.99,ZZ""" \
+            """-ZZZZ,-999.99,,-9999,,999.99,,,,999.99,99.99,,,ZZ-ZZZZZ""" \
+            """ZZZ,ZZ-ZZZZ-ZZZZZZZ,,,,ZZ-ZZ-ZZZZZZZZ,ZZZZZZZZ,ZZZ-ZZZZ""" \
+            """,9999,999.99,ZZZ-ZZZZ,-9.99,-9.99,ZZZ-ZZZZ,99:99:99,,99""" \
+            """,99,,9.99,,-99.99,,,,,,9.99,ZZZ-ZZZZ,-9.99,-9.99,9.99,9""" \
+            """.99,,ZZZ,,,,,,,ZZZ,ZZZ,,,,,"""
 
-        df = self.read_csv(StringIO(data), index_col=0, na_filter=False)
-        tm.assert_almost_equal(df['A'].values, expected.values)
+        # Set the number of lines so that a call to `parser_trim_buffers`
+        # is triggered: after a couple of full chunks are consumed a
+        # relatively small 'residual' chunk would cause reallocation
+        # within the parser.
+        chunksize, n_lines = 128, 2 * 128 + 15
+        csv_data = "\n".join([record_] * n_lines) + "\n"
+
+        # We will use StringIO to load the CSV from this text buffer.
+        # pd.read_csv() will iterate over the file in chunks and will
+        # finally read a residual chunk of really small size.
+
+        # Generate the expected output: manually create the dataframe
+        # by splitting by comma and repeating the `n_lines` times.
+        row = tuple(val_ if val_ else float("nan")
+                    for val_ in record_.split(","))
+        expected = pd.DataFrame([row for _ in range(n_lines)],
+                                dtype=object, columns=None, index=None)
+
+        # Iterate over the CSV file in chunks of `chunksize` lines
+        chunks_ = self.read_csv(StringIO(csv_data), header=None,
+                                dtype=object, chunksize=chunksize)
+        result = pd.concat(chunks_, axis=0, ignore_index=True)
+
+        # Check for data corruption if there was no segfault
+        tm.assert_frame_equal(result, expected)
+
+    def test_internal_null_byte(self):
+        # see gh-14012
+        #
+        # The null byte ('\x00') should not be used as a
+        # true line terminator, escape character, or comment
+        # character, only as a placeholder to indicate that
+        # none was specified.
+        #
+        # This test should be moved to common.py ONLY when
+        # Python's csv class supports parsing '\x00'.
+        names = ['a', 'b', 'c']
+        data = "1,2,3\n4,\x00,6\n7,8,9"
+        expected = pd.DataFrame([[1, 2.0, 3], [4, np.nan, 6],
+                                 [7, 8, 9]], columns=names)
+
+        result = self.read_csv(StringIO(data), names=names)
+        tm.assert_frame_equal(result, expected)

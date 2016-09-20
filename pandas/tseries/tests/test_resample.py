@@ -11,20 +11,23 @@ import pandas.tseries.offsets as offsets
 import pandas.util.testing as tm
 from pandas import (Series, DataFrame, Panel, Index, isnull,
                     notnull, Timestamp)
+
+from pandas.types.generic import ABCSeries, ABCDataFrame
 from pandas.compat import range, lrange, zip, product, OrderedDict
 from pandas.core.base import SpecificationError
-from pandas.core.common import ABCSeries, ABCDataFrame
+from pandas.core.common import UnsupportedFunctionCall
 from pandas.core.groupby import DataError
 from pandas.tseries.frequencies import MONTHS, DAYS
+from pandas.tseries.frequencies import to_offset
 from pandas.tseries.index import date_range
 from pandas.tseries.offsets import Minute, BDay
 from pandas.tseries.period import period_range, PeriodIndex, Period
 from pandas.tseries.resample import (DatetimeIndex, TimeGrouper,
                                      DatetimeIndexResampler)
-from pandas.tseries.frequencies import to_offset
 from pandas.tseries.tdi import timedelta_range
 from pandas.util.testing import (assert_series_equal, assert_almost_equal,
-                                 assert_frame_equal)
+                                 assert_frame_equal, assert_index_equal)
+from pandas._period import IncompatibleFrequency
 
 bday = BDay()
 
@@ -164,6 +167,13 @@ class TestResampleAPI(tm.TestCase):
             with tm.assert_produces_warning(FutureWarning,
                                             check_stacklevel=False):
                 self.assertIsInstance(getattr(r, op)(2), pd.Series)
+
+        # IPython introspection shouldn't trigger warning GH 13618
+        for op in ['_repr_json', '_repr_latex',
+                   '_ipython_canary_method_should_not_exist_']:
+            r = self.series.resample('H')
+            with tm.assert_produces_warning(None):
+                getattr(r, op, None)
 
         # getitem compat
         df = self.series.to_frame('foo')
@@ -361,18 +371,44 @@ class TestResampleAPI(tm.TestCase):
             result = t.apply(lambda x: x)
             assert_series_equal(result, self.series)
 
+    def test_agg_consistency(self):
+
+        # make sure that we are consistent across
+        # similar aggregations with and w/o selection list
+        df = DataFrame(np.random.randn(1000, 3),
+                       index=pd.date_range('1/1/2012', freq='S', periods=1000),
+                       columns=['A', 'B', 'C'])
+
+        r = df.resample('3T')
+
+        expected = r[['A', 'B', 'C']].agg({'r1': 'mean', 'r2': 'sum'})
+        result = r.agg({'r1': 'mean', 'r2': 'sum'})
+        assert_frame_equal(result, expected)
+
+    # TODO: once GH 14008 is fixed, move these tests into
+    # `Base` test class
     def test_agg(self):
-        # test with both a Resampler and a TimeGrouper
+        # test with all three Resampler apis and TimeGrouper
 
         np.random.seed(1234)
+        index = date_range(datetime(2005, 1, 1),
+                           datetime(2005, 1, 10), freq='D')
+        index.name = 'date'
         df = pd.DataFrame(np.random.rand(10, 2),
                           columns=list('AB'),
-                          index=pd.date_range('2010-01-01 09:00:00',
-                                              periods=10,
-                                              freq='s'))
+                          index=index)
+        df_col = df.reset_index()
+        df_mult = df_col.copy()
+        df_mult.index = pd.MultiIndex.from_arrays([range(10), df.index],
+                                                  names=['index', 'date'])
+        r = df.resample('2D')
+        cases = [
+            r,
+            df_col.resample('2D', on='date'),
+            df_mult.resample('2D', level='date'),
+            df.groupby(pd.Grouper(freq='2D'))
+        ]
 
-        r = df.resample('2s')
-        g = df.groupby(pd.Grouper(freq='2s'))
         a_mean = r['A'].mean()
         a_std = r['A'].std()
         a_sum = r['A'].sum()
@@ -383,12 +419,12 @@ class TestResampleAPI(tm.TestCase):
         expected = pd.concat([a_mean, a_std, b_mean, b_std], axis=1)
         expected.columns = pd.MultiIndex.from_product([['A', 'B'],
                                                        ['mean', 'std']])
-        for t in [r, g]:
+        for t in cases:
             result = t.aggregate([np.mean, np.std])
             assert_frame_equal(result, expected)
 
         expected = pd.concat([a_mean, b_std], axis=1)
-        for t in [r, g]:
+        for t in cases:
             result = t.aggregate({'A': np.mean,
                                   'B': np.std})
             assert_frame_equal(result, expected, check_like=True)
@@ -396,20 +432,20 @@ class TestResampleAPI(tm.TestCase):
         expected = pd.concat([a_mean, a_std], axis=1)
         expected.columns = pd.MultiIndex.from_tuples([('A', 'mean'),
                                                       ('A', 'std')])
-        for t in [r, g]:
+        for t in cases:
             result = t.aggregate({'A': ['mean', 'std']})
             assert_frame_equal(result, expected)
 
         expected = pd.concat([a_mean, a_sum], axis=1)
         expected.columns = ['mean', 'sum']
-        for t in [r, g]:
+        for t in cases:
             result = t['A'].aggregate(['mean', 'sum'])
         assert_frame_equal(result, expected)
 
         expected = pd.concat([a_mean, a_sum], axis=1)
         expected.columns = pd.MultiIndex.from_tuples([('A', 'mean'),
                                                       ('A', 'sum')])
-        for t in [r, g]:
+        for t in cases:
             result = t.aggregate({'A': {'mean': 'mean', 'sum': 'sum'}})
             assert_frame_equal(result, expected, check_like=True)
 
@@ -418,7 +454,7 @@ class TestResampleAPI(tm.TestCase):
                                                       ('A', 'sum'),
                                                       ('B', 'mean2'),
                                                       ('B', 'sum2')])
-        for t in [r, g]:
+        for t in cases:
             result = t.aggregate({'A': {'mean': 'mean', 'sum': 'sum'},
                                   'B': {'mean2': 'mean', 'sum2': 'sum'}})
             assert_frame_equal(result, expected, check_like=True)
@@ -428,7 +464,7 @@ class TestResampleAPI(tm.TestCase):
                                                       ('A', 'std'),
                                                       ('B', 'mean'),
                                                       ('B', 'std')])
-        for t in [r, g]:
+        for t in cases:
             result = t.aggregate({'A': ['mean', 'std'],
                                   'B': ['mean', 'std']})
             assert_frame_equal(result, expected, check_like=True)
@@ -440,20 +476,30 @@ class TestResampleAPI(tm.TestCase):
                                                       ('r2', 'B', 'sum')])
 
     def test_agg_misc(self):
-        # test with both a Resampler and a TimeGrouper
+        # test with all three Resampler apis and TimeGrouper
 
         np.random.seed(1234)
+        index = date_range(datetime(2005, 1, 1),
+                           datetime(2005, 1, 10), freq='D')
+        index.name = 'date'
         df = pd.DataFrame(np.random.rand(10, 2),
                           columns=list('AB'),
-                          index=pd.date_range('2010-01-01 09:00:00',
-                                              periods=10,
-                                              freq='s'))
+                          index=index)
+        df_col = df.reset_index()
+        df_mult = df_col.copy()
+        df_mult.index = pd.MultiIndex.from_arrays([range(10), df.index],
+                                                  names=['index', 'date'])
 
-        r = df.resample('2s')
-        g = df.groupby(pd.Grouper(freq='2s'))
+        r = df.resample('2D')
+        cases = [
+            r,
+            df_col.resample('2D', on='date'),
+            df_mult.resample('2D', level='date'),
+            df.groupby(pd.Grouper(freq='2D'))
+        ]
 
         # passed lambda
-        for t in [r, g]:
+        for t in cases:
             result = t.agg({'A': np.sum,
                             'B': lambda x: np.std(x, ddof=1)})
             rcustom = t['B'].apply(lambda x: np.std(x, ddof=1))
@@ -470,7 +516,7 @@ class TestResampleAPI(tm.TestCase):
                                                       ('result1', 'B'),
                                                       ('result2', 'A'),
                                                       ('result2', 'B')])
-        for t in [r, g]:
+        for t in cases:
             result = t[['A', 'B']].agg(OrderedDict([('result1', np.sum),
                                                     ('result2', np.mean)]))
             assert_frame_equal(result, expected, check_like=True)
@@ -485,19 +531,19 @@ class TestResampleAPI(tm.TestCase):
                                                       ('A', 'std'),
                                                       ('B', 'mean'),
                                                       ('B', 'std')])
-        for t in [r, g]:
+        for t in cases:
             result = t.agg(OrderedDict([('A', ['sum', 'std']),
                                         ('B', ['mean', 'std'])]))
             assert_frame_equal(result, expected, check_like=True)
 
         # equivalent of using a selection list / or not
-        for t in [r, g]:
-            result = g[['A', 'B']].agg({'A': ['sum', 'std'],
+        for t in cases:
+            result = t[['A', 'B']].agg({'A': ['sum', 'std'],
                                         'B': ['mean', 'std']})
             assert_frame_equal(result, expected, check_like=True)
 
         # series like aggs
-        for t in [r, g]:
+        for t in cases:
             result = t['A'].agg({'A': ['sum', 'std']})
             expected = pd.concat([t['A'].sum(),
                                   t['A'].std()],
@@ -518,9 +564,9 @@ class TestResampleAPI(tm.TestCase):
 
         # errors
         # invalid names in the agg specification
-        for t in [r, g]:
+        for t in cases:
             def f():
-                r[['A']].agg({'A': ['sum', 'std'],
+                t[['A']].agg({'A': ['sum', 'std'],
                               'B': ['mean', 'std']})
 
             self.assertRaises(SpecificationError, f)
@@ -528,22 +574,31 @@ class TestResampleAPI(tm.TestCase):
     def test_agg_nested_dicts(self):
 
         np.random.seed(1234)
+        index = date_range(datetime(2005, 1, 1),
+                           datetime(2005, 1, 10), freq='D')
+        index.name = 'date'
         df = pd.DataFrame(np.random.rand(10, 2),
                           columns=list('AB'),
-                          index=pd.date_range('2010-01-01 09:00:00',
-                                              periods=10,
-                                              freq='s'))
+                          index=index)
+        df_col = df.reset_index()
+        df_mult = df_col.copy()
+        df_mult.index = pd.MultiIndex.from_arrays([range(10), df.index],
+                                                  names=['index', 'date'])
+        r = df.resample('2D')
+        cases = [
+            r,
+            df_col.resample('2D', on='date'),
+            df_mult.resample('2D', level='date'),
+            df.groupby(pd.Grouper(freq='2D'))
+        ]
 
-        r = df.resample('2s')
-        g = df.groupby(pd.Grouper(freq='2s'))
-
-        for t in [r, g]:
+        for t in cases:
             def f():
                 t.aggregate({'r1': {'A': ['mean', 'sum']},
                              'r2': {'B': ['mean', 'sum']}})
                 self.assertRaises(ValueError, f)
 
-        for t in [r, g]:
+        for t in cases:
             expected = pd.concat([t['A'].mean(), t['A'].std(), t['B'].mean(),
                                   t['B'].std()], axis=1)
             expected.columns = pd.MultiIndex.from_tuples([('ra', 'mean'), (
@@ -557,19 +612,44 @@ class TestResampleAPI(tm.TestCase):
                             'B': {'rb': ['mean', 'std']}})
             assert_frame_equal(result, expected, check_like=True)
 
-    def test_agg_consistency(self):
+    def test_selection_api_validation(self):
+        # GH 13500
+        index = date_range(datetime(2005, 1, 1),
+                           datetime(2005, 1, 10), freq='D')
+        df = pd.DataFrame({'date': index,
+                           'a': np.arange(len(index), dtype=np.int64)},
+                          index=pd.MultiIndex.from_arrays([
+                              np.arange(len(index), dtype=np.int64),
+                              index], names=['v', 'd']))
+        df_exp = pd.DataFrame({'a': np.arange(len(index), dtype=np.int64)},
+                              index=index)
 
-        # make sure that we are consistent across
-        # similar aggregations with and w/o selection list
-        df = DataFrame(np.random.randn(1000, 3),
-                       index=pd.date_range('1/1/2012', freq='S', periods=1000),
-                       columns=['A', 'B', 'C'])
+        # non DatetimeIndex
+        with tm.assertRaises(TypeError):
+            df.resample('2D', level='v')
 
-        r = df.resample('3T')
+        with tm.assertRaises(ValueError):
+            df.resample('2D', on='date', level='d')
 
-        expected = r[['A', 'B', 'C']].agg({'r1': 'mean', 'r2': 'sum'})
-        result = r.agg({'r1': 'mean', 'r2': 'sum'})
-        assert_frame_equal(result, expected)
+        with tm.assertRaises(TypeError):
+            df.resample('2D', on=['a', 'date'])
+
+        with tm.assertRaises(KeyError):
+            df.resample('2D', level=['a', 'date'])
+
+        # upsampling not allowed
+        with tm.assertRaises(ValueError):
+            df.resample('2D', level='d').asfreq()
+
+        with tm.assertRaises(ValueError):
+            df.resample('2D', on='date').asfreq()
+
+        exp = df_exp.resample('2D').sum()
+        exp.index.name = 'date'
+        assert_frame_equal(exp, df.resample('2D', on='date').sum())
+
+        exp.index.name = 'd'
+        assert_frame_equal(exp, df.resample('2D', level='d').sum())
 
 
 class Base(object):
@@ -577,6 +657,7 @@ class Base(object):
     base class for resampling testing, calling
     .create_series() generates a series of each index type
     """
+
     def create_index(self, *args, **kwargs):
         """ return the _index_factory created using the args, kwargs """
         factory = self._index_factory()
@@ -618,6 +699,75 @@ class Base(object):
         assert_frame_equal(
             df.resample('1T').asfreq().interpolate(),
             df.resample('1T').interpolate())
+
+    def test_raises_on_non_datetimelike_index(self):
+        # this is a non datetimelike index
+        xp = DataFrame()
+        self.assertRaises(TypeError, lambda: xp.resample('A').mean())
+
+    def test_resample_empty_series(self):
+        # GH12771 & GH12868
+
+        s = self.create_series()[:0]
+
+        for freq in ['M', 'D', 'H']:
+            # need to test for ohlc from GH13083
+            methods = [method for method in resample_methods
+                       if method != 'ohlc']
+            for method in methods:
+                result = getattr(s.resample(freq), method)()
+
+                expected = s.copy()
+                expected.index = s.index._shallow_copy(freq=freq)
+                assert_index_equal(result.index, expected.index)
+                self.assertEqual(result.index.freq, expected.index.freq)
+
+                if (method == 'size' and
+                   isinstance(result.index, PeriodIndex) and
+                   freq in ['M', 'D']):
+                    # GH12871 - TODO: name should propagate, but currently
+                    # doesn't on lower / same frequency with PeriodIndex
+                    assert_series_equal(result, expected, check_dtype=False,
+                                        check_names=False)
+                    # this assert will break when fixed
+                    self.assertTrue(result.name is None)
+                else:
+                    assert_series_equal(result, expected, check_dtype=False)
+
+    def test_resample_empty_dataframe(self):
+        # GH13212
+        index = self.create_series().index[:0]
+        f = DataFrame(index=index)
+
+        for freq in ['M', 'D', 'H']:
+            # count retains dimensions too
+            methods = downsample_methods + ['count']
+            for method in methods:
+                result = getattr(f.resample(freq), method)()
+
+                expected = f.copy()
+                expected.index = f.index._shallow_copy(freq=freq)
+                assert_index_equal(result.index, expected.index)
+                self.assertEqual(result.index.freq, expected.index.freq)
+                assert_frame_equal(result, expected, check_dtype=False)
+
+            # test size for GH13212 (currently stays as df)
+
+    def test_resample_empty_dtypes(self):
+
+        # Empty series were sometimes causing a segfault (for the functions
+        # with Cython bounds-checking disabled) or an IndexError.  We just run
+        # them to ensure they no longer do.  (GH #10228)
+        for index in tm.all_timeseries_index_generator(0):
+            for dtype in (np.float, np.int, np.object, 'datetime64[ns]'):
+                for how in downsample_methods + upsample_methods:
+                    empty_series = pd.Series([], index, dtype)
+                    try:
+                        getattr(empty_series.resample('d'), how)()
+                    except DataError:
+                        # Ignore these since some combinations are invalid
+                        # (ex: doing mean with dtype of np.object)
+                        pass
 
 
 class TestDatetimeIndex(Base, tm.TestCase):
@@ -745,6 +895,22 @@ class TestDatetimeIndex(Base, tm.TestCase):
 
                 exc.args += ('how=%s' % arg,)
                 raise
+
+    def test_numpy_compat(self):
+        # see gh-12811
+        s = Series([1, 2, 3, 4, 5], index=date_range(
+            '20130101', periods=5, freq='s'))
+        r = s.resample('2s')
+
+        msg = "numpy operations are not valid with resample"
+
+        for func in ('min', 'max', 'sum', 'prod',
+                     'mean', 'var', 'std'):
+            tm.assertRaisesRegexp(UnsupportedFunctionCall, msg,
+                                  getattr(r, func),
+                                  func, 1, 2, 3)
+            tm.assertRaisesRegexp(UnsupportedFunctionCall, msg,
+                                  getattr(r, func), axis=1)
 
     def test_resample_how_callables(self):
         # GH 7929
@@ -1330,7 +1496,7 @@ class TestDatetimeIndex(Base, tm.TestCase):
         resampled = ts.resample('5min', base=2).mean()
         exp_rng = date_range('12/31/1999 23:57:00', '1/1/2000 01:57',
                              freq='5min')
-        self.assertTrue(resampled.index.equals(exp_rng))
+        self.assert_index_equal(resampled.index, exp_rng)
 
     def test_resample_base_with_timedeltaindex(self):
 
@@ -1344,8 +1510,8 @@ class TestDatetimeIndex(Base, tm.TestCase):
         exp_without_base = timedelta_range(start='0s', end='25s', freq='2s')
         exp_with_base = timedelta_range(start='5s', end='29s', freq='2s')
 
-        self.assertTrue(without_base.index.equals(exp_without_base))
-        self.assertTrue(with_base.index.equals(exp_with_base))
+        self.assert_index_equal(without_base.index, exp_without_base)
+        self.assert_index_equal(with_base.index, exp_with_base)
 
     def test_resample_categorical_data_with_timedeltaindex(self):
         # GH #12169
@@ -1376,7 +1542,7 @@ class TestDatetimeIndex(Base, tm.TestCase):
 
         result = ts.resample('M', kind='period').mean()
         exp_index = period_range('Jan-2000', 'Dec-2000', freq='M')
-        self.assertTrue(result.index.equals(exp_index))
+        self.assert_index_equal(result.index, exp_index)
 
     def test_period_with_agg(self):
 
@@ -1390,39 +1556,6 @@ class TestDatetimeIndex(Base, tm.TestCase):
         expected = s2.to_timestamp().resample('D').mean().to_period()
         result = s2.resample('D').agg(lambda x: x.mean())
         assert_series_equal(result, expected)
-
-    def test_resample_empty(self):
-        ts = _simple_ts('1/1/2000', '2/1/2000')[:0]
-
-        result = ts.resample('A').mean()
-        self.assertEqual(len(result), 0)
-        self.assertEqual(result.index.freqstr, 'A-DEC')
-
-        result = ts.resample('A', kind='period').mean()
-        self.assertEqual(len(result), 0)
-        self.assertEqual(result.index.freqstr, 'A-DEC')
-
-        # this is a non datetimelike index
-        xp = DataFrame()
-        self.assertRaises(TypeError, lambda: xp.resample('A').mean())
-
-        # Empty series were sometimes causing a segfault (for the functions
-        # with Cython bounds-checking disabled) or an IndexError.  We just run
-        # them to ensure they no longer do.  (GH #10228)
-        for index in tm.all_timeseries_index_generator(0):
-            for dtype in (np.float, np.int, np.object, 'datetime64[ns]'):
-                for how in downsample_methods + upsample_methods:
-                    empty_series = pd.Series([], index, dtype)
-                    try:
-                        getattr(empty_series.resample('d'), how)()
-                    except DataError:
-                        # Ignore these since some combinations are invalid
-                        # (ex: doing mean with dtype of np.object)
-                        pass
-
-        # this should also tests nunique
-        # (IOW, use resample_methods)
-        # when GH12886 is closed
 
     def test_resample_segfault(self):
         # GH 8573
@@ -1572,7 +1705,7 @@ class TestDatetimeIndex(Base, tm.TestCase):
 
         result = ts.resample('5t', closed='right', label='left').mean()
         ex_index = date_range('1999-12-31 23:55', periods=4, freq='5t')
-        self.assertTrue(result.index.equals(ex_index))
+        self.assert_index_equal(result.index, ex_index)
 
         len0pts = _simple_pts('2007-01', '2010-05', freq='M')[:0]
         # it works
@@ -1846,6 +1979,66 @@ class TestDatetimeIndex(Base, tm.TestCase):
                                        freq='D', tz='Europe/Paris')),
             'D Frequency')
 
+    def test_resample_with_nat(self):
+        # GH 13020
+        index = DatetimeIndex([pd.NaT,
+                               '1970-01-01 00:00:00',
+                               pd.NaT,
+                               '1970-01-01 00:00:01',
+                               '1970-01-01 00:00:02'])
+        frame = DataFrame([2, 3, 5, 7, 11], index=index)
+
+        index_1s = DatetimeIndex(['1970-01-01 00:00:00',
+                                  '1970-01-01 00:00:01',
+                                  '1970-01-01 00:00:02'])
+        frame_1s = DataFrame([3, 7, 11], index=index_1s)
+        assert_frame_equal(frame.resample('1s').mean(), frame_1s)
+
+        index_2s = DatetimeIndex(['1970-01-01 00:00:00',
+                                  '1970-01-01 00:00:02'])
+        frame_2s = DataFrame([5, 11], index=index_2s)
+        assert_frame_equal(frame.resample('2s').mean(), frame_2s)
+
+        index_3s = DatetimeIndex(['1970-01-01 00:00:00'])
+        frame_3s = DataFrame([7], index=index_3s)
+        assert_frame_equal(frame.resample('3s').mean(), frame_3s)
+
+        assert_frame_equal(frame.resample('60s').mean(), frame_3s)
+
+    def test_resample_timedelta_values(self):
+        # GH 13119
+        # check that timedelta dtype is preserved when NaT values are
+        # introduced by the resampling
+
+        times = timedelta_range('1 day', '4 day', freq='4D')
+        df = DataFrame({'time': times}, index=times)
+
+        times2 = timedelta_range('1 day', '4 day', freq='2D')
+        exp = Series(times2, index=times2, name='time')
+        exp.iloc[1] = pd.NaT
+
+        res = df.resample('2D').first()['time']
+        tm.assert_series_equal(res, exp)
+        res = df['time'].resample('2D').first()
+        tm.assert_series_equal(res, exp)
+
+    def test_resample_datetime_values(self):
+        # GH 13119
+        # check that datetime dtype is preserved when NaT values are
+        # introduced by the resampling
+
+        dates = [datetime(2016, 1, 15), datetime(2016, 1, 19)]
+        df = DataFrame({'timestamp': dates}, index=dates)
+
+        exp = Series([datetime(2016, 1, 15), pd.NaT, datetime(2016, 1, 19)],
+                     index=date_range('2016-01-15', periods=3, freq='2D'),
+                     name='timestamp')
+
+        res = df.resample('2D').first()['timestamp']
+        tm.assert_series_equal(res, exp)
+        res = df['timestamp'].resample('2D').first()
+        tm.assert_series_equal(res, exp)
+
 
 class TestPeriodIndex(Base, tm.TestCase):
     _multiprocess_can_split_ = True
@@ -1902,6 +2095,22 @@ class TestPeriodIndex(Base, tm.TestCase):
         expected = frame.to_timestamp().reindex(new_index).to_period()
         result = frame.resample('1H').asfreq()
         assert_frame_equal(result, expected)
+
+    def test_selection(self):
+        index = self.create_series().index
+        # This is a bug, these should be implemented
+        # GH 14008
+        df = pd.DataFrame({'date': index,
+                           'a': np.arange(len(index), dtype=np.int64)},
+                          index=pd.MultiIndex.from_arrays([
+                              np.arange(len(index), dtype=np.int64),
+                              index], names=['v', 'd']))
+
+        with tm.assertRaises(NotImplementedError):
+            df.resample('2D', on='date')
+
+        with tm.assertRaises(NotImplementedError):
+            df.resample('2D', level='d')
 
     def test_annual_upsample_D_s_f(self):
         self._check_annual_upsample_cases('D', 'start', 'ffill')
@@ -2042,19 +2251,6 @@ class TestPeriodIndex(Base, tm.TestCase):
         result2 = s.resample('T', kind='period').mean()
         assert_series_equal(result2, expected)
 
-    def test_resample_empty(self):
-
-        # GH12771 & GH12868
-        index = PeriodIndex(start='2000', periods=0, freq='D', name='idx')
-        s = Series(index=index)
-
-        expected_index = PeriodIndex([], name='idx', freq='M')
-        expected = Series(index=expected_index)
-
-        for method in resample_methods:
-            result = getattr(s.resample('M'), method)()
-            assert_series_equal(result, expected)
-
     def test_resample_count(self):
 
         # GH12774
@@ -2077,6 +2273,12 @@ class TestPeriodIndex(Base, tm.TestCase):
         for method in resample_methods:
             result = getattr(series.resample('M'), method)()
             assert_series_equal(result, expected)
+
+    def test_resample_incompat_freq(self):
+
+        with self.assertRaises(IncompatibleFrequency):
+            pd.Series(range(3), index=pd.period_range(
+                start='2000', periods=3, freq='M')).resample('W').mean()
 
     def test_with_local_timezone_pytz(self):
         # GH5430
@@ -2317,7 +2519,7 @@ class TestPeriodIndex(Base, tm.TestCase):
 
         ex_index = date_range(start='1/1/2012 9:30', freq='10min', periods=3)
 
-        self.assertTrue(result.index.equals(ex_index))
+        self.assert_index_equal(result.index, ex_index)
         assert_series_equal(result, exp)
 
     def test_quarterly_resampling(self):
@@ -2439,7 +2641,6 @@ class TestTimedeltaIndex(Base, tm.TestCase):
         return Series(np.arange(len(i)), index=i, name='tdi')
 
     def test_asfreq_bug(self):
-
         import datetime as dt
         df = DataFrame(data=[1, 3],
                        index=[dt.timedelta(), dt.timedelta(minutes=3)])
@@ -2452,7 +2653,6 @@ class TestTimedeltaIndex(Base, tm.TestCase):
 
 
 class TestResamplerGrouper(tm.TestCase):
-
     def setUp(self):
         self.frame = DataFrame({'A': [1] * 20 + [2] * 12 + [3] * 8,
                                 'B': np.arange(40)},
@@ -2519,6 +2719,25 @@ class TestResamplerGrouper(tm.TestCase):
         result = g.resample('2s').mean().B
         assert_series_equal(result, expected)
 
+    def test_getitem_multiple(self):
+
+        # GH 13174
+        # multiple calls after selection causing an issue with aliasing
+        data = [{'id': 1, 'buyer': 'A'}, {'id': 2, 'buyer': 'B'}]
+        df = pd.DataFrame(data, index=pd.date_range('2016-01-01', periods=2))
+        r = df.groupby('id').resample('1D')
+        result = r['buyer'].count()
+        expected = pd.Series([1, 1],
+                             index=pd.MultiIndex.from_tuples(
+                                 [(1, pd.Timestamp('2016-01-01')),
+                                  (2, pd.Timestamp('2016-01-02'))],
+                                 names=['id', None]),
+                             name='buyer')
+        assert_series_equal(result, expected)
+
+        result = r['buyer'].count()
+        assert_series_equal(result, expected)
+
     def test_methods(self):
         g = self.frame.groupby('A')
         r = g.resample('2s')
@@ -2569,12 +2788,34 @@ class TestResamplerGrouper(tm.TestCase):
 
         def f(x):
             return x.resample('2s').sum()
+
         result = r.apply(f)
         assert_frame_equal(result, expected)
 
         def f(x):
             return x.resample('2s').apply(lambda y: y.sum())
+
         result = g.apply(f)
+        assert_frame_equal(result, expected)
+
+    def test_resample_groupby_with_label(self):
+        # GH 13235
+        index = date_range('2000-01-01', freq='2D', periods=5)
+        df = DataFrame(index=index,
+                       data={'col0': [0, 0, 1, 1, 2], 'col1': [1, 1, 1, 1, 1]}
+                       )
+        result = df.groupby('col0').resample('1W', label='left').sum()
+
+        mi = [np.array([0, 0, 1, 2]),
+              pd.to_datetime(np.array(['1999-12-26', '2000-01-02',
+                                       '2000-01-02', '2000-01-02'])
+                             )
+              ]
+        mindex = pd.MultiIndex.from_arrays(mi, names=['col0', None])
+        expected = DataFrame(data={'col0': [0, 0, 2, 2], 'col1': [1, 1, 2, 1]},
+                             index=mindex
+                             )
+
         assert_frame_equal(result, expected)
 
     def test_consistency_with_window(self):
@@ -2647,7 +2888,7 @@ class TestTimeGrouper(tm.TestCase):
 
         # it works!
         result = grouped.apply(f)
-        self.assertTrue(result.index.equals(df.index))
+        self.assert_index_equal(result.index, df.index)
 
     def test_panel_aggregation(self):
         ind = pd.date_range('1/1/2000', periods=100)

@@ -3,6 +3,8 @@ Module that contains many useful utilities
 for validating data or function arguments
 """
 
+from pandas.types.common import is_bool
+
 
 def _check_arg_length(fname, args, max_fname_arg_count, compat_args):
     """
@@ -35,14 +37,21 @@ def _check_for_default_values(fname, arg_val_dict, compat_args):
     checked that arg_val_dict.keys() is a subset of compat_args
 
     """
-    from pandas.core.common import is_bool
-
     for key in arg_val_dict:
         # try checking equality directly with '=' operator,
         # as comparison may have been overriden for the left
         # hand object
         try:
-            match = (arg_val_dict[key] == compat_args[key])
+            v1 = arg_val_dict[key]
+            v2 = compat_args[key]
+
+            # check for None-ness otherwise we could end up
+            # comparing a numpy array vs None
+            if (v1 is not None and v2 is None) or \
+               (v1 is None and v2 is not None):
+                match = False
+            else:
+                match = (v1 == v2)
 
             if not is_bool(match):
                 raise ValueError("'match' is not a boolean")

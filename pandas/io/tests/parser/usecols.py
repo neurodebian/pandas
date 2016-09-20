@@ -5,11 +5,12 @@ Tests the usecols functionality during parsing
 for all of the parsers defined in parsers.py
 """
 
-from datetime import datetime
+import nose
 
+import numpy as np
 import pandas.util.testing as tm
 
-from pandas import DataFrame
+from pandas import DataFrame, Index
 from pandas.lib import Timestamp
 from pandas.compat import StringIO
 
@@ -22,9 +23,8 @@ class UsecolsTests(object):
         1000,2000,3000
         4000,5000,6000
         """
-        msg = ("The elements of \'usecols\' "
-               "must either be all strings "
-               "or all integers")
+        msg = ("The elements of 'usecols' must "
+               "either be all strings, all unicode, or all integers")
         usecols = [0, 'b', 2]
 
         with tm.assertRaisesRegexp(ValueError, msg):
@@ -98,35 +98,31 @@ a,b,c
 
     def test_usecols_index_col_conflict(self):
         # see gh-4201: test that index_col as integer reflects usecols
-        data = """SecId,Time,Price,P2,P3
-10000,2013-5-11,100,10,1
-500,2013-5-12,101,11,1
-"""
-        expected = DataFrame({'Price': [100, 101]}, index=[
-            datetime(2013, 5, 11), datetime(2013, 5, 12)])
-        expected.index.name = 'Time'
+        data = 'a,b,c,d\nA,a,1,one\nB,b,2,two'
+        expected = DataFrame({'c': [1, 2]}, index=Index(
+            ['a', 'b'], name='b'))
 
-        df = self.read_csv(StringIO(data), usecols=[
-            'Time', 'Price'], parse_dates=True, index_col=0)
+        df = self.read_csv(StringIO(data), usecols=['b', 'c'],
+                           index_col=0)
         tm.assert_frame_equal(expected, df)
 
-        df = self.read_csv(StringIO(data), usecols=[
-            'Time', 'Price'], parse_dates=True, index_col='Time')
+        df = self.read_csv(StringIO(data), usecols=['b', 'c'],
+                           index_col='b')
         tm.assert_frame_equal(expected, df)
 
-        df = self.read_csv(StringIO(data), usecols=[
-            1, 2], parse_dates=True, index_col='Time')
+        df = self.read_csv(StringIO(data), usecols=[1, 2],
+                           index_col='b')
         tm.assert_frame_equal(expected, df)
 
-        df = self.read_csv(StringIO(data), usecols=[
-            1, 2], parse_dates=True, index_col=0)
+        df = self.read_csv(StringIO(data), usecols=[1, 2],
+                           index_col=0)
         tm.assert_frame_equal(expected, df)
 
         expected = DataFrame(
-            {'P3': [1, 1], 'Price': (100, 101), 'P2': (10, 11)})
-        expected = expected.set_index(['Price', 'P2'])
-        df = self.read_csv(StringIO(data), usecols=[
-            'Price', 'P2', 'P3'], parse_dates=True, index_col=['Price', 'P2'])
+            {'b': ['a', 'b'], 'c': [1, 2], 'd': ('one', 'two')})
+        expected = expected.set_index(['b', 'c'])
+        df = self.read_csv(StringIO(data), usecols=['b', 'c', 'd'],
+                           index_col=['b', 'c'])
         tm.assert_frame_equal(expected, df)
 
     def test_usecols_implicit_index_col(self):
@@ -254,3 +250,119 @@ a,b,c
                            usecols=[3, 0, 2],
                            parse_dates=parse_dates)
         tm.assert_frame_equal(df, expected)
+
+    def test_usecols_with_unicode_strings(self):
+        # see gh-13219
+
+        s = '''AAA,BBB,CCC,DDD
+        0.056674973,8,True,a
+        2.613230982,2,False,b
+        3.568935038,7,False,a
+        '''
+
+        data = {
+            'AAA': {
+                0: 0.056674972999999997,
+                1: 2.6132309819999997,
+                2: 3.5689350380000002
+            },
+            'BBB': {0: 8, 1: 2, 2: 7}
+        }
+        expected = DataFrame(data)
+
+        df = self.read_csv(StringIO(s), usecols=[u'AAA', u'BBB'])
+        tm.assert_frame_equal(df, expected)
+
+    def test_usecols_with_single_byte_unicode_strings(self):
+        # see gh-13219
+
+        s = '''A,B,C,D
+        0.056674973,8,True,a
+        2.613230982,2,False,b
+        3.568935038,7,False,a
+        '''
+
+        data = {
+            'A': {
+                0: 0.056674972999999997,
+                1: 2.6132309819999997,
+                2: 3.5689350380000002
+            },
+            'B': {0: 8, 1: 2, 2: 7}
+        }
+        expected = DataFrame(data)
+
+        df = self.read_csv(StringIO(s), usecols=[u'A', u'B'])
+        tm.assert_frame_equal(df, expected)
+
+    def test_usecols_with_mixed_encoding_strings(self):
+        s = '''AAA,BBB,CCC,DDD
+        0.056674973,8,True,a
+        2.613230982,2,False,b
+        3.568935038,7,False,a
+        '''
+
+        msg = ("The elements of 'usecols' must "
+               "either be all strings, all unicode, or all integers")
+
+        with tm.assertRaisesRegexp(ValueError, msg):
+            self.read_csv(StringIO(s), usecols=[u'AAA', b'BBB'])
+
+        with tm.assertRaisesRegexp(ValueError, msg):
+            self.read_csv(StringIO(s), usecols=[b'AAA', u'BBB'])
+
+    def test_usecols_with_multibyte_characters(self):
+        s = '''あああ,いい,ううう,ええええ
+        0.056674973,8,True,a
+        2.613230982,2,False,b
+        3.568935038,7,False,a
+        '''
+        data = {
+            'あああ': {
+                0: 0.056674972999999997,
+                1: 2.6132309819999997,
+                2: 3.5689350380000002
+            },
+            'いい': {0: 8, 1: 2, 2: 7}
+        }
+        expected = DataFrame(data)
+
+        df = self.read_csv(StringIO(s), usecols=['あああ', 'いい'])
+        tm.assert_frame_equal(df, expected)
+
+    def test_usecols_with_multibyte_unicode_characters(self):
+        raise nose.SkipTest('TODO: see gh-13253')
+
+        s = '''あああ,いい,ううう,ええええ
+        0.056674973,8,True,a
+        2.613230982,2,False,b
+        3.568935038,7,False,a
+        '''
+        data = {
+            'あああ': {
+                0: 0.056674972999999997,
+                1: 2.6132309819999997,
+                2: 3.5689350380000002
+            },
+            'いい': {0: 8, 1: 2, 2: 7}
+        }
+        expected = DataFrame(data)
+
+        df = self.read_csv(StringIO(s), usecols=[u'あああ', u'いい'])
+        tm.assert_frame_equal(df, expected)
+
+    def test_empty_usecols(self):
+        # should not raise
+        data = 'a,b,c\n1,2,3\n4,5,6'
+        expected = DataFrame()
+        result = self.read_csv(StringIO(data), usecols=set([]))
+        tm.assert_frame_equal(result, expected)
+
+    def test_np_array_usecols(self):
+        # See gh-12546
+        data = 'a,b,c\n1,2,3'
+        usecols = np.array(['a', 'b'])
+
+        expected = DataFrame([[1, 2]], columns=usecols)
+        result = self.read_csv(StringIO(data), usecols=usecols)
+        tm.assert_frame_equal(result, expected)

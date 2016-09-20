@@ -1,6 +1,7 @@
 from datetime import timedelta
 import numpy as np
 import warnings
+import copy
 
 import pandas as pd
 from pandas.core.base import AbstractMethodError, GroupByMixin
@@ -15,9 +16,12 @@ from pandas.tseries.offsets import DateOffset, Tick, Day, _delta_to_nanoseconds
 from pandas.tseries.period import PeriodIndex, period_range
 import pandas.core.common as com
 import pandas.core.algorithms as algos
+
 import pandas.compat as compat
+from pandas.compat.numpy import function as nv
 
 from pandas.lib import Timestamp
+from pandas._period import IncompatibleFrequency
 import pandas.lib as lib
 import pandas.tslib as tslib
 
@@ -56,12 +60,15 @@ class Resampler(_GroupBy):
                    'loffset', 'base', 'kind']
 
     # API compat of allowed attributes
-    _deprecated_valids = _attributes + ['_ipython_display_', '__doc__',
-                                        '_cache', '_attributes', 'binner',
-                                        'grouper', 'groupby', 'keys',
-                                        'sort', 'kind', 'squeeze',
-                                        'group_keys', 'as_index',
-                                        'exclusions', '_groupby']
+    _deprecated_valids = _attributes + ['__doc__', '_cache', '_attributes',
+                                        'binner', 'grouper', 'groupby',
+                                        'sort', 'kind', 'squeeze', 'keys',
+                                        'group_keys', 'as_index', 'exclusions',
+                                        '_groupby']
+
+    # don't raise deprecation warning on attributes starting with these
+    # patterns - prevents warnings caused by IPython introspection
+    _deprecated_valid_patterns = ['_ipython', '_repr']
 
     # API compat of disallowed attributes
     _deprecated_invalids = ['iloc', 'loc', 'ix', 'iat', 'at']
@@ -105,9 +112,21 @@ class Resampler(_GroupBy):
             return 'series'
         return 'dataframe'
 
-    def _deprecated(self):
-        warnings.warn(".resample() is now a deferred operation\n"
-                      "use .resample(...).mean() instead of .resample(...)",
+    @property
+    def _from_selection(self):
+        """ is the resampling from a DataFrame column or MultiIndex level """
+        # upsampling and PeriodIndex resampling do not work
+        # with selection, this state used to catch and raise an error
+        return (self.groupby is not None and
+                (self.groupby.key is not None or
+                 self.groupby.level is not None))
+
+    def _deprecated(self, op):
+        warnings.warn(("\n.resample() is now a deferred operation\n"
+                       "You called {op}(...) on this deferred object "
+                       "which materialized it into a {klass}\nby implicitly "
+                       "taking the mean.  Use .resample(...).mean() "
+                       "instead").format(op=op, klass=self._typ),
                       FutureWarning, stacklevel=3)
         return self.mean()
 
@@ -115,20 +134,20 @@ class Resampler(_GroupBy):
         # op is a string
 
         def _evaluate_numeric_binop(self, other):
-            result = self._deprecated()
+            result = self._deprecated(op)
             return getattr(result, op)(other)
         return _evaluate_numeric_binop
 
-    def _make_deprecated_unary(op):
+    def _make_deprecated_unary(op, name):
         # op is a callable
 
         def _evaluate_numeric_unary(self):
-            result = self._deprecated()
+            result = self._deprecated(name)
             return op(result)
         return _evaluate_numeric_unary
 
     def __array__(self):
-        return self._deprecated().__array__()
+        return self._deprecated('__array__').__array__()
 
     __gt__ = _make_deprecated_binop('__gt__')
     __ge__ = _make_deprecated_binop('__ge__')
@@ -144,10 +163,10 @@ class Resampler(_GroupBy):
     __truediv__ = __rtruediv__ = _make_deprecated_binop('__truediv__')
     if not compat.PY3:
         __div__ = __rdiv__ = _make_deprecated_binop('__div__')
-    __neg__ = _make_deprecated_unary(lambda x: -x)
-    __pos__ = _make_deprecated_unary(lambda x: x)
-    __abs__ = _make_deprecated_unary(lambda x: np.abs(x))
-    __inv__ = _make_deprecated_unary(lambda x: -x)
+    __neg__ = _make_deprecated_unary(lambda x: -x, '__neg__')
+    __pos__ = _make_deprecated_unary(lambda x: x, '__pos__')
+    __abs__ = _make_deprecated_unary(lambda x: np.abs(x), '__abs__')
+    __inv__ = _make_deprecated_unary(lambda x: -x, '__inv__')
 
     def __getattr__(self, attr):
         if attr in self._internal_names_set:
@@ -161,8 +180,12 @@ class Resampler(_GroupBy):
             raise ValueError(".resample() is now a deferred operation\n"
                              "\tuse .resample(...).mean() instead of "
                              ".resample(...)")
-        if attr not in self._deprecated_valids:
-            self = self._deprecated()
+
+        matches_pattern = any(attr.startswith(x) for x
+                              in self._deprecated_valid_patterns)
+        if not matches_pattern and attr not in self._deprecated_valids:
+            self = self._deprecated(attr)
+
         return object.__getattribute__(self, attr)
 
     def __setattr__(self, attr, value):
@@ -178,7 +201,7 @@ class Resampler(_GroupBy):
 
             # compat for deprecated
             if isinstance(self.obj, com.ABCSeries):
-                return self._deprecated()[key]
+                return self._deprecated('__getitem__')[key]
 
             raise
 
@@ -193,6 +216,10 @@ class Resampler(_GroupBy):
         Parameters
         ----------
         obj : the object to be resampled
+
+        Returns
+        -------
+        obj : converted object
         """
         obj = obj.consolidate()
         return obj
@@ -226,7 +253,7 @@ class Resampler(_GroupBy):
     def plot(self, *args, **kwargs):
         # for compat with prior versions, we want to
         # have the warnings shown here and just have this work
-        return self._deprecated().plot(*args, **kwargs)
+        return self._deprecated('plot').plot(*args, **kwargs)
 
     def aggregate(self, arg, *args, **kwargs):
         """
@@ -479,7 +506,7 @@ class Resampler(_GroupBy):
         """
         return self._upsample('asfreq')
 
-    def std(self, ddof=1):
+    def std(self, ddof=1, *args, **kwargs):
         """
         Compute standard deviation of groups, excluding missing values
 
@@ -488,9 +515,10 @@ class Resampler(_GroupBy):
         ddof : integer, default 1
         degrees of freedom
         """
+        nv.validate_resampler_func('std', args, kwargs)
         return self._downsample('std', ddof=ddof)
 
-    def var(self, ddof=1):
+    def var(self, ddof=1, *args, **kwargs):
         """
         Compute variance of groups, excluding missing values
 
@@ -499,6 +527,7 @@ class Resampler(_GroupBy):
         ddof : integer, default 1
         degrees of freedom
         """
+        nv.validate_resampler_func('var', args, kwargs)
         return self._downsample('var', ddof=ddof)
 Resampler._deprecated_valids += dir(Resampler)
 
@@ -506,7 +535,8 @@ Resampler._deprecated_valids += dir(Resampler)
 for method in ['min', 'max', 'first', 'last', 'sum', 'mean', 'sem',
                'median', 'prod', 'ohlc']:
 
-    def f(self, _method=method):
+    def f(self, _method=method, *args, **kwargs):
+        nv.validate_resampler_func(_method, args, kwargs)
         return self._downsample(_method)
     f.__doc__ = getattr(GroupBy, method).__doc__
     setattr(Resampler, method, f)
@@ -592,7 +622,7 @@ class _GroupByMixin(GroupByMixin):
         self._groupby = groupby
         self._groupby.mutated = True
         self._groupby.grouper.mutated = True
-        self.groupby = parent.groupby
+        self.groupby = copy.copy(parent.groupby)
 
     def _apply(self, f, **kwargs):
         """
@@ -689,6 +719,11 @@ class DatetimeIndexResampler(Resampler):
         self._set_binner()
         if self.axis:
             raise AssertionError('axis must be 0')
+        if self._from_selection:
+            raise ValueError("Upsampling from level= or on= selection"
+                             " is not supported, use .set_index(...)"
+                             " to explicitly set index to"
+                             " datetime-like")
 
         ax = self.ax
         obj = self._selected_obj
@@ -746,7 +781,15 @@ class PeriodIndexResampler(DatetimeIndexResampler):
 
         # convert to timestamp
         if not (self.kind is None or self.kind == 'period'):
-            obj = obj.to_timestamp(how=self.convention)
+            if self._from_selection:
+                # see GH 14008, GH 12871
+                msg = ("Resampling from level= or on= selection"
+                       " with a PeriodIndex is not currently supported,"
+                       " use .set_index(...) to explicitly set index")
+                raise NotImplementedError(msg)
+            else:
+                obj = obj.to_timestamp(how=self.convention)
+
         return obj
 
     def aggregate(self, arg, *args, **kwargs):
@@ -767,7 +810,7 @@ class PeriodIndexResampler(DatetimeIndexResampler):
         else:
             start = ax[0].asfreq(self.freq, how=self.convention)
             end = ax[-1].asfreq(self.freq, how='end')
-            values = period_range(start, end, freq=self.freq).values
+            values = period_range(start, end, freq=self.freq).asi8
 
         return ax._shallow_copy(values, freq=self.freq)
 
@@ -789,16 +832,18 @@ class PeriodIndexResampler(DatetimeIndexResampler):
         ax = self.ax
 
         new_index = self._get_new_index()
-        if len(new_index) == 0:
-            return self._wrap_result(self._selected_obj.reindex(new_index))
 
         # Start vs. end of period
         memb = ax.asfreq(self.freq, how=self.convention)
 
         if is_subperiod(ax.freq, self.freq):
             # Downsampling
-            rng = np.arange(memb.values[0], memb.values[-1] + 1)
-            bins = memb.searchsorted(rng, side='right')
+            if len(new_index) == 0:
+                bins = []
+            else:
+                i8 = memb.asi8
+                rng = np.arange(i8[0], i8[-1] + 1)
+                bins = memb.searchsorted(rng, side='right')
             grouper = BinGrouper(bins, new_index)
             return self._groupby_and_aggregate(how, grouper=grouper)
         elif is_superperiod(ax.freq, self.freq):
@@ -806,10 +851,9 @@ class PeriodIndexResampler(DatetimeIndexResampler):
         elif ax.freq == self.freq:
             return self.asfreq()
 
-        raise ValueError('Frequency {axfreq} cannot be '
-                         'resampled to {freq}'.format(
-                             axfreq=ax.freq,
-                             freq=self.freq))
+        raise IncompatibleFrequency(
+            'Frequency {} cannot be resampled to {}, as they are not '
+            'sub or super periods'.format(ax.freq, self.freq))
 
     def _upsample(self, method, limit=None):
         """
@@ -823,6 +867,11 @@ class PeriodIndexResampler(DatetimeIndexResampler):
         .fillna
 
         """
+        if self._from_selection:
+            raise ValueError("Upsampling from level= or on= selection"
+                             " is not supported, use .set_index(...)"
+                             " to explicitly set index to"
+                             " datetime-like")
         # we may need to actually resample as if we are timestamps
         if self.kind == 'timestamp':
             return super(PeriodIndexResampler, self)._upsample(method,
@@ -831,9 +880,6 @@ class PeriodIndexResampler(DatetimeIndexResampler):
         ax = self.ax
         obj = self.obj
         new_index = self._get_new_index()
-
-        if len(new_index) == 0:
-            return self._wrap_result(self._selected_obj.reindex(new_index))
 
         # Start vs. end of period
         memb = ax.asfreq(self.freq, how=self.convention)
@@ -908,8 +954,7 @@ def get_resampler_for_grouping(groupby, rule, how=None, fill_method=None,
     return _maybe_process_deprecations(r,
                                        how=how,
                                        fill_method=fill_method,
-                                       limit=limit,
-                                       **kwargs)
+                                       limit=limit)
 
 
 class TimeGrouper(Grouper):
@@ -1043,7 +1088,12 @@ class TimeGrouper(Grouper):
         l = []
         for key, group in grouper.get_iterator(self.ax):
             l.extend([key] * len(group))
-        grouper = binner.__class__(l, freq=binner.freq, name=binner.name)
+
+        if isinstance(self.ax, PeriodIndex):
+            grouper = binner.__class__(l, freq=binner.freq, name=binner.name)
+        else:
+            # resampling causes duplicated values, specifying freq is invalid
+            grouper = binner.__class__(l, name=binner.name)
 
         # since we may have had to sort
         # may need to reorder groups here

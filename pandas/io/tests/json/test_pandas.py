@@ -1,4 +1,5 @@
 # pylint: disable-msg=W0612,E1101
+import nose
 from pandas.compat import range, lrange, StringIO, OrderedDict
 import os
 
@@ -87,7 +88,7 @@ class TestPandasContainer(tm.TestCase):
                                          orient='index'))
         df_unser = read_json(df.to_json(orient='records'), orient='records')
         assert_index_equal(df.columns, df_unser.columns)
-        np.testing.assert_equal(df.values, df_unser.values)
+        tm.assert_numpy_array_equal(df.values, df_unser.values)
 
     def test_frame_non_unique_index(self):
         df = DataFrame([['a', 'b'], ['c', 'd']], index=[1, 1],
@@ -99,10 +100,10 @@ class TestPandasContainer(tm.TestCase):
         assert_frame_equal(df, read_json(df.to_json(orient='split'),
                                          orient='split'))
         unser = read_json(df.to_json(orient='records'), orient='records')
-        self.assertTrue(df.columns.equals(unser.columns))
-        np.testing.assert_equal(df.values, unser.values)
+        self.assert_index_equal(df.columns, unser.columns)
+        tm.assert_almost_equal(df.values, unser.values)
         unser = read_json(df.to_json(orient='values'), orient='values')
-        np.testing.assert_equal(df.values, unser.values)
+        tm.assert_numpy_array_equal(df.values, unser.values)
 
     def test_frame_non_unique_columns(self):
         df = DataFrame([['a', 'b'], ['c', 'd']], index=[1, 2],
@@ -115,7 +116,7 @@ class TestPandasContainer(tm.TestCase):
         assert_frame_equal(df, read_json(df.to_json(orient='split'),
                                          orient='split', dtype=False))
         unser = read_json(df.to_json(orient='values'), orient='values')
-        np.testing.assert_equal(df.values, unser.values)
+        tm.assert_numpy_array_equal(df.values, unser.values)
 
         # GH4377; duplicate columns not processing correctly
         df = DataFrame([['a', 'b'], ['c', 'd']], index=[
@@ -139,7 +140,7 @@ class TestPandasContainer(tm.TestCase):
         def _check_orient(df, orient, dtype=None, numpy=False,
                           convert_axes=True, check_dtype=True, raise_ok=None,
                           sort=None, check_index_type=True,
-                          check_column_type=True):
+                          check_column_type=True, check_numpy_dtype=False):
             if sort is not None:
                 df = df.sort_values(sort)
             else:
@@ -181,14 +182,17 @@ class TestPandasContainer(tm.TestCase):
                     unser.index.values.astype('i8') * 1e6)
             if orient == "records":
                 # index is not captured in this orientation
-                assert_almost_equal(df.values, unser.values)
-                self.assertTrue(df.columns.equals(unser.columns))
+                assert_almost_equal(df.values, unser.values,
+                                    check_dtype=check_numpy_dtype)
+                self.assert_index_equal(df.columns, unser.columns,
+                                        exact=check_column_type)
             elif orient == "values":
                 # index and cols are not captured in this orientation
                 if numpy is True and df.shape == (0, 0):
                     assert unser.shape[0] == 0
                 else:
-                    assert_almost_equal(df.values, unser.values)
+                    assert_almost_equal(df.values, unser.values,
+                                        check_dtype=check_numpy_dtype)
             elif orient == "split":
                 # index and col labels might not be strings
                 unser.index = [str(i) for i in unser.index]
@@ -196,7 +200,8 @@ class TestPandasContainer(tm.TestCase):
 
                 if sort is None:
                     unser = unser.sort_index()
-                assert_almost_equal(df.values, unser.values)
+                assert_almost_equal(df.values, unser.values,
+                                    check_dtype=check_numpy_dtype)
             else:
                 if convert_axes:
                     assert_frame_equal(df, unser, check_dtype=check_dtype,
@@ -299,12 +304,10 @@ class TestPandasContainer(tm.TestCase):
 
         # mixed data
         index = pd.Index(['a', 'b', 'c', 'd', 'e'])
-        data = {
-            'A': [0., 1., 2., 3., 4.],
-            'B': [0., 1., 0., 1., 0.],
-            'C': ['foo1', 'foo2', 'foo3', 'foo4', 'foo5'],
-            'D': [True, False, True, False, True]
-        }
+        data = {'A': [0., 1., 2., 3., 4.],
+                'B': [0., 1., 0., 1., 0.],
+                'C': ['foo1', 'foo2', 'foo3', 'foo4', 'foo5'],
+                'D': [True, False, True, False, True]}
         df = DataFrame(data=data, index=index)
         _check_orient(df, "split", check_dtype=False)
         _check_orient(df, "records", check_dtype=False)
@@ -484,7 +487,7 @@ class TestPandasContainer(tm.TestCase):
                                          orient='split', typ='series'))
         unser = read_json(s.to_json(orient='records'),
                           orient='records', typ='series')
-        np.testing.assert_equal(s.values, unser.values)
+        tm.assert_numpy_array_equal(s.values, unser.values)
 
     def test_series_from_json_to_json(self):
 
@@ -905,17 +908,17 @@ DataFrame\\.index values are different \\(100\\.0 %\\)
 
         ts = Timestamp('2013-01-10 05:00:00Z')
         self.assertEqual(exp, pd.json.dumps(ts, iso_dates=True))
-        dt = ts.to_datetime()
+        dt = ts.to_pydatetime()
         self.assertEqual(exp, pd.json.dumps(dt, iso_dates=True))
 
         ts = Timestamp('2013-01-10 00:00:00', tz='US/Eastern')
         self.assertEqual(exp, pd.json.dumps(ts, iso_dates=True))
-        dt = ts.to_datetime()
+        dt = ts.to_pydatetime()
         self.assertEqual(exp, pd.json.dumps(dt, iso_dates=True))
 
         ts = Timestamp('2013-01-10 00:00:00-0500')
         self.assertEqual(exp, pd.json.dumps(ts, iso_dates=True))
-        dt = ts.to_datetime()
+        dt = ts.to_pydatetime()
         self.assertEqual(exp, pd.json.dumps(dt, iso_dates=True))
 
     def test_tz_range_is_utc(self):
@@ -946,8 +949,63 @@ DataFrame\\.index values are different \\(100\\.0 %\\)
         df = DataFrame({'DT': dti})
         self.assertEqual(dfexp, pd.json.dumps(df, iso_dates=True))
 
+    def test_read_jsonl(self):
+        # GH9180
+        result = read_json('{"a": 1, "b": 2}\n{"b":2, "a" :1}\n', lines=True)
+        expected = DataFrame([[1, 2], [1, 2]], columns=['a', 'b'])
+        assert_frame_equal(result, expected)
+
+    def test_to_jsonl(self):
+        # GH9180
+        df = DataFrame([[1, 2], [1, 2]], columns=['a', 'b'])
+        result = df.to_json(orient="records", lines=True)
+        expected = '{"a":1,"b":2}\n{"a":1,"b":2}'
+        self.assertEqual(result, expected)
+
+    def test_latin_encoding(self):
+        if compat.PY2:
+            self.assertRaisesRegexp(
+                TypeError, '\[unicode\] is not implemented as a table column')
+            return
+
+        # GH 13774
+        raise nose.SkipTest("encoding not implemented in .to_json(), "
+                            "xref #13774")
+
+        values = [[b'E\xc9, 17', b'', b'a', b'b', b'c'],
+                  [b'E\xc9, 17', b'a', b'b', b'c'],
+                  [b'EE, 17', b'', b'a', b'b', b'c'],
+                  [b'E\xc9, 17', b'\xf8\xfc', b'a', b'b', b'c'],
+                  [b'', b'a', b'b', b'c'],
+                  [b'\xf8\xfc', b'a', b'b', b'c'],
+                  [b'A\xf8\xfc', b'', b'a', b'b', b'c'],
+                  [np.nan, b'', b'b', b'c'],
+                  [b'A\xf8\xfc', np.nan, b'', b'b', b'c']]
+
+        def _try_decode(x, encoding='latin-1'):
+            try:
+                return x.decode(encoding)
+            except AttributeError:
+                return x
+
+        # not sure how to remove latin-1 from code in python 2 and 3
+        values = [[_try_decode(x) for x in y] for y in values]
+
+        examples = []
+        for dtype in ['category', object]:
+            for val in values:
+                examples.append(Series(val, dtype=dtype))
+
+        def roundtrip(s, encoding='latin-1'):
+            with ensure_clean('test.json') as path:
+                s.to_json(path, encoding=encoding)
+                retr = read_json(path, encoding=encoding)
+                assert_series_equal(s, retr, check_categorical=False)
+
+        for s in examples:
+            roundtrip(s)
+
 
 if __name__ == '__main__':
-    import nose
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb',
                          '--pdb-failure', '-s'], exit=False)

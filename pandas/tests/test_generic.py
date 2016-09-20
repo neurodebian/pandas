@@ -7,12 +7,12 @@ import numpy as np
 from numpy import nan
 import pandas as pd
 
+from pandas.types.common import is_scalar
 from pandas import (Index, Series, DataFrame, Panel, isnull,
                     date_range, period_range, Panel4D)
 from pandas.core.index import MultiIndex
 
 import pandas.formats.printing as printing
-import pandas.lib as lib
 
 from pandas.compat import range, zip, PY3
 from pandas import compat
@@ -21,8 +21,7 @@ from pandas.util.testing import (assertRaisesRegexp,
                                  assert_frame_equal,
                                  assert_panel_equal,
                                  assert_panel4d_equal,
-                                 assert_almost_equal,
-                                 assert_equal)
+                                 assert_almost_equal)
 
 import pandas.util.testing as tm
 
@@ -54,7 +53,7 @@ class Generic(object):
         if isinstance(shape, int):
             shape = tuple([shape] * self._ndim)
         if value is not None:
-            if lib.isscalar(value):
+            if is_scalar(value):
                 if value == 'empty':
                     arr = None
 
@@ -415,6 +414,14 @@ class Generic(object):
                 o.sample(frac=0.7, random_state=np.random.RandomState(test)),
                 o.sample(frac=0.7, random_state=np.random.RandomState(test)))
 
+            os1, os2 = [], []
+            for _ in range(2):
+                np.random.seed(test)
+                os1.append(o.sample(n=4))
+                os2.append(o.sample(frac=0.7))
+            self._compare(*os1)
+            self._compare(*os2)
+
         # Check for error when random_state argument invalid.
         with tm.assertRaises(ValueError):
             o.sample(random_state='astring!')
@@ -594,6 +601,23 @@ class Generic(object):
             assertRaisesRegexp(ValueError, msg, obj.clip,
                                lower=lower, upper=upper,
                                axis=bad_axis)
+
+    def test_truncate_out_of_bounds(self):
+        # GH11382
+
+        # small
+        shape = [int(2e3)] + ([1] * (self._ndim - 1))
+        small = self._construct(shape, dtype='int8')
+        self._compare(small.truncate(), small)
+        self._compare(small.truncate(before=0, after=3e3), small)
+        self._compare(small.truncate(before=-1, after=2e3), small)
+
+        # big
+        shape = [int(2e6)] + ([1] * (self._ndim - 1))
+        big = self._construct(shape, dtype='int8')
+        self._compare(big.truncate(), big)
+        self._compare(big.truncate(before=0, after=3e6), big)
+        self._compare(big.truncate(before=-1, after=2e6), big)
 
     def test_numpy_clip(self):
         lower = 1
@@ -822,7 +846,7 @@ class TestSeries(tm.TestCase, Generic):
         assert_almost_equal(list(result.coords.keys()), ['foo'])
         self.assertIsInstance(result, DataArray)
 
-        def testit(index, check_index_type=True):
+        def testit(index, check_index_type=True, check_categorical=True):
             s = Series(range(6), index=index(6))
             s.index.name = 'foo'
             result = s.to_xarray()
@@ -834,7 +858,8 @@ class TestSeries(tm.TestCase, Generic):
 
             # idempotency
             assert_series_equal(result.to_series(), s,
-                                check_index_type=check_index_type)
+                                check_index_type=check_index_type,
+                                check_categorical=check_categorical)
 
         for index in [tm.makeFloatIndex, tm.makeIntIndex,
                       tm.makeStringIndex, tm.makeUnicodeIndex,
@@ -843,7 +868,8 @@ class TestSeries(tm.TestCase, Generic):
             testit(index)
 
         # not idempotent
-        testit(tm.makeCategoricalIndex, check_index_type=False)
+        testit(tm.makeCategoricalIndex, check_index_type=False,
+               check_categorical=False)
 
         s = Series(range(6))
         s.index.name = 'foo'
@@ -970,6 +996,59 @@ class TestDataFrame(tm.TestCase, Generic):
         self.assertTrue('0%' in d1.index)
         self.assertTrue('100%' in d2.index)
 
+    def test_describe_percentiles_unique(self):
+        # GH13104
+        df = tm.makeDataFrame()
+        with self.assertRaises(ValueError):
+            df.describe(percentiles=[0.1, 0.2, 0.4, 0.5, 0.2, 0.6])
+        with self.assertRaises(ValueError):
+            df.describe(percentiles=[0.1, 0.2, 0.4, 0.2, 0.6])
+
+    def test_describe_percentiles_formatting(self):
+        # GH13104
+        df = tm.makeDataFrame()
+
+        # default
+        result = df.describe().index
+        expected = Index(['count', 'mean', 'std', 'min', '25%', '50%', '75%',
+                          'max'],
+                         dtype='object')
+        tm.assert_index_equal(result, expected)
+
+        result = df.describe(percentiles=[0.0001, 0.0005, 0.001, 0.999,
+                                          0.9995, 0.9999]).index
+        expected = Index(['count', 'mean', 'std', 'min', '0.01%', '0.05%',
+                          '0.1%', '50%', '99.9%', '99.95%', '99.99%', 'max'],
+                         dtype='object')
+        tm.assert_index_equal(result, expected)
+
+        result = df.describe(percentiles=[0.00499, 0.005, 0.25, 0.50,
+                                          0.75]).index
+        expected = Index(['count', 'mean', 'std', 'min', '0.499%', '0.5%',
+                          '25%', '50%', '75%', 'max'],
+                         dtype='object')
+        tm.assert_index_equal(result, expected)
+
+        result = df.describe(percentiles=[0.00499, 0.01001, 0.25, 0.50,
+                                          0.75]).index
+        expected = Index(['count', 'mean', 'std', 'min', '0.5%', '1.0%',
+                          '25%', '50%', '75%', 'max'],
+                         dtype='object')
+        tm.assert_index_equal(result, expected)
+
+    def test_describe_column_index_type(self):
+        # GH13288
+        df = pd.DataFrame([1, 2, 3, 4])
+        df.columns = pd.Index([0], dtype=object)
+        result = df.describe().columns
+        expected = Index([0], dtype=object)
+        tm.assert_index_equal(result, expected)
+
+        df = pd.DataFrame({'A': list("BCDE"), 0: [1, 2, 3, 4]})
+        result = df.describe().columns
+        expected = Index([0], dtype=object)
+        tm.assert_index_equal(result, expected)
+
     def test_describe_no_numeric(self):
         df = DataFrame({'A': ['foo', 'foo', 'bar'] * 8,
                         'B': ['a', 'b', 'c', 'd'] * 6})
@@ -983,6 +1062,16 @@ class TestDataFrame(tm.TestCase, Generic):
         df = DataFrame({'time': ts.index})
         desc = df.describe()
         self.assertEqual(desc.time['first'], min(ts.index))
+
+    def test_describe_empty(self):
+        df = DataFrame()
+        tm.assertRaisesRegexp(ValueError, 'DataFrame without columns',
+                              df.describe)
+
+        df = DataFrame(columns=['A', 'B'])
+        result = df.describe()
+        expected = DataFrame(0, columns=['A', 'B'], index=['count', 'unique'])
+        tm.assert_frame_equal(result, expected)
 
     def test_describe_empty_int_columns(self):
         df = DataFrame([[0, 1], [1, 2]])
@@ -1263,7 +1352,7 @@ class TestDataFrame(tm.TestCase, Generic):
 
                 df1 = DataFrame(np.ones(5), index=l0)
                 df1 = getattr(df1, fn)('US/Pacific')
-                self.assertTrue(df1.index.equals(l0_expected))
+                self.assert_index_equal(df1.index, l0_expected)
 
                 # MultiIndex
                 # GH7846
@@ -1271,14 +1360,14 @@ class TestDataFrame(tm.TestCase, Generic):
 
                 df3 = getattr(df2, fn)('US/Pacific', level=0)
                 self.assertFalse(df3.index.levels[0].equals(l0))
-                self.assertTrue(df3.index.levels[0].equals(l0_expected))
-                self.assertTrue(df3.index.levels[1].equals(l1))
+                self.assert_index_equal(df3.index.levels[0], l0_expected)
+                self.assert_index_equal(df3.index.levels[1], l1)
                 self.assertFalse(df3.index.levels[1].equals(l1_expected))
 
                 df3 = getattr(df2, fn)('US/Pacific', level=1)
-                self.assertTrue(df3.index.levels[0].equals(l0))
+                self.assert_index_equal(df3.index.levels[0], l0)
                 self.assertFalse(df3.index.levels[0].equals(l0_expected))
-                self.assertTrue(df3.index.levels[1].equals(l1_expected))
+                self.assert_index_equal(df3.index.levels[1], l1_expected)
                 self.assertFalse(df3.index.levels[1].equals(l1))
 
                 df4 = DataFrame(np.ones(5),
@@ -1287,9 +1376,9 @@ class TestDataFrame(tm.TestCase, Generic):
                 # TODO: untested
                 df5 = getattr(df4, fn)('US/Pacific', level=1)  # noqa
 
-                self.assertTrue(df3.index.levels[0].equals(l0))
+                self.assert_index_equal(df3.index.levels[0], l0)
                 self.assertFalse(df3.index.levels[0].equals(l0_expected))
-                self.assertTrue(df3.index.levels[1].equals(l1_expected))
+                self.assert_index_equal(df3.index.levels[1], l1_expected)
                 self.assertFalse(df3.index.levels[1].equals(l1))
 
         # Bad Inputs
@@ -1319,7 +1408,7 @@ class TestDataFrame(tm.TestCase, Generic):
         df['y'] = [2, 4, 6]
         df.y = 5
 
-        assert_equal(df.y, 5)
+        self.assertEqual(df.y, 5)
         assert_series_equal(df['y'], Series([2, 4, 6], name='y'))
 
     def test_pct_change(self):
@@ -1384,9 +1473,8 @@ class TestDataFrame(tm.TestCase, Generic):
             expected['f'] = expected['f'].astype(object)
             expected['h'] = expected['h'].astype('datetime64[ns]')
             expected.columns.name = None
-            assert_frame_equal(result.to_dataframe(),
-                               expected,
-                               check_index_type=False)
+            assert_frame_equal(result.to_dataframe(), expected,
+                               check_index_type=False, check_categorical=False)
 
         # available in 0.7.1
         # MultiIndex
@@ -1412,7 +1500,7 @@ class TestDataFrame(tm.TestCase, Generic):
 
 class TestPanel(tm.TestCase, Generic):
     _typ = Panel
-    _comparator = lambda self, x, y: assert_panel_equal(x, y)
+    _comparator = lambda self, x, y: assert_panel_equal(x, y, by_blocks=True)
 
     def test_to_xarray(self):
 
@@ -1434,7 +1522,7 @@ class TestPanel(tm.TestCase, Generic):
 
 class TestPanel4D(tm.TestCase, Generic):
     _typ = Panel4D
-    _comparator = lambda self, x, y: assert_panel4d_equal(x, y)
+    _comparator = lambda self, x, y: assert_panel4d_equal(x, y, by_blocks=True)
 
     def test_sample(self):
         raise nose.SkipTest("sample on Panel4D")
@@ -1444,17 +1532,41 @@ class TestPanel4D(tm.TestCase, Generic):
         tm._skip_if_no_xarray()
         from xarray import DataArray
 
-        p = tm.makePanel4D()
+        with tm.assert_produces_warning(FutureWarning, check_stacklevel=False):
+            p = tm.makePanel4D()
 
-        result = p.to_xarray()
-        self.assertIsInstance(result, DataArray)
-        self.assertEqual(len(result.coords), 4)
-        assert_almost_equal(list(result.coords.keys()),
-                            ['labels', 'items', 'major_axis', 'minor_axis'])
-        self.assertEqual(len(result.dims), 4)
+            result = p.to_xarray()
+            self.assertIsInstance(result, DataArray)
+            self.assertEqual(len(result.coords), 4)
+            assert_almost_equal(list(result.coords.keys()),
+                                ['labels', 'items', 'major_axis',
+                                 'minor_axis'])
+            self.assertEqual(len(result.dims), 4)
 
-        # non-convertible
-        self.assertRaises(ValueError, lambda: result.to_pandas())
+            # non-convertible
+            self.assertRaises(ValueError, lambda: result.to_pandas())
+
+# run all the tests, but wrap each in a warning catcher
+for t in ['test_rename', 'test_rename_axis', 'test_get_numeric_data',
+          'test_get_default', 'test_nonzero',
+          'test_numpy_1_7_compat_numeric_methods',
+          'test_downcast', 'test_constructor_compound_dtypes',
+          'test_head_tail',
+          'test_size_compat', 'test_split_compat',
+          'test_unexpected_keyword',
+          'test_stat_unexpected_keyword', 'test_api_compat',
+          'test_stat_non_defaults_args',
+          'test_clip', 'test_truncate_out_of_bounds', 'test_numpy_clip',
+          'test_metadata_propagation']:
+
+    def f():
+        def tester(self):
+            with tm.assert_produces_warning(FutureWarning,
+                                            check_stacklevel=False):
+                return getattr(super(TestPanel4D, self), t)()
+        return tester
+
+    setattr(TestPanel4D, t, f())
 
 
 class TestNDFrame(tm.TestCase):
@@ -1586,8 +1698,9 @@ class TestNDFrame(tm.TestCase):
             tm.assert_frame_equal(df.squeeze(), df)
         for p in [tm.makePanel()]:
             tm.assert_panel_equal(p.squeeze(), p)
-        for p4d in [tm.makePanel4D()]:
-            tm.assert_panel4d_equal(p4d.squeeze(), p4d)
+        with tm.assert_produces_warning(FutureWarning, check_stacklevel=False):
+            for p4d in [tm.makePanel4D()]:
+                tm.assert_panel4d_equal(p4d.squeeze(), p4d)
 
         # squeezing
         df = tm.makeTimeDataFrame().reindex(columns=['A'])
@@ -1599,11 +1712,13 @@ class TestNDFrame(tm.TestCase):
         p = tm.makePanel().reindex(items=['ItemA'], minor_axis=['A'])
         tm.assert_series_equal(p.squeeze(), p.ix['ItemA', :, 'A'])
 
-        p4d = tm.makePanel4D().reindex(labels=['label1'])
-        tm.assert_panel_equal(p4d.squeeze(), p4d['label1'])
+        with tm.assert_produces_warning(FutureWarning, check_stacklevel=False):
+            p4d = tm.makePanel4D().reindex(labels=['label1'])
+            tm.assert_panel_equal(p4d.squeeze(), p4d['label1'])
 
-        p4d = tm.makePanel4D().reindex(labels=['label1'], items=['ItemA'])
-        tm.assert_frame_equal(p4d.squeeze(), p4d.ix['label1', 'ItemA'])
+        with tm.assert_produces_warning(FutureWarning, check_stacklevel=False):
+            p4d = tm.makePanel4D().reindex(labels=['label1'], items=['ItemA'])
+            tm.assert_frame_equal(p4d.squeeze(), p4d.ix['label1', 'ItemA'])
 
         # don't fail with 0 length dimensions GH11229 & GH8999
         empty_series = pd.Series([], name='five')
@@ -1638,11 +1753,13 @@ class TestNDFrame(tm.TestCase):
                                   .transpose(1, 2, 0), p)
             tm.assertRaisesRegexp(TypeError, msg, p.transpose,
                                   2, 0, 1, axes=(2, 0, 1))
-        for p4d in [tm.makePanel4D()]:
-            tm.assert_panel4d_equal(p4d.transpose(2, 0, 3, 1)
-                                    .transpose(1, 3, 0, 2), p4d)
-            tm.assertRaisesRegexp(TypeError, msg, p4d.transpose,
-                                  2, 0, 3, 1, axes=(2, 0, 3, 1))
+
+        with tm.assert_produces_warning(FutureWarning, check_stacklevel=False):
+            for p4d in [tm.makePanel4D()]:
+                tm.assert_panel4d_equal(p4d.transpose(2, 0, 3, 1)
+                                        .transpose(1, 3, 0, 2), p4d)
+                tm.assertRaisesRegexp(TypeError, msg, p4d.transpose,
+                                      2, 0, 3, 1, axes=(2, 0, 3, 1))
 
     def test_numpy_transpose(self):
         msg = "the 'axes' parameter is not supported"
@@ -1664,10 +1781,11 @@ class TestNDFrame(tm.TestCase):
             np.transpose(p, axes=(2, 0, 1)),
             axes=(1, 2, 0)), p)
 
-        p4d = tm.makePanel4D()
-        tm.assert_panel4d_equal(np.transpose(
-            np.transpose(p4d, axes=(2, 0, 3, 1)),
-            axes=(1, 3, 0, 2)), p4d)
+        with tm.assert_produces_warning(FutureWarning, check_stacklevel=False):
+            p4d = tm.makePanel4D()
+            tm.assert_panel4d_equal(np.transpose(
+                np.transpose(p4d, axes=(2, 0, 3, 1)),
+                axes=(1, 3, 0, 2)), p4d)
 
     def test_take(self):
         indices = [1, 5, -2, 6, 3, -1]
@@ -1692,21 +1810,25 @@ class TestNDFrame(tm.TestCase):
                              major_axis=p.major_axis,
                              minor_axis=p.minor_axis)
             tm.assert_panel_equal(out, expected)
-        for p4d in [tm.makePanel4D()]:
-            out = p4d.take(indices)
-            expected = Panel4D(data=p4d.values.take(indices, axis=0),
-                               labels=p4d.labels.take(indices),
-                               major_axis=p4d.major_axis,
-                               minor_axis=p4d.minor_axis,
-                               items=p4d.items)
-            tm.assert_panel4d_equal(out, expected)
+
+        with tm.assert_produces_warning(FutureWarning, check_stacklevel=False):
+            for p4d in [tm.makePanel4D()]:
+                out = p4d.take(indices)
+                expected = Panel4D(data=p4d.values.take(indices, axis=0),
+                                   labels=p4d.labels.take(indices),
+                                   major_axis=p4d.major_axis,
+                                   minor_axis=p4d.minor_axis,
+                                   items=p4d.items)
+                tm.assert_panel4d_equal(out, expected)
 
     def test_take_invalid_kwargs(self):
         indices = [-3, 2, 0, 1]
         s = tm.makeFloatSeries()
         df = tm.makeTimeDataFrame()
         p = tm.makePanel()
-        p4d = tm.makePanel4D()
+
+        with tm.assert_produces_warning(FutureWarning, check_stacklevel=False):
+            p4d = tm.makePanel4D()
 
         for obj in (s, df, p, p4d):
             msg = "take\(\) got an unexpected keyword argument 'foo'"

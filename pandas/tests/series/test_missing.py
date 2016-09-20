@@ -130,49 +130,66 @@ class TestSeriesMissingData(TestData, tm.TestCase):
     def test_datetime64_tz_fillna(self):
         for tz in ['US/Eastern', 'Asia/Tokyo']:
             # DatetimeBlock
-            s = Series([Timestamp('2011-01-01 10:00'), pd.NaT, Timestamp(
-                '2011-01-03 10:00'), pd.NaT])
+            s = Series([Timestamp('2011-01-01 10:00'), pd.NaT,
+                        Timestamp('2011-01-03 10:00'), pd.NaT])
+            null_loc = pd.Series([False, True, False, True])
+
             result = s.fillna(pd.Timestamp('2011-01-02 10:00'))
-            expected = Series([Timestamp('2011-01-01 10:00'), Timestamp(
-                '2011-01-02 10:00'), Timestamp('2011-01-03 10:00'), Timestamp(
-                    '2011-01-02 10:00')])
+            expected = Series([Timestamp('2011-01-01 10:00'),
+                               Timestamp('2011-01-02 10:00'),
+                               Timestamp('2011-01-03 10:00'),
+                               Timestamp('2011-01-02 10:00')])
             self.assert_series_equal(expected, result)
+            # check s is not changed
+            self.assert_series_equal(pd.isnull(s), null_loc)
 
             result = s.fillna(pd.Timestamp('2011-01-02 10:00', tz=tz))
-            expected = Series([Timestamp('2011-01-01 10:00'), Timestamp(
-                '2011-01-02 10:00', tz=tz), Timestamp('2011-01-03 10:00'),
-                Timestamp('2011-01-02 10:00', tz=tz)])
+            expected = Series([Timestamp('2011-01-01 10:00'),
+                               Timestamp('2011-01-02 10:00', tz=tz),
+                               Timestamp('2011-01-03 10:00'),
+                               Timestamp('2011-01-02 10:00', tz=tz)])
             self.assert_series_equal(expected, result)
+            self.assert_series_equal(pd.isnull(s), null_loc)
 
             result = s.fillna('AAA')
             expected = Series([Timestamp('2011-01-01 10:00'), 'AAA',
                                Timestamp('2011-01-03 10:00'), 'AAA'],
                               dtype=object)
             self.assert_series_equal(expected, result)
+            self.assert_series_equal(pd.isnull(s), null_loc)
 
             result = s.fillna({1: pd.Timestamp('2011-01-02 10:00', tz=tz),
                                3: pd.Timestamp('2011-01-04 10:00')})
-            expected = Series([Timestamp('2011-01-01 10:00'), Timestamp(
-                '2011-01-02 10:00', tz=tz), Timestamp('2011-01-03 10:00'),
-                Timestamp('2011-01-04 10:00')])
+            expected = Series([Timestamp('2011-01-01 10:00'),
+                               Timestamp('2011-01-02 10:00', tz=tz),
+                               Timestamp('2011-01-03 10:00'),
+                               Timestamp('2011-01-04 10:00')])
             self.assert_series_equal(expected, result)
+            self.assert_series_equal(pd.isnull(s), null_loc)
 
             result = s.fillna({1: pd.Timestamp('2011-01-02 10:00'),
                                3: pd.Timestamp('2011-01-04 10:00')})
-            expected = Series([Timestamp('2011-01-01 10:00'), Timestamp(
-                '2011-01-02 10:00'), Timestamp('2011-01-03 10:00'), Timestamp(
-                    '2011-01-04 10:00')])
+            expected = Series([Timestamp('2011-01-01 10:00'),
+                               Timestamp('2011-01-02 10:00'),
+                               Timestamp('2011-01-03 10:00'),
+                               Timestamp('2011-01-04 10:00')])
             self.assert_series_equal(expected, result)
+            self.assert_series_equal(pd.isnull(s), null_loc)
 
             # DatetimeBlockTZ
             idx = pd.DatetimeIndex(['2011-01-01 10:00', pd.NaT,
                                     '2011-01-03 10:00', pd.NaT], tz=tz)
             s = pd.Series(idx)
+            self.assertEqual(s.dtype, 'datetime64[ns, {0}]'.format(tz))
+            self.assert_series_equal(pd.isnull(s), null_loc)
+
             result = s.fillna(pd.Timestamp('2011-01-02 10:00'))
-            expected = Series([Timestamp('2011-01-01 10:00', tz=tz), Timestamp(
-                '2011-01-02 10:00'), Timestamp('2011-01-03 10:00', tz=tz),
-                Timestamp('2011-01-02 10:00')])
+            expected = Series([Timestamp('2011-01-01 10:00', tz=tz),
+                               Timestamp('2011-01-02 10:00'),
+                               Timestamp('2011-01-03 10:00', tz=tz),
+                               Timestamp('2011-01-02 10:00')])
             self.assert_series_equal(expected, result)
+            self.assert_series_equal(pd.isnull(s), null_loc)
 
             result = s.fillna(pd.Timestamp('2011-01-02 10:00', tz=tz))
             idx = pd.DatetimeIndex(['2011-01-01 10:00', '2011-01-02 10:00',
@@ -180,42 +197,50 @@ class TestSeriesMissingData(TestData, tm.TestCase):
                                    tz=tz)
             expected = Series(idx)
             self.assert_series_equal(expected, result)
+            self.assert_series_equal(pd.isnull(s), null_loc)
 
-            result = s.fillna(pd.Timestamp(
-                '2011-01-02 10:00', tz=tz).to_pydatetime())
+            result = s.fillna(pd.Timestamp('2011-01-02 10:00',
+                                           tz=tz).to_pydatetime())
             idx = pd.DatetimeIndex(['2011-01-01 10:00', '2011-01-02 10:00',
                                     '2011-01-03 10:00', '2011-01-02 10:00'],
                                    tz=tz)
             expected = Series(idx)
             self.assert_series_equal(expected, result)
+            self.assert_series_equal(pd.isnull(s), null_loc)
 
             result = s.fillna('AAA')
             expected = Series([Timestamp('2011-01-01 10:00', tz=tz), 'AAA',
                                Timestamp('2011-01-03 10:00', tz=tz), 'AAA'],
                               dtype=object)
             self.assert_series_equal(expected, result)
+            self.assert_series_equal(pd.isnull(s), null_loc)
 
             result = s.fillna({1: pd.Timestamp('2011-01-02 10:00', tz=tz),
                                3: pd.Timestamp('2011-01-04 10:00')})
-            expected = Series([Timestamp('2011-01-01 10:00', tz=tz), Timestamp(
-                '2011-01-02 10:00', tz=tz), Timestamp(
-                    '2011-01-03 10:00', tz=tz), Timestamp('2011-01-04 10:00')])
+            expected = Series([Timestamp('2011-01-01 10:00', tz=tz),
+                               Timestamp('2011-01-02 10:00', tz=tz),
+                               Timestamp('2011-01-03 10:00', tz=tz),
+                               Timestamp('2011-01-04 10:00')])
             self.assert_series_equal(expected, result)
+            self.assert_series_equal(pd.isnull(s), null_loc)
 
             result = s.fillna({1: pd.Timestamp('2011-01-02 10:00', tz=tz),
                                3: pd.Timestamp('2011-01-04 10:00', tz=tz)})
-            expected = Series([Timestamp('2011-01-01 10:00', tz=tz), Timestamp(
-                '2011-01-02 10:00', tz=tz), Timestamp(
-                    '2011-01-03 10:00', tz=tz), Timestamp('2011-01-04 10:00',
-                                                          tz=tz)])
+            expected = Series([Timestamp('2011-01-01 10:00', tz=tz),
+                               Timestamp('2011-01-02 10:00', tz=tz),
+                               Timestamp('2011-01-03 10:00', tz=tz),
+                               Timestamp('2011-01-04 10:00', tz=tz)])
             self.assert_series_equal(expected, result)
+            self.assert_series_equal(pd.isnull(s), null_loc)
 
             # filling with a naive/other zone, coerce to object
             result = s.fillna(Timestamp('20130101'))
-            expected = Series([Timestamp('2011-01-01 10:00', tz=tz), Timestamp(
-                '2013-01-01'), Timestamp('2011-01-03 10:00', tz=tz), Timestamp(
-                    '2013-01-01')])
+            expected = Series([Timestamp('2011-01-01 10:00', tz=tz),
+                               Timestamp('2013-01-01'),
+                               Timestamp('2011-01-03 10:00', tz=tz),
+                               Timestamp('2013-01-01')])
             self.assert_series_equal(expected, result)
+            self.assert_series_equal(pd.isnull(s), null_loc)
 
             result = s.fillna(Timestamp('20130101', tz='US/Pacific'))
             expected = Series([Timestamp('2011-01-01 10:00', tz=tz),
@@ -223,6 +248,7 @@ class TestSeriesMissingData(TestData, tm.TestCase):
                                Timestamp('2011-01-03 10:00', tz=tz),
                                Timestamp('2013-01-01', tz='US/Pacific')])
             self.assert_series_equal(expected, result)
+            self.assert_series_equal(pd.isnull(s), null_loc)
 
     def test_fillna_int(self):
         s = Series(np.random.randint(-100, 100, 50))
@@ -247,16 +273,18 @@ class TestSeriesMissingData(TestData, tm.TestCase):
     def test_fillna(self):
         ts = Series([0., 1., 2., 3., 4.], index=tm.makeDateIndex(5))
 
-        self.assert_numpy_array_equal(ts, ts.fillna(method='ffill'))
+        self.assert_series_equal(ts, ts.fillna(method='ffill'))
 
         ts[2] = np.NaN
 
-        self.assert_numpy_array_equal(ts.fillna(method='ffill'),
-                                      [0., 1., 1., 3., 4.])
-        self.assert_numpy_array_equal(ts.fillna(method='backfill'),
-                                      [0., 1., 3., 3., 4.])
+        exp = Series([0., 1., 1., 3., 4.], index=ts.index)
+        self.assert_series_equal(ts.fillna(method='ffill'), exp)
 
-        self.assert_numpy_array_equal(ts.fillna(value=5), [0., 1., 5., 3., 4.])
+        exp = Series([0., 1., 3., 3., 4.], index=ts.index)
+        self.assert_series_equal(ts.fillna(method='backfill'), exp)
+
+        exp = Series([0., 1., 5., 3., 4.], index=ts.index)
+        self.assert_series_equal(ts.fillna(value=5), exp)
 
         self.assertRaises(ValueError, ts.fillna)
         self.assertRaises(ValueError, self.ts.fillna, value=0, method='ffill')
@@ -433,8 +461,8 @@ class TestSeriesMissingData(TestData, tm.TestCase):
 
         result = ts.valid()
         self.assertEqual(len(result), ts.count())
-
-        tm.assert_dict_equal(result, ts, compare_keys=False)
+        tm.assert_series_equal(result, ts[1::2])
+        tm.assert_series_equal(result, ts[pd.notnull(ts)])
 
     def test_isnull(self):
         ser = Series([0, 5.4, 3, nan, -0.001])
@@ -488,7 +516,7 @@ class TestSeriesInterpolateData(TestData, tm.TestCase):
         ts_copy[5:10] = np.NaN
 
         linear_interp = ts_copy.interpolate(method='linear')
-        self.assert_numpy_array_equal(linear_interp, ts)
+        self.assert_series_equal(linear_interp, ts)
 
         ord_ts = Series([d.toordinal() for d in self.ts.index],
                         index=self.ts.index).astype(float)
@@ -497,7 +525,7 @@ class TestSeriesInterpolateData(TestData, tm.TestCase):
         ord_ts_copy[5:10] = np.NaN
 
         time_interp = ord_ts_copy.interpolate(method='time')
-        self.assert_numpy_array_equal(time_interp, ord_ts)
+        self.assert_series_equal(time_interp, ord_ts)
 
         # try time interpolation on a non-TimeSeries
         # Only raises ValueError if there are NaNs.

@@ -20,6 +20,25 @@ from pandas.io.parsers import read_csv, read_table
 
 
 class TestUnsupportedFeatures(tm.TestCase):
+    def test_mangle_dupe_cols_false(self):
+        # see gh-12935
+        data = 'a b c\n1 2 3'
+        msg = 'is not supported'
+
+        for engine in ('c', 'python'):
+            with tm.assertRaisesRegexp(ValueError, msg):
+                read_csv(StringIO(data), engine=engine,
+                         mangle_dupe_cols=False)
+
+    def test_nrows_and_chunksize(self):
+        data = 'a b c'
+        msg = "cannot be used together yet"
+
+        for engine in ('c', 'python'):
+            with tm.assertRaisesRegexp(NotImplementedError, msg):
+                read_csv(StringIO(data), engine=engine,
+                         nrows=10, chunksize=5)
+
     def test_c_engine(self):
         # see gh-6607
         data = 'a b c\n1 2 3'
@@ -33,7 +52,7 @@ class TestUnsupportedFeatures(tm.TestCase):
         with tm.assertRaisesRegexp(ValueError, msg):
             read_table(StringIO(data), sep='\s', dtype={'a': float})
         with tm.assertRaisesRegexp(ValueError, msg):
-            read_table(StringIO(data), skip_footer=1, dtype={'a': float})
+            read_table(StringIO(data), skipfooter=1, dtype={'a': float})
 
         # specify C engine with unsupported options (raise)
         with tm.assertRaisesRegexp(ValueError, msg):
@@ -42,7 +61,7 @@ class TestUnsupportedFeatures(tm.TestCase):
         with tm.assertRaisesRegexp(ValueError, msg):
             read_table(StringIO(data), engine='c', sep='\s')
         with tm.assertRaisesRegexp(ValueError, msg):
-            read_table(StringIO(data), engine='c', skip_footer=1)
+            read_table(StringIO(data), engine='c', skipfooter=1)
 
         # specify C-unsupported options without python-unsupported options
         with tm.assert_produces_warning(parsers.ParserWarning):
@@ -50,7 +69,7 @@ class TestUnsupportedFeatures(tm.TestCase):
         with tm.assert_produces_warning(parsers.ParserWarning):
             read_table(StringIO(data), sep='\s')
         with tm.assert_produces_warning(parsers.ParserWarning):
-            read_table(StringIO(data), skip_footer=1)
+            read_table(StringIO(data), skipfooter=1)
 
         text = """                      A       B       C       D        E
 one two three   four
@@ -97,6 +116,38 @@ x   q   30      3    -0.6662 -0.5243 -0.3580  0.89145  2.5838"""
                 kwargs = {default: object()}
                 with tm.assertRaisesRegexp(ValueError, msg):
                     read_csv(StringIO(data), engine=engine, **kwargs)
+
+
+class TestDeprecatedFeatures(tm.TestCase):
+    def test_deprecated_args(self):
+        data = '1,2,3'
+
+        # deprecated arguments with non-default values
+        deprecated = {
+            'as_recarray': True,
+            'buffer_lines': True,
+            'compact_ints': True,
+            'skip_footer': True,
+            'use_unsigned': True,
+        }
+
+        engines = 'c', 'python'
+
+        for engine in engines:
+            for arg, non_default_val in deprecated.items():
+                if engine == 'c' and arg == 'skip_footer':
+                    # unsupported --> exception is raised
+                    continue
+
+                if engine == 'python' and arg == 'buffer_lines':
+                    # unsupported --> exception is raised
+                    continue
+
+                with tm.assert_produces_warning(
+                        FutureWarning, check_stacklevel=False):
+                    kwargs = {arg: non_default_val}
+                    read_csv(StringIO(data), engine=engine,
+                             **kwargs)
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],

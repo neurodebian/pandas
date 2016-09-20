@@ -1,18 +1,9 @@
 # -*- coding: utf-8 -*-
 
-from datetime import datetime, timedelta, date, time
-
 import numpy as np
 import pandas as pd
 import pandas.lib as lib
 import pandas.util.testing as tm
-
-from pandas.compat import long, u, PY2
-
-
-def _assert_same_values_and_dtype(res, exp):
-    tm.assert_equal(res.dtype, exp.dtype)
-    tm.assert_almost_equal(res, exp)
 
 
 class TestMisc(tm.TestCase):
@@ -34,16 +25,21 @@ class TestMisc(tm.TestCase):
         tm.assertRaises(TypeError,
                         lambda: lib.max_len_string_array(arr.astype('U')))
 
-    def test_infer_dtype_bytes(self):
-        compare = 'string' if PY2 else 'bytes'
+    def test_fast_unique_multiple_list_gen_sort(self):
+        keys = [['p', 'a'], ['n', 'd'], ['a', 's']]
 
-        # string array of bytes
-        arr = np.array(list('abc'), dtype='S1')
-        self.assertEqual(pd.lib.infer_dtype(arr), compare)
+        gen = (key for key in keys)
+        expected = np.array(['a', 'd', 'n', 'p', 's'])
+        out = lib.fast_unique_multiple_list_gen(gen, sort=True)
+        tm.assert_numpy_array_equal(np.array(out), expected)
 
-        # object array of bytes
-        arr = arr.astype(object)
-        self.assertEqual(pd.lib.infer_dtype(arr), compare)
+        gen = (key for key in keys)
+        expected = np.array(['p', 'a', 'n', 'd', 's'])
+        out = lib.fast_unique_multiple_list_gen(gen, sort=False)
+        tm.assert_numpy_array_equal(np.array(out), expected)
+
+
+class TestIndexing(tm.TestCase):
 
     def test_maybe_indices_to_slice_left_edge(self):
         target = np.arange(100)
@@ -174,151 +170,69 @@ class TestMisc(tm.TestCase):
             self.assert_numpy_array_equal(maybe_slice, indices)
             self.assert_numpy_array_equal(target[indices], target[maybe_slice])
 
-    def test_isinf_scalar(self):
-        # GH 11352
-        self.assertTrue(lib.isposinf_scalar(float('inf')))
-        self.assertTrue(lib.isposinf_scalar(np.inf))
-        self.assertFalse(lib.isposinf_scalar(-np.inf))
-        self.assertFalse(lib.isposinf_scalar(1))
-        self.assertFalse(lib.isposinf_scalar('a'))
+    def test_maybe_booleans_to_slice(self):
+        arr = np.array([0, 0, 1, 1, 1, 0, 1], dtype=np.uint8)
+        result = lib.maybe_booleans_to_slice(arr)
+        self.assertTrue(result.dtype == np.bool_)
 
-        self.assertTrue(lib.isneginf_scalar(float('-inf')))
-        self.assertTrue(lib.isneginf_scalar(-np.inf))
-        self.assertFalse(lib.isneginf_scalar(np.inf))
-        self.assertFalse(lib.isneginf_scalar(1))
-        self.assertFalse(lib.isneginf_scalar('a'))
+        result = lib.maybe_booleans_to_slice(arr[:0])
+        self.assertTrue(result == slice(0, 0))
 
-
-class Testisscalar(tm.TestCase):
-
-    def test_isscalar_builtin_scalars(self):
-        self.assertTrue(lib.isscalar(None))
-        self.assertTrue(lib.isscalar(True))
-        self.assertTrue(lib.isscalar(False))
-        self.assertTrue(lib.isscalar(0.))
-        self.assertTrue(lib.isscalar(np.nan))
-        self.assertTrue(lib.isscalar('foobar'))
-        self.assertTrue(lib.isscalar(b'foobar'))
-        self.assertTrue(lib.isscalar(u('efoobar')))
-        self.assertTrue(lib.isscalar(datetime(2014, 1, 1)))
-        self.assertTrue(lib.isscalar(date(2014, 1, 1)))
-        self.assertTrue(lib.isscalar(time(12, 0)))
-        self.assertTrue(lib.isscalar(timedelta(hours=1)))
-        self.assertTrue(lib.isscalar(pd.NaT))
-
-    def test_isscalar_builtin_nonscalars(self):
-        self.assertFalse(lib.isscalar({}))
-        self.assertFalse(lib.isscalar([]))
-        self.assertFalse(lib.isscalar([1]))
-        self.assertFalse(lib.isscalar(()))
-        self.assertFalse(lib.isscalar((1, )))
-        self.assertFalse(lib.isscalar(slice(None)))
-        self.assertFalse(lib.isscalar(Ellipsis))
-
-    def test_isscalar_numpy_array_scalars(self):
-        self.assertTrue(lib.isscalar(np.int64(1)))
-        self.assertTrue(lib.isscalar(np.float64(1.)))
-        self.assertTrue(lib.isscalar(np.int32(1)))
-        self.assertTrue(lib.isscalar(np.object_('foobar')))
-        self.assertTrue(lib.isscalar(np.str_('foobar')))
-        self.assertTrue(lib.isscalar(np.unicode_(u('foobar'))))
-        self.assertTrue(lib.isscalar(np.bytes_(b'foobar')))
-        self.assertTrue(lib.isscalar(np.datetime64('2014-01-01')))
-        self.assertTrue(lib.isscalar(np.timedelta64(1, 'h')))
-
-    def test_isscalar_numpy_zerodim_arrays(self):
-        for zerodim in [np.array(1), np.array('foobar'),
-                        np.array(np.datetime64('2014-01-01')),
-                        np.array(np.timedelta64(1, 'h')),
-                        np.array(np.datetime64('NaT'))]:
-            self.assertFalse(lib.isscalar(zerodim))
-            self.assertTrue(lib.isscalar(lib.item_from_zerodim(zerodim)))
-
-    def test_isscalar_numpy_arrays(self):
-        self.assertFalse(lib.isscalar(np.array([])))
-        self.assertFalse(lib.isscalar(np.array([[]])))
-        self.assertFalse(lib.isscalar(np.matrix('1; 2')))
-
-    def test_isscalar_pandas_scalars(self):
-        self.assertTrue(lib.isscalar(pd.Timestamp('2014-01-01')))
-        self.assertTrue(lib.isscalar(pd.Timedelta(hours=1)))
-        self.assertTrue(lib.isscalar(pd.Period('2014-01-01')))
-
-    def test_lisscalar_pandas_containers(self):
-        self.assertFalse(lib.isscalar(pd.Series()))
-        self.assertFalse(lib.isscalar(pd.Series([1])))
-        self.assertFalse(lib.isscalar(pd.DataFrame()))
-        self.assertFalse(lib.isscalar(pd.DataFrame([[1]])))
-        self.assertFalse(lib.isscalar(pd.Panel()))
-        self.assertFalse(lib.isscalar(pd.Panel([[[1]]])))
-        self.assertFalse(lib.isscalar(pd.Index([])))
-        self.assertFalse(lib.isscalar(pd.Index([1])))
+    def test_get_reverse_indexer(self):
+        indexer = np.array([-1, -1, 1, 2, 0, -1, 3, 4], dtype=np.int64)
+        result = lib.get_reverse_indexer(indexer, 5)
+        expected = np.array([4, 2, 3, 6, 7], dtype=np.int64)
+        self.assertTrue(np.array_equal(result, expected))
 
 
-class TestParseSQL(tm.TestCase):
+class TestNullObj(tm.TestCase):
 
-    def test_convert_sql_column_floats(self):
-        arr = np.array([1.5, None, 3, 4.2], dtype=object)
-        result = lib.convert_sql_column(arr)
-        expected = np.array([1.5, np.nan, 3, 4.2], dtype='f8')
-        _assert_same_values_and_dtype(result, expected)
+    _1d_methods = ['isnullobj', 'isnullobj_old']
+    _2d_methods = ['isnullobj2d', 'isnullobj2d_old']
 
-    def test_convert_sql_column_strings(self):
-        arr = np.array(['1.5', None, '3', '4.2'], dtype=object)
-        result = lib.convert_sql_column(arr)
-        expected = np.array(['1.5', np.nan, '3', '4.2'], dtype=object)
-        _assert_same_values_and_dtype(result, expected)
+    def _check_behavior(self, arr, expected):
+        for method in TestNullObj._1d_methods:
+            result = getattr(lib, method)(arr)
+            tm.assert_numpy_array_equal(result, expected)
 
-    def test_convert_sql_column_unicode(self):
-        arr = np.array([u('1.5'), None, u('3'), u('4.2')],
-                       dtype=object)
-        result = lib.convert_sql_column(arr)
-        expected = np.array([u('1.5'), np.nan, u('3'), u('4.2')],
-                            dtype=object)
-        _assert_same_values_and_dtype(result, expected)
+        arr = np.atleast_2d(arr)
+        expected = np.atleast_2d(expected)
 
-    def test_convert_sql_column_ints(self):
-        arr = np.array([1, 2, 3, 4], dtype='O')
-        arr2 = np.array([1, 2, 3, 4], dtype='i4').astype('O')
-        result = lib.convert_sql_column(arr)
-        result2 = lib.convert_sql_column(arr2)
-        expected = np.array([1, 2, 3, 4], dtype='i8')
-        _assert_same_values_and_dtype(result, expected)
-        _assert_same_values_and_dtype(result2, expected)
+        for method in TestNullObj._2d_methods:
+            result = getattr(lib, method)(arr)
+            tm.assert_numpy_array_equal(result, expected)
 
-        arr = np.array([1, 2, 3, None, 4], dtype='O')
-        result = lib.convert_sql_column(arr)
-        expected = np.array([1, 2, 3, np.nan, 4], dtype='f8')
-        _assert_same_values_and_dtype(result, expected)
+    def test_basic(self):
+        arr = np.array([1, None, 'foo', -5.1, pd.NaT, np.nan])
+        expected = np.array([False, True, False, False, True, True])
 
-    def test_convert_sql_column_longs(self):
-        arr = np.array([long(1), long(2), long(3), long(4)], dtype='O')
-        result = lib.convert_sql_column(arr)
-        expected = np.array([1, 2, 3, 4], dtype='i8')
-        _assert_same_values_and_dtype(result, expected)
+        self._check_behavior(arr, expected)
 
-        arr = np.array([long(1), long(2), long(3), None, long(4)], dtype='O')
-        result = lib.convert_sql_column(arr)
-        expected = np.array([1, 2, 3, np.nan, 4], dtype='f8')
-        _assert_same_values_and_dtype(result, expected)
+    def test_non_obj_dtype(self):
+        arr = np.array([1, 3, np.nan, 5], dtype=float)
+        expected = np.array([False, False, True, False])
 
-    def test_convert_sql_column_bools(self):
-        arr = np.array([True, False, True, False], dtype='O')
-        result = lib.convert_sql_column(arr)
-        expected = np.array([True, False, True, False], dtype=bool)
-        _assert_same_values_and_dtype(result, expected)
+        self._check_behavior(arr, expected)
 
-        arr = np.array([True, False, None, False], dtype='O')
-        result = lib.convert_sql_column(arr)
-        expected = np.array([True, False, np.nan, False], dtype=object)
-        _assert_same_values_and_dtype(result, expected)
+    def test_empty_arr(self):
+        arr = np.array([])
+        expected = np.array([], dtype=bool)
 
-    def test_convert_sql_column_decimals(self):
-        from decimal import Decimal
-        arr = np.array([Decimal('1.5'), None, Decimal('3'), Decimal('4.2')])
-        result = lib.convert_sql_column(arr)
-        expected = np.array([1.5, np.nan, 3, 4.2], dtype='f8')
-        _assert_same_values_and_dtype(result, expected)
+        self._check_behavior(arr, expected)
+
+    def test_empty_str_inp(self):
+        arr = np.array([""])  # empty but not null
+        expected = np.array([False])
+
+        self._check_behavior(arr, expected)
+
+    def test_empty_like(self):
+        # see gh-13717: no segfaults!
+        arr = np.empty_like([None])
+        expected = np.array([True])
+
+        self._check_behavior(arr, expected)
+
 
 if __name__ == '__main__':
     import nose
