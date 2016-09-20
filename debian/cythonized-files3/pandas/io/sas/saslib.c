@@ -831,7 +831,7 @@ typedef npy_clongdouble __pyx_t_5numpy_clongdouble_t;
  */
 typedef npy_cdouble __pyx_t_5numpy_complex_t;
 
-/* "pandas/io/sas/saslib.pyx":188
+/* "pandas/io/sas/saslib.pyx":192
  *     return np.asarray(outbuff)
  * 
  * cdef enum ColumnTypes:             # <<<<<<<<<<<<<<
@@ -843,7 +843,7 @@ enum __pyx_t_6pandas_2io_3sas_6saslib_ColumnTypes {
   __pyx_e_6pandas_2io_3sas_6saslib_column_type_string = 2
 };
 
-/* "pandas/io/sas/saslib.pyx":200
+/* "pandas/io/sas/saslib.pyx":204
  * cdef int subheader_pointers_offset = const.subheader_pointers_offset
  * 
  * cdef class Parser(object):             # <<<<<<<<<<<<<<
@@ -954,7 +954,7 @@ struct __pyx_memoryviewslice_obj {
 
 
 
-/* "pandas/io/sas/saslib.pyx":200
+/* "pandas/io/sas/saslib.pyx":204
  * cdef int subheader_pointers_offset = const.subheader_pointers_offset
  * 
  * cdef class Parser(object):             # <<<<<<<<<<<<<<
@@ -1992,9 +1992,9 @@ static PyObject *__pyx_tuple__27;
 /* "pandas/io/sas/saslib.pyx":13
  * #
  * # https://cran.r-project.org/web/packages/sas7bdat/vignettes/sas7bdat.pdf
- * cdef np.ndarray[uint8_t, ndim=1] rle_decompress(int result_length, np.ndarray[uint8_t, ndim=1] inbuff):             # <<<<<<<<<<<<<<
+ * cdef np.ndarray[uint8_t, ndim=1] rle_decompress(             # <<<<<<<<<<<<<<
+ *         int result_length, np.ndarray[uint8_t, ndim=1] inbuff):
  * 
- *     cdef:
  */
 
 static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_v_result_length, PyArrayObject *__pyx_v_inbuff) {
@@ -2003,10 +2003,10 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
   __Pyx_memviewslice __pyx_v_result = { 0, 0, { 0 }, { 0 }, { 0 } };
   int __pyx_v_rpos;
   int __pyx_v_ipos;
+  int __pyx_v_length;
   int __pyx_v_i;
   int __pyx_v_nbytes;
   int __pyx_v_end_of_first_byte;
-  int __pyx_v_length;
   __Pyx_LocalBuf_ND __pyx_pybuffernd_inbuff;
   __Pyx_Buffer __pyx_pybuffer_inbuff;
   PyArrayObject *__pyx_r = NULL;
@@ -2061,23 +2061,23 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
   }
   __pyx_pybuffernd_inbuff.diminfo[0].strides = __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.strides[0]; __pyx_pybuffernd_inbuff.diminfo[0].shape = __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.shape[0];
 
-  /* "pandas/io/sas/saslib.pyx":17
+  /* "pandas/io/sas/saslib.pyx":18
  *     cdef:
  *         uint8_t control_byte, x
  *         uint8_t [:] result = np.zeros(result_length, np.uint8)             # <<<<<<<<<<<<<<
- *         int rpos = 0, ipos = 0, i, nbytes, end_of_first_byte, length = len(inbuff)
- * 
+ *         int rpos = 0, ipos = 0, length = len(inbuff)
+ *         int i, nbytes, end_of_first_byte
  */
-  __pyx_t_2 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 17; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 18; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_zeros); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 17; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_zeros); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 18; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = __Pyx_PyInt_From_int(__pyx_v_result_length); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 17; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyInt_From_int(__pyx_v_result_length); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 18; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_4 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 17; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_4 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 18; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_4);
-  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_n_s_uint8); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 17; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_n_s_uint8); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 18; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_5);
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   __pyx_t_4 = NULL;
@@ -2092,7 +2092,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       __pyx_t_6 = 1;
     }
   }
-  __pyx_t_7 = PyTuple_New(2+__pyx_t_6); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 17; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_7 = PyTuple_New(2+__pyx_t_6); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 18; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_7);
   if (__pyx_t_4) {
     __Pyx_GIVEREF(__pyx_t_4); PyTuple_SET_ITEM(__pyx_t_7, 0, __pyx_t_4); __pyx_t_4 = NULL;
@@ -2103,31 +2103,31 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
   PyTuple_SET_ITEM(__pyx_t_7, 1+__pyx_t_6, __pyx_t_5);
   __pyx_t_2 = 0;
   __pyx_t_5 = 0;
-  __pyx_t_1 = __Pyx_PyObject_Call(__pyx_t_3, __pyx_t_7, NULL); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 17; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_Call(__pyx_t_3, __pyx_t_7, NULL); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 18; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __pyx_t_8 = __Pyx_PyObject_to_MemoryviewSlice_ds_nn___pyx_t_5numpy_uint8_t(__pyx_t_1);
-  if (unlikely(!__pyx_t_8.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 17; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (unlikely(!__pyx_t_8.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 18; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_v_result = __pyx_t_8;
   __pyx_t_8.memview = NULL;
   __pyx_t_8.data = NULL;
 
-  /* "pandas/io/sas/saslib.pyx":18
+  /* "pandas/io/sas/saslib.pyx":19
  *         uint8_t control_byte, x
  *         uint8_t [:] result = np.zeros(result_length, np.uint8)
- *         int rpos = 0, ipos = 0, i, nbytes, end_of_first_byte, length = len(inbuff)             # <<<<<<<<<<<<<<
+ *         int rpos = 0, ipos = 0, length = len(inbuff)             # <<<<<<<<<<<<<<
+ *         int i, nbytes, end_of_first_byte
  * 
- *     while ipos < length:
  */
   __pyx_v_rpos = 0;
   __pyx_v_ipos = 0;
-  __pyx_t_6 = PyObject_Length(((PyObject *)__pyx_v_inbuff)); if (unlikely(__pyx_t_6 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 18; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_6 = PyObject_Length(((PyObject *)__pyx_v_inbuff)); if (unlikely(__pyx_t_6 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 19; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_v_length = __pyx_t_6;
 
-  /* "pandas/io/sas/saslib.pyx":20
- *         int rpos = 0, ipos = 0, i, nbytes, end_of_first_byte, length = len(inbuff)
+  /* "pandas/io/sas/saslib.pyx":22
+ *         int i, nbytes, end_of_first_byte
  * 
  *     while ipos < length:             # <<<<<<<<<<<<<<
  *         control_byte = inbuff[ipos] & 0xF0
@@ -2137,7 +2137,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
     __pyx_t_9 = ((__pyx_v_ipos < __pyx_v_length) != 0);
     if (!__pyx_t_9) break;
 
-    /* "pandas/io/sas/saslib.pyx":21
+    /* "pandas/io/sas/saslib.pyx":23
  * 
  *     while ipos < length:
  *         control_byte = inbuff[ipos] & 0xF0             # <<<<<<<<<<<<<<
@@ -2148,7 +2148,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
     if (__pyx_t_10 < 0) __pyx_t_10 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
     __pyx_v_control_byte = ((*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_10, __pyx_pybuffernd_inbuff.diminfo[0].strides)) & 0xF0);
 
-    /* "pandas/io/sas/saslib.pyx":22
+    /* "pandas/io/sas/saslib.pyx":24
  *     while ipos < length:
  *         control_byte = inbuff[ipos] & 0xF0
  *         end_of_first_byte = <int>(inbuff[ipos] & 0x0F)             # <<<<<<<<<<<<<<
@@ -2159,7 +2159,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
     if (__pyx_t_11 < 0) __pyx_t_11 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
     __pyx_v_end_of_first_byte = ((int)((*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_11, __pyx_pybuffernd_inbuff.diminfo[0].strides)) & 0x0F));
 
-    /* "pandas/io/sas/saslib.pyx":23
+    /* "pandas/io/sas/saslib.pyx":25
  *         control_byte = inbuff[ipos] & 0xF0
  *         end_of_first_byte = <int>(inbuff[ipos] & 0x0F)
  *         ipos += 1             # <<<<<<<<<<<<<<
@@ -2168,7 +2168,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
     __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-    /* "pandas/io/sas/saslib.pyx":25
+    /* "pandas/io/sas/saslib.pyx":27
  *         ipos += 1
  * 
  *         if control_byte == 0x00:             # <<<<<<<<<<<<<<
@@ -2178,7 +2178,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
     switch (__pyx_v_control_byte) {
       case 0x00:
 
-      /* "pandas/io/sas/saslib.pyx":26
+      /* "pandas/io/sas/saslib.pyx":28
  * 
  *         if control_byte == 0x00:
  *             if end_of_first_byte != 0:             # <<<<<<<<<<<<<<
@@ -2188,20 +2188,20 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       __pyx_t_9 = ((__pyx_v_end_of_first_byte != 0) != 0);
       if (__pyx_t_9) {
 
-        /* "pandas/io/sas/saslib.pyx":27
+        /* "pandas/io/sas/saslib.pyx":29
  *         if control_byte == 0x00:
  *             if end_of_first_byte != 0:
  *                 raise ValueError("Unexpected non-zero end_of_first_byte")             # <<<<<<<<<<<<<<
  *             nbytes = <int>(inbuff[ipos]) + 64
  *             ipos += 1
  */
-        __pyx_t_1 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_tuple_, NULL); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 27; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+        __pyx_t_1 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_tuple_, NULL); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 29; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
         __Pyx_GOTREF(__pyx_t_1);
         __Pyx_Raise(__pyx_t_1, 0, 0, 0);
         __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-        {__pyx_filename = __pyx_f[0]; __pyx_lineno = 27; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+        {__pyx_filename = __pyx_f[0]; __pyx_lineno = 29; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
 
-        /* "pandas/io/sas/saslib.pyx":26
+        /* "pandas/io/sas/saslib.pyx":28
  * 
  *         if control_byte == 0x00:
  *             if end_of_first_byte != 0:             # <<<<<<<<<<<<<<
@@ -2210,7 +2210,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       }
 
-      /* "pandas/io/sas/saslib.pyx":28
+      /* "pandas/io/sas/saslib.pyx":30
  *             if end_of_first_byte != 0:
  *                 raise ValueError("Unexpected non-zero end_of_first_byte")
  *             nbytes = <int>(inbuff[ipos]) + 64             # <<<<<<<<<<<<<<
@@ -2221,7 +2221,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       if (__pyx_t_12 < 0) __pyx_t_12 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
       __pyx_v_nbytes = (((int)(*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_12, __pyx_pybuffernd_inbuff.diminfo[0].strides))) + 64);
 
-      /* "pandas/io/sas/saslib.pyx":29
+      /* "pandas/io/sas/saslib.pyx":31
  *                 raise ValueError("Unexpected non-zero end_of_first_byte")
  *             nbytes = <int>(inbuff[ipos]) + 64
  *             ipos += 1             # <<<<<<<<<<<<<<
@@ -2230,7 +2230,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":30
+      /* "pandas/io/sas/saslib.pyx":32
  *             nbytes = <int>(inbuff[ipos]) + 64
  *             ipos += 1
  *             for i in range(nbytes):             # <<<<<<<<<<<<<<
@@ -2241,7 +2241,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       for (__pyx_t_14 = 0; __pyx_t_14 < __pyx_t_13; __pyx_t_14+=1) {
         __pyx_v_i = __pyx_t_14;
 
-        /* "pandas/io/sas/saslib.pyx":31
+        /* "pandas/io/sas/saslib.pyx":33
  *             ipos += 1
  *             for i in range(nbytes):
  *                 result[rpos] = inbuff[ipos]             # <<<<<<<<<<<<<<
@@ -2254,7 +2254,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         if (__pyx_t_16 < 0) __pyx_t_16 += __pyx_v_result.shape[0];
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_result.data + __pyx_t_16 * __pyx_v_result.strides[0]) )) = (*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_15, __pyx_pybuffernd_inbuff.diminfo[0].strides));
 
-        /* "pandas/io/sas/saslib.pyx":32
+        /* "pandas/io/sas/saslib.pyx":34
  *             for i in range(nbytes):
  *                 result[rpos] = inbuff[ipos]
  *                 rpos += 1             # <<<<<<<<<<<<<<
@@ -2263,7 +2263,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
         __pyx_v_rpos = (__pyx_v_rpos + 1);
 
-        /* "pandas/io/sas/saslib.pyx":33
+        /* "pandas/io/sas/saslib.pyx":35
  *                 result[rpos] = inbuff[ipos]
  *                 rpos += 1
  *                 ipos += 1             # <<<<<<<<<<<<<<
@@ -2273,7 +2273,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         __pyx_v_ipos = (__pyx_v_ipos + 1);
       }
 
-      /* "pandas/io/sas/saslib.pyx":25
+      /* "pandas/io/sas/saslib.pyx":27
  *         ipos += 1
  * 
  *         if control_byte == 0x00:             # <<<<<<<<<<<<<<
@@ -2282,7 +2282,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       break;
 
-      /* "pandas/io/sas/saslib.pyx":34
+      /* "pandas/io/sas/saslib.pyx":36
  *                 rpos += 1
  *                 ipos += 1
  *         elif control_byte == 0x40:             # <<<<<<<<<<<<<<
@@ -2291,7 +2291,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       case 0x40:
 
-      /* "pandas/io/sas/saslib.pyx":36
+      /* "pandas/io/sas/saslib.pyx":38
  *         elif control_byte == 0x40:
  *             # not documented
  *             nbytes = end_of_first_byte * 16             # <<<<<<<<<<<<<<
@@ -2300,7 +2300,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_nbytes = (__pyx_v_end_of_first_byte * 16);
 
-      /* "pandas/io/sas/saslib.pyx":37
+      /* "pandas/io/sas/saslib.pyx":39
  *             # not documented
  *             nbytes = end_of_first_byte * 16
  *             nbytes += <int>(inbuff[ipos])             # <<<<<<<<<<<<<<
@@ -2311,7 +2311,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       if (__pyx_t_17 < 0) __pyx_t_17 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
       __pyx_v_nbytes = (__pyx_v_nbytes + ((int)(*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_17, __pyx_pybuffernd_inbuff.diminfo[0].strides))));
 
-      /* "pandas/io/sas/saslib.pyx":38
+      /* "pandas/io/sas/saslib.pyx":40
  *             nbytes = end_of_first_byte * 16
  *             nbytes += <int>(inbuff[ipos])
  *             ipos += 1             # <<<<<<<<<<<<<<
@@ -2320,7 +2320,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":39
+      /* "pandas/io/sas/saslib.pyx":41
  *             nbytes += <int>(inbuff[ipos])
  *             ipos += 1
  *             for i in range(nbytes):             # <<<<<<<<<<<<<<
@@ -2331,7 +2331,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       for (__pyx_t_14 = 0; __pyx_t_14 < __pyx_t_13; __pyx_t_14+=1) {
         __pyx_v_i = __pyx_t_14;
 
-        /* "pandas/io/sas/saslib.pyx":40
+        /* "pandas/io/sas/saslib.pyx":42
  *             ipos += 1
  *             for i in range(nbytes):
  *                 result[rpos] = inbuff[ipos]             # <<<<<<<<<<<<<<
@@ -2344,7 +2344,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         if (__pyx_t_19 < 0) __pyx_t_19 += __pyx_v_result.shape[0];
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_result.data + __pyx_t_19 * __pyx_v_result.strides[0]) )) = (*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_18, __pyx_pybuffernd_inbuff.diminfo[0].strides));
 
-        /* "pandas/io/sas/saslib.pyx":41
+        /* "pandas/io/sas/saslib.pyx":43
  *             for i in range(nbytes):
  *                 result[rpos] = inbuff[ipos]
  *                 rpos += 1             # <<<<<<<<<<<<<<
@@ -2354,16 +2354,16 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         __pyx_v_rpos = (__pyx_v_rpos + 1);
       }
 
-      /* "pandas/io/sas/saslib.pyx":42
+      /* "pandas/io/sas/saslib.pyx":44
  *                 result[rpos] = inbuff[ipos]
  *                 rpos += 1
  *             ipos += 1             # <<<<<<<<<<<<<<
  *         elif control_byte == 0x60:
- *             nbytes = end_of_first_byte*256 + <int>(inbuff[ipos]) + 17
+ *             nbytes = end_of_first_byte * 256 + <int>(inbuff[ipos]) + 17
  */
       __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":34
+      /* "pandas/io/sas/saslib.pyx":36
  *                 rpos += 1
  *                 ipos += 1
  *         elif control_byte == 0x40:             # <<<<<<<<<<<<<<
@@ -2372,19 +2372,19 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       break;
 
-      /* "pandas/io/sas/saslib.pyx":43
+      /* "pandas/io/sas/saslib.pyx":45
  *                 rpos += 1
  *             ipos += 1
  *         elif control_byte == 0x60:             # <<<<<<<<<<<<<<
- *             nbytes = end_of_first_byte*256 + <int>(inbuff[ipos]) + 17
+ *             nbytes = end_of_first_byte * 256 + <int>(inbuff[ipos]) + 17
  *             ipos += 1
  */
       case 0x60:
 
-      /* "pandas/io/sas/saslib.pyx":44
+      /* "pandas/io/sas/saslib.pyx":46
  *             ipos += 1
  *         elif control_byte == 0x60:
- *             nbytes = end_of_first_byte*256 + <int>(inbuff[ipos]) + 17             # <<<<<<<<<<<<<<
+ *             nbytes = end_of_first_byte * 256 + <int>(inbuff[ipos]) + 17             # <<<<<<<<<<<<<<
  *             ipos += 1
  *             for i in range(nbytes):
  */
@@ -2392,17 +2392,17 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       if (__pyx_t_20 < 0) __pyx_t_20 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
       __pyx_v_nbytes = (((__pyx_v_end_of_first_byte * 0x100) + ((int)(*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_20, __pyx_pybuffernd_inbuff.diminfo[0].strides)))) + 17);
 
-      /* "pandas/io/sas/saslib.pyx":45
+      /* "pandas/io/sas/saslib.pyx":47
  *         elif control_byte == 0x60:
- *             nbytes = end_of_first_byte*256 + <int>(inbuff[ipos]) + 17
+ *             nbytes = end_of_first_byte * 256 + <int>(inbuff[ipos]) + 17
  *             ipos += 1             # <<<<<<<<<<<<<<
  *             for i in range(nbytes):
  *                 result[rpos] = 0x20
  */
       __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":46
- *             nbytes = end_of_first_byte*256 + <int>(inbuff[ipos]) + 17
+      /* "pandas/io/sas/saslib.pyx":48
+ *             nbytes = end_of_first_byte * 256 + <int>(inbuff[ipos]) + 17
  *             ipos += 1
  *             for i in range(nbytes):             # <<<<<<<<<<<<<<
  *                 result[rpos] = 0x20
@@ -2412,7 +2412,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       for (__pyx_t_14 = 0; __pyx_t_14 < __pyx_t_13; __pyx_t_14+=1) {
         __pyx_v_i = __pyx_t_14;
 
-        /* "pandas/io/sas/saslib.pyx":47
+        /* "pandas/io/sas/saslib.pyx":49
  *             ipos += 1
  *             for i in range(nbytes):
  *                 result[rpos] = 0x20             # <<<<<<<<<<<<<<
@@ -2423,38 +2423,38 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         if (__pyx_t_21 < 0) __pyx_t_21 += __pyx_v_result.shape[0];
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_result.data + __pyx_t_21 * __pyx_v_result.strides[0]) )) = 0x20;
 
-        /* "pandas/io/sas/saslib.pyx":48
+        /* "pandas/io/sas/saslib.pyx":50
  *             for i in range(nbytes):
  *                 result[rpos] = 0x20
  *                 rpos += 1             # <<<<<<<<<<<<<<
  *         elif control_byte == 0x70:
- *             nbytes = end_of_first_byte*256 + <int>(inbuff[ipos]) + 17
+ *             nbytes = end_of_first_byte * 256 + <int>(inbuff[ipos]) + 17
  */
         __pyx_v_rpos = (__pyx_v_rpos + 1);
       }
 
-      /* "pandas/io/sas/saslib.pyx":43
+      /* "pandas/io/sas/saslib.pyx":45
  *                 rpos += 1
  *             ipos += 1
  *         elif control_byte == 0x60:             # <<<<<<<<<<<<<<
- *             nbytes = end_of_first_byte*256 + <int>(inbuff[ipos]) + 17
+ *             nbytes = end_of_first_byte * 256 + <int>(inbuff[ipos]) + 17
  *             ipos += 1
  */
       break;
 
-      /* "pandas/io/sas/saslib.pyx":49
+      /* "pandas/io/sas/saslib.pyx":51
  *                 result[rpos] = 0x20
  *                 rpos += 1
  *         elif control_byte == 0x70:             # <<<<<<<<<<<<<<
- *             nbytes = end_of_first_byte*256 + <int>(inbuff[ipos]) + 17
+ *             nbytes = end_of_first_byte * 256 + <int>(inbuff[ipos]) + 17
  *             ipos += 1
  */
       case 0x70:
 
-      /* "pandas/io/sas/saslib.pyx":50
+      /* "pandas/io/sas/saslib.pyx":52
  *                 rpos += 1
  *         elif control_byte == 0x70:
- *             nbytes = end_of_first_byte*256 + <int>(inbuff[ipos]) + 17             # <<<<<<<<<<<<<<
+ *             nbytes = end_of_first_byte * 256 + <int>(inbuff[ipos]) + 17             # <<<<<<<<<<<<<<
  *             ipos += 1
  *             for i in range(nbytes):
  */
@@ -2462,17 +2462,17 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       if (__pyx_t_22 < 0) __pyx_t_22 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
       __pyx_v_nbytes = (((__pyx_v_end_of_first_byte * 0x100) + ((int)(*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_22, __pyx_pybuffernd_inbuff.diminfo[0].strides)))) + 17);
 
-      /* "pandas/io/sas/saslib.pyx":51
+      /* "pandas/io/sas/saslib.pyx":53
  *         elif control_byte == 0x70:
- *             nbytes = end_of_first_byte*256 + <int>(inbuff[ipos]) + 17
+ *             nbytes = end_of_first_byte * 256 + <int>(inbuff[ipos]) + 17
  *             ipos += 1             # <<<<<<<<<<<<<<
  *             for i in range(nbytes):
  *                 result[rpos] = 0x00
  */
       __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":52
- *             nbytes = end_of_first_byte*256 + <int>(inbuff[ipos]) + 17
+      /* "pandas/io/sas/saslib.pyx":54
+ *             nbytes = end_of_first_byte * 256 + <int>(inbuff[ipos]) + 17
  *             ipos += 1
  *             for i in range(nbytes):             # <<<<<<<<<<<<<<
  *                 result[rpos] = 0x00
@@ -2482,7 +2482,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       for (__pyx_t_14 = 0; __pyx_t_14 < __pyx_t_13; __pyx_t_14+=1) {
         __pyx_v_i = __pyx_t_14;
 
-        /* "pandas/io/sas/saslib.pyx":53
+        /* "pandas/io/sas/saslib.pyx":55
  *             ipos += 1
  *             for i in range(nbytes):
  *                 result[rpos] = 0x00             # <<<<<<<<<<<<<<
@@ -2493,7 +2493,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         if (__pyx_t_23 < 0) __pyx_t_23 += __pyx_v_result.shape[0];
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_result.data + __pyx_t_23 * __pyx_v_result.strides[0]) )) = 0x00;
 
-        /* "pandas/io/sas/saslib.pyx":54
+        /* "pandas/io/sas/saslib.pyx":56
  *             for i in range(nbytes):
  *                 result[rpos] = 0x00
  *                 rpos += 1             # <<<<<<<<<<<<<<
@@ -2503,16 +2503,16 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         __pyx_v_rpos = (__pyx_v_rpos + 1);
       }
 
-      /* "pandas/io/sas/saslib.pyx":49
+      /* "pandas/io/sas/saslib.pyx":51
  *                 result[rpos] = 0x20
  *                 rpos += 1
  *         elif control_byte == 0x70:             # <<<<<<<<<<<<<<
- *             nbytes = end_of_first_byte*256 + <int>(inbuff[ipos]) + 17
+ *             nbytes = end_of_first_byte * 256 + <int>(inbuff[ipos]) + 17
  *             ipos += 1
  */
       break;
 
-      /* "pandas/io/sas/saslib.pyx":55
+      /* "pandas/io/sas/saslib.pyx":57
  *                 result[rpos] = 0x00
  *                 rpos += 1
  *         elif control_byte == 0x80:             # <<<<<<<<<<<<<<
@@ -2521,7 +2521,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       case 0x80:
 
-      /* "pandas/io/sas/saslib.pyx":56
+      /* "pandas/io/sas/saslib.pyx":58
  *                 rpos += 1
  *         elif control_byte == 0x80:
  *             nbytes = end_of_first_byte + 1             # <<<<<<<<<<<<<<
@@ -2530,7 +2530,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_nbytes = (__pyx_v_end_of_first_byte + 1);
 
-      /* "pandas/io/sas/saslib.pyx":57
+      /* "pandas/io/sas/saslib.pyx":59
  *         elif control_byte == 0x80:
  *             nbytes = end_of_first_byte + 1
  *             for i in range(nbytes):             # <<<<<<<<<<<<<<
@@ -2541,7 +2541,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       for (__pyx_t_14 = 0; __pyx_t_14 < __pyx_t_13; __pyx_t_14+=1) {
         __pyx_v_i = __pyx_t_14;
 
-        /* "pandas/io/sas/saslib.pyx":58
+        /* "pandas/io/sas/saslib.pyx":60
  *             nbytes = end_of_first_byte + 1
  *             for i in range(nbytes):
  *                 result[rpos] = inbuff[ipos + i]             # <<<<<<<<<<<<<<
@@ -2554,7 +2554,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         if (__pyx_t_25 < 0) __pyx_t_25 += __pyx_v_result.shape[0];
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_result.data + __pyx_t_25 * __pyx_v_result.strides[0]) )) = (*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_24, __pyx_pybuffernd_inbuff.diminfo[0].strides));
 
-        /* "pandas/io/sas/saslib.pyx":59
+        /* "pandas/io/sas/saslib.pyx":61
  *             for i in range(nbytes):
  *                 result[rpos] = inbuff[ipos + i]
  *                 rpos += 1             # <<<<<<<<<<<<<<
@@ -2564,7 +2564,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         __pyx_v_rpos = (__pyx_v_rpos + 1);
       }
 
-      /* "pandas/io/sas/saslib.pyx":60
+      /* "pandas/io/sas/saslib.pyx":62
  *                 result[rpos] = inbuff[ipos + i]
  *                 rpos += 1
  *             ipos += nbytes             # <<<<<<<<<<<<<<
@@ -2573,7 +2573,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + __pyx_v_nbytes);
 
-      /* "pandas/io/sas/saslib.pyx":55
+      /* "pandas/io/sas/saslib.pyx":57
  *                 result[rpos] = 0x00
  *                 rpos += 1
  *         elif control_byte == 0x80:             # <<<<<<<<<<<<<<
@@ -2582,7 +2582,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       break;
 
-      /* "pandas/io/sas/saslib.pyx":61
+      /* "pandas/io/sas/saslib.pyx":63
  *                 rpos += 1
  *             ipos += nbytes
  *         elif control_byte == 0x90:             # <<<<<<<<<<<<<<
@@ -2591,7 +2591,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       case 0x90:
 
-      /* "pandas/io/sas/saslib.pyx":62
+      /* "pandas/io/sas/saslib.pyx":64
  *             ipos += nbytes
  *         elif control_byte == 0x90:
  *             nbytes = end_of_first_byte + 17             # <<<<<<<<<<<<<<
@@ -2600,7 +2600,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_nbytes = (__pyx_v_end_of_first_byte + 17);
 
-      /* "pandas/io/sas/saslib.pyx":63
+      /* "pandas/io/sas/saslib.pyx":65
  *         elif control_byte == 0x90:
  *             nbytes = end_of_first_byte + 17
  *             for i in range(nbytes):             # <<<<<<<<<<<<<<
@@ -2611,7 +2611,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       for (__pyx_t_14 = 0; __pyx_t_14 < __pyx_t_13; __pyx_t_14+=1) {
         __pyx_v_i = __pyx_t_14;
 
-        /* "pandas/io/sas/saslib.pyx":64
+        /* "pandas/io/sas/saslib.pyx":66
  *             nbytes = end_of_first_byte + 17
  *             for i in range(nbytes):
  *                 result[rpos] = inbuff[ipos + i]             # <<<<<<<<<<<<<<
@@ -2624,7 +2624,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         if (__pyx_t_27 < 0) __pyx_t_27 += __pyx_v_result.shape[0];
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_result.data + __pyx_t_27 * __pyx_v_result.strides[0]) )) = (*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_26, __pyx_pybuffernd_inbuff.diminfo[0].strides));
 
-        /* "pandas/io/sas/saslib.pyx":65
+        /* "pandas/io/sas/saslib.pyx":67
  *             for i in range(nbytes):
  *                 result[rpos] = inbuff[ipos + i]
  *                 rpos += 1             # <<<<<<<<<<<<<<
@@ -2634,7 +2634,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         __pyx_v_rpos = (__pyx_v_rpos + 1);
       }
 
-      /* "pandas/io/sas/saslib.pyx":66
+      /* "pandas/io/sas/saslib.pyx":68
  *                 result[rpos] = inbuff[ipos + i]
  *                 rpos += 1
  *             ipos += nbytes             # <<<<<<<<<<<<<<
@@ -2643,7 +2643,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + __pyx_v_nbytes);
 
-      /* "pandas/io/sas/saslib.pyx":61
+      /* "pandas/io/sas/saslib.pyx":63
  *                 rpos += 1
  *             ipos += nbytes
  *         elif control_byte == 0x90:             # <<<<<<<<<<<<<<
@@ -2652,7 +2652,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       break;
 
-      /* "pandas/io/sas/saslib.pyx":67
+      /* "pandas/io/sas/saslib.pyx":69
  *                 rpos += 1
  *             ipos += nbytes
  *         elif control_byte == 0xA0:             # <<<<<<<<<<<<<<
@@ -2661,7 +2661,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       case 0xA0:
 
-      /* "pandas/io/sas/saslib.pyx":68
+      /* "pandas/io/sas/saslib.pyx":70
  *             ipos += nbytes
  *         elif control_byte == 0xA0:
  *             nbytes = end_of_first_byte + 33             # <<<<<<<<<<<<<<
@@ -2670,7 +2670,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_nbytes = (__pyx_v_end_of_first_byte + 33);
 
-      /* "pandas/io/sas/saslib.pyx":69
+      /* "pandas/io/sas/saslib.pyx":71
  *         elif control_byte == 0xA0:
  *             nbytes = end_of_first_byte + 33
  *             for i in range(nbytes):             # <<<<<<<<<<<<<<
@@ -2681,7 +2681,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       for (__pyx_t_14 = 0; __pyx_t_14 < __pyx_t_13; __pyx_t_14+=1) {
         __pyx_v_i = __pyx_t_14;
 
-        /* "pandas/io/sas/saslib.pyx":70
+        /* "pandas/io/sas/saslib.pyx":72
  *             nbytes = end_of_first_byte + 33
  *             for i in range(nbytes):
  *                 result[rpos] = inbuff[ipos + i]             # <<<<<<<<<<<<<<
@@ -2694,7 +2694,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         if (__pyx_t_29 < 0) __pyx_t_29 += __pyx_v_result.shape[0];
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_result.data + __pyx_t_29 * __pyx_v_result.strides[0]) )) = (*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_28, __pyx_pybuffernd_inbuff.diminfo[0].strides));
 
-        /* "pandas/io/sas/saslib.pyx":71
+        /* "pandas/io/sas/saslib.pyx":73
  *             for i in range(nbytes):
  *                 result[rpos] = inbuff[ipos + i]
  *                 rpos += 1             # <<<<<<<<<<<<<<
@@ -2704,7 +2704,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         __pyx_v_rpos = (__pyx_v_rpos + 1);
       }
 
-      /* "pandas/io/sas/saslib.pyx":72
+      /* "pandas/io/sas/saslib.pyx":74
  *                 result[rpos] = inbuff[ipos + i]
  *                 rpos += 1
  *             ipos += nbytes             # <<<<<<<<<<<<<<
@@ -2713,7 +2713,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + __pyx_v_nbytes);
 
-      /* "pandas/io/sas/saslib.pyx":67
+      /* "pandas/io/sas/saslib.pyx":69
  *                 rpos += 1
  *             ipos += nbytes
  *         elif control_byte == 0xA0:             # <<<<<<<<<<<<<<
@@ -2722,7 +2722,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       break;
 
-      /* "pandas/io/sas/saslib.pyx":73
+      /* "pandas/io/sas/saslib.pyx":75
  *                 rpos += 1
  *             ipos += nbytes
  *         elif control_byte == 0xB0:             # <<<<<<<<<<<<<<
@@ -2731,7 +2731,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       case 0xB0:
 
-      /* "pandas/io/sas/saslib.pyx":74
+      /* "pandas/io/sas/saslib.pyx":76
  *             ipos += nbytes
  *         elif control_byte == 0xB0:
  *             nbytes = end_of_first_byte + 49             # <<<<<<<<<<<<<<
@@ -2740,7 +2740,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_nbytes = (__pyx_v_end_of_first_byte + 49);
 
-      /* "pandas/io/sas/saslib.pyx":75
+      /* "pandas/io/sas/saslib.pyx":77
  *         elif control_byte == 0xB0:
  *             nbytes = end_of_first_byte + 49
  *             for i in range(nbytes):             # <<<<<<<<<<<<<<
@@ -2751,7 +2751,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       for (__pyx_t_14 = 0; __pyx_t_14 < __pyx_t_13; __pyx_t_14+=1) {
         __pyx_v_i = __pyx_t_14;
 
-        /* "pandas/io/sas/saslib.pyx":76
+        /* "pandas/io/sas/saslib.pyx":78
  *             nbytes = end_of_first_byte + 49
  *             for i in range(nbytes):
  *                 result[rpos] = inbuff[ipos + i]             # <<<<<<<<<<<<<<
@@ -2764,7 +2764,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         if (__pyx_t_31 < 0) __pyx_t_31 += __pyx_v_result.shape[0];
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_result.data + __pyx_t_31 * __pyx_v_result.strides[0]) )) = (*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_30, __pyx_pybuffernd_inbuff.diminfo[0].strides));
 
-        /* "pandas/io/sas/saslib.pyx":77
+        /* "pandas/io/sas/saslib.pyx":79
  *             for i in range(nbytes):
  *                 result[rpos] = inbuff[ipos + i]
  *                 rpos += 1             # <<<<<<<<<<<<<<
@@ -2774,7 +2774,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         __pyx_v_rpos = (__pyx_v_rpos + 1);
       }
 
-      /* "pandas/io/sas/saslib.pyx":78
+      /* "pandas/io/sas/saslib.pyx":80
  *                 result[rpos] = inbuff[ipos + i]
  *                 rpos += 1
  *             ipos += nbytes             # <<<<<<<<<<<<<<
@@ -2783,7 +2783,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + __pyx_v_nbytes);
 
-      /* "pandas/io/sas/saslib.pyx":73
+      /* "pandas/io/sas/saslib.pyx":75
  *                 rpos += 1
  *             ipos += nbytes
  *         elif control_byte == 0xB0:             # <<<<<<<<<<<<<<
@@ -2792,7 +2792,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       break;
 
-      /* "pandas/io/sas/saslib.pyx":79
+      /* "pandas/io/sas/saslib.pyx":81
  *                 rpos += 1
  *             ipos += nbytes
  *         elif control_byte == 0xC0:             # <<<<<<<<<<<<<<
@@ -2801,7 +2801,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       case 0xC0:
 
-      /* "pandas/io/sas/saslib.pyx":80
+      /* "pandas/io/sas/saslib.pyx":82
  *             ipos += nbytes
  *         elif control_byte == 0xC0:
  *             nbytes = end_of_first_byte + 3             # <<<<<<<<<<<<<<
@@ -2810,7 +2810,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_nbytes = (__pyx_v_end_of_first_byte + 3);
 
-      /* "pandas/io/sas/saslib.pyx":81
+      /* "pandas/io/sas/saslib.pyx":83
  *         elif control_byte == 0xC0:
  *             nbytes = end_of_first_byte + 3
  *             x = inbuff[ipos]             # <<<<<<<<<<<<<<
@@ -2821,7 +2821,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       if (__pyx_t_32 < 0) __pyx_t_32 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
       __pyx_v_x = (*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_32, __pyx_pybuffernd_inbuff.diminfo[0].strides));
 
-      /* "pandas/io/sas/saslib.pyx":82
+      /* "pandas/io/sas/saslib.pyx":84
  *             nbytes = end_of_first_byte + 3
  *             x = inbuff[ipos]
  *             ipos += 1             # <<<<<<<<<<<<<<
@@ -2830,7 +2830,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":83
+      /* "pandas/io/sas/saslib.pyx":85
  *             x = inbuff[ipos]
  *             ipos += 1
  *             for i in range(nbytes):             # <<<<<<<<<<<<<<
@@ -2841,7 +2841,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       for (__pyx_t_14 = 0; __pyx_t_14 < __pyx_t_13; __pyx_t_14+=1) {
         __pyx_v_i = __pyx_t_14;
 
-        /* "pandas/io/sas/saslib.pyx":84
+        /* "pandas/io/sas/saslib.pyx":86
  *             ipos += 1
  *             for i in range(nbytes):
  *                 result[rpos] = x             # <<<<<<<<<<<<<<
@@ -2852,7 +2852,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         if (__pyx_t_33 < 0) __pyx_t_33 += __pyx_v_result.shape[0];
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_result.data + __pyx_t_33 * __pyx_v_result.strides[0]) )) = __pyx_v_x;
 
-        /* "pandas/io/sas/saslib.pyx":85
+        /* "pandas/io/sas/saslib.pyx":87
  *             for i in range(nbytes):
  *                 result[rpos] = x
  *                 rpos += 1             # <<<<<<<<<<<<<<
@@ -2862,7 +2862,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         __pyx_v_rpos = (__pyx_v_rpos + 1);
       }
 
-      /* "pandas/io/sas/saslib.pyx":79
+      /* "pandas/io/sas/saslib.pyx":81
  *                 rpos += 1
  *             ipos += nbytes
  *         elif control_byte == 0xC0:             # <<<<<<<<<<<<<<
@@ -2871,7 +2871,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       break;
 
-      /* "pandas/io/sas/saslib.pyx":86
+      /* "pandas/io/sas/saslib.pyx":88
  *                 result[rpos] = x
  *                 rpos += 1
  *         elif control_byte == 0xD0:             # <<<<<<<<<<<<<<
@@ -2880,7 +2880,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       case 0xD0:
 
-      /* "pandas/io/sas/saslib.pyx":87
+      /* "pandas/io/sas/saslib.pyx":89
  *                 rpos += 1
  *         elif control_byte == 0xD0:
  *             nbytes = end_of_first_byte + 2             # <<<<<<<<<<<<<<
@@ -2889,7 +2889,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_nbytes = (__pyx_v_end_of_first_byte + 2);
 
-      /* "pandas/io/sas/saslib.pyx":88
+      /* "pandas/io/sas/saslib.pyx":90
  *         elif control_byte == 0xD0:
  *             nbytes = end_of_first_byte + 2
  *             for i in range(nbytes):             # <<<<<<<<<<<<<<
@@ -2900,7 +2900,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       for (__pyx_t_14 = 0; __pyx_t_14 < __pyx_t_13; __pyx_t_14+=1) {
         __pyx_v_i = __pyx_t_14;
 
-        /* "pandas/io/sas/saslib.pyx":89
+        /* "pandas/io/sas/saslib.pyx":91
  *             nbytes = end_of_first_byte + 2
  *             for i in range(nbytes):
  *                 result[rpos] = 0x40             # <<<<<<<<<<<<<<
@@ -2911,7 +2911,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         if (__pyx_t_34 < 0) __pyx_t_34 += __pyx_v_result.shape[0];
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_result.data + __pyx_t_34 * __pyx_v_result.strides[0]) )) = 0x40;
 
-        /* "pandas/io/sas/saslib.pyx":90
+        /* "pandas/io/sas/saslib.pyx":92
  *             for i in range(nbytes):
  *                 result[rpos] = 0x40
  *                 rpos += 1             # <<<<<<<<<<<<<<
@@ -2921,7 +2921,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         __pyx_v_rpos = (__pyx_v_rpos + 1);
       }
 
-      /* "pandas/io/sas/saslib.pyx":86
+      /* "pandas/io/sas/saslib.pyx":88
  *                 result[rpos] = x
  *                 rpos += 1
  *         elif control_byte == 0xD0:             # <<<<<<<<<<<<<<
@@ -2930,7 +2930,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       break;
 
-      /* "pandas/io/sas/saslib.pyx":91
+      /* "pandas/io/sas/saslib.pyx":93
  *                 result[rpos] = 0x40
  *                 rpos += 1
  *         elif control_byte == 0xE0:             # <<<<<<<<<<<<<<
@@ -2939,7 +2939,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       case 0xE0:
 
-      /* "pandas/io/sas/saslib.pyx":92
+      /* "pandas/io/sas/saslib.pyx":94
  *                 rpos += 1
  *         elif control_byte == 0xE0:
  *             nbytes = end_of_first_byte + 2             # <<<<<<<<<<<<<<
@@ -2948,7 +2948,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_nbytes = (__pyx_v_end_of_first_byte + 2);
 
-      /* "pandas/io/sas/saslib.pyx":93
+      /* "pandas/io/sas/saslib.pyx":95
  *         elif control_byte == 0xE0:
  *             nbytes = end_of_first_byte + 2
  *             for i in range(nbytes):             # <<<<<<<<<<<<<<
@@ -2959,7 +2959,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       for (__pyx_t_14 = 0; __pyx_t_14 < __pyx_t_13; __pyx_t_14+=1) {
         __pyx_v_i = __pyx_t_14;
 
-        /* "pandas/io/sas/saslib.pyx":94
+        /* "pandas/io/sas/saslib.pyx":96
  *             nbytes = end_of_first_byte + 2
  *             for i in range(nbytes):
  *                 result[rpos] = 0x20             # <<<<<<<<<<<<<<
@@ -2970,7 +2970,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         if (__pyx_t_35 < 0) __pyx_t_35 += __pyx_v_result.shape[0];
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_result.data + __pyx_t_35 * __pyx_v_result.strides[0]) )) = 0x20;
 
-        /* "pandas/io/sas/saslib.pyx":95
+        /* "pandas/io/sas/saslib.pyx":97
  *             for i in range(nbytes):
  *                 result[rpos] = 0x20
  *                 rpos += 1             # <<<<<<<<<<<<<<
@@ -2980,7 +2980,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         __pyx_v_rpos = (__pyx_v_rpos + 1);
       }
 
-      /* "pandas/io/sas/saslib.pyx":91
+      /* "pandas/io/sas/saslib.pyx":93
  *                 result[rpos] = 0x40
  *                 rpos += 1
  *         elif control_byte == 0xE0:             # <<<<<<<<<<<<<<
@@ -2989,7 +2989,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       break;
 
-      /* "pandas/io/sas/saslib.pyx":96
+      /* "pandas/io/sas/saslib.pyx":98
  *                 result[rpos] = 0x20
  *                 rpos += 1
  *         elif control_byte == 0xF0:             # <<<<<<<<<<<<<<
@@ -2998,7 +2998,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       case 0xF0:
 
-      /* "pandas/io/sas/saslib.pyx":97
+      /* "pandas/io/sas/saslib.pyx":99
  *                 rpos += 1
  *         elif control_byte == 0xF0:
  *             nbytes = end_of_first_byte + 2             # <<<<<<<<<<<<<<
@@ -3007,7 +3007,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
       __pyx_v_nbytes = (__pyx_v_end_of_first_byte + 2);
 
-      /* "pandas/io/sas/saslib.pyx":98
+      /* "pandas/io/sas/saslib.pyx":100
  *         elif control_byte == 0xF0:
  *             nbytes = end_of_first_byte + 2
  *             for i in range(nbytes):             # <<<<<<<<<<<<<<
@@ -3018,7 +3018,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       for (__pyx_t_14 = 0; __pyx_t_14 < __pyx_t_13; __pyx_t_14+=1) {
         __pyx_v_i = __pyx_t_14;
 
-        /* "pandas/io/sas/saslib.pyx":99
+        /* "pandas/io/sas/saslib.pyx":101
  *             nbytes = end_of_first_byte + 2
  *             for i in range(nbytes):
  *                 result[rpos] = 0x00             # <<<<<<<<<<<<<<
@@ -3029,7 +3029,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         if (__pyx_t_36 < 0) __pyx_t_36 += __pyx_v_result.shape[0];
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_result.data + __pyx_t_36 * __pyx_v_result.strides[0]) )) = 0x00;
 
-        /* "pandas/io/sas/saslib.pyx":100
+        /* "pandas/io/sas/saslib.pyx":102
  *             for i in range(nbytes):
  *                 result[rpos] = 0x00
  *                 rpos += 1             # <<<<<<<<<<<<<<
@@ -3039,7 +3039,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
         __pyx_v_rpos = (__pyx_v_rpos + 1);
       }
 
-      /* "pandas/io/sas/saslib.pyx":96
+      /* "pandas/io/sas/saslib.pyx":98
  *                 result[rpos] = 0x20
  *                 rpos += 1
  *         elif control_byte == 0xF0:             # <<<<<<<<<<<<<<
@@ -3049,16 +3049,16 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       break;
       default:
 
-      /* "pandas/io/sas/saslib.pyx":102
+      /* "pandas/io/sas/saslib.pyx":104
  *                 rpos += 1
  *         else:
  *             raise ValueError("unknown control byte: %v", control_byte)             # <<<<<<<<<<<<<<
  * 
  *     if len(result) != result_length:
  */
-      __pyx_t_1 = __Pyx_PyInt_From_npy_uint8(__pyx_v_control_byte); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 102; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_1 = __Pyx_PyInt_From_npy_uint8(__pyx_v_control_byte); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 104; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_1);
-      __pyx_t_3 = PyTuple_New(2); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 102; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_3 = PyTuple_New(2); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 104; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_3);
       __Pyx_INCREF(__pyx_kp_s_unknown_control_byte_v);
       __Pyx_GIVEREF(__pyx_kp_s_unknown_control_byte_v);
@@ -3066,46 +3066,46 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
       __Pyx_GIVEREF(__pyx_t_1);
       PyTuple_SET_ITEM(__pyx_t_3, 1, __pyx_t_1);
       __pyx_t_1 = 0;
-      __pyx_t_1 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_t_3, NULL); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 102; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_1 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_t_3, NULL); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 104; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
       __Pyx_Raise(__pyx_t_1, 0, 0, 0);
       __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-      {__pyx_filename = __pyx_f[0]; __pyx_lineno = 102; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      {__pyx_filename = __pyx_f[0]; __pyx_lineno = 104; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       break;
     }
   }
 
-  /* "pandas/io/sas/saslib.pyx":104
+  /* "pandas/io/sas/saslib.pyx":106
  *             raise ValueError("unknown control byte: %v", control_byte)
  * 
  *     if len(result) != result_length:             # <<<<<<<<<<<<<<
  *         raise ValueError("RLE: %v != %v", (len(result), result_length))
  * 
  */
-  __pyx_t_1 = __pyx_memoryview_fromslice(__pyx_v_result, 1, (PyObject *(*)(char *)) __pyx_memview_get_nn___pyx_t_5numpy_uint8_t, (int (*)(char *, PyObject *)) __pyx_memview_set_nn___pyx_t_5numpy_uint8_t, 0);; if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 104; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __pyx_memoryview_fromslice(__pyx_v_result, 1, (PyObject *(*)(char *)) __pyx_memview_get_nn___pyx_t_5numpy_uint8_t, (int (*)(char *, PyObject *)) __pyx_memview_set_nn___pyx_t_5numpy_uint8_t, 0);; if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 106; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_6 = PyObject_Length(__pyx_t_1); if (unlikely(__pyx_t_6 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 104; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_6 = PyObject_Length(__pyx_t_1); if (unlikely(__pyx_t_6 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 106; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_t_9 = ((__pyx_t_6 != __pyx_v_result_length) != 0);
   if (__pyx_t_9) {
 
-    /* "pandas/io/sas/saslib.pyx":105
+    /* "pandas/io/sas/saslib.pyx":107
  * 
  *     if len(result) != result_length:
  *         raise ValueError("RLE: %v != %v", (len(result), result_length))             # <<<<<<<<<<<<<<
  * 
  *     return np.asarray(result)
  */
-    __pyx_t_1 = __pyx_memoryview_fromslice(__pyx_v_result, 1, (PyObject *(*)(char *)) __pyx_memview_get_nn___pyx_t_5numpy_uint8_t, (int (*)(char *, PyObject *)) __pyx_memview_set_nn___pyx_t_5numpy_uint8_t, 0);; if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 105; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_1 = __pyx_memoryview_fromslice(__pyx_v_result, 1, (PyObject *(*)(char *)) __pyx_memview_get_nn___pyx_t_5numpy_uint8_t, (int (*)(char *, PyObject *)) __pyx_memview_set_nn___pyx_t_5numpy_uint8_t, 0);; if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_1);
-    __pyx_t_6 = PyObject_Length(__pyx_t_1); if (unlikely(__pyx_t_6 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 105; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_6 = PyObject_Length(__pyx_t_1); if (unlikely(__pyx_t_6 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-    __pyx_t_1 = PyInt_FromSsize_t(__pyx_t_6); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 105; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_1 = PyInt_FromSsize_t(__pyx_t_6); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_1);
-    __pyx_t_3 = __Pyx_PyInt_From_int(__pyx_v_result_length); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 105; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_3 = __Pyx_PyInt_From_int(__pyx_v_result_length); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_3);
-    __pyx_t_7 = PyTuple_New(2); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 105; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_7 = PyTuple_New(2); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_7);
     __Pyx_GIVEREF(__pyx_t_1);
     PyTuple_SET_ITEM(__pyx_t_7, 0, __pyx_t_1);
@@ -3113,7 +3113,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
     PyTuple_SET_ITEM(__pyx_t_7, 1, __pyx_t_3);
     __pyx_t_1 = 0;
     __pyx_t_3 = 0;
-    __pyx_t_3 = PyTuple_New(2); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 105; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_3 = PyTuple_New(2); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_3);
     __Pyx_INCREF(__pyx_kp_s_RLE_v_v);
     __Pyx_GIVEREF(__pyx_kp_s_RLE_v_v);
@@ -3121,14 +3121,14 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
     __Pyx_GIVEREF(__pyx_t_7);
     PyTuple_SET_ITEM(__pyx_t_3, 1, __pyx_t_7);
     __pyx_t_7 = 0;
-    __pyx_t_7 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_t_3, NULL); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 105; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_7 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_t_3, NULL); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_7);
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     __Pyx_Raise(__pyx_t_7, 0, 0, 0);
     __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-    {__pyx_filename = __pyx_f[0]; __pyx_lineno = 105; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
 
-    /* "pandas/io/sas/saslib.pyx":104
+    /* "pandas/io/sas/saslib.pyx":106
  *             raise ValueError("unknown control byte: %v", control_byte)
  * 
  *     if len(result) != result_length:             # <<<<<<<<<<<<<<
@@ -3137,7 +3137,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  */
   }
 
-  /* "pandas/io/sas/saslib.pyx":107
+  /* "pandas/io/sas/saslib.pyx":109
  *         raise ValueError("RLE: %v != %v", (len(result), result_length))
  * 
  *     return np.asarray(result)             # <<<<<<<<<<<<<<
@@ -3145,12 +3145,12 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
  * 
  */
   __Pyx_XDECREF(((PyObject *)__pyx_r));
-  __pyx_t_3 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 109; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_asarray); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_asarray); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 109; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __pyx_memoryview_fromslice(__pyx_v_result, 1, (PyObject *(*)(char *)) __pyx_memview_get_nn___pyx_t_5numpy_uint8_t, (int (*)(char *, PyObject *)) __pyx_memview_set_nn___pyx_t_5numpy_uint8_t, 0);; if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __pyx_memoryview_fromslice(__pyx_v_result, 1, (PyObject *(*)(char *)) __pyx_memview_get_nn___pyx_t_5numpy_uint8_t, (int (*)(char *, PyObject *)) __pyx_memview_set_nn___pyx_t_5numpy_uint8_t, 0);; if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 109; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_5 = NULL;
   if (CYTHON_COMPILING_IN_CPYTHON && unlikely(PyMethod_Check(__pyx_t_1))) {
@@ -3163,22 +3163,22 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
     }
   }
   if (!__pyx_t_5) {
-    __pyx_t_7 = __Pyx_PyObject_CallOneArg(__pyx_t_1, __pyx_t_3); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_7 = __Pyx_PyObject_CallOneArg(__pyx_t_1, __pyx_t_3); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 109; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     __Pyx_GOTREF(__pyx_t_7);
   } else {
-    __pyx_t_2 = PyTuple_New(1+1); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_2 = PyTuple_New(1+1); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 109; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_2);
     __Pyx_GIVEREF(__pyx_t_5); PyTuple_SET_ITEM(__pyx_t_2, 0, __pyx_t_5); __pyx_t_5 = NULL;
     __Pyx_GIVEREF(__pyx_t_3);
     PyTuple_SET_ITEM(__pyx_t_2, 0+1, __pyx_t_3);
     __pyx_t_3 = 0;
-    __pyx_t_7 = __Pyx_PyObject_Call(__pyx_t_1, __pyx_t_2, NULL); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_7 = __Pyx_PyObject_Call(__pyx_t_1, __pyx_t_2, NULL); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 109; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_7);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   }
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  if (!(likely(((__pyx_t_7) == Py_None) || likely(__Pyx_TypeTest(__pyx_t_7, __pyx_ptype_5numpy_ndarray))))) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (!(likely(((__pyx_t_7) == Py_None) || likely(__Pyx_TypeTest(__pyx_t_7, __pyx_ptype_5numpy_ndarray))))) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 109; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_r = ((PyArrayObject *)__pyx_t_7);
   __pyx_t_7 = 0;
   goto __pyx_L0;
@@ -3186,9 +3186,9 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
   /* "pandas/io/sas/saslib.pyx":13
  * #
  * # https://cran.r-project.org/web/packages/sas7bdat/vignettes/sas7bdat.pdf
- * cdef np.ndarray[uint8_t, ndim=1] rle_decompress(int result_length, np.ndarray[uint8_t, ndim=1] inbuff):             # <<<<<<<<<<<<<<
+ * cdef np.ndarray[uint8_t, ndim=1] rle_decompress(             # <<<<<<<<<<<<<<
+ *         int result_length, np.ndarray[uint8_t, ndim=1] inbuff):
  * 
- *     cdef:
  */
 
   /* function exit code */
@@ -3216,12 +3216,12 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rle_decompress(int __pyx_
   return __pyx_r;
 }
 
-/* "pandas/io/sas/saslib.pyx":113
+/* "pandas/io/sas/saslib.pyx":115
  * #
- * #   http://collaboration.cmc.ec.gc.ca/science/rpn/biblio/ddj/Website/articles/CUJ/1992/9210/ross/ross.htm
- * cdef np.ndarray[uint8_t, ndim=1] rdc_decompress(int result_length, np.ndarray[uint8_t, ndim=1] inbuff):             # <<<<<<<<<<<<<<
+ * # http://collaboration.cmc.ec.gc.ca/science/rpn/biblio/ddj/Website/articles/CUJ/1992/9210/ross/ross.htm
+ * cdef np.ndarray[uint8_t, ndim=1] rdc_decompress(             # <<<<<<<<<<<<<<
+ *         int result_length, np.ndarray[uint8_t, ndim=1] inbuff):
  * 
- *     cdef:
  */
 
 static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_v_result_length, PyArrayObject *__pyx_v_inbuff) {
@@ -3278,11 +3278,11 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
   __pyx_pybuffernd_inbuff.rcbuffer = &__pyx_pybuffer_inbuff;
   {
     __Pyx_BufFmt_StackElem __pyx_stack[1];
-    if (unlikely(__Pyx_GetBufferAndValidate(&__pyx_pybuffernd_inbuff.rcbuffer->pybuffer, (PyObject*)__pyx_v_inbuff, &__Pyx_TypeInfo_nn___pyx_t_5numpy_uint8_t, PyBUF_FORMAT| PyBUF_STRIDES, 1, 0, __pyx_stack) == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 113; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    if (unlikely(__Pyx_GetBufferAndValidate(&__pyx_pybuffernd_inbuff.rcbuffer->pybuffer, (PyObject*)__pyx_v_inbuff, &__Pyx_TypeInfo_nn___pyx_t_5numpy_uint8_t, PyBUF_FORMAT| PyBUF_STRIDES, 1, 0, __pyx_stack) == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 115; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   }
   __pyx_pybuffernd_inbuff.diminfo[0].strides = __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.strides[0]; __pyx_pybuffernd_inbuff.diminfo[0].shape = __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.shape[0];
 
-  /* "pandas/io/sas/saslib.pyx":117
+  /* "pandas/io/sas/saslib.pyx":120
  *     cdef:
  *         uint8_t cmd
  *         uint16_t ctrl_bits, ctrl_mask = 0, ofs, cnt             # <<<<<<<<<<<<<<
@@ -3291,7 +3291,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
   __pyx_v_ctrl_mask = 0;
 
-  /* "pandas/io/sas/saslib.pyx":118
+  /* "pandas/io/sas/saslib.pyx":121
  *         uint8_t cmd
  *         uint16_t ctrl_bits, ctrl_mask = 0, ofs, cnt
  *         int ipos = 0, rpos = 0, k             # <<<<<<<<<<<<<<
@@ -3301,47 +3301,47 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
   __pyx_v_ipos = 0;
   __pyx_v_rpos = 0;
 
-  /* "pandas/io/sas/saslib.pyx":119
+  /* "pandas/io/sas/saslib.pyx":122
  *         uint16_t ctrl_bits, ctrl_mask = 0, ofs, cnt
  *         int ipos = 0, rpos = 0, k
  *         uint8_t [:] outbuff = np.zeros(result_length, dtype=np.uint8)             # <<<<<<<<<<<<<<
  * 
  *     ii = -1
  */
-  __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 119; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 122; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_zeros); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 119; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_zeros); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 122; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_1 = __Pyx_PyInt_From_int(__pyx_v_result_length); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 119; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyInt_From_int(__pyx_v_result_length); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 122; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_3 = PyTuple_New(1); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 119; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = PyTuple_New(1); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 122; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_GIVEREF(__pyx_t_1);
   PyTuple_SET_ITEM(__pyx_t_3, 0, __pyx_t_1);
   __pyx_t_1 = 0;
-  __pyx_t_1 = PyDict_New(); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 119; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = PyDict_New(); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 122; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_4 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 119; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_4 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 122; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_4);
-  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_n_s_uint8); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 119; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_n_s_uint8); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 122; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_5);
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-  if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_dtype, __pyx_t_5) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 119; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_dtype, __pyx_t_5) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 122; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-  __pyx_t_5 = __Pyx_PyObject_Call(__pyx_t_2, __pyx_t_3, __pyx_t_1); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 119; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_5 = __Pyx_PyObject_Call(__pyx_t_2, __pyx_t_3, __pyx_t_1); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 122; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_5);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_t_6 = __Pyx_PyObject_to_MemoryviewSlice_ds_nn___pyx_t_5numpy_uint8_t(__pyx_t_5);
-  if (unlikely(!__pyx_t_6.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 119; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (unlikely(!__pyx_t_6.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 122; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
   __pyx_v_outbuff = __pyx_t_6;
   __pyx_t_6.memview = NULL;
   __pyx_t_6.data = NULL;
 
-  /* "pandas/io/sas/saslib.pyx":121
+  /* "pandas/io/sas/saslib.pyx":124
  *         uint8_t [:] outbuff = np.zeros(result_length, dtype=np.uint8)
  * 
  *     ii = -1             # <<<<<<<<<<<<<<
@@ -3351,7 +3351,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
   __Pyx_INCREF(__pyx_int_neg_1);
   __pyx_v_ii = __pyx_int_neg_1;
 
-  /* "pandas/io/sas/saslib.pyx":123
+  /* "pandas/io/sas/saslib.pyx":126
  *     ii = -1
  * 
  *     while ipos < len(inbuff):             # <<<<<<<<<<<<<<
@@ -3359,65 +3359,81 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  *         ctrl_mask = ctrl_mask >> 1
  */
   while (1) {
-    __pyx_t_7 = PyObject_Length(((PyObject *)__pyx_v_inbuff)); if (unlikely(__pyx_t_7 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 123; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_7 = PyObject_Length(((PyObject *)__pyx_v_inbuff)); if (unlikely(__pyx_t_7 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 126; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __pyx_t_8 = ((__pyx_v_ipos < __pyx_t_7) != 0);
     if (!__pyx_t_8) break;
 
-    /* "pandas/io/sas/saslib.pyx":124
+    /* "pandas/io/sas/saslib.pyx":127
  * 
  *     while ipos < len(inbuff):
  *         ii += 1             # <<<<<<<<<<<<<<
  *         ctrl_mask = ctrl_mask >> 1
  *         if ctrl_mask == 0:
  */
-    __pyx_t_5 = __Pyx_PyInt_AddObjC(__pyx_v_ii, __pyx_int_1, 1, 1); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 124; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_5 = __Pyx_PyInt_AddObjC(__pyx_v_ii, __pyx_int_1, 1, 1); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 127; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_5);
     __Pyx_DECREF_SET(__pyx_v_ii, __pyx_t_5);
     __pyx_t_5 = 0;
 
-    /* "pandas/io/sas/saslib.pyx":125
+    /* "pandas/io/sas/saslib.pyx":128
  *     while ipos < len(inbuff):
  *         ii += 1
  *         ctrl_mask = ctrl_mask >> 1             # <<<<<<<<<<<<<<
  *         if ctrl_mask == 0:
- *             ctrl_bits = (<uint16_t>inbuff[ipos] << 8) + <uint16_t>inbuff[ipos + 1]
+ *             ctrl_bits = ((<uint16_t>inbuff[ipos] << 8) +
  */
     __pyx_v_ctrl_mask = (__pyx_v_ctrl_mask >> 1);
 
-    /* "pandas/io/sas/saslib.pyx":126
+    /* "pandas/io/sas/saslib.pyx":129
  *         ii += 1
  *         ctrl_mask = ctrl_mask >> 1
  *         if ctrl_mask == 0:             # <<<<<<<<<<<<<<
- *             ctrl_bits = (<uint16_t>inbuff[ipos] << 8) + <uint16_t>inbuff[ipos + 1]
- *             ipos += 2
+ *             ctrl_bits = ((<uint16_t>inbuff[ipos] << 8) +
+ *                          <uint16_t>inbuff[ipos + 1])
  */
     __pyx_t_8 = ((__pyx_v_ctrl_mask == 0) != 0);
     if (__pyx_t_8) {
 
-      /* "pandas/io/sas/saslib.pyx":127
+      /* "pandas/io/sas/saslib.pyx":130
  *         ctrl_mask = ctrl_mask >> 1
  *         if ctrl_mask == 0:
- *             ctrl_bits = (<uint16_t>inbuff[ipos] << 8) + <uint16_t>inbuff[ipos + 1]             # <<<<<<<<<<<<<<
+ *             ctrl_bits = ((<uint16_t>inbuff[ipos] << 8) +             # <<<<<<<<<<<<<<
+ *                          <uint16_t>inbuff[ipos + 1])
  *             ipos += 2
- *             ctrl_mask = 0x8000
  */
       __pyx_t_9 = __pyx_v_ipos;
       if (__pyx_t_9 < 0) __pyx_t_9 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
+
+      /* "pandas/io/sas/saslib.pyx":131
+ *         if ctrl_mask == 0:
+ *             ctrl_bits = ((<uint16_t>inbuff[ipos] << 8) +
+ *                          <uint16_t>inbuff[ipos + 1])             # <<<<<<<<<<<<<<
+ *             ipos += 2
+ *             ctrl_mask = 0x8000
+ */
       __pyx_t_10 = (__pyx_v_ipos + 1);
       if (__pyx_t_10 < 0) __pyx_t_10 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
+
+      /* "pandas/io/sas/saslib.pyx":130
+ *         ctrl_mask = ctrl_mask >> 1
+ *         if ctrl_mask == 0:
+ *             ctrl_bits = ((<uint16_t>inbuff[ipos] << 8) +             # <<<<<<<<<<<<<<
+ *                          <uint16_t>inbuff[ipos + 1])
+ *             ipos += 2
+ */
       __pyx_v_ctrl_bits = ((((__pyx_t_5numpy_uint16_t)(*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_9, __pyx_pybuffernd_inbuff.diminfo[0].strides))) << 8) + ((__pyx_t_5numpy_uint16_t)(*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_10, __pyx_pybuffernd_inbuff.diminfo[0].strides))));
 
-      /* "pandas/io/sas/saslib.pyx":128
- *         if ctrl_mask == 0:
- *             ctrl_bits = (<uint16_t>inbuff[ipos] << 8) + <uint16_t>inbuff[ipos + 1]
+      /* "pandas/io/sas/saslib.pyx":132
+ *             ctrl_bits = ((<uint16_t>inbuff[ipos] << 8) +
+ *                          <uint16_t>inbuff[ipos + 1])
  *             ipos += 2             # <<<<<<<<<<<<<<
  *             ctrl_mask = 0x8000
  * 
  */
       __pyx_v_ipos = (__pyx_v_ipos + 2);
 
-      /* "pandas/io/sas/saslib.pyx":129
- *             ctrl_bits = (<uint16_t>inbuff[ipos] << 8) + <uint16_t>inbuff[ipos + 1]
+      /* "pandas/io/sas/saslib.pyx":133
+ *                          <uint16_t>inbuff[ipos + 1])
  *             ipos += 2
  *             ctrl_mask = 0x8000             # <<<<<<<<<<<<<<
  * 
@@ -3425,16 +3441,16 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_ctrl_mask = 0x8000;
 
-      /* "pandas/io/sas/saslib.pyx":126
+      /* "pandas/io/sas/saslib.pyx":129
  *         ii += 1
  *         ctrl_mask = ctrl_mask >> 1
  *         if ctrl_mask == 0:             # <<<<<<<<<<<<<<
- *             ctrl_bits = (<uint16_t>inbuff[ipos] << 8) + <uint16_t>inbuff[ipos + 1]
- *             ipos += 2
+ *             ctrl_bits = ((<uint16_t>inbuff[ipos] << 8) +
+ *                          <uint16_t>inbuff[ipos + 1])
  */
     }
 
-    /* "pandas/io/sas/saslib.pyx":131
+    /* "pandas/io/sas/saslib.pyx":135
  *             ctrl_mask = 0x8000
  * 
  *         if ctrl_bits & ctrl_mask == 0:             # <<<<<<<<<<<<<<
@@ -3444,7 +3460,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
     __pyx_t_8 = (((__pyx_v_ctrl_bits & __pyx_v_ctrl_mask) == 0) != 0);
     if (__pyx_t_8) {
 
-      /* "pandas/io/sas/saslib.pyx":132
+      /* "pandas/io/sas/saslib.pyx":136
  * 
  *         if ctrl_bits & ctrl_mask == 0:
  *             outbuff[rpos] = inbuff[ipos]             # <<<<<<<<<<<<<<
@@ -3457,7 +3473,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
       if (__pyx_t_12 < 0) __pyx_t_12 += __pyx_v_outbuff.shape[0];
       *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_outbuff.data + __pyx_t_12 * __pyx_v_outbuff.strides[0]) )) = (*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_11, __pyx_pybuffernd_inbuff.diminfo[0].strides));
 
-      /* "pandas/io/sas/saslib.pyx":133
+      /* "pandas/io/sas/saslib.pyx":137
  *         if ctrl_bits & ctrl_mask == 0:
  *             outbuff[rpos] = inbuff[ipos]
  *             ipos += 1             # <<<<<<<<<<<<<<
@@ -3466,7 +3482,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":134
+      /* "pandas/io/sas/saslib.pyx":138
  *             outbuff[rpos] = inbuff[ipos]
  *             ipos += 1
  *             rpos += 1             # <<<<<<<<<<<<<<
@@ -3475,7 +3491,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_rpos = (__pyx_v_rpos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":135
+      /* "pandas/io/sas/saslib.pyx":139
  *             ipos += 1
  *             rpos += 1
  *             continue             # <<<<<<<<<<<<<<
@@ -3484,7 +3500,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       goto __pyx_L3_continue;
 
-      /* "pandas/io/sas/saslib.pyx":131
+      /* "pandas/io/sas/saslib.pyx":135
  *             ctrl_mask = 0x8000
  * 
  *         if ctrl_bits & ctrl_mask == 0:             # <<<<<<<<<<<<<<
@@ -3493,7 +3509,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
     }
 
-    /* "pandas/io/sas/saslib.pyx":137
+    /* "pandas/io/sas/saslib.pyx":141
  *             continue
  * 
  *         cmd = (inbuff[ipos] >> 4) & 0x0F             # <<<<<<<<<<<<<<
@@ -3504,7 +3520,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
     if (__pyx_t_13 < 0) __pyx_t_13 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
     __pyx_v_cmd = (((*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_13, __pyx_pybuffernd_inbuff.diminfo[0].strides)) >> 4) & 0x0F);
 
-    /* "pandas/io/sas/saslib.pyx":138
+    /* "pandas/io/sas/saslib.pyx":142
  * 
  *         cmd = (inbuff[ipos] >> 4) & 0x0F
  *         cnt = <uint16_t>(inbuff[ipos] & 0x0F)             # <<<<<<<<<<<<<<
@@ -3515,7 +3531,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
     if (__pyx_t_14 < 0) __pyx_t_14 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
     __pyx_v_cnt = ((__pyx_t_5numpy_uint16_t)((*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_14, __pyx_pybuffernd_inbuff.diminfo[0].strides)) & 0x0F));
 
-    /* "pandas/io/sas/saslib.pyx":139
+    /* "pandas/io/sas/saslib.pyx":143
  *         cmd = (inbuff[ipos] >> 4) & 0x0F
  *         cnt = <uint16_t>(inbuff[ipos] & 0x0F)
  *         ipos += 1             # <<<<<<<<<<<<<<
@@ -3524,7 +3540,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
     __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-    /* "pandas/io/sas/saslib.pyx":142
+    /* "pandas/io/sas/saslib.pyx":146
  * 
  *         # short RLE
  *         if cmd == 0:             # <<<<<<<<<<<<<<
@@ -3534,7 +3550,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
     __pyx_t_8 = ((__pyx_v_cmd == 0) != 0);
     if (__pyx_t_8) {
 
-      /* "pandas/io/sas/saslib.pyx":143
+      /* "pandas/io/sas/saslib.pyx":147
  *         # short RLE
  *         if cmd == 0:
  *             cnt += 3             # <<<<<<<<<<<<<<
@@ -3543,7 +3559,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_cnt = (__pyx_v_cnt + 3);
 
-      /* "pandas/io/sas/saslib.pyx":144
+      /* "pandas/io/sas/saslib.pyx":148
  *         if cmd == 0:
  *             cnt += 3
  *             for k in range(cnt):             # <<<<<<<<<<<<<<
@@ -3554,7 +3570,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
       for (__pyx_t_16 = 0; __pyx_t_16 < __pyx_t_15; __pyx_t_16+=1) {
         __pyx_v_k = __pyx_t_16;
 
-        /* "pandas/io/sas/saslib.pyx":145
+        /* "pandas/io/sas/saslib.pyx":149
  *             cnt += 3
  *             for k in range(cnt):
  *                 outbuff[rpos + k] = inbuff[ipos]             # <<<<<<<<<<<<<<
@@ -3568,7 +3584,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_outbuff.data + __pyx_t_18 * __pyx_v_outbuff.strides[0]) )) = (*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_17, __pyx_pybuffernd_inbuff.diminfo[0].strides));
       }
 
-      /* "pandas/io/sas/saslib.pyx":146
+      /* "pandas/io/sas/saslib.pyx":150
  *             for k in range(cnt):
  *                 outbuff[rpos + k] = inbuff[ipos]
  *             rpos += cnt             # <<<<<<<<<<<<<<
@@ -3577,7 +3593,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_rpos = (__pyx_v_rpos + __pyx_v_cnt);
 
-      /* "pandas/io/sas/saslib.pyx":147
+      /* "pandas/io/sas/saslib.pyx":151
  *                 outbuff[rpos + k] = inbuff[ipos]
  *             rpos += cnt
  *             ipos += 1             # <<<<<<<<<<<<<<
@@ -3586,7 +3602,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":142
+      /* "pandas/io/sas/saslib.pyx":146
  * 
  *         # short RLE
  *         if cmd == 0:             # <<<<<<<<<<<<<<
@@ -3596,7 +3612,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
       goto __pyx_L7;
     }
 
-    /* "pandas/io/sas/saslib.pyx":150
+    /* "pandas/io/sas/saslib.pyx":154
  * 
  *         # long RLE
  *         elif cmd == 1:             # <<<<<<<<<<<<<<
@@ -3606,7 +3622,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
     __pyx_t_8 = ((__pyx_v_cmd == 1) != 0);
     if (__pyx_t_8) {
 
-      /* "pandas/io/sas/saslib.pyx":151
+      /* "pandas/io/sas/saslib.pyx":155
  *         # long RLE
  *         elif cmd == 1:
  *             cnt += <uint16_t>inbuff[ipos] << 4             # <<<<<<<<<<<<<<
@@ -3617,7 +3633,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
       if (__pyx_t_19 < 0) __pyx_t_19 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
       __pyx_v_cnt = (__pyx_v_cnt + (((__pyx_t_5numpy_uint16_t)(*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_19, __pyx_pybuffernd_inbuff.diminfo[0].strides))) << 4));
 
-      /* "pandas/io/sas/saslib.pyx":152
+      /* "pandas/io/sas/saslib.pyx":156
  *         elif cmd == 1:
  *             cnt += <uint16_t>inbuff[ipos] << 4
  *             cnt += 19             # <<<<<<<<<<<<<<
@@ -3626,7 +3642,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_cnt = (__pyx_v_cnt + 19);
 
-      /* "pandas/io/sas/saslib.pyx":153
+      /* "pandas/io/sas/saslib.pyx":157
  *             cnt += <uint16_t>inbuff[ipos] << 4
  *             cnt += 19
  *             ipos += 1             # <<<<<<<<<<<<<<
@@ -3635,7 +3651,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":154
+      /* "pandas/io/sas/saslib.pyx":158
  *             cnt += 19
  *             ipos += 1
  *             for k in range(cnt):             # <<<<<<<<<<<<<<
@@ -3646,7 +3662,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
       for (__pyx_t_16 = 0; __pyx_t_16 < __pyx_t_15; __pyx_t_16+=1) {
         __pyx_v_k = __pyx_t_16;
 
-        /* "pandas/io/sas/saslib.pyx":155
+        /* "pandas/io/sas/saslib.pyx":159
  *             ipos += 1
  *             for k in range(cnt):
  *                 outbuff[rpos + k] = inbuff[ipos]             # <<<<<<<<<<<<<<
@@ -3660,7 +3676,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_outbuff.data + __pyx_t_21 * __pyx_v_outbuff.strides[0]) )) = (*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_20, __pyx_pybuffernd_inbuff.diminfo[0].strides));
       }
 
-      /* "pandas/io/sas/saslib.pyx":156
+      /* "pandas/io/sas/saslib.pyx":160
  *             for k in range(cnt):
  *                 outbuff[rpos + k] = inbuff[ipos]
  *             rpos += cnt             # <<<<<<<<<<<<<<
@@ -3669,7 +3685,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_rpos = (__pyx_v_rpos + __pyx_v_cnt);
 
-      /* "pandas/io/sas/saslib.pyx":157
+      /* "pandas/io/sas/saslib.pyx":161
  *                 outbuff[rpos + k] = inbuff[ipos]
  *             rpos += cnt
  *             ipos += 1             # <<<<<<<<<<<<<<
@@ -3678,7 +3694,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":150
+      /* "pandas/io/sas/saslib.pyx":154
  * 
  *         # long RLE
  *         elif cmd == 1:             # <<<<<<<<<<<<<<
@@ -3688,7 +3704,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
       goto __pyx_L7;
     }
 
-    /* "pandas/io/sas/saslib.pyx":160
+    /* "pandas/io/sas/saslib.pyx":164
  * 
  *         # long pattern
  *         elif cmd == 2:             # <<<<<<<<<<<<<<
@@ -3698,7 +3714,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
     __pyx_t_8 = ((__pyx_v_cmd == 2) != 0);
     if (__pyx_t_8) {
 
-      /* "pandas/io/sas/saslib.pyx":161
+      /* "pandas/io/sas/saslib.pyx":165
  *         # long pattern
  *         elif cmd == 2:
  *             ofs = cnt + 3             # <<<<<<<<<<<<<<
@@ -3707,7 +3723,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_ofs = (__pyx_v_cnt + 3);
 
-      /* "pandas/io/sas/saslib.pyx":162
+      /* "pandas/io/sas/saslib.pyx":166
  *         elif cmd == 2:
  *             ofs = cnt + 3
  *             ofs += <uint16_t>inbuff[ipos] << 4             # <<<<<<<<<<<<<<
@@ -3718,7 +3734,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
       if (__pyx_t_22 < 0) __pyx_t_22 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
       __pyx_v_ofs = (__pyx_v_ofs + (((__pyx_t_5numpy_uint16_t)(*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_22, __pyx_pybuffernd_inbuff.diminfo[0].strides))) << 4));
 
-      /* "pandas/io/sas/saslib.pyx":163
+      /* "pandas/io/sas/saslib.pyx":167
  *             ofs = cnt + 3
  *             ofs += <uint16_t>inbuff[ipos] << 4
  *             ipos += 1             # <<<<<<<<<<<<<<
@@ -3727,7 +3743,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":164
+      /* "pandas/io/sas/saslib.pyx":168
  *             ofs += <uint16_t>inbuff[ipos] << 4
  *             ipos += 1
  *             cnt = <uint16_t>inbuff[ipos]             # <<<<<<<<<<<<<<
@@ -3738,7 +3754,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
       if (__pyx_t_23 < 0) __pyx_t_23 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
       __pyx_v_cnt = ((__pyx_t_5numpy_uint16_t)(*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_23, __pyx_pybuffernd_inbuff.diminfo[0].strides)));
 
-      /* "pandas/io/sas/saslib.pyx":165
+      /* "pandas/io/sas/saslib.pyx":169
  *             ipos += 1
  *             cnt = <uint16_t>inbuff[ipos]
  *             ipos += 1             # <<<<<<<<<<<<<<
@@ -3747,7 +3763,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":166
+      /* "pandas/io/sas/saslib.pyx":170
  *             cnt = <uint16_t>inbuff[ipos]
  *             ipos += 1
  *             cnt += 16             # <<<<<<<<<<<<<<
@@ -3756,7 +3772,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_cnt = (__pyx_v_cnt + 16);
 
-      /* "pandas/io/sas/saslib.pyx":167
+      /* "pandas/io/sas/saslib.pyx":171
  *             ipos += 1
  *             cnt += 16
  *             for k in range(cnt):             # <<<<<<<<<<<<<<
@@ -3767,7 +3783,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
       for (__pyx_t_16 = 0; __pyx_t_16 < __pyx_t_15; __pyx_t_16+=1) {
         __pyx_v_k = __pyx_t_16;
 
-        /* "pandas/io/sas/saslib.pyx":168
+        /* "pandas/io/sas/saslib.pyx":172
  *             cnt += 16
  *             for k in range(cnt):
  *                 outbuff[rpos + k] = outbuff[rpos - <int>ofs + k]             # <<<<<<<<<<<<<<
@@ -3781,7 +3797,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_outbuff.data + __pyx_t_25 * __pyx_v_outbuff.strides[0]) )) = (*((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_outbuff.data + __pyx_t_24 * __pyx_v_outbuff.strides[0]) )));
       }
 
-      /* "pandas/io/sas/saslib.pyx":169
+      /* "pandas/io/sas/saslib.pyx":173
  *             for k in range(cnt):
  *                 outbuff[rpos + k] = outbuff[rpos - <int>ofs + k]
  *             rpos += cnt             # <<<<<<<<<<<<<<
@@ -3790,7 +3806,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_rpos = (__pyx_v_rpos + __pyx_v_cnt);
 
-      /* "pandas/io/sas/saslib.pyx":160
+      /* "pandas/io/sas/saslib.pyx":164
  * 
  *         # long pattern
  *         elif cmd == 2:             # <<<<<<<<<<<<<<
@@ -3800,7 +3816,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
       goto __pyx_L7;
     }
 
-    /* "pandas/io/sas/saslib.pyx":172
+    /* "pandas/io/sas/saslib.pyx":176
  * 
  *         # short pattern
  *         elif (cmd >= 3) & (cmd <= 15):             # <<<<<<<<<<<<<<
@@ -3810,7 +3826,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
     __pyx_t_8 = (((__pyx_v_cmd >= 3) & (__pyx_v_cmd <= 15)) != 0);
     if (__pyx_t_8) {
 
-      /* "pandas/io/sas/saslib.pyx":173
+      /* "pandas/io/sas/saslib.pyx":177
  *         # short pattern
  *         elif (cmd >= 3) & (cmd <= 15):
  *             ofs = cnt + 3             # <<<<<<<<<<<<<<
@@ -3819,7 +3835,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_ofs = (__pyx_v_cnt + 3);
 
-      /* "pandas/io/sas/saslib.pyx":174
+      /* "pandas/io/sas/saslib.pyx":178
  *         elif (cmd >= 3) & (cmd <= 15):
  *             ofs = cnt + 3
  *             ofs += <uint16_t>inbuff[ipos] << 4             # <<<<<<<<<<<<<<
@@ -3830,7 +3846,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
       if (__pyx_t_26 < 0) __pyx_t_26 += __pyx_pybuffernd_inbuff.diminfo[0].shape;
       __pyx_v_ofs = (__pyx_v_ofs + (((__pyx_t_5numpy_uint16_t)(*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_inbuff.rcbuffer->pybuffer.buf, __pyx_t_26, __pyx_pybuffernd_inbuff.diminfo[0].strides))) << 4));
 
-      /* "pandas/io/sas/saslib.pyx":175
+      /* "pandas/io/sas/saslib.pyx":179
  *             ofs = cnt + 3
  *             ofs += <uint16_t>inbuff[ipos] << 4
  *             ipos += 1             # <<<<<<<<<<<<<<
@@ -3839,7 +3855,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_ipos = (__pyx_v_ipos + 1);
 
-      /* "pandas/io/sas/saslib.pyx":176
+      /* "pandas/io/sas/saslib.pyx":180
  *             ofs += <uint16_t>inbuff[ipos] << 4
  *             ipos += 1
  *             for k in range(cmd):             # <<<<<<<<<<<<<<
@@ -3850,7 +3866,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
       for (__pyx_t_16 = 0; __pyx_t_16 < __pyx_t_27; __pyx_t_16+=1) {
         __pyx_v_k = __pyx_t_16;
 
-        /* "pandas/io/sas/saslib.pyx":177
+        /* "pandas/io/sas/saslib.pyx":181
  *             ipos += 1
  *             for k in range(cmd):
  *                 outbuff[rpos + k] = outbuff[rpos - <int>ofs + k]             # <<<<<<<<<<<<<<
@@ -3864,7 +3880,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_outbuff.data + __pyx_t_29 * __pyx_v_outbuff.strides[0]) )) = (*((__pyx_t_5numpy_uint8_t *) ( /* dim=0 */ (__pyx_v_outbuff.data + __pyx_t_28 * __pyx_v_outbuff.strides[0]) )));
       }
 
-      /* "pandas/io/sas/saslib.pyx":178
+      /* "pandas/io/sas/saslib.pyx":182
  *             for k in range(cmd):
  *                 outbuff[rpos + k] = outbuff[rpos - <int>ofs + k]
  *             rpos += cmd             # <<<<<<<<<<<<<<
@@ -3873,7 +3889,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
       __pyx_v_rpos = (__pyx_v_rpos + __pyx_v_cmd);
 
-      /* "pandas/io/sas/saslib.pyx":172
+      /* "pandas/io/sas/saslib.pyx":176
  * 
  *         # short pattern
  *         elif (cmd >= 3) & (cmd <= 15):             # <<<<<<<<<<<<<<
@@ -3883,7 +3899,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
       goto __pyx_L7;
     }
 
-    /* "pandas/io/sas/saslib.pyx":181
+    /* "pandas/io/sas/saslib.pyx":185
  * 
  *         else:
  *             raise ValueError("unknown RDC command")             # <<<<<<<<<<<<<<
@@ -3891,46 +3907,46 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  *     if len(outbuff) != result_length:
  */
     /*else*/ {
-      __pyx_t_5 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_tuple__2, NULL); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 181; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_5 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_tuple__2, NULL); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 185; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_5);
       __Pyx_Raise(__pyx_t_5, 0, 0, 0);
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-      {__pyx_filename = __pyx_f[0]; __pyx_lineno = 181; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      {__pyx_filename = __pyx_f[0]; __pyx_lineno = 185; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     }
     __pyx_L7:;
     __pyx_L3_continue:;
   }
 
-  /* "pandas/io/sas/saslib.pyx":183
+  /* "pandas/io/sas/saslib.pyx":187
  *             raise ValueError("unknown RDC command")
  * 
  *     if len(outbuff) != result_length:             # <<<<<<<<<<<<<<
  *         raise ValueError("RDC: %v != %v\n", len(outbuff), result_length)
  * 
  */
-  __pyx_t_5 = __pyx_memoryview_fromslice(__pyx_v_outbuff, 1, (PyObject *(*)(char *)) __pyx_memview_get_nn___pyx_t_5numpy_uint8_t, (int (*)(char *, PyObject *)) __pyx_memview_set_nn___pyx_t_5numpy_uint8_t, 0);; if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 183; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_5 = __pyx_memoryview_fromslice(__pyx_v_outbuff, 1, (PyObject *(*)(char *)) __pyx_memview_get_nn___pyx_t_5numpy_uint8_t, (int (*)(char *, PyObject *)) __pyx_memview_set_nn___pyx_t_5numpy_uint8_t, 0);; if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 187; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_5);
-  __pyx_t_7 = PyObject_Length(__pyx_t_5); if (unlikely(__pyx_t_7 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 183; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_7 = PyObject_Length(__pyx_t_5); if (unlikely(__pyx_t_7 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 187; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
   __pyx_t_8 = ((__pyx_t_7 != __pyx_v_result_length) != 0);
   if (__pyx_t_8) {
 
-    /* "pandas/io/sas/saslib.pyx":184
+    /* "pandas/io/sas/saslib.pyx":188
  * 
  *     if len(outbuff) != result_length:
  *         raise ValueError("RDC: %v != %v\n", len(outbuff), result_length)             # <<<<<<<<<<<<<<
  * 
  *     return np.asarray(outbuff)
  */
-    __pyx_t_5 = __pyx_memoryview_fromslice(__pyx_v_outbuff, 1, (PyObject *(*)(char *)) __pyx_memview_get_nn___pyx_t_5numpy_uint8_t, (int (*)(char *, PyObject *)) __pyx_memview_set_nn___pyx_t_5numpy_uint8_t, 0);; if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 184; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_5 = __pyx_memoryview_fromslice(__pyx_v_outbuff, 1, (PyObject *(*)(char *)) __pyx_memview_get_nn___pyx_t_5numpy_uint8_t, (int (*)(char *, PyObject *)) __pyx_memview_set_nn___pyx_t_5numpy_uint8_t, 0);; if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 188; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_5);
-    __pyx_t_7 = PyObject_Length(__pyx_t_5); if (unlikely(__pyx_t_7 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 184; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_7 = PyObject_Length(__pyx_t_5); if (unlikely(__pyx_t_7 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 188; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-    __pyx_t_5 = PyInt_FromSsize_t(__pyx_t_7); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 184; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_5 = PyInt_FromSsize_t(__pyx_t_7); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 188; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_5);
-    __pyx_t_1 = __Pyx_PyInt_From_int(__pyx_v_result_length); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 184; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_1 = __Pyx_PyInt_From_int(__pyx_v_result_length); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 188; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_1);
-    __pyx_t_3 = PyTuple_New(3); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 184; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_3 = PyTuple_New(3); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 188; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_3);
     __Pyx_INCREF(__pyx_kp_s_RDC_v_v);
     __Pyx_GIVEREF(__pyx_kp_s_RDC_v_v);
@@ -3941,14 +3957,14 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
     PyTuple_SET_ITEM(__pyx_t_3, 2, __pyx_t_1);
     __pyx_t_5 = 0;
     __pyx_t_1 = 0;
-    __pyx_t_1 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_t_3, NULL); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 184; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_1 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_t_3, NULL); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 188; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_1);
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     __Pyx_Raise(__pyx_t_1, 0, 0, 0);
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-    {__pyx_filename = __pyx_f[0]; __pyx_lineno = 184; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    {__pyx_filename = __pyx_f[0]; __pyx_lineno = 188; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
 
-    /* "pandas/io/sas/saslib.pyx":183
+    /* "pandas/io/sas/saslib.pyx":187
  *             raise ValueError("unknown RDC command")
  * 
  *     if len(outbuff) != result_length:             # <<<<<<<<<<<<<<
@@ -3957,7 +3973,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  */
   }
 
-  /* "pandas/io/sas/saslib.pyx":186
+  /* "pandas/io/sas/saslib.pyx":190
  *         raise ValueError("RDC: %v != %v\n", len(outbuff), result_length)
  * 
  *     return np.asarray(outbuff)             # <<<<<<<<<<<<<<
@@ -3965,12 +3981,12 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
  * cdef enum ColumnTypes:
  */
   __Pyx_XDECREF(((PyObject *)__pyx_r));
-  __pyx_t_3 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 186; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 190; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_asarray); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 186; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_asarray); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 190; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_5);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __pyx_memoryview_fromslice(__pyx_v_outbuff, 1, (PyObject *(*)(char *)) __pyx_memview_get_nn___pyx_t_5numpy_uint8_t, (int (*)(char *, PyObject *)) __pyx_memview_set_nn___pyx_t_5numpy_uint8_t, 0);; if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 186; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __pyx_memoryview_fromslice(__pyx_v_outbuff, 1, (PyObject *(*)(char *)) __pyx_memview_get_nn___pyx_t_5numpy_uint8_t, (int (*)(char *, PyObject *)) __pyx_memview_set_nn___pyx_t_5numpy_uint8_t, 0);; if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 190; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_2 = NULL;
   if (CYTHON_COMPILING_IN_CPYTHON && unlikely(PyMethod_Check(__pyx_t_5))) {
@@ -3983,32 +3999,32 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
     }
   }
   if (!__pyx_t_2) {
-    __pyx_t_1 = __Pyx_PyObject_CallOneArg(__pyx_t_5, __pyx_t_3); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 186; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_1 = __Pyx_PyObject_CallOneArg(__pyx_t_5, __pyx_t_3); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 190; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     __Pyx_GOTREF(__pyx_t_1);
   } else {
-    __pyx_t_4 = PyTuple_New(1+1); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 186; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_4 = PyTuple_New(1+1); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 190; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_4);
     __Pyx_GIVEREF(__pyx_t_2); PyTuple_SET_ITEM(__pyx_t_4, 0, __pyx_t_2); __pyx_t_2 = NULL;
     __Pyx_GIVEREF(__pyx_t_3);
     PyTuple_SET_ITEM(__pyx_t_4, 0+1, __pyx_t_3);
     __pyx_t_3 = 0;
-    __pyx_t_1 = __Pyx_PyObject_Call(__pyx_t_5, __pyx_t_4, NULL); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 186; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_1 = __Pyx_PyObject_Call(__pyx_t_5, __pyx_t_4, NULL); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 190; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_1);
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-  if (!(likely(((__pyx_t_1) == Py_None) || likely(__Pyx_TypeTest(__pyx_t_1, __pyx_ptype_5numpy_ndarray))))) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 186; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (!(likely(((__pyx_t_1) == Py_None) || likely(__Pyx_TypeTest(__pyx_t_1, __pyx_ptype_5numpy_ndarray))))) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 190; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_r = ((PyArrayObject *)__pyx_t_1);
   __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "pandas/io/sas/saslib.pyx":113
+  /* "pandas/io/sas/saslib.pyx":115
  * #
- * #   http://collaboration.cmc.ec.gc.ca/science/rpn/biblio/ddj/Website/articles/CUJ/1992/9210/ross/ross.htm
- * cdef np.ndarray[uint8_t, ndim=1] rdc_decompress(int result_length, np.ndarray[uint8_t, ndim=1] inbuff):             # <<<<<<<<<<<<<<
+ * # http://collaboration.cmc.ec.gc.ca/science/rpn/biblio/ddj/Website/articles/CUJ/1992/9210/ross/ross.htm
+ * cdef np.ndarray[uint8_t, ndim=1] rdc_decompress(             # <<<<<<<<<<<<<<
+ *         int result_length, np.ndarray[uint8_t, ndim=1] inbuff):
  * 
- *     cdef:
  */
 
   /* function exit code */
@@ -4036,7 +4052,7 @@ static PyArrayObject *__pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress(int __pyx_
   return __pyx_r;
 }
 
-/* "pandas/io/sas/saslib.pyx":225
+/* "pandas/io/sas/saslib.pyx":230
  *         object parser
  * 
  *     def __init__(self, object parser):             # <<<<<<<<<<<<<<
@@ -4072,7 +4088,7 @@ static int __pyx_pw_6pandas_2io_3sas_6saslib_6Parser_1__init__(PyObject *__pyx_v
         else goto __pyx_L5_argtuple_error;
       }
       if (unlikely(kw_args > 0)) {
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "__init__") < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 225; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "__init__") < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 230; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
       }
     } else if (PyTuple_GET_SIZE(__pyx_args) != 1) {
       goto __pyx_L5_argtuple_error;
@@ -4083,7 +4099,7 @@ static int __pyx_pw_6pandas_2io_3sas_6saslib_6Parser_1__init__(PyObject *__pyx_v
   }
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("__init__", 1, 1, 1, PyTuple_GET_SIZE(__pyx_args)); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 225; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+  __Pyx_RaiseArgtupleInvalid("__init__", 1, 1, 1, PyTuple_GET_SIZE(__pyx_args)); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 230; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
   __pyx_L3_error:;
   __Pyx_AddTraceback("pandas.io.sas.saslib.Parser.__init__", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
@@ -4121,7 +4137,7 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("__init__", 0);
 
-  /* "pandas/io/sas/saslib.pyx":230
+  /* "pandas/io/sas/saslib.pyx":235
  *             char[:] column_types
  * 
  *         self.parser = parser             # <<<<<<<<<<<<<<
@@ -4134,217 +4150,217 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
   __Pyx_DECREF(__pyx_v_self->parser);
   __pyx_v_self->parser = __pyx_v_parser;
 
-  /* "pandas/io/sas/saslib.pyx":231
+  /* "pandas/io/sas/saslib.pyx":236
  * 
  *         self.parser = parser
  *         self.header_length = self.parser.header_length             # <<<<<<<<<<<<<<
  *         self.column_count = parser.column_count
  *         self.lengths = parser._column_data_lengths
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_header_length); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 231; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_header_length); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 236; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 231; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 236; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_v_self->header_length = __pyx_t_2;
 
-  /* "pandas/io/sas/saslib.pyx":232
+  /* "pandas/io/sas/saslib.pyx":237
  *         self.parser = parser
  *         self.header_length = self.parser.header_length
  *         self.column_count = parser.column_count             # <<<<<<<<<<<<<<
  *         self.lengths = parser._column_data_lengths
  *         self.offsets = parser._column_data_offsets
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_column_count); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 232; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_column_count); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 237; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 232; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 237; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_v_self->column_count = __pyx_t_2;
 
-  /* "pandas/io/sas/saslib.pyx":233
+  /* "pandas/io/sas/saslib.pyx":238
  *         self.header_length = self.parser.header_length
  *         self.column_count = parser.column_count
  *         self.lengths = parser._column_data_lengths             # <<<<<<<<<<<<<<
  *         self.offsets = parser._column_data_offsets
  *         self.byte_chunk = parser._byte_chunk
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_column_data_lengths); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 233; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_column_data_lengths); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 238; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_3 = __Pyx_PyObject_to_MemoryviewSlice_ds_nn___pyx_t_5numpy_int64_t(__pyx_t_1);
-  if (unlikely(!__pyx_t_3.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 233; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (unlikely(!__pyx_t_3.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 238; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __PYX_XDEC_MEMVIEW(&__pyx_v_self->lengths, 0);
   __pyx_v_self->lengths = __pyx_t_3;
   __pyx_t_3.memview = NULL;
   __pyx_t_3.data = NULL;
 
-  /* "pandas/io/sas/saslib.pyx":234
+  /* "pandas/io/sas/saslib.pyx":239
  *         self.column_count = parser.column_count
  *         self.lengths = parser._column_data_lengths
  *         self.offsets = parser._column_data_offsets             # <<<<<<<<<<<<<<
  *         self.byte_chunk = parser._byte_chunk
  *         self.string_chunk = parser._string_chunk
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_column_data_offsets); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 234; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_column_data_offsets); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 239; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_3 = __Pyx_PyObject_to_MemoryviewSlice_ds_nn___pyx_t_5numpy_int64_t(__pyx_t_1);
-  if (unlikely(!__pyx_t_3.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 234; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (unlikely(!__pyx_t_3.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 239; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __PYX_XDEC_MEMVIEW(&__pyx_v_self->offsets, 0);
   __pyx_v_self->offsets = __pyx_t_3;
   __pyx_t_3.memview = NULL;
   __pyx_t_3.data = NULL;
 
-  /* "pandas/io/sas/saslib.pyx":235
+  /* "pandas/io/sas/saslib.pyx":240
  *         self.lengths = parser._column_data_lengths
  *         self.offsets = parser._column_data_offsets
  *         self.byte_chunk = parser._byte_chunk             # <<<<<<<<<<<<<<
  *         self.string_chunk = parser._string_chunk
  *         self.row_length = parser.row_length
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_byte_chunk); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 235; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_byte_chunk); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 240; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_4 = __Pyx_PyObject_to_MemoryviewSlice_dsds_nn___pyx_t_5numpy_uint8_t(__pyx_t_1);
-  if (unlikely(!__pyx_t_4.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 235; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (unlikely(!__pyx_t_4.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 240; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __PYX_XDEC_MEMVIEW(&__pyx_v_self->byte_chunk, 0);
   __pyx_v_self->byte_chunk = __pyx_t_4;
   __pyx_t_4.memview = NULL;
   __pyx_t_4.data = NULL;
 
-  /* "pandas/io/sas/saslib.pyx":236
+  /* "pandas/io/sas/saslib.pyx":241
  *         self.offsets = parser._column_data_offsets
  *         self.byte_chunk = parser._byte_chunk
  *         self.string_chunk = parser._string_chunk             # <<<<<<<<<<<<<<
  *         self.row_length = parser.row_length
  *         self.bit_offset = self.parser._page_bit_offset
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_string_chunk); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 236; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_string_chunk); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 241; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_5 = __Pyx_PyObject_to_MemoryviewSlice_dsds_object(__pyx_t_1);
-  if (unlikely(!__pyx_t_5.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 236; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (unlikely(!__pyx_t_5.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 241; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __PYX_XDEC_MEMVIEW(&__pyx_v_self->string_chunk, 0);
   __pyx_v_self->string_chunk = __pyx_t_5;
   __pyx_t_5.memview = NULL;
   __pyx_t_5.data = NULL;
 
-  /* "pandas/io/sas/saslib.pyx":237
+  /* "pandas/io/sas/saslib.pyx":242
  *         self.byte_chunk = parser._byte_chunk
  *         self.string_chunk = parser._string_chunk
  *         self.row_length = parser.row_length             # <<<<<<<<<<<<<<
  *         self.bit_offset = self.parser._page_bit_offset
  *         self.subheader_pointer_length = self.parser._subheader_pointer_length
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_row_length); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 237; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_row_length); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 242; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 237; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 242; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_v_self->row_length = __pyx_t_2;
 
-  /* "pandas/io/sas/saslib.pyx":238
+  /* "pandas/io/sas/saslib.pyx":243
  *         self.string_chunk = parser._string_chunk
  *         self.row_length = parser.row_length
  *         self.bit_offset = self.parser._page_bit_offset             # <<<<<<<<<<<<<<
  *         self.subheader_pointer_length = self.parser._subheader_pointer_length
  *         self.is_little_endian = parser.byte_order == "<"
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_page_bit_offset); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 238; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_page_bit_offset); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 243; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 238; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 243; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_v_self->bit_offset = __pyx_t_2;
 
-  /* "pandas/io/sas/saslib.pyx":239
+  /* "pandas/io/sas/saslib.pyx":244
  *         self.row_length = parser.row_length
  *         self.bit_offset = self.parser._page_bit_offset
  *         self.subheader_pointer_length = self.parser._subheader_pointer_length             # <<<<<<<<<<<<<<
  *         self.is_little_endian = parser.byte_order == "<"
  *         self.column_types = np.empty(self.column_count, dtype='int64')
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_subheader_pointer_length); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 239; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_subheader_pointer_length); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 244; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 239; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 244; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_v_self->subheader_pointer_length = __pyx_t_2;
 
-  /* "pandas/io/sas/saslib.pyx":240
+  /* "pandas/io/sas/saslib.pyx":245
  *         self.bit_offset = self.parser._page_bit_offset
  *         self.subheader_pointer_length = self.parser._subheader_pointer_length
  *         self.is_little_endian = parser.byte_order == "<"             # <<<<<<<<<<<<<<
  *         self.column_types = np.empty(self.column_count, dtype='int64')
  * 
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_byte_order); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 240; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_byte_order); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 245; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_6 = PyObject_RichCompare(__pyx_t_1, __pyx_kp_s__3, Py_EQ); __Pyx_XGOTREF(__pyx_t_6); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 240; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_6 = PyObject_RichCompare(__pyx_t_1, __pyx_kp_s__3, Py_EQ); __Pyx_XGOTREF(__pyx_t_6); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 245; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_7 = __Pyx_PyObject_IsTrue(__pyx_t_6); if (unlikely((__pyx_t_7 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 240; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_7 = __Pyx_PyObject_IsTrue(__pyx_t_6); if (unlikely((__pyx_t_7 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 245; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
   __pyx_v_self->is_little_endian = __pyx_t_7;
 
-  /* "pandas/io/sas/saslib.pyx":241
+  /* "pandas/io/sas/saslib.pyx":246
  *         self.subheader_pointer_length = self.parser._subheader_pointer_length
  *         self.is_little_endian = parser.byte_order == "<"
  *         self.column_types = np.empty(self.column_count, dtype='int64')             # <<<<<<<<<<<<<<
  * 
  *         # page indicators
  */
-  __pyx_t_6 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 241; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_6 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 246; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_6);
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_n_s_empty); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 241; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_n_s_empty); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 246; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-  __pyx_t_6 = __Pyx_PyInt_From_int(__pyx_v_self->column_count); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 241; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_6 = __Pyx_PyInt_From_int(__pyx_v_self->column_count); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 246; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_6);
-  __pyx_t_8 = PyTuple_New(1); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 241; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_8 = PyTuple_New(1); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 246; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_8);
   __Pyx_GIVEREF(__pyx_t_6);
   PyTuple_SET_ITEM(__pyx_t_8, 0, __pyx_t_6);
   __pyx_t_6 = 0;
-  __pyx_t_6 = PyDict_New(); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 241; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_6 = PyDict_New(); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 246; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_6);
-  if (PyDict_SetItem(__pyx_t_6, __pyx_n_s_dtype, __pyx_n_s_int64) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 241; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  __pyx_t_9 = __Pyx_PyObject_Call(__pyx_t_1, __pyx_t_8, __pyx_t_6); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 241; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (PyDict_SetItem(__pyx_t_6, __pyx_n_s_dtype, __pyx_n_s_int64) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 246; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_9 = __Pyx_PyObject_Call(__pyx_t_1, __pyx_t_8, __pyx_t_6); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 246; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_9);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
   __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
   __pyx_t_3 = __Pyx_PyObject_to_MemoryviewSlice_ds_nn___pyx_t_5numpy_int64_t(__pyx_t_9);
-  if (unlikely(!__pyx_t_3.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 241; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (unlikely(!__pyx_t_3.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 246; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
   __PYX_XDEC_MEMVIEW(&__pyx_v_self->column_types, 0);
   __pyx_v_self->column_types = __pyx_t_3;
   __pyx_t_3.memview = NULL;
   __pyx_t_3.data = NULL;
 
-  /* "pandas/io/sas/saslib.pyx":244
+  /* "pandas/io/sas/saslib.pyx":249
  * 
  *         # page indicators
  *         self.update_next_page()             # <<<<<<<<<<<<<<
  * 
  *         column_types = parser.column_types
  */
-  __pyx_t_9 = ((struct __pyx_vtabstruct_6pandas_2io_3sas_6saslib_Parser *)__pyx_v_self->__pyx_vtab)->update_next_page(__pyx_v_self); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 244; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_9 = ((struct __pyx_vtabstruct_6pandas_2io_3sas_6saslib_Parser *)__pyx_v_self->__pyx_vtab)->update_next_page(__pyx_v_self); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 249; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_9);
   __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
 
-  /* "pandas/io/sas/saslib.pyx":246
+  /* "pandas/io/sas/saslib.pyx":251
  *         self.update_next_page()
  * 
  *         column_types = parser.column_types             # <<<<<<<<<<<<<<
  * 
  *         # map column types
  */
-  __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_column_types); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 246; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_column_types); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 251; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_9);
   __pyx_t_10 = __Pyx_PyObject_to_MemoryviewSlice_ds_char(__pyx_t_9);
-  if (unlikely(!__pyx_t_10.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 246; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (unlikely(!__pyx_t_10.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 251; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
   __pyx_v_column_types = __pyx_t_10;
   __pyx_t_10.memview = NULL;
   __pyx_t_10.data = NULL;
 
-  /* "pandas/io/sas/saslib.pyx":249
+  /* "pandas/io/sas/saslib.pyx":254
  * 
  *         # map column types
  *         for j in range(self.column_count):             # <<<<<<<<<<<<<<
@@ -4355,7 +4371,7 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
   for (__pyx_t_11 = 0; __pyx_t_11 < __pyx_t_2; __pyx_t_11+=1) {
     __pyx_v_j = __pyx_t_11;
 
-    /* "pandas/io/sas/saslib.pyx":250
+    /* "pandas/io/sas/saslib.pyx":255
  *         # map column types
  *         for j in range(self.column_count):
  *             if column_types[j] == b'd':             # <<<<<<<<<<<<<<
@@ -4367,7 +4383,7 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
     __pyx_t_7 = (((*((char *) ( /* dim=0 */ (__pyx_v_column_types.data + __pyx_t_12 * __pyx_v_column_types.strides[0]) ))) == 'd') != 0);
     if (__pyx_t_7) {
 
-      /* "pandas/io/sas/saslib.pyx":251
+      /* "pandas/io/sas/saslib.pyx":256
  *         for j in range(self.column_count):
  *             if column_types[j] == b'd':
  *                 self.column_types[j] = column_type_decimal             # <<<<<<<<<<<<<<
@@ -4378,7 +4394,7 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
       if (__pyx_t_13 < 0) __pyx_t_13 += __pyx_v_self->column_types.shape[0];
       *((__pyx_t_5numpy_int64_t *) ( /* dim=0 */ (__pyx_v_self->column_types.data + __pyx_t_13 * __pyx_v_self->column_types.strides[0]) )) = __pyx_e_6pandas_2io_3sas_6saslib_column_type_decimal;
 
-      /* "pandas/io/sas/saslib.pyx":250
+      /* "pandas/io/sas/saslib.pyx":255
  *         # map column types
  *         for j in range(self.column_count):
  *             if column_types[j] == b'd':             # <<<<<<<<<<<<<<
@@ -4388,7 +4404,7 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
       goto __pyx_L5;
     }
 
-    /* "pandas/io/sas/saslib.pyx":252
+    /* "pandas/io/sas/saslib.pyx":257
  *             if column_types[j] == b'd':
  *                 self.column_types[j] = column_type_decimal
  *             elif column_types[j] == b's':             # <<<<<<<<<<<<<<
@@ -4400,18 +4416,18 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
     __pyx_t_7 = (((*((char *) ( /* dim=0 */ (__pyx_v_column_types.data + __pyx_t_14 * __pyx_v_column_types.strides[0]) ))) == 's') != 0);
     if (__pyx_t_7) {
 
-      /* "pandas/io/sas/saslib.pyx":253
+      /* "pandas/io/sas/saslib.pyx":258
  *                 self.column_types[j] = column_type_decimal
  *             elif column_types[j] == b's':
  *                 self.column_types[j] = column_type_string             # <<<<<<<<<<<<<<
  *             else:
- *               raise ValueError("unknown column type: %s" % self.parser.columns[j].ctype)
+ *                 raise ValueError("unknown column type: "
  */
       __pyx_t_15 = __pyx_v_j;
       if (__pyx_t_15 < 0) __pyx_t_15 += __pyx_v_self->column_types.shape[0];
       *((__pyx_t_5numpy_int64_t *) ( /* dim=0 */ (__pyx_v_self->column_types.data + __pyx_t_15 * __pyx_v_self->column_types.strides[0]) )) = __pyx_e_6pandas_2io_3sas_6saslib_column_type_string;
 
-      /* "pandas/io/sas/saslib.pyx":252
+      /* "pandas/io/sas/saslib.pyx":257
  *             if column_types[j] == b'd':
  *                 self.column_types[j] = column_type_decimal
  *             elif column_types[j] == b's':             # <<<<<<<<<<<<<<
@@ -4421,62 +4437,78 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
       goto __pyx_L5;
     }
 
-    /* "pandas/io/sas/saslib.pyx":255
+    /* "pandas/io/sas/saslib.pyx":260
  *                 self.column_types[j] = column_type_string
  *             else:
- *               raise ValueError("unknown column type: %s" % self.parser.columns[j].ctype)             # <<<<<<<<<<<<<<
+ *                 raise ValueError("unknown column type: "             # <<<<<<<<<<<<<<
+ *                                  "%s" % self.parser.columns[j].ctype)
+ * 
+ */
+    /*else*/ {
+
+      /* "pandas/io/sas/saslib.pyx":261
+ *             else:
+ *                 raise ValueError("unknown column type: "
+ *                                  "%s" % self.parser.columns[j].ctype)             # <<<<<<<<<<<<<<
  * 
  *         # compression
  */
-    /*else*/ {
-      __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_columns); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 255; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_columns); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 261; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_9);
-      __pyx_t_6 = __Pyx_GetItemInt(__pyx_t_9, __pyx_v_j, int, 1, __Pyx_PyInt_From_int, 0, 1, 0); if (unlikely(__pyx_t_6 == NULL)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 255; __pyx_clineno = __LINE__; goto __pyx_L1_error;};
+      __pyx_t_6 = __Pyx_GetItemInt(__pyx_t_9, __pyx_v_j, int, 1, __Pyx_PyInt_From_int, 0, 1, 0); if (unlikely(__pyx_t_6 == NULL)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 261; __pyx_clineno = __LINE__; goto __pyx_L1_error;};
       __Pyx_GOTREF(__pyx_t_6);
       __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-      __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_n_s_ctype); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 255; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_n_s_ctype); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 261; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_9);
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-      __pyx_t_6 = __Pyx_PyString_Format(__pyx_kp_s_unknown_column_type_s, __pyx_t_9); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 255; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_6 = __Pyx_PyString_Format(__pyx_kp_s_unknown_column_type_s, __pyx_t_9); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 261; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_6);
       __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-      __pyx_t_9 = PyTuple_New(1); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 255; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+
+      /* "pandas/io/sas/saslib.pyx":260
+ *                 self.column_types[j] = column_type_string
+ *             else:
+ *                 raise ValueError("unknown column type: "             # <<<<<<<<<<<<<<
+ *                                  "%s" % self.parser.columns[j].ctype)
+ * 
+ */
+      __pyx_t_9 = PyTuple_New(1); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 260; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_9);
       __Pyx_GIVEREF(__pyx_t_6);
       PyTuple_SET_ITEM(__pyx_t_9, 0, __pyx_t_6);
       __pyx_t_6 = 0;
-      __pyx_t_6 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_t_9, NULL); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 255; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_6 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_t_9, NULL); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 260; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_6);
       __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
       __Pyx_Raise(__pyx_t_6, 0, 0, 0);
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-      {__pyx_filename = __pyx_f[0]; __pyx_lineno = 255; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      {__pyx_filename = __pyx_f[0]; __pyx_lineno = 260; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     }
     __pyx_L5:;
   }
 
-  /* "pandas/io/sas/saslib.pyx":258
+  /* "pandas/io/sas/saslib.pyx":264
  * 
  *         # compression
  *         if parser.compression == const.rle_compression:             # <<<<<<<<<<<<<<
  *             self.decompress = rle_decompress
  *         elif parser.compression == const.rdc_compression:
  */
-  __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_compression); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 258; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_compression); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 264; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_6);
-  __pyx_t_9 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 258; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_9 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 264; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_9);
-  __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_t_9, __pyx_n_s_rle_compression); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 258; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_t_9, __pyx_n_s_rle_compression); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 264; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_8);
   __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-  __pyx_t_9 = PyObject_RichCompare(__pyx_t_6, __pyx_t_8, Py_EQ); __Pyx_XGOTREF(__pyx_t_9); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 258; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_9 = PyObject_RichCompare(__pyx_t_6, __pyx_t_8, Py_EQ); __Pyx_XGOTREF(__pyx_t_9); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 264; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
   __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
-  __pyx_t_7 = __Pyx_PyObject_IsTrue(__pyx_t_9); if (unlikely(__pyx_t_7 < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 258; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_7 = __Pyx_PyObject_IsTrue(__pyx_t_9); if (unlikely(__pyx_t_7 < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 264; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
   if (__pyx_t_7) {
 
-    /* "pandas/io/sas/saslib.pyx":259
+    /* "pandas/io/sas/saslib.pyx":265
  *         # compression
  *         if parser.compression == const.rle_compression:
  *             self.decompress = rle_decompress             # <<<<<<<<<<<<<<
@@ -4485,7 +4517,7 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
  */
     __pyx_v_self->decompress = __pyx_f_6pandas_2io_3sas_6saslib_rle_decompress;
 
-    /* "pandas/io/sas/saslib.pyx":258
+    /* "pandas/io/sas/saslib.pyx":264
  * 
  *         # compression
  *         if parser.compression == const.rle_compression:             # <<<<<<<<<<<<<<
@@ -4495,28 +4527,28 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
     goto __pyx_L6;
   }
 
-  /* "pandas/io/sas/saslib.pyx":260
+  /* "pandas/io/sas/saslib.pyx":266
  *         if parser.compression == const.rle_compression:
  *             self.decompress = rle_decompress
  *         elif parser.compression == const.rdc_compression:             # <<<<<<<<<<<<<<
  *             self.decompress = rdc_decompress
  *         else:
  */
-  __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_compression); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 260; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_compression); if (unlikely(!__pyx_t_9)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 266; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_9);
-  __pyx_t_8 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 260; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_8 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 266; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_8);
-  __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_8, __pyx_n_s_rdc_compression); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 260; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_8, __pyx_n_s_rdc_compression); if (unlikely(!__pyx_t_6)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 266; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_6);
   __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
-  __pyx_t_8 = PyObject_RichCompare(__pyx_t_9, __pyx_t_6, Py_EQ); __Pyx_XGOTREF(__pyx_t_8); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 260; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_8 = PyObject_RichCompare(__pyx_t_9, __pyx_t_6, Py_EQ); __Pyx_XGOTREF(__pyx_t_8); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 266; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
   __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-  __pyx_t_7 = __Pyx_PyObject_IsTrue(__pyx_t_8); if (unlikely(__pyx_t_7 < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 260; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_7 = __Pyx_PyObject_IsTrue(__pyx_t_8); if (unlikely(__pyx_t_7 < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 266; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
   if (__pyx_t_7) {
 
-    /* "pandas/io/sas/saslib.pyx":261
+    /* "pandas/io/sas/saslib.pyx":267
  *             self.decompress = rle_decompress
  *         elif parser.compression == const.rdc_compression:
  *             self.decompress = rdc_decompress             # <<<<<<<<<<<<<<
@@ -4525,7 +4557,7 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
  */
     __pyx_v_self->decompress = __pyx_f_6pandas_2io_3sas_6saslib_rdc_decompress;
 
-    /* "pandas/io/sas/saslib.pyx":260
+    /* "pandas/io/sas/saslib.pyx":266
  *         if parser.compression == const.rle_compression:
  *             self.decompress = rle_decompress
  *         elif parser.compression == const.rdc_compression:             # <<<<<<<<<<<<<<
@@ -4535,7 +4567,7 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
     goto __pyx_L6;
   }
 
-  /* "pandas/io/sas/saslib.pyx":263
+  /* "pandas/io/sas/saslib.pyx":269
  *             self.decompress = rdc_decompress
  *         else:
  *             self.decompress = NULL             # <<<<<<<<<<<<<<
@@ -4547,46 +4579,46 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
   }
   __pyx_L6:;
 
-  /* "pandas/io/sas/saslib.pyx":266
+  /* "pandas/io/sas/saslib.pyx":272
  * 
  *         # update to current state of the parser
  *         self.current_row_in_chunk_index = parser._current_row_in_chunk_index             # <<<<<<<<<<<<<<
  *         self.current_row_in_file_index = parser._current_row_in_file_index
  *         self.current_row_on_page_index = parser._current_row_on_page_index
  */
-  __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_current_row_in_chunk_index); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 266; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_current_row_in_chunk_index); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 272; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_8);
-  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_8); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 266; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_8); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 272; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
   __pyx_v_self->current_row_in_chunk_index = __pyx_t_2;
 
-  /* "pandas/io/sas/saslib.pyx":267
+  /* "pandas/io/sas/saslib.pyx":273
  *         # update to current state of the parser
  *         self.current_row_in_chunk_index = parser._current_row_in_chunk_index
  *         self.current_row_in_file_index = parser._current_row_in_file_index             # <<<<<<<<<<<<<<
  *         self.current_row_on_page_index = parser._current_row_on_page_index
  * 
  */
-  __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_current_row_in_file_index); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 267; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_current_row_in_file_index); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 273; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_8);
-  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_8); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 267; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_8); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 273; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
   __pyx_v_self->current_row_in_file_index = __pyx_t_2;
 
-  /* "pandas/io/sas/saslib.pyx":268
+  /* "pandas/io/sas/saslib.pyx":274
  *         self.current_row_in_chunk_index = parser._current_row_in_chunk_index
  *         self.current_row_in_file_index = parser._current_row_in_file_index
  *         self.current_row_on_page_index = parser._current_row_on_page_index             # <<<<<<<<<<<<<<
  * 
  *     def read(self, int nrows):
  */
-  __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_current_row_on_page_index); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 268; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_v_parser, __pyx_n_s_current_row_on_page_index); if (unlikely(!__pyx_t_8)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 274; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_8);
-  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_8); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 268; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_8); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 274; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
   __pyx_v_self->current_row_on_page_index = __pyx_t_2;
 
-  /* "pandas/io/sas/saslib.pyx":225
+  /* "pandas/io/sas/saslib.pyx":230
  *         object parser
  * 
  *     def __init__(self, object parser):             # <<<<<<<<<<<<<<
@@ -4614,7 +4646,7 @@ static int __pyx_pf_6pandas_2io_3sas_6saslib_6Parser___init__(struct __pyx_obj_6
   return __pyx_r;
 }
 
-/* "pandas/io/sas/saslib.pyx":270
+/* "pandas/io/sas/saslib.pyx":276
  *         self.current_row_on_page_index = parser._current_row_on_page_index
  * 
  *     def read(self, int nrows):             # <<<<<<<<<<<<<<
@@ -4633,7 +4665,7 @@ static PyObject *__pyx_pw_6pandas_2io_3sas_6saslib_6Parser_3read(PyObject *__pyx
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("read (wrapper)", 0);
   assert(__pyx_arg_nrows); {
-    __pyx_v_nrows = __Pyx_PyInt_As_int(__pyx_arg_nrows); if (unlikely((__pyx_v_nrows == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 270; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+    __pyx_v_nrows = __Pyx_PyInt_As_int(__pyx_arg_nrows); if (unlikely((__pyx_v_nrows == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 276; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
   }
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -4662,7 +4694,7 @@ static PyObject *__pyx_pf_6pandas_2io_3sas_6saslib_6Parser_2read(struct __pyx_ob
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("read", 0);
 
-  /* "pandas/io/sas/saslib.pyx":275
+  /* "pandas/io/sas/saslib.pyx":281
  *             int i
  * 
  *         for i in range(nrows):             # <<<<<<<<<<<<<<
@@ -4673,7 +4705,7 @@ static PyObject *__pyx_pf_6pandas_2io_3sas_6saslib_6Parser_2read(struct __pyx_ob
   for (__pyx_t_2 = 0; __pyx_t_2 < __pyx_t_1; __pyx_t_2+=1) {
     __pyx_v_i = __pyx_t_2;
 
-    /* "pandas/io/sas/saslib.pyx":276
+    /* "pandas/io/sas/saslib.pyx":282
  * 
  *         for i in range(nrows):
  *             done = self.readline()             # <<<<<<<<<<<<<<
@@ -4682,7 +4714,7 @@ static PyObject *__pyx_pf_6pandas_2io_3sas_6saslib_6Parser_2read(struct __pyx_ob
  */
     __pyx_v_done = ((struct __pyx_vtabstruct_6pandas_2io_3sas_6saslib_Parser *)__pyx_v_self->__pyx_vtab)->readline(__pyx_v_self);
 
-    /* "pandas/io/sas/saslib.pyx":277
+    /* "pandas/io/sas/saslib.pyx":283
  *         for i in range(nrows):
  *             done = self.readline()
  *             if done:             # <<<<<<<<<<<<<<
@@ -4692,7 +4724,7 @@ static PyObject *__pyx_pf_6pandas_2io_3sas_6saslib_6Parser_2read(struct __pyx_ob
     __pyx_t_3 = (__pyx_v_done != 0);
     if (__pyx_t_3) {
 
-      /* "pandas/io/sas/saslib.pyx":278
+      /* "pandas/io/sas/saslib.pyx":284
  *             done = self.readline()
  *             if done:
  *                 break             # <<<<<<<<<<<<<<
@@ -4701,7 +4733,7 @@ static PyObject *__pyx_pf_6pandas_2io_3sas_6saslib_6Parser_2read(struct __pyx_ob
  */
       goto __pyx_L4_break;
 
-      /* "pandas/io/sas/saslib.pyx":277
+      /* "pandas/io/sas/saslib.pyx":283
  *         for i in range(nrows):
  *             done = self.readline()
  *             if done:             # <<<<<<<<<<<<<<
@@ -4712,43 +4744,51 @@ static PyObject *__pyx_pf_6pandas_2io_3sas_6saslib_6Parser_2read(struct __pyx_ob
   }
   __pyx_L4_break:;
 
-  /* "pandas/io/sas/saslib.pyx":281
+  /* "pandas/io/sas/saslib.pyx":287
  * 
  *         # update the parser
  *         self.parser._current_row_on_page_index = self.current_row_on_page_index             # <<<<<<<<<<<<<<
- *         self.parser._current_row_in_chunk_index = self.current_row_in_chunk_index
- *         self.parser._current_row_in_file_index = self.current_row_in_file_index
+ *         self.parser._current_row_in_chunk_index =\
+ *             self.current_row_in_chunk_index
  */
-  __pyx_t_4 = __Pyx_PyInt_From_int(__pyx_v_self->current_row_on_page_index); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 281; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_4 = __Pyx_PyInt_From_int(__pyx_v_self->current_row_on_page_index); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 287; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_4);
-  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_row_on_page_index, __pyx_t_4) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 281; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_row_on_page_index, __pyx_t_4) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 287; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
 
-  /* "pandas/io/sas/saslib.pyx":282
- *         # update the parser
+  /* "pandas/io/sas/saslib.pyx":289
  *         self.parser._current_row_on_page_index = self.current_row_on_page_index
- *         self.parser._current_row_in_chunk_index = self.current_row_in_chunk_index             # <<<<<<<<<<<<<<
+ *         self.parser._current_row_in_chunk_index =\
+ *             self.current_row_in_chunk_index             # <<<<<<<<<<<<<<
  *         self.parser._current_row_in_file_index = self.current_row_in_file_index
  * 
  */
-  __pyx_t_4 = __Pyx_PyInt_From_int(__pyx_v_self->current_row_in_chunk_index); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 282; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_4 = __Pyx_PyInt_From_int(__pyx_v_self->current_row_in_chunk_index); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 289; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_4);
-  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_row_in_chunk_index, __pyx_t_4) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 282; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+
+  /* "pandas/io/sas/saslib.pyx":288
+ *         # update the parser
+ *         self.parser._current_row_on_page_index = self.current_row_on_page_index
+ *         self.parser._current_row_in_chunk_index =\             # <<<<<<<<<<<<<<
+ *             self.current_row_in_chunk_index
+ *         self.parser._current_row_in_file_index = self.current_row_in_file_index
+ */
+  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_row_in_chunk_index, __pyx_t_4) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 288; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
 
-  /* "pandas/io/sas/saslib.pyx":283
- *         self.parser._current_row_on_page_index = self.current_row_on_page_index
- *         self.parser._current_row_in_chunk_index = self.current_row_in_chunk_index
+  /* "pandas/io/sas/saslib.pyx":290
+ *         self.parser._current_row_in_chunk_index =\
+ *             self.current_row_in_chunk_index
  *         self.parser._current_row_in_file_index = self.current_row_in_file_index             # <<<<<<<<<<<<<<
  * 
  *     cdef bint read_next_page(self):
  */
-  __pyx_t_4 = __Pyx_PyInt_From_int(__pyx_v_self->current_row_in_file_index); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 283; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_4 = __Pyx_PyInt_From_int(__pyx_v_self->current_row_in_file_index); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 290; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_4);
-  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_row_in_file_index, __pyx_t_4) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 283; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_row_in_file_index, __pyx_t_4) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 290; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
 
-  /* "pandas/io/sas/saslib.pyx":270
+  /* "pandas/io/sas/saslib.pyx":276
  *         self.current_row_on_page_index = parser._current_row_on_page_index
  * 
  *     def read(self, int nrows):             # <<<<<<<<<<<<<<
@@ -4769,7 +4809,7 @@ static PyObject *__pyx_pf_6pandas_2io_3sas_6saslib_6Parser_2read(struct __pyx_ob
   return __pyx_r;
 }
 
-/* "pandas/io/sas/saslib.pyx":285
+/* "pandas/io/sas/saslib.pyx":292
  *         self.parser._current_row_in_file_index = self.current_row_in_file_index
  * 
  *     cdef bint read_next_page(self):             # <<<<<<<<<<<<<<
@@ -4790,14 +4830,14 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_read_next_page(struct __pyx_
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("read_next_page", 0);
 
-  /* "pandas/io/sas/saslib.pyx":288
+  /* "pandas/io/sas/saslib.pyx":295
  *         cdef done
  * 
  *         done = self.parser._read_next_page()             # <<<<<<<<<<<<<<
  *         if done:
  *             self.cached_page = NULL
  */
-  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_read_next_page); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 288; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_read_next_page); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 295; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_2);
   __pyx_t_3 = NULL;
   if (CYTHON_COMPILING_IN_CPYTHON && likely(PyMethod_Check(__pyx_t_2))) {
@@ -4810,27 +4850,27 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_read_next_page(struct __pyx_
     }
   }
   if (__pyx_t_3) {
-    __pyx_t_1 = __Pyx_PyObject_CallOneArg(__pyx_t_2, __pyx_t_3); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 288; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_1 = __Pyx_PyObject_CallOneArg(__pyx_t_2, __pyx_t_3); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 295; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   } else {
-    __pyx_t_1 = __Pyx_PyObject_CallNoArg(__pyx_t_2); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 288; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_1 = __Pyx_PyObject_CallNoArg(__pyx_t_2); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 295; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   }
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __pyx_v_done = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "pandas/io/sas/saslib.pyx":289
+  /* "pandas/io/sas/saslib.pyx":296
  * 
  *         done = self.parser._read_next_page()
  *         if done:             # <<<<<<<<<<<<<<
  *             self.cached_page = NULL
  *         else:
  */
-  __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_v_done); if (unlikely(__pyx_t_4 < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 289; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_v_done); if (unlikely(__pyx_t_4 < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 296; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   if (__pyx_t_4) {
 
-    /* "pandas/io/sas/saslib.pyx":290
+    /* "pandas/io/sas/saslib.pyx":297
  *         done = self.parser._read_next_page()
  *         if done:
  *             self.cached_page = NULL             # <<<<<<<<<<<<<<
@@ -4839,7 +4879,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_read_next_page(struct __pyx_
  */
     __pyx_v_self->cached_page = NULL;
 
-    /* "pandas/io/sas/saslib.pyx":289
+    /* "pandas/io/sas/saslib.pyx":296
  * 
  *         done = self.parser._read_next_page()
  *         if done:             # <<<<<<<<<<<<<<
@@ -4849,7 +4889,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_read_next_page(struct __pyx_
     goto __pyx_L3;
   }
 
-  /* "pandas/io/sas/saslib.pyx":292
+  /* "pandas/io/sas/saslib.pyx":299
  *             self.cached_page = NULL
  *         else:
  *             self.update_next_page()             # <<<<<<<<<<<<<<
@@ -4857,24 +4897,24 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_read_next_page(struct __pyx_
  * 
  */
   /*else*/ {
-    __pyx_t_1 = ((struct __pyx_vtabstruct_6pandas_2io_3sas_6saslib_Parser *)__pyx_v_self->__pyx_vtab)->update_next_page(__pyx_v_self); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 292; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_1 = ((struct __pyx_vtabstruct_6pandas_2io_3sas_6saslib_Parser *)__pyx_v_self->__pyx_vtab)->update_next_page(__pyx_v_self); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 299; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_1);
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   }
   __pyx_L3:;
 
-  /* "pandas/io/sas/saslib.pyx":293
+  /* "pandas/io/sas/saslib.pyx":300
  *         else:
  *             self.update_next_page()
  *         return done             # <<<<<<<<<<<<<<
  * 
  *     cdef update_next_page(self):
  */
-  __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_v_done); if (unlikely((__pyx_t_4 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 293; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_v_done); if (unlikely((__pyx_t_4 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 300; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_r = __pyx_t_4;
   goto __pyx_L0;
 
-  /* "pandas/io/sas/saslib.pyx":285
+  /* "pandas/io/sas/saslib.pyx":292
  *         self.parser._current_row_in_file_index = self.current_row_in_file_index
  * 
  *     cdef bint read_next_page(self):             # <<<<<<<<<<<<<<
@@ -4895,7 +4935,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_read_next_page(struct __pyx_
   return __pyx_r;
 }
 
-/* "pandas/io/sas/saslib.pyx":295
+/* "pandas/io/sas/saslib.pyx":302
  *         return done
  * 
  *     cdef update_next_page(self):             # <<<<<<<<<<<<<<
@@ -4915,20 +4955,20 @@ static PyObject *__pyx_f_6pandas_2io_3sas_6saslib_6Parser_update_next_page(struc
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("update_next_page", 0);
 
-  /* "pandas/io/sas/saslib.pyx":298
+  /* "pandas/io/sas/saslib.pyx":305
  *         # update data for the current page
  * 
  *         self.cached_page = <char *>self.parser._cached_page             # <<<<<<<<<<<<<<
  *         self.current_row_on_page_index = 0
  *         self.current_page_type = self.parser._current_page_type
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_cached_page); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 298; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_cached_page); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 305; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyObject_AsString(__pyx_t_1); if (unlikely((!__pyx_t_2) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 298; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyObject_AsString(__pyx_t_1); if (unlikely((!__pyx_t_2) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 305; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_v_self->cached_page = ((char *)__pyx_t_2);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "pandas/io/sas/saslib.pyx":299
+  /* "pandas/io/sas/saslib.pyx":306
  * 
  *         self.cached_page = <char *>self.parser._cached_page
  *         self.current_row_on_page_index = 0             # <<<<<<<<<<<<<<
@@ -4937,59 +4977,75 @@ static PyObject *__pyx_f_6pandas_2io_3sas_6saslib_6Parser_update_next_page(struc
  */
   __pyx_v_self->current_row_on_page_index = 0;
 
-  /* "pandas/io/sas/saslib.pyx":300
+  /* "pandas/io/sas/saslib.pyx":307
  *         self.cached_page = <char *>self.parser._cached_page
  *         self.current_row_on_page_index = 0
  *         self.current_page_type = self.parser._current_page_type             # <<<<<<<<<<<<<<
  *         self.current_page_block_count = self.parser._current_page_block_count
- *         self.current_page_data_subheader_pointers_len = len(self.parser._current_page_data_subheader_pointers)
+ *         self.current_page_data_subheader_pointers_len = len(
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_page_type); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 300; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_page_type); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 307; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 300; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 307; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_v_self->current_page_type = __pyx_t_3;
 
-  /* "pandas/io/sas/saslib.pyx":301
+  /* "pandas/io/sas/saslib.pyx":308
  *         self.current_row_on_page_index = 0
  *         self.current_page_type = self.parser._current_page_type
  *         self.current_page_block_count = self.parser._current_page_block_count             # <<<<<<<<<<<<<<
- *         self.current_page_data_subheader_pointers_len = len(self.parser._current_page_data_subheader_pointers)
- *         self.current_page_subheaders_count = self.parser._current_page_subheaders_count
+ *         self.current_page_data_subheader_pointers_len = len(
+ *             self.parser._current_page_data_subheader_pointers)
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_page_block_count); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 301; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_page_block_count); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 308; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 301; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 308; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_v_self->current_page_block_count = __pyx_t_3;
 
-  /* "pandas/io/sas/saslib.pyx":302
+  /* "pandas/io/sas/saslib.pyx":310
+ *         self.current_page_block_count = self.parser._current_page_block_count
+ *         self.current_page_data_subheader_pointers_len = len(
+ *             self.parser._current_page_data_subheader_pointers)             # <<<<<<<<<<<<<<
+ *         self.current_page_subheaders_count =\
+ *             self.parser._current_page_subheaders_count
+ */
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_page_data_subheader_poi); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 310; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __Pyx_GOTREF(__pyx_t_1);
+
+  /* "pandas/io/sas/saslib.pyx":309
  *         self.current_page_type = self.parser._current_page_type
  *         self.current_page_block_count = self.parser._current_page_block_count
- *         self.current_page_data_subheader_pointers_len = len(self.parser._current_page_data_subheader_pointers)             # <<<<<<<<<<<<<<
- *         self.current_page_subheaders_count = self.parser._current_page_subheaders_count
- * 
+ *         self.current_page_data_subheader_pointers_len = len(             # <<<<<<<<<<<<<<
+ *             self.parser._current_page_data_subheader_pointers)
+ *         self.current_page_subheaders_count =\
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_page_data_subheader_poi); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 302; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_4 = PyObject_Length(__pyx_t_1); if (unlikely(__pyx_t_4 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 302; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_4 = PyObject_Length(__pyx_t_1); if (unlikely(__pyx_t_4 == -1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 309; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_v_self->current_page_data_subheader_pointers_len = __pyx_t_4;
 
-  /* "pandas/io/sas/saslib.pyx":303
- *         self.current_page_block_count = self.parser._current_page_block_count
- *         self.current_page_data_subheader_pointers_len = len(self.parser._current_page_data_subheader_pointers)
- *         self.current_page_subheaders_count = self.parser._current_page_subheaders_count             # <<<<<<<<<<<<<<
+  /* "pandas/io/sas/saslib.pyx":312
+ *             self.parser._current_page_data_subheader_pointers)
+ *         self.current_page_subheaders_count =\
+ *             self.parser._current_page_subheaders_count             # <<<<<<<<<<<<<<
  * 
  *     cdef bint readline(self):
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_page_subheaders_count); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 303; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_page_subheaders_count); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 312; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 303; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 312; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+
+  /* "pandas/io/sas/saslib.pyx":311
+ *         self.current_page_data_subheader_pointers_len = len(
+ *             self.parser._current_page_data_subheader_pointers)
+ *         self.current_page_subheaders_count =\             # <<<<<<<<<<<<<<
+ *             self.parser._current_page_subheaders_count
+ * 
+ */
   __pyx_v_self->current_page_subheaders_count = __pyx_t_3;
 
-  /* "pandas/io/sas/saslib.pyx":295
+  /* "pandas/io/sas/saslib.pyx":302
  *         return done
  * 
  *     cdef update_next_page(self):             # <<<<<<<<<<<<<<
@@ -5010,8 +5066,8 @@ static PyObject *__pyx_f_6pandas_2io_3sas_6saslib_6Parser_update_next_page(struc
   return __pyx_r;
 }
 
-/* "pandas/io/sas/saslib.pyx":305
- *         self.current_page_subheaders_count = self.parser._current_page_subheaders_count
+/* "pandas/io/sas/saslib.pyx":314
+ *             self.parser._current_page_subheaders_count
  * 
  *     cdef bint readline(self):             # <<<<<<<<<<<<<<
  * 
@@ -5043,7 +5099,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("readline", 0);
 
-  /* "pandas/io/sas/saslib.pyx":311
+  /* "pandas/io/sas/saslib.pyx":321
  *             bint done, flag
  * 
  *         bit_offset = self.bit_offset             # <<<<<<<<<<<<<<
@@ -5053,7 +5109,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
   __pyx_t_1 = __pyx_v_self->bit_offset;
   __pyx_v_bit_offset = __pyx_t_1;
 
-  /* "pandas/io/sas/saslib.pyx":312
+  /* "pandas/io/sas/saslib.pyx":322
  * 
  *         bit_offset = self.bit_offset
  *         subheader_pointer_length = self.subheader_pointer_length             # <<<<<<<<<<<<<<
@@ -5063,7 +5119,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
   __pyx_t_1 = __pyx_v_self->subheader_pointer_length;
   __pyx_v_subheader_pointer_length = __pyx_t_1;
 
-  /* "pandas/io/sas/saslib.pyx":315
+  /* "pandas/io/sas/saslib.pyx":325
  * 
  *         # If there is no page, go to the end of the header and read a page.
  *         if self.cached_page == NULL:             # <<<<<<<<<<<<<<
@@ -5073,19 +5129,19 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
   __pyx_t_2 = ((__pyx_v_self->cached_page == NULL) != 0);
   if (__pyx_t_2) {
 
-    /* "pandas/io/sas/saslib.pyx":316
+    /* "pandas/io/sas/saslib.pyx":326
  *         # If there is no page, go to the end of the header and read a page.
  *         if self.cached_page == NULL:
  *             self.parser._path_or_buf.seek(self.header_length)             # <<<<<<<<<<<<<<
  *             done = self.read_next_page()
  *             if done:
  */
-    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_path_or_buf); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 316; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_path_or_buf); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 326; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_4);
-    __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_n_s_seek); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 316; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_n_s_seek); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 326; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_5);
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-    __pyx_t_4 = __Pyx_PyInt_From_int(__pyx_v_self->header_length); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 316; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_4 = __Pyx_PyInt_From_int(__pyx_v_self->header_length); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 326; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_4);
     __pyx_t_6 = NULL;
     if (CYTHON_COMPILING_IN_CPYTHON && likely(PyMethod_Check(__pyx_t_5))) {
@@ -5098,24 +5154,24 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
       }
     }
     if (!__pyx_t_6) {
-      __pyx_t_3 = __Pyx_PyObject_CallOneArg(__pyx_t_5, __pyx_t_4); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 316; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_3 = __Pyx_PyObject_CallOneArg(__pyx_t_5, __pyx_t_4); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 326; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
       __Pyx_GOTREF(__pyx_t_3);
     } else {
-      __pyx_t_7 = PyTuple_New(1+1); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 316; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_7 = PyTuple_New(1+1); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 326; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_7);
       __Pyx_GIVEREF(__pyx_t_6); PyTuple_SET_ITEM(__pyx_t_7, 0, __pyx_t_6); __pyx_t_6 = NULL;
       __Pyx_GIVEREF(__pyx_t_4);
       PyTuple_SET_ITEM(__pyx_t_7, 0+1, __pyx_t_4);
       __pyx_t_4 = 0;
-      __pyx_t_3 = __Pyx_PyObject_Call(__pyx_t_5, __pyx_t_7, NULL); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 316; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_3 = __Pyx_PyObject_Call(__pyx_t_5, __pyx_t_7, NULL); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 326; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_3);
       __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
     }
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-    /* "pandas/io/sas/saslib.pyx":317
+    /* "pandas/io/sas/saslib.pyx":327
  *         if self.cached_page == NULL:
  *             self.parser._path_or_buf.seek(self.header_length)
  *             done = self.read_next_page()             # <<<<<<<<<<<<<<
@@ -5124,7 +5180,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
     __pyx_v_done = ((struct __pyx_vtabstruct_6pandas_2io_3sas_6saslib_Parser *)__pyx_v_self->__pyx_vtab)->read_next_page(__pyx_v_self);
 
-    /* "pandas/io/sas/saslib.pyx":318
+    /* "pandas/io/sas/saslib.pyx":328
  *             self.parser._path_or_buf.seek(self.header_length)
  *             done = self.read_next_page()
  *             if done:             # <<<<<<<<<<<<<<
@@ -5134,7 +5190,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
     __pyx_t_2 = (__pyx_v_done != 0);
     if (__pyx_t_2) {
 
-      /* "pandas/io/sas/saslib.pyx":319
+      /* "pandas/io/sas/saslib.pyx":329
  *             done = self.read_next_page()
  *             if done:
  *                 return True             # <<<<<<<<<<<<<<
@@ -5144,7 +5200,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
       __pyx_r = 1;
       goto __pyx_L0;
 
-      /* "pandas/io/sas/saslib.pyx":318
+      /* "pandas/io/sas/saslib.pyx":328
  *             self.parser._path_or_buf.seek(self.header_length)
  *             done = self.read_next_page()
  *             if done:             # <<<<<<<<<<<<<<
@@ -5153,7 +5209,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
     }
 
-    /* "pandas/io/sas/saslib.pyx":315
+    /* "pandas/io/sas/saslib.pyx":325
  * 
  *         # If there is no page, go to the end of the header and read a page.
  *         if self.cached_page == NULL:             # <<<<<<<<<<<<<<
@@ -5162,37 +5218,37 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
   }
 
-  /* "pandas/io/sas/saslib.pyx":322
+  /* "pandas/io/sas/saslib.pyx":332
  * 
  *         # Loop until a data row is read
  *         while True:             # <<<<<<<<<<<<<<
  *             if self.current_page_type == page_meta_type:
- *                 flag = self.current_row_on_page_index >= self.current_page_data_subheader_pointers_len
+ *                 flag = self.current_row_on_page_index >=\
  */
   while (1) {
 
-    /* "pandas/io/sas/saslib.pyx":323
+    /* "pandas/io/sas/saslib.pyx":333
  *         # Loop until a data row is read
  *         while True:
  *             if self.current_page_type == page_meta_type:             # <<<<<<<<<<<<<<
- *                 flag = self.current_row_on_page_index >= self.current_page_data_subheader_pointers_len
- *                 if flag:
+ *                 flag = self.current_row_on_page_index >=\
+ *                     self.current_page_data_subheader_pointers_len
  */
     __pyx_t_2 = ((__pyx_v_self->current_page_type == __pyx_v_6pandas_2io_3sas_6saslib_page_meta_type) != 0);
     if (__pyx_t_2) {
 
-      /* "pandas/io/sas/saslib.pyx":324
- *         while True:
+      /* "pandas/io/sas/saslib.pyx":335
  *             if self.current_page_type == page_meta_type:
- *                 flag = self.current_row_on_page_index >= self.current_page_data_subheader_pointers_len             # <<<<<<<<<<<<<<
+ *                 flag = self.current_row_on_page_index >=\
+ *                     self.current_page_data_subheader_pointers_len             # <<<<<<<<<<<<<<
  *                 if flag:
  *                     done = self.read_next_page()
  */
       __pyx_v_flag = (__pyx_v_self->current_row_on_page_index >= __pyx_v_self->current_page_data_subheader_pointers_len);
 
-      /* "pandas/io/sas/saslib.pyx":325
- *             if self.current_page_type == page_meta_type:
- *                 flag = self.current_row_on_page_index >= self.current_page_data_subheader_pointers_len
+      /* "pandas/io/sas/saslib.pyx":336
+ *                 flag = self.current_row_on_page_index >=\
+ *                     self.current_page_data_subheader_pointers_len
  *                 if flag:             # <<<<<<<<<<<<<<
  *                     done = self.read_next_page()
  *                     if done:
@@ -5200,8 +5256,8 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
       __pyx_t_2 = (__pyx_v_flag != 0);
       if (__pyx_t_2) {
 
-        /* "pandas/io/sas/saslib.pyx":326
- *                 flag = self.current_row_on_page_index >= self.current_page_data_subheader_pointers_len
+        /* "pandas/io/sas/saslib.pyx":337
+ *                     self.current_page_data_subheader_pointers_len
  *                 if flag:
  *                     done = self.read_next_page()             # <<<<<<<<<<<<<<
  *                     if done:
@@ -5209,7 +5265,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
         __pyx_v_done = ((struct __pyx_vtabstruct_6pandas_2io_3sas_6saslib_Parser *)__pyx_v_self->__pyx_vtab)->read_next_page(__pyx_v_self);
 
-        /* "pandas/io/sas/saslib.pyx":327
+        /* "pandas/io/sas/saslib.pyx":338
  *                 if flag:
  *                     done = self.read_next_page()
  *                     if done:             # <<<<<<<<<<<<<<
@@ -5219,7 +5275,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
         __pyx_t_2 = (__pyx_v_done != 0);
         if (__pyx_t_2) {
 
-          /* "pandas/io/sas/saslib.pyx":328
+          /* "pandas/io/sas/saslib.pyx":339
  *                     done = self.read_next_page()
  *                     if done:
  *                         return True             # <<<<<<<<<<<<<<
@@ -5229,7 +5285,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
           __pyx_r = 1;
           goto __pyx_L0;
 
-          /* "pandas/io/sas/saslib.pyx":327
+          /* "pandas/io/sas/saslib.pyx":338
  *                 if flag:
  *                     done = self.read_next_page()
  *                     if done:             # <<<<<<<<<<<<<<
@@ -5238,7 +5294,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
         }
 
-        /* "pandas/io/sas/saslib.pyx":329
+        /* "pandas/io/sas/saslib.pyx":340
  *                     if done:
  *                         return True
  *                     continue             # <<<<<<<<<<<<<<
@@ -5247,96 +5303,96 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
         goto __pyx_L5_continue;
 
-        /* "pandas/io/sas/saslib.pyx":325
- *             if self.current_page_type == page_meta_type:
- *                 flag = self.current_row_on_page_index >= self.current_page_data_subheader_pointers_len
+        /* "pandas/io/sas/saslib.pyx":336
+ *                 flag = self.current_row_on_page_index >=\
+ *                     self.current_page_data_subheader_pointers_len
  *                 if flag:             # <<<<<<<<<<<<<<
  *                     done = self.read_next_page()
  *                     if done:
  */
       }
 
-      /* "pandas/io/sas/saslib.pyx":331
+      /* "pandas/io/sas/saslib.pyx":342
  *                     continue
  *                 current_subheader_pointer = (
  *                     self.parser._current_page_data_subheader_pointers[             # <<<<<<<<<<<<<<
  *                         self.current_row_on_page_index])
- *                 self.process_byte_array_with_data(current_subheader_pointer.offset,
+ *                 self.process_byte_array_with_data(
  */
-      __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_page_data_subheader_poi); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 331; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_current_page_data_subheader_poi); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 342; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_3);
 
-      /* "pandas/io/sas/saslib.pyx":332
+      /* "pandas/io/sas/saslib.pyx":343
  *                 current_subheader_pointer = (
  *                     self.parser._current_page_data_subheader_pointers[
  *                         self.current_row_on_page_index])             # <<<<<<<<<<<<<<
- *                 self.process_byte_array_with_data(current_subheader_pointer.offset,
- *                                                   current_subheader_pointer.length)
+ *                 self.process_byte_array_with_data(
+ *                     current_subheader_pointer.offset,
  */
-      __pyx_t_5 = __Pyx_GetItemInt(__pyx_t_3, __pyx_v_self->current_row_on_page_index, int, 1, __Pyx_PyInt_From_int, 0, 1, 0); if (unlikely(__pyx_t_5 == NULL)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 331; __pyx_clineno = __LINE__; goto __pyx_L1_error;};
+      __pyx_t_5 = __Pyx_GetItemInt(__pyx_t_3, __pyx_v_self->current_row_on_page_index, int, 1, __Pyx_PyInt_From_int, 0, 1, 0); if (unlikely(__pyx_t_5 == NULL)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 342; __pyx_clineno = __LINE__; goto __pyx_L1_error;};
       __Pyx_GOTREF(__pyx_t_5);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
       __pyx_v_current_subheader_pointer = __pyx_t_5;
       __pyx_t_5 = 0;
 
-      /* "pandas/io/sas/saslib.pyx":333
- *                     self.parser._current_page_data_subheader_pointers[
+      /* "pandas/io/sas/saslib.pyx":345
  *                         self.current_row_on_page_index])
- *                 self.process_byte_array_with_data(current_subheader_pointer.offset,             # <<<<<<<<<<<<<<
- *                                                   current_subheader_pointer.length)
+ *                 self.process_byte_array_with_data(
+ *                     current_subheader_pointer.offset,             # <<<<<<<<<<<<<<
+ *                     current_subheader_pointer.length)
  *                 return False
  */
-      __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_v_current_subheader_pointer, __pyx_n_s_offset); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 333; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_v_current_subheader_pointer, __pyx_n_s_offset); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 345; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_5);
-      __pyx_t_1 = __Pyx_PyInt_As_int(__pyx_t_5); if (unlikely((__pyx_t_1 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 333; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_1 = __Pyx_PyInt_As_int(__pyx_t_5); if (unlikely((__pyx_t_1 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 345; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-      /* "pandas/io/sas/saslib.pyx":334
- *                         self.current_row_on_page_index])
- *                 self.process_byte_array_with_data(current_subheader_pointer.offset,
- *                                                   current_subheader_pointer.length)             # <<<<<<<<<<<<<<
+      /* "pandas/io/sas/saslib.pyx":346
+ *                 self.process_byte_array_with_data(
+ *                     current_subheader_pointer.offset,
+ *                     current_subheader_pointer.length)             # <<<<<<<<<<<<<<
  *                 return False
- *             elif self.current_page_type == page_mix_types_0 or self.current_page_type == page_mix_types_1:
+ *             elif (self.current_page_type == page_mix_types_0 or
  */
-      __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_v_current_subheader_pointer, __pyx_n_s_length); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 334; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_v_current_subheader_pointer, __pyx_n_s_length); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 346; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_5);
-      __pyx_t_8 = __Pyx_PyInt_As_int(__pyx_t_5); if (unlikely((__pyx_t_8 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 334; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_8 = __Pyx_PyInt_As_int(__pyx_t_5); if (unlikely((__pyx_t_8 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 346; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-      /* "pandas/io/sas/saslib.pyx":333
+      /* "pandas/io/sas/saslib.pyx":344
  *                     self.parser._current_page_data_subheader_pointers[
  *                         self.current_row_on_page_index])
- *                 self.process_byte_array_with_data(current_subheader_pointer.offset,             # <<<<<<<<<<<<<<
- *                                                   current_subheader_pointer.length)
- *                 return False
+ *                 self.process_byte_array_with_data(             # <<<<<<<<<<<<<<
+ *                     current_subheader_pointer.offset,
+ *                     current_subheader_pointer.length)
  */
       ((struct __pyx_vtabstruct_6pandas_2io_3sas_6saslib_Parser *)__pyx_v_self->__pyx_vtab)->process_byte_array_with_data(__pyx_v_self, __pyx_t_1, __pyx_t_8);
 
-      /* "pandas/io/sas/saslib.pyx":335
- *                 self.process_byte_array_with_data(current_subheader_pointer.offset,
- *                                                   current_subheader_pointer.length)
+      /* "pandas/io/sas/saslib.pyx":347
+ *                     current_subheader_pointer.offset,
+ *                     current_subheader_pointer.length)
  *                 return False             # <<<<<<<<<<<<<<
- *             elif self.current_page_type == page_mix_types_0 or self.current_page_type == page_mix_types_1:
- *                 align_correction = (bit_offset + subheader_pointers_offset +
+ *             elif (self.current_page_type == page_mix_types_0 or
+ *                     self.current_page_type == page_mix_types_1):
  */
       __pyx_r = 0;
       goto __pyx_L0;
 
-      /* "pandas/io/sas/saslib.pyx":323
+      /* "pandas/io/sas/saslib.pyx":333
  *         # Loop until a data row is read
  *         while True:
  *             if self.current_page_type == page_meta_type:             # <<<<<<<<<<<<<<
- *                 flag = self.current_row_on_page_index >= self.current_page_data_subheader_pointers_len
- *                 if flag:
+ *                 flag = self.current_row_on_page_index >=\
+ *                     self.current_page_data_subheader_pointers_len
  */
     }
 
-    /* "pandas/io/sas/saslib.pyx":336
- *                                                   current_subheader_pointer.length)
+    /* "pandas/io/sas/saslib.pyx":348
+ *                     current_subheader_pointer.length)
  *                 return False
- *             elif self.current_page_type == page_mix_types_0 or self.current_page_type == page_mix_types_1:             # <<<<<<<<<<<<<<
+ *             elif (self.current_page_type == page_mix_types_0 or             # <<<<<<<<<<<<<<
+ *                     self.current_page_type == page_mix_types_1):
  *                 align_correction = (bit_offset + subheader_pointers_offset +
- *                                     self.current_page_subheaders_count *
  */
     __pyx_t_9 = ((__pyx_v_self->current_page_type == __pyx_v_6pandas_2io_3sas_6saslib_page_mix_types_0) != 0);
     if (!__pyx_t_9) {
@@ -5344,21 +5400,37 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
       __pyx_t_2 = __pyx_t_9;
       goto __pyx_L10_bool_binop_done;
     }
+
+    /* "pandas/io/sas/saslib.pyx":349
+ *                 return False
+ *             elif (self.current_page_type == page_mix_types_0 or
+ *                     self.current_page_type == page_mix_types_1):             # <<<<<<<<<<<<<<
+ *                 align_correction = (bit_offset + subheader_pointers_offset +
+ *                                     self.current_page_subheaders_count *
+ */
     __pyx_t_9 = ((__pyx_v_self->current_page_type == __pyx_v_6pandas_2io_3sas_6saslib_page_mix_types_1) != 0);
     __pyx_t_2 = __pyx_t_9;
     __pyx_L10_bool_binop_done:;
+
+    /* "pandas/io/sas/saslib.pyx":348
+ *                     current_subheader_pointer.length)
+ *                 return False
+ *             elif (self.current_page_type == page_mix_types_0 or             # <<<<<<<<<<<<<<
+ *                     self.current_page_type == page_mix_types_1):
+ *                 align_correction = (bit_offset + subheader_pointers_offset +
+ */
     if (__pyx_t_2) {
 
-      /* "pandas/io/sas/saslib.pyx":337
- *                 return False
- *             elif self.current_page_type == page_mix_types_0 or self.current_page_type == page_mix_types_1:
+      /* "pandas/io/sas/saslib.pyx":350
+ *             elif (self.current_page_type == page_mix_types_0 or
+ *                     self.current_page_type == page_mix_types_1):
  *                 align_correction = (bit_offset + subheader_pointers_offset +             # <<<<<<<<<<<<<<
  *                                     self.current_page_subheaders_count *
  *                                     subheader_pointer_length)
  */
       __pyx_v_align_correction = ((__pyx_v_bit_offset + __pyx_v_6pandas_2io_3sas_6saslib_subheader_pointers_offset) + (__pyx_v_self->current_page_subheaders_count * __pyx_v_subheader_pointer_length));
 
-      /* "pandas/io/sas/saslib.pyx":340
+      /* "pandas/io/sas/saslib.pyx":353
  *                                     self.current_page_subheaders_count *
  *                                     subheader_pointer_length)
  *                 align_correction = align_correction % 8             # <<<<<<<<<<<<<<
@@ -5367,7 +5439,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
       __pyx_v_align_correction = __Pyx_mod_long(__pyx_v_align_correction, 8);
 
-      /* "pandas/io/sas/saslib.pyx":341
+      /* "pandas/io/sas/saslib.pyx":354
  *                                     subheader_pointer_length)
  *                 align_correction = align_correction % 8
  *                 offset = bit_offset + align_correction             # <<<<<<<<<<<<<<
@@ -5376,7 +5448,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
       __pyx_v_offset = (__pyx_v_bit_offset + __pyx_v_align_correction);
 
-      /* "pandas/io/sas/saslib.pyx":342
+      /* "pandas/io/sas/saslib.pyx":355
  *                 align_correction = align_correction % 8
  *                 offset = bit_offset + align_correction
  *                 offset += subheader_pointers_offset             # <<<<<<<<<<<<<<
@@ -5385,7 +5457,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
       __pyx_v_offset = (__pyx_v_offset + __pyx_v_6pandas_2io_3sas_6saslib_subheader_pointers_offset);
 
-      /* "pandas/io/sas/saslib.pyx":343
+      /* "pandas/io/sas/saslib.pyx":356
  *                 offset = bit_offset + align_correction
  *                 offset += subheader_pointers_offset
  *                 offset += (self.current_page_subheaders_count *             # <<<<<<<<<<<<<<
@@ -5394,7 +5466,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
       __pyx_v_offset = (__pyx_v_offset + (__pyx_v_self->current_page_subheaders_count * __pyx_v_subheader_pointer_length));
 
-      /* "pandas/io/sas/saslib.pyx":345
+      /* "pandas/io/sas/saslib.pyx":358
  *                 offset += (self.current_page_subheaders_count *
  *                            subheader_pointer_length)
  *                 offset += self.current_row_on_page_index * self.row_length             # <<<<<<<<<<<<<<
@@ -5403,28 +5475,44 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
       __pyx_v_offset = (__pyx_v_offset + (__pyx_v_self->current_row_on_page_index * __pyx_v_self->row_length));
 
-      /* "pandas/io/sas/saslib.pyx":346
+      /* "pandas/io/sas/saslib.pyx":359
  *                            subheader_pointer_length)
  *                 offset += self.current_row_on_page_index * self.row_length
  *                 self.process_byte_array_with_data(offset,             # <<<<<<<<<<<<<<
  *                                                   self.row_length)
- *                 mn = min(self.parser.row_count, self.parser._mix_page_row_count)
+ *                 mn = min(self.parser.row_count,
  */
       ((struct __pyx_vtabstruct_6pandas_2io_3sas_6saslib_Parser *)__pyx_v_self->__pyx_vtab)->process_byte_array_with_data(__pyx_v_self, __pyx_v_offset, __pyx_v_self->row_length);
 
-      /* "pandas/io/sas/saslib.pyx":348
- *                 self.process_byte_array_with_data(offset,
+      /* "pandas/io/sas/saslib.pyx":362
  *                                                   self.row_length)
- *                 mn = min(self.parser.row_count, self.parser._mix_page_row_count)             # <<<<<<<<<<<<<<
+ *                 mn = min(self.parser.row_count,
+ *                          self.parser._mix_page_row_count)             # <<<<<<<<<<<<<<
  *                 if self.current_row_on_page_index == mn:
  *                     done = self.read_next_page()
  */
-      __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_mix_page_row_count); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 348; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_mix_page_row_count); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 362; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_5);
-      __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_row_count); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 348; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+
+      /* "pandas/io/sas/saslib.pyx":361
+ *                 self.process_byte_array_with_data(offset,
+ *                                                   self.row_length)
+ *                 mn = min(self.parser.row_count,             # <<<<<<<<<<<<<<
+ *                          self.parser._mix_page_row_count)
+ *                 if self.current_row_on_page_index == mn:
+ */
+      __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_self->parser, __pyx_n_s_row_count); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 361; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_3);
-      __pyx_t_4 = PyObject_RichCompare(__pyx_t_5, __pyx_t_3, Py_LT); __Pyx_XGOTREF(__pyx_t_4); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 348; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-      __pyx_t_2 = __Pyx_PyObject_IsTrue(__pyx_t_4); if (unlikely(__pyx_t_2 < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 348; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+
+      /* "pandas/io/sas/saslib.pyx":362
+ *                                                   self.row_length)
+ *                 mn = min(self.parser.row_count,
+ *                          self.parser._mix_page_row_count)             # <<<<<<<<<<<<<<
+ *                 if self.current_row_on_page_index == mn:
+ *                     done = self.read_next_page()
+ */
+      __pyx_t_4 = PyObject_RichCompare(__pyx_t_5, __pyx_t_3, Py_LT); __Pyx_XGOTREF(__pyx_t_4); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 362; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_2 = __Pyx_PyObject_IsTrue(__pyx_t_4); if (unlikely(__pyx_t_2 < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 362; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
       if (__pyx_t_2) {
         __Pyx_INCREF(__pyx_t_5);
@@ -5435,13 +5523,13 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
       }
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-      __pyx_t_8 = __Pyx_PyInt_As_int(__pyx_t_7); if (unlikely((__pyx_t_8 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 348; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_8 = __Pyx_PyInt_As_int(__pyx_t_7); if (unlikely((__pyx_t_8 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 362; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
       __pyx_v_mn = __pyx_t_8;
 
-      /* "pandas/io/sas/saslib.pyx":349
- *                                                   self.row_length)
- *                 mn = min(self.parser.row_count, self.parser._mix_page_row_count)
+      /* "pandas/io/sas/saslib.pyx":363
+ *                 mn = min(self.parser.row_count,
+ *                          self.parser._mix_page_row_count)
  *                 if self.current_row_on_page_index == mn:             # <<<<<<<<<<<<<<
  *                     done = self.read_next_page()
  *                     if done:
@@ -5449,8 +5537,8 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
       __pyx_t_2 = ((__pyx_v_self->current_row_on_page_index == __pyx_v_mn) != 0);
       if (__pyx_t_2) {
 
-        /* "pandas/io/sas/saslib.pyx":350
- *                 mn = min(self.parser.row_count, self.parser._mix_page_row_count)
+        /* "pandas/io/sas/saslib.pyx":364
+ *                          self.parser._mix_page_row_count)
  *                 if self.current_row_on_page_index == mn:
  *                     done = self.read_next_page()             # <<<<<<<<<<<<<<
  *                     if done:
@@ -5458,7 +5546,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
         __pyx_v_done = ((struct __pyx_vtabstruct_6pandas_2io_3sas_6saslib_Parser *)__pyx_v_self->__pyx_vtab)->read_next_page(__pyx_v_self);
 
-        /* "pandas/io/sas/saslib.pyx":351
+        /* "pandas/io/sas/saslib.pyx":365
  *                 if self.current_row_on_page_index == mn:
  *                     done = self.read_next_page()
  *                     if done:             # <<<<<<<<<<<<<<
@@ -5468,7 +5556,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
         __pyx_t_2 = (__pyx_v_done != 0);
         if (__pyx_t_2) {
 
-          /* "pandas/io/sas/saslib.pyx":352
+          /* "pandas/io/sas/saslib.pyx":366
  *                     done = self.read_next_page()
  *                     if done:
  *                         return True             # <<<<<<<<<<<<<<
@@ -5478,7 +5566,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
           __pyx_r = 1;
           goto __pyx_L0;
 
-          /* "pandas/io/sas/saslib.pyx":351
+          /* "pandas/io/sas/saslib.pyx":365
  *                 if self.current_row_on_page_index == mn:
  *                     done = self.read_next_page()
  *                     if done:             # <<<<<<<<<<<<<<
@@ -5487,55 +5575,55 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
         }
 
-        /* "pandas/io/sas/saslib.pyx":349
- *                                                   self.row_length)
- *                 mn = min(self.parser.row_count, self.parser._mix_page_row_count)
+        /* "pandas/io/sas/saslib.pyx":363
+ *                 mn = min(self.parser.row_count,
+ *                          self.parser._mix_page_row_count)
  *                 if self.current_row_on_page_index == mn:             # <<<<<<<<<<<<<<
  *                     done = self.read_next_page()
  *                     if done:
  */
       }
 
-      /* "pandas/io/sas/saslib.pyx":353
+      /* "pandas/io/sas/saslib.pyx":367
  *                     if done:
  *                         return True
  *                 return False             # <<<<<<<<<<<<<<
  *             elif self.current_page_type == page_data_type:
- *                 self.process_byte_array_with_data(bit_offset +
+ *                 self.process_byte_array_with_data(
  */
       __pyx_r = 0;
       goto __pyx_L0;
 
-      /* "pandas/io/sas/saslib.pyx":336
- *                                                   current_subheader_pointer.length)
+      /* "pandas/io/sas/saslib.pyx":348
+ *                     current_subheader_pointer.length)
  *                 return False
- *             elif self.current_page_type == page_mix_types_0 or self.current_page_type == page_mix_types_1:             # <<<<<<<<<<<<<<
+ *             elif (self.current_page_type == page_mix_types_0 or             # <<<<<<<<<<<<<<
+ *                     self.current_page_type == page_mix_types_1):
  *                 align_correction = (bit_offset + subheader_pointers_offset +
- *                                     self.current_page_subheaders_count *
  */
     }
 
-    /* "pandas/io/sas/saslib.pyx":354
+    /* "pandas/io/sas/saslib.pyx":368
  *                         return True
  *                 return False
  *             elif self.current_page_type == page_data_type:             # <<<<<<<<<<<<<<
- *                 self.process_byte_array_with_data(bit_offset +
- *                                                   subheader_pointers_offset +
+ *                 self.process_byte_array_with_data(
+ *                     bit_offset + subheader_pointers_offset +
  */
     __pyx_t_2 = ((__pyx_v_self->current_page_type == __pyx_v_6pandas_2io_3sas_6saslib_page_data_type) != 0);
     if (__pyx_t_2) {
 
-      /* "pandas/io/sas/saslib.pyx":355
+      /* "pandas/io/sas/saslib.pyx":369
  *                 return False
  *             elif self.current_page_type == page_data_type:
- *                 self.process_byte_array_with_data(bit_offset +             # <<<<<<<<<<<<<<
- *                                                   subheader_pointers_offset +
- *                                                   self.current_row_on_page_index *
+ *                 self.process_byte_array_with_data(             # <<<<<<<<<<<<<<
+ *                     bit_offset + subheader_pointers_offset +
+ *                     self.current_row_on_page_index * self.row_length,
  */
       ((struct __pyx_vtabstruct_6pandas_2io_3sas_6saslib_Parser *)__pyx_v_self->__pyx_vtab)->process_byte_array_with_data(__pyx_v_self, ((__pyx_v_bit_offset + __pyx_v_6pandas_2io_3sas_6saslib_subheader_pointers_offset) + (__pyx_v_self->current_row_on_page_index * __pyx_v_self->row_length)), __pyx_v_self->row_length);
 
-      /* "pandas/io/sas/saslib.pyx":361
- *                                                   self.row_length)
+      /* "pandas/io/sas/saslib.pyx":374
+ *                     self.row_length)
  *                 flag = (self.current_row_on_page_index ==
  *                         self.current_page_block_count)             # <<<<<<<<<<<<<<
  *                 if flag:
@@ -5543,7 +5631,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
       __pyx_v_flag = (__pyx_v_self->current_row_on_page_index == __pyx_v_self->current_page_block_count);
 
-      /* "pandas/io/sas/saslib.pyx":362
+      /* "pandas/io/sas/saslib.pyx":375
  *                 flag = (self.current_row_on_page_index ==
  *                         self.current_page_block_count)
  *                 if flag:             # <<<<<<<<<<<<<<
@@ -5553,7 +5641,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
       __pyx_t_2 = (__pyx_v_flag != 0);
       if (__pyx_t_2) {
 
-        /* "pandas/io/sas/saslib.pyx":363
+        /* "pandas/io/sas/saslib.pyx":376
  *                         self.current_page_block_count)
  *                 if flag:
  *                     done = self.read_next_page()             # <<<<<<<<<<<<<<
@@ -5562,7 +5650,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
         __pyx_v_done = ((struct __pyx_vtabstruct_6pandas_2io_3sas_6saslib_Parser *)__pyx_v_self->__pyx_vtab)->read_next_page(__pyx_v_self);
 
-        /* "pandas/io/sas/saslib.pyx":364
+        /* "pandas/io/sas/saslib.pyx":377
  *                 if flag:
  *                     done = self.read_next_page()
  *                     if done:             # <<<<<<<<<<<<<<
@@ -5572,7 +5660,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
         __pyx_t_2 = (__pyx_v_done != 0);
         if (__pyx_t_2) {
 
-          /* "pandas/io/sas/saslib.pyx":365
+          /* "pandas/io/sas/saslib.pyx":378
  *                     done = self.read_next_page()
  *                     if done:
  *                         return True             # <<<<<<<<<<<<<<
@@ -5582,7 +5670,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
           __pyx_r = 1;
           goto __pyx_L0;
 
-          /* "pandas/io/sas/saslib.pyx":364
+          /* "pandas/io/sas/saslib.pyx":377
  *                 if flag:
  *                     done = self.read_next_page()
  *                     if done:             # <<<<<<<<<<<<<<
@@ -5591,7 +5679,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
         }
 
-        /* "pandas/io/sas/saslib.pyx":362
+        /* "pandas/io/sas/saslib.pyx":375
  *                 flag = (self.current_row_on_page_index ==
  *                         self.current_page_block_count)
  *                 if flag:             # <<<<<<<<<<<<<<
@@ -5600,7 +5688,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
       }
 
-      /* "pandas/io/sas/saslib.pyx":366
+      /* "pandas/io/sas/saslib.pyx":379
  *                     if done:
  *                         return True
  *                 return False             # <<<<<<<<<<<<<<
@@ -5610,16 +5698,16 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
       __pyx_r = 0;
       goto __pyx_L0;
 
-      /* "pandas/io/sas/saslib.pyx":354
+      /* "pandas/io/sas/saslib.pyx":368
  *                         return True
  *                 return False
  *             elif self.current_page_type == page_data_type:             # <<<<<<<<<<<<<<
- *                 self.process_byte_array_with_data(bit_offset +
- *                                                   subheader_pointers_offset +
+ *                 self.process_byte_array_with_data(
+ *                     bit_offset + subheader_pointers_offset +
  */
     }
 
-    /* "pandas/io/sas/saslib.pyx":368
+    /* "pandas/io/sas/saslib.pyx":381
  *                 return False
  *             else:
  *                 raise ValueError("unknown page type: %s",             # <<<<<<<<<<<<<<
@@ -5628,24 +5716,24 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
  */
     /*else*/ {
 
-      /* "pandas/io/sas/saslib.pyx":369
+      /* "pandas/io/sas/saslib.pyx":382
  *             else:
  *                 raise ValueError("unknown page type: %s",
  *                                  self.current_page_type)             # <<<<<<<<<<<<<<
  * 
  *     cdef void process_byte_array_with_data(self, int offset, int length):
  */
-      __pyx_t_7 = __Pyx_PyInt_From_int(__pyx_v_self->current_page_type); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 369; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_7 = __Pyx_PyInt_From_int(__pyx_v_self->current_page_type); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 382; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_7);
 
-      /* "pandas/io/sas/saslib.pyx":368
+      /* "pandas/io/sas/saslib.pyx":381
  *                 return False
  *             else:
  *                 raise ValueError("unknown page type: %s",             # <<<<<<<<<<<<<<
  *                                  self.current_page_type)
  * 
  */
-      __pyx_t_5 = PyTuple_New(2); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 368; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_5 = PyTuple_New(2); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 381; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_5);
       __Pyx_INCREF(__pyx_kp_s_unknown_page_type_s);
       __Pyx_GIVEREF(__pyx_kp_s_unknown_page_type_s);
@@ -5653,18 +5741,18 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
       __Pyx_GIVEREF(__pyx_t_7);
       PyTuple_SET_ITEM(__pyx_t_5, 1, __pyx_t_7);
       __pyx_t_7 = 0;
-      __pyx_t_7 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_t_5, NULL); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 368; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_7 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_t_5, NULL); if (unlikely(!__pyx_t_7)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 381; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_7);
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
       __Pyx_Raise(__pyx_t_7, 0, 0, 0);
       __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-      {__pyx_filename = __pyx_f[0]; __pyx_lineno = 368; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      {__pyx_filename = __pyx_f[0]; __pyx_lineno = 381; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     }
     __pyx_L5_continue:;
   }
 
-  /* "pandas/io/sas/saslib.pyx":305
- *         self.current_page_subheaders_count = self.parser._current_page_subheaders_count
+  /* "pandas/io/sas/saslib.pyx":314
+ *             self.parser._current_page_subheaders_count
  * 
  *     cdef bint readline(self):             # <<<<<<<<<<<<<<
  * 
@@ -5688,7 +5776,7 @@ static int __pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline(struct __pyx_obj_6p
   return __pyx_r;
 }
 
-/* "pandas/io/sas/saslib.pyx":371
+/* "pandas/io/sas/saslib.pyx":384
  *                                  self.current_page_type)
  * 
  *     cdef void process_byte_array_with_data(self, int offset, int length):             # <<<<<<<<<<<<<<
@@ -5753,40 +5841,72 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
   __pyx_pybuffernd_source.data = NULL;
   __pyx_pybuffernd_source.rcbuffer = &__pyx_pybuffer_source;
 
-  /* "pandas/io/sas/saslib.pyx":384
- *              object[:, :] string_chunk
+  /* "pandas/io/sas/saslib.pyx":397
+ *             object[:, :] string_chunk
  * 
- *         source = np.frombuffer(self.cached_page[offset:offset+length], dtype=np.uint8)             # <<<<<<<<<<<<<<
+ *         source = np.frombuffer(             # <<<<<<<<<<<<<<
+ *             self.cached_page[offset:offset + length], dtype=np.uint8)
+ * 
+ */
+  __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 397; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_frombuffer); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 397; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __Pyx_GOTREF(__pyx_t_2);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+
+  /* "pandas/io/sas/saslib.pyx":398
+ * 
+ *         source = np.frombuffer(
+ *             self.cached_page[offset:offset + length], dtype=np.uint8)             # <<<<<<<<<<<<<<
  * 
  *         if self.decompress != NULL and (length < self.row_length):
  */
-  __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 384; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyBytes_FromStringAndSize(__pyx_v_self->cached_page + __pyx_v_offset, (__pyx_v_offset + __pyx_v_length) - __pyx_v_offset); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 398; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_frombuffer); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 384; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  __Pyx_GOTREF(__pyx_t_2);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_1 = __Pyx_PyBytes_FromStringAndSize(__pyx_v_self->cached_page + __pyx_v_offset, (__pyx_v_offset + __pyx_v_length) - __pyx_v_offset); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 384; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_3 = PyTuple_New(1); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 384; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+
+  /* "pandas/io/sas/saslib.pyx":397
+ *             object[:, :] string_chunk
+ * 
+ *         source = np.frombuffer(             # <<<<<<<<<<<<<<
+ *             self.cached_page[offset:offset + length], dtype=np.uint8)
+ * 
+ */
+  __pyx_t_3 = PyTuple_New(1); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 397; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_GIVEREF(__pyx_t_1);
   PyTuple_SET_ITEM(__pyx_t_3, 0, __pyx_t_1);
   __pyx_t_1 = 0;
-  __pyx_t_1 = PyDict_New(); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 384; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+
+  /* "pandas/io/sas/saslib.pyx":398
+ * 
+ *         source = np.frombuffer(
+ *             self.cached_page[offset:offset + length], dtype=np.uint8)             # <<<<<<<<<<<<<<
+ * 
+ *         if self.decompress != NULL and (length < self.row_length):
+ */
+  __pyx_t_1 = PyDict_New(); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 398; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_4 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 384; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_4 = __Pyx_GetModuleGlobalName(__pyx_n_s_np); if (unlikely(!__pyx_t_4)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 398; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_4);
-  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_n_s_uint8); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 384; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_n_s_uint8); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 398; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_5);
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-  if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_dtype, __pyx_t_5) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 384; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_dtype, __pyx_t_5) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 398; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-  __pyx_t_5 = __Pyx_PyObject_Call(__pyx_t_2, __pyx_t_3, __pyx_t_1); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 384; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+
+  /* "pandas/io/sas/saslib.pyx":397
+ *             object[:, :] string_chunk
+ * 
+ *         source = np.frombuffer(             # <<<<<<<<<<<<<<
+ *             self.cached_page[offset:offset + length], dtype=np.uint8)
+ * 
+ */
+  __pyx_t_5 = __Pyx_PyObject_Call(__pyx_t_2, __pyx_t_3, __pyx_t_1); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 397; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_5);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  if (!(likely(((__pyx_t_5) == Py_None) || likely(__Pyx_TypeTest(__pyx_t_5, __pyx_ptype_5numpy_ndarray))))) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 384; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (!(likely(((__pyx_t_5) == Py_None) || likely(__Pyx_TypeTest(__pyx_t_5, __pyx_ptype_5numpy_ndarray))))) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 397; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_t_6 = ((PyArrayObject *)__pyx_t_5);
   {
     __Pyx_BufFmt_StackElem __pyx_stack[1];
@@ -5802,14 +5922,14 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
       }
     }
     __pyx_pybuffernd_source.diminfo[0].strides = __pyx_pybuffernd_source.rcbuffer->pybuffer.strides[0]; __pyx_pybuffernd_source.diminfo[0].shape = __pyx_pybuffernd_source.rcbuffer->pybuffer.shape[0];
-    if (unlikely(__pyx_t_7 < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 384; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    if (unlikely(__pyx_t_7 < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 397; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   }
   __pyx_t_6 = 0;
   __pyx_v_source = ((PyArrayObject *)__pyx_t_5);
   __pyx_t_5 = 0;
 
-  /* "pandas/io/sas/saslib.pyx":386
- *         source = np.frombuffer(self.cached_page[offset:offset+length], dtype=np.uint8)
+  /* "pandas/io/sas/saslib.pyx":400
+ *             self.cached_page[offset:offset + length], dtype=np.uint8)
  * 
  *         if self.decompress != NULL and (length < self.row_length):             # <<<<<<<<<<<<<<
  *             source = self.decompress(self.row_length, source)
@@ -5826,14 +5946,14 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
   __pyx_L4_bool_binop_done:;
   if (__pyx_t_11) {
 
-    /* "pandas/io/sas/saslib.pyx":387
+    /* "pandas/io/sas/saslib.pyx":401
  * 
  *         if self.decompress != NULL and (length < self.row_length):
  *             source = self.decompress(self.row_length, source)             # <<<<<<<<<<<<<<
  * 
  *         current_row = self.current_row_in_chunk_index
  */
-    __pyx_t_5 = ((PyObject *)__pyx_v_self->decompress(__pyx_v_self->row_length, ((PyArrayObject *)__pyx_v_source))); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 387; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_5 = ((PyObject *)__pyx_v_self->decompress(__pyx_v_self->row_length, ((PyArrayObject *)__pyx_v_source))); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 401; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_5);
     {
       __Pyx_BufFmt_StackElem __pyx_stack[1];
@@ -5849,13 +5969,13 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
         }
       }
       __pyx_pybuffernd_source.diminfo[0].strides = __pyx_pybuffernd_source.rcbuffer->pybuffer.strides[0]; __pyx_pybuffernd_source.diminfo[0].shape = __pyx_pybuffernd_source.rcbuffer->pybuffer.shape[0];
-      if (unlikely(__pyx_t_7 < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 387; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      if (unlikely(__pyx_t_7 < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 401; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     }
     __Pyx_DECREF_SET(__pyx_v_source, ((PyArrayObject *)__pyx_t_5));
     __pyx_t_5 = 0;
 
-    /* "pandas/io/sas/saslib.pyx":386
- *         source = np.frombuffer(self.cached_page[offset:offset+length], dtype=np.uint8)
+    /* "pandas/io/sas/saslib.pyx":400
+ *             self.cached_page[offset:offset + length], dtype=np.uint8)
  * 
  *         if self.decompress != NULL and (length < self.row_length):             # <<<<<<<<<<<<<<
  *             source = self.decompress(self.row_length, source)
@@ -5863,7 +5983,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
  */
   }
 
-  /* "pandas/io/sas/saslib.pyx":389
+  /* "pandas/io/sas/saslib.pyx":403
  *             source = self.decompress(self.row_length, source)
  * 
  *         current_row = self.current_row_in_chunk_index             # <<<<<<<<<<<<<<
@@ -5873,7 +5993,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
   __pyx_t_7 = __pyx_v_self->current_row_in_chunk_index;
   __pyx_v_current_row = __pyx_t_7;
 
-  /* "pandas/io/sas/saslib.pyx":390
+  /* "pandas/io/sas/saslib.pyx":404
  * 
  *         current_row = self.current_row_in_chunk_index
  *         column_types = self.column_types             # <<<<<<<<<<<<<<
@@ -5886,7 +6006,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
   __pyx_t_13.memview = NULL;
   __pyx_t_13.data = NULL;
 
-  /* "pandas/io/sas/saslib.pyx":391
+  /* "pandas/io/sas/saslib.pyx":405
  *         current_row = self.current_row_in_chunk_index
  *         column_types = self.column_types
  *         lengths = self.lengths             # <<<<<<<<<<<<<<
@@ -5899,7 +6019,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
   __pyx_t_13.memview = NULL;
   __pyx_t_13.data = NULL;
 
-  /* "pandas/io/sas/saslib.pyx":392
+  /* "pandas/io/sas/saslib.pyx":406
  *         column_types = self.column_types
  *         lengths = self.lengths
  *         offsets = self.offsets             # <<<<<<<<<<<<<<
@@ -5912,7 +6032,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
   __pyx_t_13.memview = NULL;
   __pyx_t_13.data = NULL;
 
-  /* "pandas/io/sas/saslib.pyx":393
+  /* "pandas/io/sas/saslib.pyx":407
  *         lengths = self.lengths
  *         offsets = self.offsets
  *         byte_chunk = self.byte_chunk             # <<<<<<<<<<<<<<
@@ -5925,7 +6045,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
   __pyx_t_14.memview = NULL;
   __pyx_t_14.data = NULL;
 
-  /* "pandas/io/sas/saslib.pyx":394
+  /* "pandas/io/sas/saslib.pyx":408
  *         offsets = self.offsets
  *         byte_chunk = self.byte_chunk
  *         string_chunk = self.string_chunk             # <<<<<<<<<<<<<<
@@ -5938,7 +6058,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
   __pyx_t_15.memview = NULL;
   __pyx_t_15.data = NULL;
 
-  /* "pandas/io/sas/saslib.pyx":395
+  /* "pandas/io/sas/saslib.pyx":409
  *         byte_chunk = self.byte_chunk
  *         string_chunk = self.string_chunk
  *         s = 8 * self.current_row_in_chunk_index             # <<<<<<<<<<<<<<
@@ -5947,7 +6067,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
  */
   __pyx_v_s = (8 * __pyx_v_self->current_row_in_chunk_index);
 
-  /* "pandas/io/sas/saslib.pyx":396
+  /* "pandas/io/sas/saslib.pyx":410
  *         string_chunk = self.string_chunk
  *         s = 8 * self.current_row_in_chunk_index
  *         js = 0             # <<<<<<<<<<<<<<
@@ -5956,7 +6076,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
  */
   __pyx_v_js = 0;
 
-  /* "pandas/io/sas/saslib.pyx":397
+  /* "pandas/io/sas/saslib.pyx":411
  *         s = 8 * self.current_row_in_chunk_index
  *         js = 0
  *         jb = 0             # <<<<<<<<<<<<<<
@@ -5965,7 +6085,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
  */
   __pyx_v_jb = 0;
 
-  /* "pandas/io/sas/saslib.pyx":398
+  /* "pandas/io/sas/saslib.pyx":412
  *         js = 0
  *         jb = 0
  *         for j in range(self.column_count):             # <<<<<<<<<<<<<<
@@ -5976,7 +6096,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
   for (__pyx_t_16 = 0; __pyx_t_16 < __pyx_t_7; __pyx_t_16+=1) {
     __pyx_v_j = __pyx_t_16;
 
-    /* "pandas/io/sas/saslib.pyx":399
+    /* "pandas/io/sas/saslib.pyx":413
  *         jb = 0
  *         for j in range(self.column_count):
  *             lngt = lengths[j]             # <<<<<<<<<<<<<<
@@ -5987,7 +6107,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
     if (__pyx_t_17 < 0) __pyx_t_17 += __pyx_v_lengths.shape[0];
     __pyx_v_lngt = (*((__pyx_t_5numpy_int64_t *) ( /* dim=0 */ (__pyx_v_lengths.data + __pyx_t_17 * __pyx_v_lengths.strides[0]) )));
 
-    /* "pandas/io/sas/saslib.pyx":400
+    /* "pandas/io/sas/saslib.pyx":414
  *         for j in range(self.column_count):
  *             lngt = lengths[j]
  *             if lngt == 0:             # <<<<<<<<<<<<<<
@@ -5997,7 +6117,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
     __pyx_t_11 = ((__pyx_v_lngt == 0) != 0);
     if (__pyx_t_11) {
 
-      /* "pandas/io/sas/saslib.pyx":401
+      /* "pandas/io/sas/saslib.pyx":415
  *             lngt = lengths[j]
  *             if lngt == 0:
  *                 break             # <<<<<<<<<<<<<<
@@ -6006,7 +6126,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
  */
       goto __pyx_L7_break;
 
-      /* "pandas/io/sas/saslib.pyx":400
+      /* "pandas/io/sas/saslib.pyx":414
  *         for j in range(self.column_count):
  *             lngt = lengths[j]
  *             if lngt == 0:             # <<<<<<<<<<<<<<
@@ -6015,7 +6135,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
  */
     }
 
-    /* "pandas/io/sas/saslib.pyx":402
+    /* "pandas/io/sas/saslib.pyx":416
  *             if lngt == 0:
  *                 break
  *             start = offsets[j]             # <<<<<<<<<<<<<<
@@ -6026,7 +6146,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
     if (__pyx_t_18 < 0) __pyx_t_18 += __pyx_v_offsets.shape[0];
     __pyx_v_start = (*((__pyx_t_5numpy_int64_t *) ( /* dim=0 */ (__pyx_v_offsets.data + __pyx_t_18 * __pyx_v_offsets.strides[0]) )));
 
-    /* "pandas/io/sas/saslib.pyx":403
+    /* "pandas/io/sas/saslib.pyx":417
  *                 break
  *             start = offsets[j]
  *             ct = column_types[j]             # <<<<<<<<<<<<<<
@@ -6037,7 +6157,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
     if (__pyx_t_19 < 0) __pyx_t_19 += __pyx_v_column_types.shape[0];
     __pyx_v_ct = (*((__pyx_t_5numpy_int64_t *) ( /* dim=0 */ (__pyx_v_column_types.data + __pyx_t_19 * __pyx_v_column_types.strides[0]) )));
 
-    /* "pandas/io/sas/saslib.pyx":404
+    /* "pandas/io/sas/saslib.pyx":418
  *             start = offsets[j]
  *             ct = column_types[j]
  *             if ct == column_type_decimal:             # <<<<<<<<<<<<<<
@@ -6047,7 +6167,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
     __pyx_t_11 = ((__pyx_v_ct == __pyx_e_6pandas_2io_3sas_6saslib_column_type_decimal) != 0);
     if (__pyx_t_11) {
 
-      /* "pandas/io/sas/saslib.pyx":406
+      /* "pandas/io/sas/saslib.pyx":420
  *             if ct == column_type_decimal:
  *                 # decimal
  *                 if self.is_little_endian:             # <<<<<<<<<<<<<<
@@ -6057,7 +6177,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
       __pyx_t_11 = (__pyx_v_self->is_little_endian != 0);
       if (__pyx_t_11) {
 
-        /* "pandas/io/sas/saslib.pyx":407
+        /* "pandas/io/sas/saslib.pyx":421
  *                 # decimal
  *                 if self.is_little_endian:
  *                     m = s + 8 - lngt             # <<<<<<<<<<<<<<
@@ -6066,7 +6186,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
  */
         __pyx_v_m = ((__pyx_v_s + 8) - __pyx_v_lngt);
 
-        /* "pandas/io/sas/saslib.pyx":406
+        /* "pandas/io/sas/saslib.pyx":420
  *             if ct == column_type_decimal:
  *                 # decimal
  *                 if self.is_little_endian:             # <<<<<<<<<<<<<<
@@ -6076,33 +6196,33 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
         goto __pyx_L10;
       }
 
-      /* "pandas/io/sas/saslib.pyx":409
+      /* "pandas/io/sas/saslib.pyx":423
  *                     m = s + 8 - lngt
  *                 else:
  *                     m = s             # <<<<<<<<<<<<<<
  *                 for k in range(lngt):
- *                    byte_chunk[jb, m + k] = source[start + k]
+ *                     byte_chunk[jb, m + k] = source[start + k]
  */
       /*else*/ {
         __pyx_v_m = __pyx_v_s;
       }
       __pyx_L10:;
 
-      /* "pandas/io/sas/saslib.pyx":410
+      /* "pandas/io/sas/saslib.pyx":424
  *                 else:
  *                     m = s
  *                 for k in range(lngt):             # <<<<<<<<<<<<<<
- *                    byte_chunk[jb, m + k] = source[start + k]
+ *                     byte_chunk[jb, m + k] = source[start + k]
  *                 jb += 1
  */
       __pyx_t_20 = __pyx_v_lngt;
       for (__pyx_t_21 = 0; __pyx_t_21 < __pyx_t_20; __pyx_t_21+=1) {
         __pyx_v_k = __pyx_t_21;
 
-        /* "pandas/io/sas/saslib.pyx":411
+        /* "pandas/io/sas/saslib.pyx":425
  *                     m = s
  *                 for k in range(lngt):
- *                    byte_chunk[jb, m + k] = source[start + k]             # <<<<<<<<<<<<<<
+ *                     byte_chunk[jb, m + k] = source[start + k]             # <<<<<<<<<<<<<<
  *                 jb += 1
  *             elif column_types[j] == column_type_string:
  */
@@ -6115,16 +6235,16 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
         *((__pyx_t_5numpy_uint8_t *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_byte_chunk.data + __pyx_t_23 * __pyx_v_byte_chunk.strides[0]) ) + __pyx_t_24 * __pyx_v_byte_chunk.strides[1]) )) = (*__Pyx_BufPtrStrided1d(__pyx_t_5numpy_uint8_t *, __pyx_pybuffernd_source.rcbuffer->pybuffer.buf, __pyx_t_22, __pyx_pybuffernd_source.diminfo[0].strides));
       }
 
-      /* "pandas/io/sas/saslib.pyx":412
+      /* "pandas/io/sas/saslib.pyx":426
  *                 for k in range(lngt):
- *                    byte_chunk[jb, m + k] = source[start + k]
+ *                     byte_chunk[jb, m + k] = source[start + k]
  *                 jb += 1             # <<<<<<<<<<<<<<
  *             elif column_types[j] == column_type_string:
  *                 # string
  */
       __pyx_v_jb = (__pyx_v_jb + 1);
 
-      /* "pandas/io/sas/saslib.pyx":404
+      /* "pandas/io/sas/saslib.pyx":418
  *             start = offsets[j]
  *             ct = column_types[j]
  *             if ct == column_type_decimal:             # <<<<<<<<<<<<<<
@@ -6134,28 +6254,36 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
       goto __pyx_L9;
     }
 
-    /* "pandas/io/sas/saslib.pyx":413
- *                    byte_chunk[jb, m + k] = source[start + k]
+    /* "pandas/io/sas/saslib.pyx":427
+ *                     byte_chunk[jb, m + k] = source[start + k]
  *                 jb += 1
  *             elif column_types[j] == column_type_string:             # <<<<<<<<<<<<<<
  *                 # string
- *                 string_chunk[js, current_row] = source[start:(start+lngt)].tostring().rstrip()
+ *                 string_chunk[js, current_row] = source[start:(
  */
     __pyx_t_25 = __pyx_v_j;
     if (__pyx_t_25 < 0) __pyx_t_25 += __pyx_v_column_types.shape[0];
     __pyx_t_11 = (((*((__pyx_t_5numpy_int64_t *) ( /* dim=0 */ (__pyx_v_column_types.data + __pyx_t_25 * __pyx_v_column_types.strides[0]) ))) == __pyx_e_6pandas_2io_3sas_6saslib_column_type_string) != 0);
     if (__pyx_t_11) {
 
-      /* "pandas/io/sas/saslib.pyx":415
+      /* "pandas/io/sas/saslib.pyx":429
  *             elif column_types[j] == column_type_string:
  *                 # string
- *                 string_chunk[js, current_row] = source[start:(start+lngt)].tostring().rstrip()             # <<<<<<<<<<<<<<
+ *                 string_chunk[js, current_row] = source[start:(             # <<<<<<<<<<<<<<
+ *                     start + lngt)].tostring().rstrip()
+ *                 js += 1
+ */
+      __pyx_t_3 = __Pyx_PyObject_GetSlice(((PyObject *)__pyx_v_source), __pyx_v_start, (__pyx_v_start + __pyx_v_lngt), NULL, NULL, NULL, 1, 1, 1); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 429; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __Pyx_GOTREF(__pyx_t_3);
+
+      /* "pandas/io/sas/saslib.pyx":430
+ *                 # string
+ *                 string_chunk[js, current_row] = source[start:(
+ *                     start + lngt)].tostring().rstrip()             # <<<<<<<<<<<<<<
  *                 js += 1
  * 
  */
-      __pyx_t_3 = __Pyx_PyObject_GetSlice(((PyObject *)__pyx_v_source), __pyx_v_start, (__pyx_v_start + __pyx_v_lngt), NULL, NULL, NULL, 1, 1, 1); if (unlikely(!__pyx_t_3)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 415; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-      __Pyx_GOTREF(__pyx_t_3);
-      __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_tostring); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 415; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_tostring); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 430; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_2);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
       __pyx_t_3 = NULL;
@@ -6169,14 +6297,14 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
         }
       }
       if (__pyx_t_3) {
-        __pyx_t_1 = __Pyx_PyObject_CallOneArg(__pyx_t_2, __pyx_t_3); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 415; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+        __pyx_t_1 = __Pyx_PyObject_CallOneArg(__pyx_t_2, __pyx_t_3); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 430; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
         __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
       } else {
-        __pyx_t_1 = __Pyx_PyObject_CallNoArg(__pyx_t_2); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 415; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+        __pyx_t_1 = __Pyx_PyObject_CallNoArg(__pyx_t_2); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 430; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       }
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-      __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_rstrip); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 415; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_rstrip); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 430; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __Pyx_GOTREF(__pyx_t_2);
       __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
       __pyx_t_1 = NULL;
@@ -6190,13 +6318,21 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
         }
       }
       if (__pyx_t_1) {
-        __pyx_t_5 = __Pyx_PyObject_CallOneArg(__pyx_t_2, __pyx_t_1); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 415; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+        __pyx_t_5 = __Pyx_PyObject_CallOneArg(__pyx_t_2, __pyx_t_1); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 430; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
         __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
       } else {
-        __pyx_t_5 = __Pyx_PyObject_CallNoArg(__pyx_t_2); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 415; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+        __pyx_t_5 = __Pyx_PyObject_CallNoArg(__pyx_t_2); if (unlikely(!__pyx_t_5)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 430; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       }
       __Pyx_GOTREF(__pyx_t_5);
       __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+
+      /* "pandas/io/sas/saslib.pyx":429
+ *             elif column_types[j] == column_type_string:
+ *                 # string
+ *                 string_chunk[js, current_row] = source[start:(             # <<<<<<<<<<<<<<
+ *                     start + lngt)].tostring().rstrip()
+ *                 js += 1
+ */
       __pyx_t_26 = __pyx_v_js;
       __pyx_t_27 = __pyx_v_current_row;
       if (__pyx_t_26 < 0) __pyx_t_26 += __pyx_v_string_chunk.shape[0];
@@ -6208,28 +6344,28 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
       __Pyx_GIVEREF(*__pyx_t_28);
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-      /* "pandas/io/sas/saslib.pyx":416
- *                 # string
- *                 string_chunk[js, current_row] = source[start:(start+lngt)].tostring().rstrip()
+      /* "pandas/io/sas/saslib.pyx":431
+ *                 string_chunk[js, current_row] = source[start:(
+ *                     start + lngt)].tostring().rstrip()
  *                 js += 1             # <<<<<<<<<<<<<<
  * 
  *         self.current_row_on_page_index += 1
  */
       __pyx_v_js = (__pyx_v_js + 1);
 
-      /* "pandas/io/sas/saslib.pyx":413
- *                    byte_chunk[jb, m + k] = source[start + k]
+      /* "pandas/io/sas/saslib.pyx":427
+ *                     byte_chunk[jb, m + k] = source[start + k]
  *                 jb += 1
  *             elif column_types[j] == column_type_string:             # <<<<<<<<<<<<<<
  *                 # string
- *                 string_chunk[js, current_row] = source[start:(start+lngt)].tostring().rstrip()
+ *                 string_chunk[js, current_row] = source[start:(
  */
     }
     __pyx_L9:;
   }
   __pyx_L7_break:;
 
-  /* "pandas/io/sas/saslib.pyx":418
+  /* "pandas/io/sas/saslib.pyx":433
  *                 js += 1
  * 
  *         self.current_row_on_page_index += 1             # <<<<<<<<<<<<<<
@@ -6238,7 +6374,7 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
  */
   __pyx_v_self->current_row_on_page_index = (__pyx_v_self->current_row_on_page_index + 1);
 
-  /* "pandas/io/sas/saslib.pyx":419
+  /* "pandas/io/sas/saslib.pyx":434
  * 
  *         self.current_row_on_page_index += 1
  *         self.current_row_in_chunk_index += 1             # <<<<<<<<<<<<<<
@@ -6246,14 +6382,14 @@ static void __pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_dat
  */
   __pyx_v_self->current_row_in_chunk_index = (__pyx_v_self->current_row_in_chunk_index + 1);
 
-  /* "pandas/io/sas/saslib.pyx":420
+  /* "pandas/io/sas/saslib.pyx":435
  *         self.current_row_on_page_index += 1
  *         self.current_row_in_chunk_index += 1
  *         self.current_row_in_file_index += 1             # <<<<<<<<<<<<<<
  */
   __pyx_v_self->current_row_in_file_index = (__pyx_v_self->current_row_in_file_index + 1);
 
-  /* "pandas/io/sas/saslib.pyx":371
+  /* "pandas/io/sas/saslib.pyx":384
  *                                  self.current_page_type)
  * 
  *     cdef void process_byte_array_with_data(self, int offset, int length):             # <<<<<<<<<<<<<<
@@ -20893,8 +21029,8 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {0, 0, 0, 0, 0, 0, 0}
 };
 static int __Pyx_InitCachedBuiltins(void) {
-  __pyx_builtin_ValueError = __Pyx_GetBuiltinName(__pyx_n_s_ValueError); if (!__pyx_builtin_ValueError) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 27; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  __pyx_builtin_range = __Pyx_GetBuiltinName(__pyx_n_s_range); if (!__pyx_builtin_range) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 30; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_builtin_ValueError = __Pyx_GetBuiltinName(__pyx_n_s_ValueError); if (!__pyx_builtin_ValueError) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 29; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_builtin_range = __Pyx_GetBuiltinName(__pyx_n_s_range); if (!__pyx_builtin_range) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 32; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_builtin_RuntimeError = __Pyx_GetBuiltinName(__pyx_n_s_RuntimeError); if (!__pyx_builtin_RuntimeError) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 803; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_builtin_MemoryError = __Pyx_GetBuiltinName(__pyx_n_s_MemoryError); if (!__pyx_builtin_MemoryError) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 144; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_builtin_enumerate = __Pyx_GetBuiltinName(__pyx_n_s_enumerate); if (!__pyx_builtin_enumerate) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 147; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -20911,25 +21047,25 @@ static int __Pyx_InitCachedConstants(void) {
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("__Pyx_InitCachedConstants", 0);
 
-  /* "pandas/io/sas/saslib.pyx":27
+  /* "pandas/io/sas/saslib.pyx":29
  *         if control_byte == 0x00:
  *             if end_of_first_byte != 0:
  *                 raise ValueError("Unexpected non-zero end_of_first_byte")             # <<<<<<<<<<<<<<
  *             nbytes = <int>(inbuff[ipos]) + 64
  *             ipos += 1
  */
-  __pyx_tuple_ = PyTuple_Pack(1, __pyx_kp_s_Unexpected_non_zero_end_of_first); if (unlikely(!__pyx_tuple_)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 27; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_tuple_ = PyTuple_Pack(1, __pyx_kp_s_Unexpected_non_zero_end_of_first); if (unlikely(!__pyx_tuple_)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 29; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_tuple_);
   __Pyx_GIVEREF(__pyx_tuple_);
 
-  /* "pandas/io/sas/saslib.pyx":181
+  /* "pandas/io/sas/saslib.pyx":185
  * 
  *         else:
  *             raise ValueError("unknown RDC command")             # <<<<<<<<<<<<<<
  * 
  *     if len(outbuff) != result_length:
  */
-  __pyx_tuple__2 = PyTuple_Pack(1, __pyx_kp_s_unknown_RDC_command); if (unlikely(!__pyx_tuple__2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 181; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_tuple__2 = PyTuple_Pack(1, __pyx_kp_s_unknown_RDC_command); if (unlikely(!__pyx_tuple__2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 185; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_tuple__2);
   __Pyx_GIVEREF(__pyx_tuple__2);
 
@@ -21315,10 +21451,10 @@ PyMODINIT_FUNC PyInit_saslib(void)
   __pyx_vtable_6pandas_2io_3sas_6saslib_Parser.update_next_page = (PyObject *(*)(struct __pyx_obj_6pandas_2io_3sas_6saslib_Parser *))__pyx_f_6pandas_2io_3sas_6saslib_6Parser_update_next_page;
   __pyx_vtable_6pandas_2io_3sas_6saslib_Parser.readline = (int (*)(struct __pyx_obj_6pandas_2io_3sas_6saslib_Parser *))__pyx_f_6pandas_2io_3sas_6saslib_6Parser_readline;
   __pyx_vtable_6pandas_2io_3sas_6saslib_Parser.process_byte_array_with_data = (void (*)(struct __pyx_obj_6pandas_2io_3sas_6saslib_Parser *, int, int))__pyx_f_6pandas_2io_3sas_6saslib_6Parser_process_byte_array_with_data;
-  if (PyType_Ready(&__pyx_type_6pandas_2io_3sas_6saslib_Parser) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 200; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (PyType_Ready(&__pyx_type_6pandas_2io_3sas_6saslib_Parser) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 204; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_type_6pandas_2io_3sas_6saslib_Parser.tp_print = 0;
-  if (__Pyx_SetVtable(__pyx_type_6pandas_2io_3sas_6saslib_Parser.tp_dict, __pyx_vtabptr_6pandas_2io_3sas_6saslib_Parser) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 200; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  if (PyObject_SetAttrString(__pyx_m, "Parser", (PyObject *)&__pyx_type_6pandas_2io_3sas_6saslib_Parser) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 200; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (__Pyx_SetVtable(__pyx_type_6pandas_2io_3sas_6saslib_Parser.tp_dict, __pyx_vtabptr_6pandas_2io_3sas_6saslib_Parser) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 204; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (PyObject_SetAttrString(__pyx_m, "Parser", (PyObject *)&__pyx_type_6pandas_2io_3sas_6saslib_Parser) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 204; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_ptype_6pandas_2io_3sas_6saslib_Parser = &__pyx_type_6pandas_2io_3sas_6saslib_Parser;
   if (PyType_Ready(&__pyx_type___pyx_array) < 0) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 101; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_type___pyx_array.tp_print = 0;
@@ -21391,89 +21527,89 @@ PyMODINIT_FUNC PyInit_saslib(void)
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_const, __pyx_t_1) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 7; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "pandas/io/sas/saslib.pyx":194
+  /* "pandas/io/sas/saslib.pyx":198
  * 
  * # type the page_data types
  * cdef int page_meta_type = const.page_meta_type             # <<<<<<<<<<<<<<
  * cdef int page_mix_types_0 = const.page_mix_types[0]
  * cdef int page_mix_types_1 = const.page_mix_types[1]
  */
-  __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 194; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 198; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_page_meta_type); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 194; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_page_meta_type); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 198; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_2); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 194; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_2); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 198; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __pyx_v_6pandas_2io_3sas_6saslib_page_meta_type = __pyx_t_3;
 
-  /* "pandas/io/sas/saslib.pyx":195
+  /* "pandas/io/sas/saslib.pyx":199
  * # type the page_data types
  * cdef int page_meta_type = const.page_meta_type
  * cdef int page_mix_types_0 = const.page_mix_types[0]             # <<<<<<<<<<<<<<
  * cdef int page_mix_types_1 = const.page_mix_types[1]
  * cdef int page_data_type = const.page_data_type
  */
-  __pyx_t_2 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 195; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 199; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_page_mix_types); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 195; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_page_mix_types); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 199; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = __Pyx_GetItemInt(__pyx_t_1, 0, long, 1, __Pyx_PyInt_From_long, 0, 0, 0); if (unlikely(__pyx_t_2 == NULL)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 195; __pyx_clineno = __LINE__; goto __pyx_L1_error;};
+  __pyx_t_2 = __Pyx_GetItemInt(__pyx_t_1, 0, long, 1, __Pyx_PyInt_From_long, 0, 0, 0); if (unlikely(__pyx_t_2 == NULL)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 199; __pyx_clineno = __LINE__; goto __pyx_L1_error;};
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_2); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 195; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_2); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 199; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __pyx_v_6pandas_2io_3sas_6saslib_page_mix_types_0 = __pyx_t_3;
 
-  /* "pandas/io/sas/saslib.pyx":196
+  /* "pandas/io/sas/saslib.pyx":200
  * cdef int page_meta_type = const.page_meta_type
  * cdef int page_mix_types_0 = const.page_mix_types[0]
  * cdef int page_mix_types_1 = const.page_mix_types[1]             # <<<<<<<<<<<<<<
  * cdef int page_data_type = const.page_data_type
  * cdef int subheader_pointers_offset = const.subheader_pointers_offset
  */
-  __pyx_t_2 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 196; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 200; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_page_mix_types); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 196; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_page_mix_types); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 200; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = __Pyx_GetItemInt(__pyx_t_1, 1, long, 1, __Pyx_PyInt_From_long, 0, 0, 0); if (unlikely(__pyx_t_2 == NULL)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 196; __pyx_clineno = __LINE__; goto __pyx_L1_error;};
+  __pyx_t_2 = __Pyx_GetItemInt(__pyx_t_1, 1, long, 1, __Pyx_PyInt_From_long, 0, 0, 0); if (unlikely(__pyx_t_2 == NULL)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 200; __pyx_clineno = __LINE__; goto __pyx_L1_error;};
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_2); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 196; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_2); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 200; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __pyx_v_6pandas_2io_3sas_6saslib_page_mix_types_1 = __pyx_t_3;
 
-  /* "pandas/io/sas/saslib.pyx":197
+  /* "pandas/io/sas/saslib.pyx":201
  * cdef int page_mix_types_0 = const.page_mix_types[0]
  * cdef int page_mix_types_1 = const.page_mix_types[1]
  * cdef int page_data_type = const.page_data_type             # <<<<<<<<<<<<<<
  * cdef int subheader_pointers_offset = const.subheader_pointers_offset
  * 
  */
-  __pyx_t_2 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 197; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 201; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_page_data_type); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 197; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_page_data_type); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 201; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 197; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 201; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_v_6pandas_2io_3sas_6saslib_page_data_type = __pyx_t_3;
 
-  /* "pandas/io/sas/saslib.pyx":198
+  /* "pandas/io/sas/saslib.pyx":202
  * cdef int page_mix_types_1 = const.page_mix_types[1]
  * cdef int page_data_type = const.page_data_type
  * cdef int subheader_pointers_offset = const.subheader_pointers_offset             # <<<<<<<<<<<<<<
  * 
  * cdef class Parser(object):
  */
-  __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 198; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_const); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 202; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_subheader_pointers_offset); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 198; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_subheader_pointers_offset); if (unlikely(!__pyx_t_2)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 202; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_2); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 198; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_PyInt_As_int(__pyx_t_2); if (unlikely((__pyx_t_3 == (int)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 202; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __pyx_v_6pandas_2io_3sas_6saslib_subheader_pointers_offset = __pyx_t_3;
 
