@@ -8,4 +8,4 @@
 -v = get_versions()
 -__version__ = v.get('closest-tag',v['version'])
 -del get_versions, v
-+from .version import version as __version__
++from .__version import version as __version__

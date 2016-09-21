@@ -79,12 +79,10 @@ override_dh_clean: clean_generated
 	[ "$(UVER)" = "`cat debian/cythonized-files/VERSION`" ]
 	rm -rf build doc/_build *-stamp # pandas.egg-info pandas/datasets/__config__.py
 	dh_clean
-	: # prune auto-generated version.py -- will be generated during build again
-	rm -f pandas/version.py
 
 version_py:
-	[ -e pandas/version.py ] || \
-      echo -e "version = '$(UVER_PY)'\nshort_version = '$(UVER_PYSHORT)'" > pandas/version.py
+	[ -e pandas/__version.py ] || \
+      echo -e "version = '$(UVER_PY)'\nshort_version = '$(UVER_PYSHORT)'" > pandas/__version.py
 
 override_dh_auto_build: version_py
 	# Override default build operation which --force's re-cythonization
