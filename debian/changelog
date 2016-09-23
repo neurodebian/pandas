@@ -6,6 +6,8 @@ pandas (0.18.1+git25-ga7469cf-1) unstable; urgency=medium
   * debian/rules,patches
     - save debian-based version into __version.py, so doesn't conflict with
       upstream tests of public API
+    - exclude for now test_expressions on python3
+      (see https://github.com/pydata/pandas/issues/14269)
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 20 Sep 2016 22:31:17 -0400
 
