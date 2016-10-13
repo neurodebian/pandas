@@ -19,6 +19,14 @@ from pandas.lib import Timestamp
 from .common import Base
 
 
+def full_like(array, value):
+    """Compatibility for numpy<1.8.0
+    """
+    ret = np.empty(array.shape, dtype=np.array(value).dtype)
+    ret.fill(value)
+    return ret
+
+
 class Numeric(Base):
 
     def test_numeric_compat(self):
@@ -80,18 +88,18 @@ class Numeric(Base):
         for r, e in zip(result, expected):
             tm.assert_index_equal(r, e)
 
-        result = divmod(idx, np.full_like(idx.values, 2))
+        result = divmod(idx, full_like(idx.values, 2))
         with np.errstate(all='ignore'):
-            div, mod = divmod(idx.values, np.full_like(idx.values, 2))
+            div, mod = divmod(idx.values, full_like(idx.values, 2))
             expected = Index(div), Index(mod)
         for r, e in zip(result, expected):
             tm.assert_index_equal(r, e)
 
-        result = divmod(idx, Series(np.full_like(idx.values, 2)))
+        result = divmod(idx, Series(full_like(idx.values, 2)))
         with np.errstate(all='ignore'):
             div, mod = divmod(
                 idx.values,
-                np.full_like(idx.values, 2),
+                full_like(idx.values, 2),
             )
             expected = Index(div), Index(mod)
         for r, e in zip(result, expected):
@@ -136,8 +144,8 @@ class Numeric(Base):
 
         for idx in [int_idx, float_idx, obj_idx, dt_idx]:
             to_groupby = np.array([1, 2, np.nan, np.nan, 2, 1])
-            self.assertEqual(idx.groupby(to_groupby),
-                             {1.0: [idx[0], idx[5]], 2.0: [idx[1], idx[4]]})
+            tm.assert_dict_equal(idx.groupby(to_groupby),
+                                 {1.0: idx[[0, 5]], 2.0: idx[[1, 4]]})
 
             to_groupby = Index([datetime(2011, 11, 1),
                                 datetime(2011, 12, 1),
@@ -147,11 +155,10 @@ class Numeric(Base):
                                 datetime(2011, 11, 1)],
                                tz='UTC').values
 
-            ex_keys = pd.tslib.datetime_to_datetime64(np.array([Timestamp(
-                '2011-11-01'), Timestamp('2011-12-01')]))
-            expected = {ex_keys[0][0]: [idx[0], idx[5]],
-                        ex_keys[0][1]: [idx[1], idx[4]]}
-            self.assertEqual(idx.groupby(to_groupby), expected)
+            ex_keys = [Timestamp('2011-11-01'), Timestamp('2011-12-01')]
+            expected = {ex_keys[0]: idx[[0, 5]],
+                        ex_keys[1]: idx[[1, 4]]}
+            tm.assert_dict_equal(idx.groupby(to_groupby), expected)
 
     def test_modulo(self):
         # GH 9244

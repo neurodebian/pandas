@@ -521,13 +521,6 @@ class TestGroupBy(tm.TestCase):
         assert_series_equal(result, result2)
         assert_series_equal(result, expected2)
 
-    def test_groupby_bounds_check(self):
-        # groupby_X is code-generated, so if one variant
-        # does, the rest probably do to
-        a = np.array([1, 2], dtype='object')
-        b = np.array([1, 2, 3], dtype='object')
-        self.assertRaises(AssertionError, pd.algos.groupby_object, a, b)
-
     def test_groupby_grouper_f_sanity_checked(self):
         dates = date_range('01-Jan-2013', periods=12, freq='MS')
         ts = Series(np.random.randn(12), index=dates)
@@ -1345,7 +1338,9 @@ class TestGroupBy(tm.TestCase):
         df = DataFrame(dict(A=[1, 1, 1, 2, 2, 2], B=Series(1, dtype='float64'),
                             C=Series(
                                 [1, 2, 3, 1, 2, 3], dtype='float64'), D='foo'))
-        result = df.groupby('A').transform(lambda x: (x - x.mean()) / x.std())
+        with np.errstate(all='ignore'):
+            result = df.groupby('A').transform(
+                lambda x: (x - x.mean()) / x.std())
         expected = DataFrame(dict(B=np.nan, C=Series(
             [-1, 0, 1, -1, 0, 1], dtype='float64')))
         assert_frame_equal(result, expected)
@@ -1353,14 +1348,18 @@ class TestGroupBy(tm.TestCase):
         # int case
         df = DataFrame(dict(A=[1, 1, 1, 2, 2, 2], B=1,
                             C=[1, 2, 3, 1, 2, 3], D='foo'))
-        result = df.groupby('A').transform(lambda x: (x - x.mean()) / x.std())
+        with np.errstate(all='ignore'):
+            result = df.groupby('A').transform(
+                lambda x: (x - x.mean()) / x.std())
         expected = DataFrame(dict(B=np.nan, C=[-1, 0, 1, -1, 0, 1]))
         assert_frame_equal(result, expected)
 
         # int that needs float conversion
         s = Series([2, 3, 4, 10, 5, -1])
         df = DataFrame(dict(A=[1, 1, 1, 2, 2, 2], B=1, C=s, D='foo'))
-        result = df.groupby('A').transform(lambda x: (x - x.mean()) / x.std())
+        with np.errstate(all='ignore'):
+            result = df.groupby('A').transform(
+                lambda x: (x - x.mean()) / x.std())
 
         s1 = s.iloc[0:3]
         s1 = (s1 - s1.mean()) / s1.std()
@@ -2029,7 +2028,7 @@ class TestGroupBy(tm.TestCase):
 
             loop(frame)
 
-    def test_mulitindex_passthru(self):
+    def test_multiindex_passthru(self):
 
         # GH 7997
         # regression from 0.14.1
@@ -2038,6 +2037,24 @@ class TestGroupBy(tm.TestCase):
 
         result = df.groupby(axis=1, level=[0, 1]).first()
         assert_frame_equal(result, df)
+
+    def test_multiindex_negative_level(self):
+        # GH 13901
+        result = self.mframe.groupby(level=-1).sum()
+        expected = self.mframe.groupby(level='second').sum()
+        assert_frame_equal(result, expected)
+
+        result = self.mframe.groupby(level=-2).sum()
+        expected = self.mframe.groupby(level='first').sum()
+        assert_frame_equal(result, expected)
+
+        result = self.mframe.groupby(level=[-2, -1]).sum()
+        expected = self.mframe
+        assert_frame_equal(result, expected)
+
+        result = self.mframe.groupby(level=[-1, 'first']).sum()
+        expected = self.mframe.groupby(level=['second', 'first']).sum()
+        assert_frame_equal(result, expected)
 
     def test_multifunc_select_col_integer_cols(self):
         df = self.df
@@ -2566,13 +2583,28 @@ class TestGroupBy(tm.TestCase):
         assert_frame_equal(result0, expected0)
         assert_frame_equal(result1, expected1)
 
-    def test_groupby_level_0_nonmulti(self):
-        # #1313
-        a = Series([1, 2, 3, 10, 4, 5, 20, 6], Index([1, 2, 3, 1,
-                                                      4, 5, 2, 6], name='foo'))
+    def test_groupby_level_nonmulti(self):
+        # GH 1313, GH 13901
+        s = Series([1, 2, 3, 10, 4, 5, 20, 6],
+                   Index([1, 2, 3, 1, 4, 5, 2, 6], name='foo'))
+        expected = Series([11, 22, 3, 4, 5, 6],
+                          Index(range(1, 7), name='foo'))
 
-        result = a.groupby(level=0).sum()
-        self.assertEqual(result.index.name, a.index.name)
+        result = s.groupby(level=0).sum()
+        self.assert_series_equal(result, expected)
+        result = s.groupby(level=[0]).sum()
+        self.assert_series_equal(result, expected)
+        result = s.groupby(level=-1).sum()
+        self.assert_series_equal(result, expected)
+        result = s.groupby(level=[-1]).sum()
+        self.assert_series_equal(result, expected)
+
+        tm.assertRaises(ValueError, s.groupby, level=1)
+        tm.assertRaises(ValueError, s.groupby, level=-2)
+        tm.assertRaises(ValueError, s.groupby, level=[])
+        tm.assertRaises(ValueError, s.groupby, level=[0, 0])
+        tm.assertRaises(ValueError, s.groupby, level=[0, 1])
+        tm.assertRaises(ValueError, s.groupby, level=[1])
 
     def test_groupby_complex(self):
         # GH 12902
@@ -3439,13 +3471,13 @@ class TestGroupBy(tm.TestCase):
              'str': [np.nan, 'a', np.nan, 'a', np.nan, 'a', np.nan, 'b']})
         grouped = df.groupby('dt')
 
-        expected = [[1, 7], [3, 5]]
+        expected = [pd.Index([1, 7]), pd.Index([3, 5])]
         keys = sorted(grouped.groups.keys())
         self.assertEqual(len(keys), 2)
         for k, e in zip(keys, expected):
             # grouped.groups keys are np.datetime64 with system tz
             # not to be affected by tz, only compare values
-            self.assertEqual(grouped.groups[k], e)
+            tm.assert_index_equal(grouped.groups[k], e)
 
         # confirm obj is not filtered
         tm.assert_frame_equal(grouped.grouper.groupings[0].obj, df)
@@ -4408,7 +4440,7 @@ class TestGroupBy(tm.TestCase):
 
         expected = df.groupby('to filter').groups
         result = df.groupby([('to filter', '')]).groups
-        self.assertEqual(result, expected)
+        tm.assert_dict_equal(result, expected)
 
     def test_cython_median(self):
         df = DataFrame(np.random.randn(1000))
@@ -6146,7 +6178,7 @@ class TestGroupBy(tm.TestCase):
 
     def test_cython_agg_empty_buckets(self):
         ops = [('mean', np.mean),
-               ('median', np.median),
+               ('median', lambda x: np.median(x) if len(x) > 0 else np.nan),
                ('var', lambda x: np.var(x, ddof=1)),
                ('add', lambda x: np.sum(x) if len(x) > 0 else np.nan),
                ('prod', np.prod),

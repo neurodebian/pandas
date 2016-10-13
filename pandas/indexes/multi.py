@@ -116,12 +116,27 @@ class MultiIndex(Index):
 
         return result
 
-    def _verify_integrity(self):
-        """Raises ValueError if length of levels and labels don't match or any
-        label would exceed level bounds"""
+    def _verify_integrity(self, labels=None, levels=None):
+        """
+
+        Parameters
+        ----------
+        labels : optional list
+            Labels to check for validity. Defaults to current labels.
+        levels : optional list
+            Levels to check for validity. Defaults to current levels.
+
+        Raises
+        ------
+        ValueError
+            * if length of levels and labels don't match or any label would
+            exceed level bounds
+        """
         # NOTE: Currently does not check, among other things, that cached
         # nlevels matches nor that sortorder matches actually sortorder.
-        labels, levels = self.labels, self.levels
+        labels = labels or self.labels
+        levels = levels or self.levels
+
         if len(levels) != len(labels):
             raise ValueError("Length of levels and labels must match. NOTE:"
                              " this index is in an inconsistent state.")
@@ -162,6 +177,9 @@ class MultiIndex(Index):
                 new_levels[l] = _ensure_index(v, copy=copy)._shallow_copy()
             new_levels = FrozenList(new_levels)
 
+        if verify_integrity:
+            self._verify_integrity(levels=new_levels)
+
         names = self.names
         self._levels = new_levels
         if any(names):
@@ -169,9 +187,6 @@ class MultiIndex(Index):
 
         self._tuples = None
         self._reset_cache()
-
-        if verify_integrity:
-            self._verify_integrity()
 
     def set_levels(self, levels, level=None, inplace=False,
                    verify_integrity=True):
@@ -268,12 +283,12 @@ class MultiIndex(Index):
                     lab, lev, copy=copy)._shallow_copy()
             new_labels = FrozenList(new_labels)
 
+        if verify_integrity:
+            self._verify_integrity(labels=new_labels)
+
         self._labels = new_labels
         self._tuples = None
         self._reset_cache()
-
-        if verify_integrity:
-            self._verify_integrity()
 
     def set_labels(self, labels, level=None, inplace=False,
                    verify_integrity=True):
@@ -346,7 +361,7 @@ class MultiIndex(Index):
     labels = property(fget=_get_labels, fset=__set_labels)
 
     def copy(self, names=None, dtype=None, levels=None, labels=None,
-             deep=False, _set_identity=False):
+             deep=False, _set_identity=False, **kwargs):
         """
         Make a copy of this object. Names, dtype, levels and labels can be
         passed and will be set on new copy.
@@ -368,15 +383,20 @@ class MultiIndex(Index):
         ``deep``, but if ``deep`` is passed it will attempt to deepcopy.
         This could be potentially expensive on large MultiIndex objects.
         """
+        name = kwargs.get('name')
+        names = self._validate_names(name=name, names=names, deep=deep)
+
         if deep:
             from copy import deepcopy
-            levels = levels if levels is not None else deepcopy(self.levels)
-            labels = labels if labels is not None else deepcopy(self.labels)
-            names = names if names is not None else deepcopy(self.names)
+            if levels is None:
+                levels = deepcopy(self.levels)
+            if labels is None:
+                labels = deepcopy(self.labels)
         else:
-            levels = self.levels
-            labels = self.labels
-            names = self.names
+            if levels is None:
+                levels = self.levels
+            if labels is None:
+                labels = self.labels
         return MultiIndex(levels=levels, labels=labels, names=names,
                           sortorder=self.sortorder, verify_integrity=False,
                           _set_identity=_set_identity)
@@ -408,10 +428,27 @@ class MultiIndex(Index):
     def dtype(self):
         return np.dtype('O')
 
+    @Appender(Index.memory_usage.__doc__)
+    def memory_usage(self, deep=False):
+        # we are overwriting our base class to avoid
+        # computing .values here which could materialize
+        # a tuple representation uncessarily
+        return self._nbytes(deep)
+
     @cache_readonly
     def nbytes(self):
         """ return the number of bytes in the underlying data """
-        level_nbytes = sum((i.nbytes for i in self.levels))
+        return self._nbytes(False)
+
+    def _nbytes(self, deep=False):
+        """
+        return the number of bytes in the underlying data
+        deeply introspect the level data if deep=True
+
+        *this is in internal routine*
+
+        """
+        level_nbytes = sum((i.memory_usage(deep=deep) for i in self.levels))
         label_nbytes = sum((i.nbytes for i in self.labels))
         names_nbytes = sum((getsizeof(i) for i in self.names))
         return level_nbytes + label_nbytes + names_nbytes

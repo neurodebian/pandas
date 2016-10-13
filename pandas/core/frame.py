@@ -1345,7 +1345,9 @@ class DataFrame(NDFrame):
             The newline character or character sequence to use in the output
             file
         quoting : optional constant from csv module
-            defaults to csv.QUOTE_MINIMAL
+            defaults to csv.QUOTE_MINIMAL. If you have set a `float_format`
+            then floats are comverted to strings and thus csv.QUOTE_NONNUMERIC
+            will treat them as non-numeric
         quotechar : string (length 1), default '\"'
             character used to quote fields
         doublequote : boolean, default True
@@ -1635,7 +1637,8 @@ class DataFrame(NDFrame):
             When set to False prevents from escaping latex special
             characters in column names.
         encoding : str, default None
-            Default encoding is ascii in Python 2 and utf-8 in Python 3
+            A string representing the encoding to use in the output file,
+            defaults to 'ascii' on Python 2 and 'utf-8' on Python 3.
         decimal : string, default '.'
             Character recognized as decimal separator, e.g. ',' in Europe
 

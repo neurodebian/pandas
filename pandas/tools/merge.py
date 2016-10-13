@@ -146,7 +146,7 @@ def ordered_merge(left, right, on=None,
                   left_by=None, right_by=None,
                   fill_method=None, suffixes=('_x', '_y')):
 
-    warnings.warn("ordered_merge is deprecated and replace by merged_ordered",
+    warnings.warn("ordered_merge is deprecated and replaced by merge_ordered",
                   FutureWarning, stacklevel=2)
     return merge_ordered(left, right, on=on,
                          left_on=left_on, right_on=right_on,
@@ -1369,7 +1369,8 @@ class _Concatenator(object):
                 clean_keys.append(k)
                 clean_objs.append(v)
             objs = clean_objs
-            keys = clean_keys
+            name = getattr(keys, 'name', None)
+            keys = Index(clean_keys, name=name)
 
         if len(objs) == 0:
             raise ValueError('All objects passed were None')
@@ -1454,7 +1455,7 @@ class _Concatenator(object):
         self.axis = axis
         self.join_axes = join_axes
         self.keys = keys
-        self.names = names
+        self.names = names or getattr(keys, 'names', None)
         self.levels = levels
 
         self.ignore_index = ignore_index
