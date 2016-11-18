@@ -1456,6 +1456,8 @@ class CParserWrapper(ParserBase):
     def close(self):
         for f in self.handles:
             f.close()
+
+        # close additional handles opened by C parser (for compression)
         try:
             self._reader.close()
         except:
@@ -1759,6 +1761,9 @@ class PythonParser(ParserBase):
         self.delimiter = kwds['delimiter']
 
         self.quotechar = kwds['quotechar']
+        if isinstance(self.quotechar, compat.text_type):
+            self.quotechar = str(self.quotechar)
+
         self.escapechar = kwds['escapechar']
         self.doublequote = kwds['doublequote']
         self.skipinitialspace = kwds['skipinitialspace']
