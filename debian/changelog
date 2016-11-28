@@ -1,3 +1,11 @@
+pandas (0.19.1-2) unstable; urgency=medium
+
+  * debian/control
+    - Moved statsmodels build-depend (optional) under build-depends-indep
+      to break circular dependency.  Thanks Stuart Prescott for the analysis
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Sun, 27 Nov 2016 21:49:40 -0500
+
 pandas (0.19.1-1) unstable; urgency=medium
 
   * Fresh upstream release
