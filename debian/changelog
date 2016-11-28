@@ -3,6 +3,9 @@ pandas (0.19.1-2) unstable; urgency=medium
   * debian/control
     - Moved statsmodels build-depend (optional) under build-depends-indep
       to break circular dependency.  Thanks Stuart Prescott for the analysis
+  * debian/patches/
+    - changeset_1309346c08945cd4764a549ec63cf51089634a45.diff
+      to not mask problem reading json leading to use of undefined variable
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Sun, 27 Nov 2016 21:49:40 -0500
 
