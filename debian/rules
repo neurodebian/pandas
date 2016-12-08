@@ -22,7 +22,7 @@ UVER := $(shell LC_ALL=C dpkg-parsechangelog | awk '/^Version:/{print $$2;}' | s
 UVER_PY := $(shell echo $(UVER) | sed -e 's,[~],,g')
 UVER_PYSHORT := $(shell echo $(UVER_PY) | sed -e 's,+git.*,,g')
 
-MIN_CYTHONVER = 0.20.2
+MIN_CYTHONVER = 0.23
 
 # Some unittests might need to be excluded for different Python versions
 EXCLUDE_TESTS := --exclude 'test_(bar_log|set_locale|constructor_compound_dtypes|invalid_index_types|searchsorted_sorter|sparse_max_row)'
