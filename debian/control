@@ -40,9 +40,10 @@ Build-Depends: debhelper (>= 7.0.50),
 Build-Depends-Indep:
  ipython (>= 0.12) | ipython2x | ipython1x,
  python-statsmodels [!arm64 !ppc64el !sparc64 !mips64el !ppc64 !sparc64 !sh4],
+Build-Conflicts: python-tables (= 3.3.0-4), python3-tables (= 3.3.0-4)
 X-Python-Version: >= 2.7
 X-Python3-Version: >= 3.2
-Standards-Version: 3.9.5
+Standards-Version: 3.9.8
 Homepage: http://pandas.sourceforge.net
 Vcs-Browser: http://github.com/neurodebian/pandas
 Vcs-Git: git://github.com/neurodebian/pandas.git
