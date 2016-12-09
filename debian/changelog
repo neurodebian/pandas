@@ -1,4 +1,4 @@
-pandas (0.19.1-3) UNRELEASED; urgency=medium
+pandas (0.19.1-3) unstable; urgency=medium
 
   * Require cython >= 0.23 or otherwise use pre-cythoned sources
     (should resolve https://github.com/pandas-dev/pandas/issues/14699
@@ -6,8 +6,14 @@ pandas (0.19.1-3) UNRELEASED; urgency=medium
   * debian/control
     - Build-Conflicts with python-tables 3.3.0-4 since that one leads to FTBFS
     - boosted policy to 3.9.8
+  * debian/rules
+    - Exclude few more tests which fail on big endian and other platforms
+      test_(msgpack|read_dta18)
+  * debian/patches
+    - changeset_0699c89882133a41c250abdac02796fec84512e8.diff
+      to compare in the tests against native endianness
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 08 Dec 2016 11:13:46 -0500
+ -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 09 Dec 2016 15:49:50 -0500
 
 pandas (0.19.1-2) unstable; urgency=medium
 
