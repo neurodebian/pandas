@@ -2991,7 +2991,7 @@ class TestDatetimeIndex(tm.TestCase):
 
         f = lambda x: x.strftime('%Y%m%d')
         result = rng.map(f)
-        exp = np.array([f(x) for x in rng], dtype='<U8')
+        exp = np.array([f(x) for x in rng], dtype='=U8')
         tm.assert_almost_equal(result, exp)
 
     def test_iteration_preserves_tz(self):
@@ -5160,11 +5160,13 @@ class TestSlicing(tm.TestCase):
         timestamp = pd.Timestamp('2014-01-10')
 
         assert_series_equal(nonmonotonic['2014-01-10':], expected)
-        self.assertRaisesRegexp(KeyError, "Timestamp\('2014-01-10 00:00:00'\)",
+        self.assertRaisesRegexp(KeyError,
+                                r"Timestamp\('2014-01-10 00:00:00'\)",
                                 lambda: nonmonotonic[timestamp:])
 
         assert_series_equal(nonmonotonic.ix['2014-01-10':], expected)
-        self.assertRaisesRegexp(KeyError, "Timestamp\('2014-01-10 00:00:00'\)",
+        self.assertRaisesRegexp(KeyError,
+                                r"Timestamp\('2014-01-10 00:00:00'\)",
                                 lambda: nonmonotonic.ix[timestamp:])
 
 
@@ -5284,7 +5286,7 @@ class TimeConversionFormats(tm.TestCase):
         s = Series(['19MAY11', 'foobar19MAY11', '19MAY11:00:00:00',
                     '19MAY11 00:00:00Z'])
         result = to_datetime(s, format='%d%b%y', exact=False)
-        expected = to_datetime(s.str.extract('(\d+\w+\d+)', expand=False),
+        expected = to_datetime(s.str.extract(r'(\d+\w+\d+)', expand=False),
                                format='%d%b%y')
         assert_series_equal(result, expected)
 
@@ -5535,22 +5537,6 @@ class TestDateTimeIndexToJulianDate(tm.TestCase):
 
 
 class TestDaysInMonth(tm.TestCase):
-    def test_coerce_deprecation(self):
-
-        # deprecation of coerce
-        with tm.assert_produces_warning(FutureWarning):
-            to_datetime('2015-02-29', coerce=True)
-        with tm.assert_produces_warning(FutureWarning):
-            self.assertRaises(ValueError,
-                              lambda: to_datetime('2015-02-29', coerce=False))
-
-        # multiple arguments
-        for e, c in zip(['raise', 'ignore', 'coerce'], [True, False]):
-            with tm.assert_produces_warning(FutureWarning):
-                self.assertRaises(TypeError,
-                                  lambda: to_datetime('2015-02-29', errors=e,
-                                                      coerce=c))
-
     # tests for issue #10154
     def test_day_not_in_month_coerce(self):
         self.assertTrue(isnull(to_datetime('2015-02-29', errors='coerce')))
