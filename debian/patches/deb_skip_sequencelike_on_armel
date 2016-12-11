@@ -1,6 +1,6 @@
 --- a/pandas/tests/frame/test_constructors.py
 +++ b/pandas/tests/frame/test_constructors.py
-@@ -1721,6 +1721,9 @@ class TestDataFrameConstructors(tm.TestC
+@@ -1729,6 +1729,9 @@ class TestDataFrameConstructors(tm.TestC
          tm.assert_frame_equal(result, expected)
  
      def test_from_records_sequencelike(self):

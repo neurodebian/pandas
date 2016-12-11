@@ -1,6 +1,6 @@
 --- a/pandas/io/tests/test_stata.py
 +++ b/pandas/io/tests/test_stata.py
-@@ -24,6 +24,10 @@ from pandas.io.stata import (read_stata,
+@@ -23,6 +23,10 @@ from pandas.tslib import NaT
  from pandas.types.common import is_categorical_dtype
  
  
