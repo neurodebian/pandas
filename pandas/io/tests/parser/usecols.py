@@ -23,9 +23,8 @@ class UsecolsTests(object):
         1000,2000,3000
         4000,5000,6000
         """
-
-        msg = ("'usecols' must either be all strings, all unicode, "
-               "all integers or a callable")
+        msg = ("The elements of 'usecols' must "
+               "either be all strings, all unicode, or all integers")
         usecols = [0, 'b', 2]
 
         with tm.assertRaisesRegexp(ValueError, msg):
@@ -303,8 +302,8 @@ a,b,c
         3.568935038,7,False,a
         '''
 
-        msg = ("'usecols' must either be all strings, all unicode, "
-               "all integers or a callable")
+        msg = ("The elements of 'usecols' must "
+               "either be all strings, all unicode, or all integers")
 
         with tm.assertRaisesRegexp(ValueError, msg):
             self.read_csv(StringIO(s), usecols=[u'AAA', b'BBB'])
@@ -367,31 +366,3 @@ a,b,c
         expected = DataFrame([[1, 2]], columns=usecols)
         result = self.read_csv(StringIO(data), usecols=usecols)
         tm.assert_frame_equal(result, expected)
-
-    def test_callable_usecols(self):
-        # See gh-14154
-        s = '''AaA,bBb,CCC,ddd
-        0.056674973,8,True,a
-        2.613230982,2,False,b
-        3.568935038,7,False,a
-        '''
-
-        data = {
-            'AaA': {
-                0: 0.056674972999999997,
-                1: 2.6132309819999997,
-                2: 3.5689350380000002
-            },
-            'bBb': {0: 8, 1: 2, 2: 7},
-            'ddd': {0: 'a', 1: 'b', 2: 'a'}
-        }
-        expected = DataFrame(data)
-        df = self.read_csv(StringIO(s), usecols=lambda x:
-                           x.upper() in ['AAA', 'BBB', 'DDD'])
-        tm.assert_frame_equal(df, expected)
-
-        # Check that a callable returning only False returns
-        # an empty DataFrame
-        expected = DataFrame()
-        df = self.read_csv(StringIO(s), usecols=lambda x: False)
-        tm.assert_frame_equal(df, expected)

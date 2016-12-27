@@ -17,8 +17,8 @@ import pandas as pd
 import pandas.util.testing as tm
 from pandas import DataFrame, Series, Index, MultiIndex
 from pandas import compat
-from pandas.compat import (StringIO, BytesIO, PY3,
-                           range, lrange, u)
+from pandas.compat import(StringIO, BytesIO, PY3,
+                          range, lrange, u)
 from pandas.io.common import DtypeWarning, EmptyDataError, URLError
 from pandas.io.parsers import TextFileReader, TextParser
 
@@ -50,7 +50,7 @@ bar2,12,13,14,15
         # Issue 13652:
         # This test validates that both python engine
         # and C engine will raise UnicodeDecodeError instead of
-        # c engine raising ParserError and swallowing exception
+        # c engine raising CParserError and swallowing exception
         # that caused read to fail.
         handle = open(self.csv_shiftjs, "rb")
         codec = codecs.lookup("utf-8")
@@ -1453,7 +1453,7 @@ j,-inF"""
                 FutureWarning, check_stacklevel=False):
             data = 'a,b\n1,a\n2,b'
             expected = np.array([(1, 'a'), (2, 'b')],
-                                dtype=[('a', '=i8'), ('b', 'O')])
+                                dtype=[('a', '<i8'), ('b', 'O')])
             out = self.read_csv(StringIO(data), as_recarray=True)
             tm.assert_numpy_array_equal(out, expected)
 
@@ -1462,7 +1462,7 @@ j,-inF"""
                 FutureWarning, check_stacklevel=False):
             data = 'a,b\n1,a\n2,b'
             expected = np.array([(1, 'a'), (2, 'b')],
-                                dtype=[('a', '=i8'), ('b', 'O')])
+                                dtype=[('a', '<i8'), ('b', 'O')])
             out = self.read_csv(StringIO(data), as_recarray=True, index_col=0)
             tm.assert_numpy_array_equal(out, expected)
 
@@ -1471,7 +1471,7 @@ j,-inF"""
                 FutureWarning, check_stacklevel=False):
             data = '1,a\n2,b'
             expected = np.array([(1, 'a'), (2, 'b')],
-                                dtype=[('a', '=i8'), ('b', 'O')])
+                                dtype=[('a', '<i8'), ('b', 'O')])
             out = self.read_csv(StringIO(data), names=['a', 'b'],
                                 header=None, as_recarray=True)
             tm.assert_numpy_array_equal(out, expected)
@@ -1482,7 +1482,7 @@ j,-inF"""
                 FutureWarning, check_stacklevel=False):
             data = 'b,a\n1,a\n2,b'
             expected = np.array([(1, 'a'), (2, 'b')],
-                                dtype=[('b', '=i8'), ('a', 'O')])
+                                dtype=[('b', '<i8'), ('a', 'O')])
             out = self.read_csv(StringIO(data), as_recarray=True)
             tm.assert_numpy_array_equal(out, expected)
 
@@ -1490,7 +1490,7 @@ j,-inF"""
         with tm.assert_produces_warning(
                 FutureWarning, check_stacklevel=False):
             data = 'a\n1'
-            expected = np.array([(1,)], dtype=[('a', '=i8')])
+            expected = np.array([(1,)], dtype=[('a', '<i8')])
             out = self.read_csv(StringIO(data), as_recarray=True, squeeze=True)
             tm.assert_numpy_array_equal(out, expected)
 
@@ -1500,7 +1500,7 @@ j,-inF"""
             data = 'a,b\n1,a\n2,b'
             conv = lambda x: int(x) + 1
             expected = np.array([(2, 'a'), (3, 'b')],
-                                dtype=[('a', '=i8'), ('b', 'O')])
+                                dtype=[('a', '<i8'), ('b', 'O')])
             out = self.read_csv(StringIO(data), as_recarray=True,
                                 converters={'a': conv})
             tm.assert_numpy_array_equal(out, expected)
@@ -1509,7 +1509,7 @@ j,-inF"""
         with tm.assert_produces_warning(
                 FutureWarning, check_stacklevel=False):
             data = 'a,b\n1,a\n2,b'
-            expected = np.array([(1,), (2,)], dtype=[('a', '=i8')])
+            expected = np.array([(1,), (2,)], dtype=[('a', '<i8')])
             out = self.read_csv(StringIO(data), as_recarray=True,
                                 usecols=['a'])
             tm.assert_numpy_array_equal(out, expected)

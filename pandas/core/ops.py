@@ -421,7 +421,7 @@ class _TimeOp(_Op):
 
             # if tz's must be equal (same or None)
             if getattr(lvalues, 'tz', None) != getattr(rvalues, 'tz', None):
-                raise ValueError("Incompatible tz's on datetime subtraction "
+                raise ValueError("Incompatbile tz's on datetime subtraction "
                                  "ops")
 
         elif ((self.is_timedelta_lhs or self.is_offset_lhs) and
@@ -1006,7 +1006,7 @@ missing data in one of the inputs.
 
 Parameters
 ----------
-other : Series or scalar value
+other: Series or scalar value
 fill_value : None or float value, default None (NaN)
     Fill missing (NaN) values with this value. If both Series are
     missing, the result will be missing

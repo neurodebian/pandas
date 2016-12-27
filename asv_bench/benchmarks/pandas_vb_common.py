@@ -20,9 +20,9 @@ except:
     import pandas.lib as lib
 
 try:
-    Panel = Panel
-except Exception:
     Panel = WidePanel
+except Exception:
+    pass
 
 # didn't add to namespace until later
 try:

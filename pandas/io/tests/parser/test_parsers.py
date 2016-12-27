@@ -22,7 +22,6 @@ from .parse_dates import ParseDatesTests
 from .compression import CompressionTests
 from .multithread import MultithreadTests
 from .python_parser_only import PythonParserTests
-from .dtypes import DtypeTests
 
 
 class BaseParser(CommentTests, CompressionTests,
@@ -30,8 +29,7 @@ class BaseParser(CommentTests, CompressionTests,
                  IndexColTests, MultithreadTests,
                  NAvaluesTests, ParseDatesTests,
                  ParserTests, SkipRowsTests,
-                 UsecolsTests, QuotingTests,
-                 DtypeTests):
+                 UsecolsTests, QuotingTests):
     def read_csv(self, *args, **kwargs):
         raise NotImplementedError
 

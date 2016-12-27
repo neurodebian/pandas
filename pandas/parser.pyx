@@ -13,11 +13,8 @@ from cpython cimport (PyObject, PyBytes_FromString,
                       PyUnicode_Check, PyUnicode_AsUTF8String,
                       PyErr_Occurred, PyErr_Fetch)
 from cpython.ref cimport PyObject, Py_XDECREF
-from io.common import ParserError, DtypeWarning, EmptyDataError, ParserWarning
+from io.common import CParserError, DtypeWarning, EmptyDataError
 
-# Import CParserError as alias of ParserError for backwards compatibility.
-# Ultimately, we want to remove this import. See gh-12665 and gh-14479.
-from io.common import CParserError
 
 cdef extern from "Python.h":
     object PyUnicode_FromString(char *v)
@@ -300,9 +297,8 @@ cdef class TextReader:
         object compression
         object mangle_dupe_cols
         object tupleize_cols
-        object usecols
         list dtype_cast_order
-        set noconvert
+        set noconvert, usecols
 
     def __cinit__(self, source,
                   delimiter=b',',
@@ -438,10 +434,7 @@ cdef class TextReader:
         # suboptimal
         if usecols is not None:
             self.has_usecols = 1
-            if callable(usecols):
-                self.usecols = usecols
-            else:
-                self.usecols = set(usecols)
+            self.usecols = set(usecols)
 
         # XXX
         if skipfooter > 0:
@@ -705,6 +698,7 @@ cdef class TextReader:
             cdef StringPath path = _string_path(self.c_encoding)
 
         header = []
+
         if self.parser.header_start >= 0:
 
             # Header is in the file
@@ -727,7 +721,7 @@ cdef class TextReader:
                     if isinstance(msg, list):
                         msg = "[%s], len of %d," % (
                             ','.join([ str(m) for m in msg ]), len(msg))
-                    raise ParserError(
+                    raise CParserError(
                         'Passed header=%s but only %d lines in file'
                         % (msg, self.parser.lines))
 
@@ -820,12 +814,11 @@ cdef class TextReader:
             passed_count = len(header[0])
 
             # if passed_count > field_count:
-            #     raise ParserError('Column names have %d fields, '
+            #     raise CParserError('Column names have %d fields, '
             #                        'data has %d fields'
             #                        % (passed_count, field_count))
 
-            if self.has_usecols and self.allow_leading_cols and \
-                    not callable(self.usecols):
+            if self.has_usecols and self.allow_leading_cols:
                 nuse = len(self.usecols)
                 if nuse == passed_count:
                     self.leading_cols = 0
@@ -991,7 +984,7 @@ cdef class TextReader:
             Py_ssize_t i, nused
             kh_str_t *na_hashset = NULL
             int start, end
-            object name, na_flist, col_dtype = None
+            object name, na_flist
             bint na_filter = 0
             Py_ssize_t num_cols
 
@@ -1013,7 +1006,7 @@ cdef class TextReader:
                 (num_cols >= self.parser.line_fields[i]) * num_cols
 
         if self.table_width - self.leading_cols > num_cols:
-            raise ParserError(
+            raise CParserError(
                 "Too many columns specified: expected %s and found %s" %
                 (self.table_width - self.leading_cols, num_cols))
 
@@ -1023,20 +1016,13 @@ cdef class TextReader:
             if i < self.leading_cols:
                 # Pass through leading columns always
                 name = i
-            elif self.usecols and not callable(self.usecols) and \
-                    nused == len(self.usecols):
+            elif self.usecols and nused == len(self.usecols):
                 # Once we've gathered all requested columns, stop. GH5766
                 break
             else:
                 name = self._get_column_name(i, nused)
-                usecols = set()
-                if callable(self.usecols):
-                    if self.usecols(name):
-                        usecols = set([i])
-                else:
-                    usecols = self.usecols
-                if self.has_usecols and not (i in usecols or
-                                             name in usecols):
+                if self.has_usecols and not (i in self.usecols or
+                                             name in self.usecols):
                     continue
                 nused += 1
 
@@ -1054,34 +1040,14 @@ cdef class TextReader:
             else:
                 na_filter = 0
 
-            col_dtype = None
-            if self.dtype is not None:
-                if isinstance(self.dtype, dict):
-                    if name in self.dtype:
-                        col_dtype = self.dtype[name]
-                    elif i in self.dtype:
-                        col_dtype = self.dtype[i]
-                else:
-                    if self.dtype.names:
-                        # structured array
-                        col_dtype = np.dtype(self.dtype.descr[i][1])
-                    else:
-                        col_dtype = self.dtype
-
             if conv:
-                if col_dtype is not None:
-                    warnings.warn(("Both a converter and dtype were specified "
-                                   "for column {0} - only the converter will "
-                                   "be used").format(name), ParserWarning,
-                                  stacklevel=5)
                 results[i] = _apply_converter(conv, self.parser, i, start, end,
                                               self.c_encoding)
                 continue
 
             # Should return as the desired dtype (inferred or specified)
             col_res, na_count = self._convert_tokens(
-                i, start, end, name, na_filter, na_hashset,
-                na_flist, col_dtype)
+                i, start, end, name, na_filter, na_hashset, na_flist)
 
             if na_filter:
                 self._free_na_set(na_hashset)
@@ -1095,7 +1061,7 @@ cdef class TextReader:
                                              self.use_unsigned)
 
             if col_res is None:
-                raise ParserError('Unable to parse column %d' % i)
+                raise CParserError('Unable to parse column %d' % i)
 
             results[i] = col_res
 
@@ -1106,17 +1072,32 @@ cdef class TextReader:
     cdef inline _convert_tokens(self, Py_ssize_t i, int start, int end,
                                 object name, bint na_filter,
                                 kh_str_t *na_hashset,
-                                object na_flist, object col_dtype):
+                                object na_flist):
+        cdef:
+            object col_dtype = None
 
-        if col_dtype is not None:
-            col_res, na_count = self._convert_with_dtype(
-                col_dtype, i, start, end, na_filter,
-                1, na_hashset, na_flist)
+        if self.dtype is not None:
+            if isinstance(self.dtype, dict):
+                if name in self.dtype:
+                    col_dtype = self.dtype[name]
+                elif i in self.dtype:
+                    col_dtype = self.dtype[i]
+            else:
+                if self.dtype.names:
+                    # structured array
+                    col_dtype = np.dtype(self.dtype.descr[i][1])
+                else:
+                    col_dtype = self.dtype
 
-            # Fallback on the parse (e.g. we requested int dtype,
-            # but its actually a float).
-            if col_res is not None:
-                return col_res, na_count
+            if col_dtype is not None:
+                col_res, na_count = self._convert_with_dtype(
+                    col_dtype, i, start, end, na_filter,
+                    1, na_hashset, na_flist)
+
+                # Fallback on the parse (e.g. we requested int dtype,
+                # but its actually a float).
+                if col_res is not None:
+                    return col_res, na_count
 
         if i in self.noconvert:
             return self._string_convert(i, start, end, na_filter, na_hashset)
@@ -1262,19 +1243,23 @@ cdef class TextReader:
             return None, set()
 
         if isinstance(self.na_values, dict):
+            key = None
             values = None
+
             if name is not None and name in self.na_values:
-                values = self.na_values[name]
-                if values is not None and not isinstance(values, list):
-                    values = list(values)
-                fvalues = self.na_fvalues[name]
-                if fvalues is not None and not isinstance(fvalues, set):
-                    fvalues = set(fvalues)
-            else:
-                if i in self.na_values:
-                    return self.na_values[i], self.na_fvalues[i]
-                else:
-                    return _NA_VALUES, set()
+                key = name
+            elif i in self.na_values:
+                key = i
+            else:  # No na_values provided for this column.
+                return _NA_VALUES, set()
+
+            values = self.na_values[key]
+            if values is not None and not isinstance(values, list):
+                values = list(values)
+
+            fvalues = self.na_fvalues[key]
+            if fvalues is not None and not isinstance(fvalues, set):
+                fvalues = set(fvalues)
 
             return _ensure_encoded(values), fvalues
         else:
@@ -1331,7 +1316,7 @@ def _is_file_like(obj):
     if PY3:
         import io
         if isinstance(obj, io.TextIOWrapper):
-            raise ParserError('Cannot handle open unicode files (yet)')
+            raise CParserError('Cannot handle open unicode files (yet)')
 
         # BufferedReader is a byte reader for Python 3
         file = io.BufferedReader
@@ -2036,7 +2021,7 @@ cdef raise_parser_error(object base, parser_t *parser):
     else:
         message += 'no error message set'
 
-    raise ParserError(message)
+    raise CParserError(message)
 
 
 def _concatenate_chunks(list chunks):

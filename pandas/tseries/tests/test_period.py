@@ -2101,14 +2101,6 @@ class TestPeriodIndex(tm.TestCase):
         exp = idx.values < idx.values[10]
         self.assert_numpy_array_equal(result, exp)
 
-    def test_getitem_ndim2(self):
-        idx = period_range('2007-01', periods=3, freq='M')
-
-        result = idx[:, None]
-        # MPL kludge, internally has incorrect shape
-        tm.assertIsInstance(result, PeriodIndex)
-        self.assertEqual(result.shape, (len(idx), ))
-
     def test_getitem_index(self):
         idx = period_range('2007-01', periods=10, freq='M', name='x')
 
@@ -3697,9 +3689,6 @@ class TestPeriodIndex(tm.TestCase):
             msg = "Input has different freq=5D from PeriodIndex"
             with self.assertRaisesRegexp(period.IncompatibleFrequency, msg):
                 pidx.searchsorted(pd.Period('2014-01-01', freq='5D'))
-
-            with tm.assert_produces_warning(FutureWarning):
-                pidx.searchsorted(key=p2)
 
     def test_round_trip(self):
 

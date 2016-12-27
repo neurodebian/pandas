@@ -1076,10 +1076,9 @@ class Categorical(PandasObject):
         """
         return self._codes.nbytes + self._categories.memory_usage(deep=deep)
 
-    @Substitution(klass='Categorical')
+    @Substitution(klass='Categorical', value='v')
     @Appender(_shared_docs['searchsorted'])
-    @deprecate_kwarg(old_arg_name='v', new_arg_name='value')
-    def searchsorted(self, value, side='left', sorter=None):
+    def searchsorted(self, v, side='left', sorter=None):
         if not self.ordered:
             raise ValueError("Categorical not ordered\nyou can use "
                              ".as_ordered() to change the Categorical to an "
@@ -1087,7 +1086,7 @@ class Categorical(PandasObject):
 
         from pandas.core.series import Series
         values_as_codes = self.categories.values.searchsorted(
-            Series(value).values, side=side)
+            Series(v).values, side=side)
 
         return self.codes.searchsorted(values_as_codes, sorter=sorter)
 

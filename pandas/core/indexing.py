@@ -848,7 +848,7 @@ class _NDFrameIndexer(object):
                 [(a, self._convert_for_reindex(t, axis=o._get_axis_number(a)))
                  for t, a in zip(tup, o._AXIS_ORDERS)])
             return o.reindex(**d)
-        except:
+        except(KeyError, IndexingError):
             raise self._exception
 
     def _convert_for_reindex(self, key, axis=0):
@@ -1814,9 +1814,7 @@ def check_bool_indexer(ax, key):
         result = result.reindex(ax)
         mask = isnull(result._values)
         if mask.any():
-            raise IndexingError('Unalignable boolean Series provided as '
-                                'indexer (index of the boolean Series and of '
-                                'the indexed object do not match')
+            raise IndexingError('Unalignable boolean Series key provided')
         result = result.astype(bool)._values
     elif is_sparse(result):
         result = result.to_dense()

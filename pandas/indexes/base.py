@@ -535,18 +535,17 @@ class Index(IndexOpsMixin, StringAccessorMixin, PandasObject):
         """
         return list(self.values)
 
-    @deprecate_kwarg(old_arg_name='n', new_arg_name='repeats')
-    def repeat(self, repeats, *args, **kwargs):
+    def repeat(self, n, *args, **kwargs):
         """
         Repeat elements of an Index. Refer to `numpy.ndarray.repeat`
-        for more information about the `repeats` argument.
+        for more information about the `n` argument.
 
         See also
         --------
         numpy.ndarray.repeat
         """
         nv.validate_repeat(args, kwargs)
-        return self._shallow_copy(self._values.repeat(repeats))
+        return self._shallow_copy(self._values.repeat(n))
 
     def where(self, cond, other=None):
         """
