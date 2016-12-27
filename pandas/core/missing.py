@@ -10,10 +10,8 @@ import pandas.lib as lib
 from pandas.compat import range, string_types
 from pandas.types.common import (is_numeric_v_string_like,
                                  is_float_dtype, is_datetime64_dtype,
-                                 is_integer_dtype, _ensure_float64,
-                                 is_scalar,
-                                 _DATELIKE_DTYPES,
-                                 needs_i8_conversion)
+                                 is_datetime64tz_dtype, is_integer_dtype,
+                                 _ensure_float64, is_scalar)
 from pandas.types.missing import isnull
 
 
@@ -188,7 +186,7 @@ def interpolate_1d(xvalues, yvalues, method='linear', limit=None,
         if method in ('values', 'index'):
             inds = np.asarray(xvalues)
             # hack for DatetimeIndex, #1646
-            if needs_i8_conversion(inds.dtype.type):
+            if issubclass(inds.dtype.type, np.datetime64):
                 inds = inds.view(np.int64)
             if inds.dtype == np.object_:
                 inds = lib.maybe_convert_objects(inds)
@@ -450,7 +448,7 @@ def pad_1d(values, limit=None, mask=None, dtype=None):
     _method = None
     if is_float_dtype(values):
         _method = getattr(algos, 'pad_inplace_%s' % dtype.name, None)
-    elif dtype in _DATELIKE_DTYPES or is_datetime64_dtype(values):
+    elif is_datetime64_dtype(dtype) or is_datetime64tz_dtype(dtype):
         _method = _pad_1d_datetime
     elif is_integer_dtype(values):
         values = _ensure_float64(values)
@@ -475,7 +473,7 @@ def backfill_1d(values, limit=None, mask=None, dtype=None):
     _method = None
     if is_float_dtype(values):
         _method = getattr(algos, 'backfill_inplace_%s' % dtype.name, None)
-    elif dtype in _DATELIKE_DTYPES or is_datetime64_dtype(values):
+    elif is_datetime64_dtype(dtype) or is_datetime64tz_dtype(dtype):
         _method = _backfill_1d_datetime
     elif is_integer_dtype(values):
         values = _ensure_float64(values)
@@ -501,7 +499,7 @@ def pad_2d(values, limit=None, mask=None, dtype=None):
     _method = None
     if is_float_dtype(values):
         _method = getattr(algos, 'pad_2d_inplace_%s' % dtype.name, None)
-    elif dtype in _DATELIKE_DTYPES or is_datetime64_dtype(values):
+    elif is_datetime64_dtype(dtype) or is_datetime64tz_dtype(dtype):
         _method = _pad_2d_datetime
     elif is_integer_dtype(values):
         values = _ensure_float64(values)
@@ -531,7 +529,7 @@ def backfill_2d(values, limit=None, mask=None, dtype=None):
     _method = None
     if is_float_dtype(values):
         _method = getattr(algos, 'backfill_2d_inplace_%s' % dtype.name, None)
-    elif dtype in _DATELIKE_DTYPES or is_datetime64_dtype(values):
+    elif is_datetime64_dtype(dtype) or is_datetime64tz_dtype(dtype):
         _method = _backfill_2d_datetime
     elif is_integer_dtype(values):
         values = _ensure_float64(values)

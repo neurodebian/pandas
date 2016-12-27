@@ -282,7 +282,7 @@ Using a single column's values to select data.
 
    df[df.A > 0]
 
-Selecting values from a DataFrame where a boolean condition is met.
+A ``where`` operation for getting.
 
 .. ipython:: python
 

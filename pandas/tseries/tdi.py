@@ -25,7 +25,7 @@ from pandas.core.nanops import _checked_add_with_arr
 from pandas.indexes.base import _index_shared_docs
 import pandas.core.common as com
 import pandas.types.concat as _concat
-from pandas.util.decorators import Appender, Substitution, deprecate_kwarg
+from pandas.util.decorators import Appender, Substitution
 from pandas.tseries.base import TimelikeOps, DatetimeIndexOpsMixin
 from pandas.tseries.timedeltas import (to_timedelta,
                                        _coerce_scalar_to_timedelta_type)
@@ -785,16 +785,15 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, TimelikeOps, Int64Index):
         # # try to find a the dates
         # return (lhs_mask & rhs_mask).nonzero()[0]
 
-    @Substitution(klass='TimedeltaIndex')
+    @Substitution(klass='TimedeltaIndex', value='key')
     @Appender(_shared_docs['searchsorted'])
-    @deprecate_kwarg(old_arg_name='key', new_arg_name='value')
-    def searchsorted(self, value, side='left', sorter=None):
-        if isinstance(value, (np.ndarray, Index)):
-            value = np.array(value, dtype=_TD_DTYPE, copy=False)
+    def searchsorted(self, key, side='left', sorter=None):
+        if isinstance(key, (np.ndarray, Index)):
+            key = np.array(key, dtype=_TD_DTYPE, copy=False)
         else:
-            value = _to_m8(value)
+            key = _to_m8(key)
 
-        return self.values.searchsorted(value, side=side, sorter=sorter)
+        return self.values.searchsorted(key, side=side, sorter=sorter)
 
     def is_type_compatible(self, typ):
         return typ == self.inferred_type or typ == 'timedelta'

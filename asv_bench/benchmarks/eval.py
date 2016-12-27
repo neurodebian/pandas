@@ -3,7 +3,7 @@ import pandas as pd
 import pandas.computation.expressions as expr
 
 
-class Eval(object):
+class eval_frame(object):
     goal_time = 0.2
 
     params = [['numexpr', 'python'], [1, 'all']]
@@ -34,11 +34,8 @@ class Eval(object):
         df, df2, df3, df4 = self.df, self.df2, self.df3, self.df4
         pd.eval('df * df2 * df3 * df4', engine=engine)
 
-    def teardown(self, engine, threads):
-        expr.set_numexpr_threads()
 
-
-class Query(object):
+class query_datetime_index(object):
     goal_time = 0.2
 
     def setup(self):
@@ -48,19 +45,41 @@ class Query(object):
         self.s = Series(self.index)
         self.ts = self.s.iloc[self.halfway]
         self.df = DataFrame({'a': np.random.randn(self.N), }, index=self.index)
-        self.df2 = DataFrame({'dates': self.s.values,})
-
-        self.df3 = DataFrame({'a': np.random.randn(self.N),})
-        self.min_val = self.df3['a'].min()
-        self.max_val = self.df3['a'].max()
 
     def time_query_datetime_index(self):
         ts = self.ts
         self.df.query('index < @ts')
 
+
+class query_datetime_series(object):
+    goal_time = 0.2
+
+    def setup(self):
+        self.N = 1000000
+        self.halfway = ((self.N // 2) - 1)
+        self.index = date_range('20010101', periods=self.N, freq='T')
+        self.s = Series(self.index)
+        self.ts = self.s.iloc[self.halfway]
+        self.df = DataFrame({'dates': self.s.values, })
+
     def time_query_datetime_series(self):
         ts = self.ts
-        self.df2.query('dates < @ts')
+        self.df.query('dates < @ts')
+
+
+class query_with_boolean_selection(object):
+    goal_time = 0.2
+
+    def setup(self):
+        self.N = 1000000
+        self.halfway = ((self.N // 2) - 1)
+        self.index = date_range('20010101', periods=self.N, freq='T')
+        self.s = Series(self.index)
+        self.ts = self.s.iloc[self.halfway]
+        self.N = 1000000
+        self.df = DataFrame({'a': np.random.randn(self.N), })
+        self.min_val = self.df['a'].min()
+        self.max_val = self.df['a'].max()
 
     def time_query_with_boolean_selection(self):
         min_val, max_val = self.min_val, self.max_val

@@ -3,7 +3,7 @@ import pandas as pd
 from pandas.util import testing as tm
 
 
-class Algorithms(object):
+class algorithm(object):
     goal_time = 0.2
 
     def setup(self):
@@ -24,27 +24,20 @@ class Algorithms(object):
         self.arrneg = np.arange(-1000000, 0)
         self.arrmixed = np.array([1, -1]).repeat(500000)
 
-        # match
-        self.uniques = tm.makeStringIndex(1000).values
-        self.all = self.uniques.repeat(10)
-
-    def time_factorize_int(self):
+    def time_int_factorize(self):
         self.int.factorize()
 
-    def time_factorize_float(self):
+    def time_float_factorize(self):
         self.int.factorize()
 
-    def time_duplicated_int_unique(self):
+    def time_int_unique_duplicated(self):
         self.int_unique.duplicated()
 
-    def time_duplicated_int(self):
+    def time_int_duplicated(self):
         self.int.duplicated()
 
-    def time_duplicated_float(self):
+    def time_float_duplicated(self):
         self.float.duplicated()
-
-    def time_match_strings(self):
-        pd.match(self.all, self.uniques)
 
     def time_add_overflow_pos_scalar(self):
         self.checked_add(self.arr, 1)
@@ -65,7 +58,7 @@ class Algorithms(object):
         self.checked_add(self.arr, self.arrmixed)
 
 
-class Hashing(object):
+class hashing(object):
     goal_time = 0.2
 
     def setup(self):

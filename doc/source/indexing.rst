@@ -1467,10 +1467,6 @@ with duplicates dropped.
    idx1.symmetric_difference(idx2)
    idx1 ^ idx2
 
-.. note::
-
-   The resulting index from a set operation will be sorted in ascending order.
-
 Missing values
 ~~~~~~~~~~~~~~
 

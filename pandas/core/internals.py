@@ -1145,9 +1145,8 @@ class Block(PandasObject):
         def handle_error():
 
             if raise_on_error:
-                # The 'detail' variable is defined in outer scope.
                 raise TypeError('Could not operate %s with block values %s' %
-                                (repr(other), str(detail)))  # noqa
+                                (repr(other), str(detail)))
             else:
                 # return the values
                 result = np.empty(values.shape, dtype='O')

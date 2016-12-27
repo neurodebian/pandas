@@ -65,14 +65,12 @@ _VALID_URLS = set(uses_relative + uses_netloc + uses_params)
 _VALID_URLS.discard('')
 
 
-class ParserError(ValueError):
+class CParserError(ValueError):
     """
-    Exception that is thrown by an error is encountered in `pd.read_csv`
+    Exception that is thrown by the C engine when it encounters
+    a parsing error in `pd.read_csv`
     """
     pass
-
-# gh-12665: Alias for now and remove later.
-CParserError = ParserError
 
 
 class DtypeWarning(Warning):
