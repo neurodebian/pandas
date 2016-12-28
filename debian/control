@@ -1,7 +1,7 @@
 Source: pandas
 Section: python
 Priority: optional
-Maintainer: NeuroDebian Team <team@neuro.debian.net>
+Maintainer: Debian Science Maintainers <debian-science-maintainers@lists.alioth.debian.org>
 Uploaders: Yaroslav Halchenko <debian@onerussian.com>, Michael Hanke <michael.hanke@gmail.com>
 Build-Depends: debhelper (>= 7.0.50),
                python-all-dev (>= 2.5),
@@ -44,9 +44,9 @@ Build-Conflicts: python-tables (= 3.3.0-4), python3-tables (= 3.3.0-4)
 X-Python-Version: >= 2.7
 X-Python3-Version: >= 3.2
 Standards-Version: 3.9.8
+Vcs-Browser: https://anonscm.debian.org/cgit/debian-science/packages/pandas.git
+Vcs-Git: https://anonscm.debian.org/git/debian-science/packages/pandas.git
 Homepage: http://pandas.sourceforge.net
-Vcs-Browser: http://github.com/neurodebian/pandas
-Vcs-Git: git://github.com/neurodebian/pandas.git
 XS-Testsuite: autopkgtest
 
 Package: python-pandas
