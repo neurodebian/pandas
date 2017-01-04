@@ -8,8 +8,11 @@ pandas (0.19.2-1) unstable; urgency=medium
     - up_buggy_overflows
       workaround for inconsistent overflows while doing pow operation on big
       ints
+  * debian/rules
+    - exclude more tests which are due to known issues in numpy beta and thus
+      not to be addressed directly in pandas
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 04 Jan 2017 09:34:01 -0500
+ -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 04 Jan 2017 10:19:52 -0500
 
 pandas (0.19.1+git174-g81a2f79-1) experimental; urgency=medium
 
