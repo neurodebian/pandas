@@ -1,3 +1,10 @@
+pandas (0.19.2-2) unstable; urgency=medium
+
+  * Exclude a number of tests while running on non-amd64 platforms
+    due to bugs in numpy/pandas
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 11 Jan 2017 12:13:05 -0500
+
 pandas (0.19.2-1) unstable; urgency=medium
 
   * Fresh upstream minor release -- supposed to be bugfix but interacts
