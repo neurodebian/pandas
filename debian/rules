@@ -30,7 +30,9 @@ ifneq ($(DEB_HOST_ARCH),amd64)
 	# Majority of them is probably due to a bug in NumPy https://github.com/numpy/numpy/issues/8325
 	# of incorrectly treating NaT on non-amd64 platforms
 	# So for stretch release for now disabling those tests on non-amd64
-	EXCLUDE_TESTS_ARCH := --exclude 'test(_frame_from_json_to_json|_misc_example|ArrayNumpyLabelled|DataFrameNumpyLabelled|_resample_timedelta_values|_timestamp_compare|_where_timedelta|ArrayNumpyExcept|_resample_datetime_values|_NaT_cast|_where_datetime|_where_datetime|_datetimelikes_nan|_value_counts_normalized|_agg_dict_parameter_cast_result_dtypes)'
+    # plot ones are excluded due to seems to be a bug in matplotlib which shows up
+    # on s390
+	EXCLUDE_TESTS_ARCH := --exclude 'test(_frame_from_json_to_json|_misc_example|ArrayNumpyLabelled|DataFrameNumpyLabelled|_resample_timedelta_values|_timestamp_compare|_where_timedelta|ArrayNumpyExcept|_resample_datetime_values|_NaT_cast|_where_datetime|_where_datetime|_datetimelikes_nan|_value_counts_normalized|_agg_dict_parameter_cast_result_dtypes|_boxplot|_boxplot_vertical|_errorbar_plot|_hist_df|_line_area_stacked|_plot)'
 else
 	EXCLUDE_TESTS_ARCH :=
 endif

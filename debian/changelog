@@ -1,3 +1,10 @@
+pandas (0.19.2-4) unstable; urgency=medium
+
+  * Exclude few more "plotting" tests on non-amd64 which cause FTBFS
+    on s390
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 12 Jan 2017 11:43:13 -0500
+
 pandas (0.19.2-3) unstable; urgency=medium
 
   * Brought back changeset_0699c89882133a41c250abdac02796fec84512e8.diff
