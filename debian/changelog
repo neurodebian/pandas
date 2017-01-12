@@ -1,3 +1,9 @@
+pandas (0.19.2-5) unstable; urgency=medium
+
+  * And one more test to skip on non-amd64 -- test_round_trip_valid_encodings
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 12 Jan 2017 13:10:11 -0500
+
 pandas (0.19.2-4) unstable; urgency=medium
 
   * Exclude few more "plotting" tests on non-amd64 which cause FTBFS
