@@ -1,0 +1,45 @@
+Author: Rebecca N. Palmer <rebecca_palmer@zoho.com>
+Bug-Debian: https://bugs.debian.org/858260
+Last-Update: Sat, 1 Apr 2017 23:21:31 +0100
+Description: Use tiinfo correctly
+ The underlying issue (but not strictly a bug as the documentation 
+ specifically says not to do that - 
+ http://sources.debian.net/src/python-tz/2016.7-0.2/pytz/tzinfo.py/#L247 
+ ) is that passing a pytz tzinfo to the datetime constructor uses its 
+ first listed offset, not its correct offset for that date:
+ .
+ >>> datetime.datetime(2017,4,1,tzinfo=pytz.timezone('Europe/London'))
+ datetime.datetime(2017, 4, 1, 0, 0, tzinfo=<DstTzInfo 'Europe/London' 
+ GMT0:00:00 STD>)
+ >>> pytz.timezone('Europe/London').localize(datetime.datetime(2017,4,1))
+ datetime.datetime(2017, 4, 1, 0, 0, tzinfo=<DstTzInfo 'Europe/London' 
+ BST+1:00:00 DST>)
+
+--- a/pandas/tests/test_multilevel.py
++++ b/pandas/tests/test_multilevel.py
+@@ -84,9 +84,9 @@ class TestMultiLevel(tm.TestCase):
+         # GH 7112
+         import pytz
+         tz = pytz.timezone('Asia/Tokyo')
+-        expected_tuples = [(1.1, datetime.datetime(2011, 1, 1, tzinfo=tz)),
+-                           (1.2, datetime.datetime(2011, 1, 2, tzinfo=tz)),
+-                           (1.3, datetime.datetime(2011, 1, 3, tzinfo=tz))]
++        expected_tuples = [(1.1, tz.localize(datetime.datetime(2011, 1, 1))),
++                           (1.2, tz.localize(datetime.datetime(2011, 1, 2))),
++                           (1.3, tz.localize(datetime.datetime(2011, 1, 3)))]
+         expected = Index([1.1, 1.2, 1.3] + expected_tuples)
+         self.assert_index_equal(result, expected)
+ 
+@@ -104,9 +104,9 @@ class TestMultiLevel(tm.TestCase):
+ 
+         result = midx_lv3.append(midx_lv2)
+         expected = Index._simple_new(
+-            np.array([(1.1, datetime.datetime(2011, 1, 1, tzinfo=tz), 'A'),
+-                      (1.2, datetime.datetime(2011, 1, 2, tzinfo=tz), 'B'),
+-                      (1.3, datetime.datetime(2011, 1, 3, tzinfo=tz), 'C')] +
++            np.array([(1.1, tz.localize(datetime.datetime(2011, 1, 1)), 'A'),
++                      (1.2, tz.localize(datetime.datetime(2011, 1, 2)), 'B'),
++                      (1.3, tz.localize(datetime.datetime(2011, 1, 3)), 'C')] +
+                      expected_tuples), None)
+         self.assert_index_equal(result, expected)
+ 
