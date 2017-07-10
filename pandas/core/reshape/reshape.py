@@ -689,7 +689,7 @@ def _stack_multi_columns(frame, level_num=-1, dropna=True):
         new_labels = [np.arange(N).repeat(levsize)]
         new_names = [this.index.name]  # something better?
 
-    new_levels.append(frame.columns.levels[level_num])
+    new_levels.append(level_vals)
     new_labels.append(np.tile(level_labels, N))
     new_names.append(frame.columns.names[level_num])
 
@@ -1045,6 +1045,9 @@ def wide_to_long(df, stubnames, i, j, sep="", suffix='\d+'):
         i = [i]
     else:
         i = list(i)
+
+    if df[i].duplicated().any():
+        raise ValueError("the id variables need to uniquely identify each row")
 
     value_vars = list(map(lambda stub:
                           get_var_names(df, stub, sep, suffix), stubnames))

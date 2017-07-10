@@ -32,7 +32,8 @@ from pandas.compat import (StringIO, lzip, range, map, zip, u,
                            OrderedDict, unichr)
 from pandas.io.formats.terminal import get_terminal_size
 from pandas.core.config import get_option, set_option
-from pandas.io.common import _get_handle, UnicodeWriter, _expand_user
+from pandas.io.common import (_get_handle, UnicodeWriter, _expand_user,
+                              _stringify_path)
 from pandas.io.formats.printing import adjoin, justify, pprint_thing
 from pandas.io.formats.common import get_level_lengths
 import pandas.core.common as com
@@ -1288,7 +1289,9 @@ class HTMLFormatter(TableFormatter):
             self.write_tr(col_row, indent, self.indent_delta, header=True,
                           align=align)
 
-        if self.fmt.has_index_names and self.fmt.index:
+        if all((self.fmt.has_index_names,
+                self.fmt.index,
+                self.fmt.show_index_names)):
             row = ([x if x is not None else ''
                     for x in self.frame.index.names] +
                    [''] * min(len(self.columns), self.max_cols))
@@ -1475,7 +1478,7 @@ class CSVFormatter(object):
         if path_or_buf is None:
             path_or_buf = StringIO()
 
-        self.path_or_buf = _expand_user(path_or_buf)
+        self.path_or_buf = _expand_user(_stringify_path(path_or_buf))
         self.sep = sep
         self.na_rep = na_rep
         self.float_format = float_format

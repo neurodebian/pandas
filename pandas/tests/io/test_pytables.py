@@ -16,7 +16,7 @@ from pandas import (Series, DataFrame, Panel, Panel4D, MultiIndex, Int64Index,
                     date_range, timedelta_range, Index, DatetimeIndex,
                     isnull)
 
-from pandas.compat import is_platform_windows, PY3, PY35
+from pandas.compat import is_platform_windows, PY3, PY35, text_type
 from pandas.io.formats.printing import pprint_thing
 
 tables = pytest.importorskip('tables')
@@ -733,6 +733,39 @@ class TestHDFStore(Base):
 
             store.put('c', df, format='table', complib='blosc')
             tm.assert_frame_equal(store['c'], df)
+
+    def test_complibs(self):
+        # GH14478
+        df = tm.makeDataFrame()
+
+        # Building list of all complibs and complevels tuples
+        all_complibs = tables.filters.all_complibs
+        # Remove lzo if its not available on this platform
+        if not tables.which_lib_version('lzo'):
+            all_complibs.remove('lzo')
+        all_levels = range(0, 10)
+        all_tests = [(lib, lvl) for lib in all_complibs for lvl in all_levels]
+
+        for (lib, lvl) in all_tests:
+            with ensure_clean_path(self.path) as tmpfile:
+                gname = 'foo'
+
+                # Write and read file to see if data is consistent
+                df.to_hdf(tmpfile, gname, complib=lib, complevel=lvl)
+                result = pd.read_hdf(tmpfile, gname)
+                tm.assert_frame_equal(result, df)
+
+                # Open file and check metadata
+                # for correct amount of compression
+                h5table = tables.open_file(tmpfile, mode='r')
+                for node in h5table.walk_nodes(where='/' + gname,
+                                               classname='Leaf'):
+                    assert node.filters.complevel == lvl
+                    if lvl == 0:
+                        assert node.filters.complib is None
+                    else:
+                        assert node.filters.complib == lib
+                h5table.close()
 
     def test_put_integer(self):
         # non-date, non-string index
@@ -2887,6 +2920,27 @@ class TestHDFStore(Base):
             recons = store['frame']
             tm.assert_frame_equal(recons, df)
 
+    @pytest.mark.parametrize('table_format', ['table', 'fixed'])
+    def test_store_index_name_numpy_str(self, table_format):
+        # GH #13492
+        idx = pd.Index(pd.to_datetime([datetime.date(2000, 1, 1),
+                                       datetime.date(2000, 1, 2)]),
+                       name=u('cols\u05d2'))
+        idx1 = pd.Index(pd.to_datetime([datetime.date(2010, 1, 1),
+                                        datetime.date(2010, 1, 2)]),
+                        name=u('rows\u05d0'))
+        df = pd.DataFrame(np.arange(4).reshape(2, 2), columns=idx, index=idx1)
+
+        # This used to fail, returning numpy strings instead of python strings.
+        with ensure_clean_path(self.path) as path:
+            df.to_hdf(path, 'df', format=table_format)
+            df2 = read_hdf(path, 'df')
+
+            assert_frame_equal(df, df2, check_names=True)
+
+            assert type(df2.index.name) == text_type
+            assert type(df2.columns.name) == text_type
+
     def test_store_series_name(self):
         df = tm.makeDataFrame()
         series = df['A']
@@ -4186,6 +4240,21 @@ class TestHDFStore(Base):
             expected = df.loc[30:40, ['A']]
             tm.assert_frame_equal(result, expected)
 
+    def test_start_stop_multiple(self):
+
+        # GH 16209
+        with ensure_clean_store(self.path) as store:
+
+            df = DataFrame({"foo": [1, 2], "bar": [1, 2]})
+
+            store.append_to_multiple({'selector': ['foo'], 'data': None}, df,
+                                     selector='selector')
+            result = store.select_as_multiple(['selector', 'data'],
+                                              selector='selector', start=0,
+                                              stop=1)
+            expected = df.loc[[0], ['foo', 'bar']]
+            tm.assert_frame_equal(result, expected)
+
     def test_start_stop_fixed(self):
 
         with ensure_clean_store(self.path) as store:
@@ -4248,6 +4317,49 @@ class TestHDFStore(Base):
             crit = 'columns=df.columns[:75:2]'
             result = store.select('frame', [crit])
             tm.assert_frame_equal(result, df.loc[:, df.columns[:75:2]])
+
+    def test_path_pathlib(self):
+        df = tm.makeDataFrame()
+
+        result = tm.round_trip_pathlib(
+            lambda p: df.to_hdf(p, 'df'),
+            lambda p: pd.read_hdf(p, 'df'))
+        tm.assert_frame_equal(df, result)
+
+    @pytest.mark.xfail(reason='pathlib currently doesnt work with HDFStore')
+    def test_path_pathlib_hdfstore(self):
+        df = tm.makeDataFrame()
+
+        def writer(path):
+            with pd.HDFStore(path) as store:
+                df.to_hdf(store, 'df')
+
+        def reader(path):
+            with pd.HDFStore(path) as store:
+                pd.read_hdf(store, 'df')
+        result = tm.round_trip_pathlib(writer, reader)
+        tm.assert_frame_equal(df, result)
+
+    def test_pickle_path_localpath(self):
+        df = tm.makeDataFrame()
+        result = tm.round_trip_pathlib(
+            lambda p: df.to_hdf(p, 'df'),
+            lambda p: pd.read_hdf(p, 'df'))
+        tm.assert_frame_equal(df, result)
+
+    @pytest.mark.xfail(reason='localpath currently doesnt work with HDFStore')
+    def test_path_localpath_hdfstore(self):
+        df = tm.makeDataFrame()
+
+        def writer(path):
+            with pd.HDFStore(path) as store:
+                df.to_hdf(store, 'df')
+
+        def reader(path):
+            with pd.HDFStore(path) as store:
+                pd.read_hdf(store, 'df')
+        result = tm.round_trip_localpath(writer, reader)
+        tm.assert_frame_equal(df, result)
 
     def _check_roundtrip(self, obj, comparator, compression=False, **kwargs):
 
@@ -4939,8 +5051,8 @@ class TestHDFStore(Base):
                        index=list('abcd'),
                        columns=list('ABCDE'))
         with ensure_clean_path(self.path) as path:
-            pytest.raises(ValueError, df.to_hdf, path,
-                          'df', complib='blosc:zlib')
+            with pytest.raises(ValueError):
+                df.to_hdf(path, 'df', complib='foolib')
     # GH10443
 
     def test_read_nokey(self):

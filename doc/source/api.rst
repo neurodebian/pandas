@@ -724,6 +724,7 @@ Serialization / IO / Conversion
    Series.to_dense
    Series.to_string
    Series.to_clipboard
+   Series.to_latex
 
 Sparse
 ~~~~~~
@@ -1704,6 +1705,7 @@ Computations / Descriptive Stats
    GroupBy.mean
    GroupBy.median
    GroupBy.min
+   GroupBy.ngroup
    GroupBy.nth
    GroupBy.ohlc
    GroupBy.prod

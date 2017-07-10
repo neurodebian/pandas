@@ -9,6 +9,11 @@ from pandas.io.feather_format import to_feather, read_feather
 
 from feather import FeatherError
 from pandas.util.testing import assert_frame_equal, ensure_clean
+import pandas.util.testing as tm
+from distutils.version import LooseVersion
+
+
+fv = LooseVersion(feather.__version__)
 
 
 @pytest.mark.single
@@ -56,6 +61,7 @@ class TestFeather(object):
         assert df.dttz.dtype.tz.zone == 'US/Eastern'
         self.check_round_trip(df)
 
+    @pytest.mark.skipif(fv >= '0.4.0', reason='fixed in 0.4.0')
     def test_strided_data_issues(self):
 
         # strided data issuehttps://github.com/wesm/feather/issues/97
@@ -75,17 +81,21 @@ class TestFeather(object):
         df = pd.DataFrame(np.arange(12).reshape(4, 3)).copy()
         self.check_error_on_write(df, ValueError)
 
+    @pytest.mark.skipif(fv >= '0.4.0', reason='fixed in 0.4.0')
     def test_unsupported(self):
 
-        # period
-        df = pd.DataFrame({'a': pd.period_range('2013', freq='M', periods=3)})
-        self.check_error_on_write(df, ValueError)
-
+        # timedelta
         df = pd.DataFrame({'a': pd.timedelta_range('1 day', periods=3)})
         self.check_error_on_write(df, FeatherError)
 
         # non-strings
         df = pd.DataFrame({'a': ['a', 1, 2.0]})
+        self.check_error_on_write(df, ValueError)
+
+    def test_unsupported_other(self):
+
+        # period
+        df = pd.DataFrame({'a': pd.period_range('2013', freq='M', periods=3)})
         self.check_error_on_write(df, ValueError)
 
     def test_write_with_index(self):
@@ -114,3 +124,15 @@ class TestFeather(object):
         df.index = [0, 1, 2]
         df.columns = pd.MultiIndex.from_tuples([('a', 1), ('a', 2), ('b', 1)]),
         self.check_error_on_write(df, ValueError)
+
+    @pytest.mark.xfail(reason="feather currently doesn't work with pathlib")
+    def test_path_pathlib(self):
+        df = tm.makeDataFrame().reset_index()
+        result = tm.round_trip_pathlib(df.to_feather, pd.read_feather)
+        tm.assert_frame_equal(df, result)
+
+    @pytest.mark.xfail(reason="feather currently doesn't work with localpath")
+    def test_path_localpath(self):
+        df = tm.makeDataFrame().reset_index()
+        result = tm.round_trip_localpath(df.to_feather, pd.read_feather)
+        tm.assert_frame_equal(df, result)

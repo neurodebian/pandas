@@ -1201,6 +1201,14 @@ class TestDataFrameAnalytics(TestData):
         expected['B'] = False
         tm.assert_frame_equal(result, expected)
 
+    def test_isin_tuples(self):
+        # GH16394
+        df = pd.DataFrame({'A': [1, 2, 3], 'B': ['a', 'b', 'f']})
+        df['C'] = list(zip(df['A'], df['B']))
+        result = df['C'].isin([(1, 'a')])
+        tm.assert_series_equal(result,
+                               Series([True, False, False], name="C"))
+
     def test_isin_df_dupe_values(self):
         df1 = DataFrame({'A': [1, 2, 3, 4], 'B': [2, np.nan, 4, 4]})
         # just cols duped
@@ -1824,6 +1832,17 @@ class TestDataFrameAnalytics(TestData):
             assert (clipped_df.values[ub_mask] == ub).all()
             assert (clipped_df.values[mask] == df.values[mask]).all()
 
+    @pytest.mark.xfail(reason=("clip on mixed integer or floats "
+                               "with integer clippers coerces to float"))
+    def test_clip_mixed_numeric(self):
+
+        df = DataFrame({'A': [1, 2, 3],
+                        'B': [1., np.nan, 3.]})
+        result = df.clip(1, 2)
+        expected = DataFrame({'A': [1, 2, 2],
+                              'B': [1., np.nan, 2.]})
+        tm.assert_frame_equal(result, expected, check_like=True)
+
     def test_clip_against_series(self):
         # GH #6966
 
@@ -2045,3 +2064,16 @@ class TestNLargestNSmallest(object):
         result = df.nlargest(n, order)
         expected = df.sort_values(order, ascending=False).head(n)
         tm.assert_frame_equal(result, expected)
+
+    def test_series_broadcasting(self):
+        # smoke test for numpy warnings
+        # GH 16378, GH 16306
+        df = DataFrame([1.0, 1.0, 1.0])
+        df_nan = DataFrame({'A': [np.nan, 2.0, np.nan]})
+        s = Series([1, 1, 1])
+        s_nan = Series([np.nan, np.nan, 1])
+
+        with tm.assert_produces_warning(None):
+            df_nan.clip_lower(s, axis=0)
+            for op in ['lt', 'le', 'gt', 'ge', 'eq', 'ne']:
+                getattr(df, op)(s_nan, axis=0)
