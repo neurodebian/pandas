@@ -1172,6 +1172,14 @@ class TestMultiIndex(Base):
         assert result == expected
         assert new_index.equals(index.droplevel(0))
 
+    def test_get_loc_missing_nan(self):
+        # GH 8569
+        idx = MultiIndex.from_arrays([[1.0, 2.0], [3.0, 4.0]])
+        assert isinstance(idx.get_loc(1), slice)
+        pytest.raises(KeyError, idx.get_loc, 3)
+        pytest.raises(KeyError, idx.get_loc, np.nan)
+        pytest.raises(KeyError, idx.get_loc, [np.nan])
+
     def test_slice_locs(self):
         df = tm.makeTimeDataFrame()
         stacked = df.stack()
@@ -1711,6 +1719,13 @@ class TestMultiIndex(Base):
 
         idx = MultiIndex.from_tuples(((1, 2), (3, 4)), names=['a', 'b'])
         assert len(idx) == 2
+
+    def test_from_tuples_empty(self):
+        # GH 16777
+        result = MultiIndex.from_tuples([], names=['a', 'b'])
+        expected = MultiIndex.from_arrays(arrays=[[], []],
+                                          names=['a', 'b'])
+        tm.assert_index_equal(result, expected)
 
     def test_argsort(self):
         result = self.index.argsort()

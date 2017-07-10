@@ -186,6 +186,11 @@ class MPLPlot(object):
             # support series.plot(color='green')
             self.kwds['color'] = [self.kwds['color']]
 
+        if ('color' in self.kwds and isinstance(self.kwds['color'], tuple) and
+                self.nseries == 1 and len(self.kwds['color']) in (3, 4)):
+            # support RGB and RGBA tuples in series plot
+            self.kwds['color'] = [self.kwds['color']]
+
         if ('color' in self.kwds or 'colors' in self.kwds) and \
                 self.colormap is not None:
             warnings.warn("'color' and 'colormap' cannot be used "
@@ -776,6 +781,11 @@ class PlanePlot(MPLPlot):
             x = self.data.columns[x]
         if is_integer(y) and not self.data.columns.holds_integer():
             y = self.data.columns[y]
+        if len(self.data[x]._get_numeric_data()) == 0:
+            raise ValueError(self._kind + ' requires x column to be numeric')
+        if len(self.data[y]._get_numeric_data()) == 0:
+            raise ValueError(self._kind + ' requires y column to be numeric')
+
         self.x = x
         self.y = y
 

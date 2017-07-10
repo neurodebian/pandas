@@ -5190,6 +5190,38 @@ class TestHDFStore(Base):
                         expected = df.loc[[], :]
                     tm.assert_frame_equal(expected, result)
 
+    @pytest.mark.parametrize('format', ['fixed', 'table'])
+    def test_read_hdf_series_mode_r(self, format):
+        # GH 16583
+        # Tests that reading a Series saved to an HDF file
+        # still works if a mode='r' argument is supplied
+        series = tm.makeFloatSeries()
+        with ensure_clean_path(self.path) as path:
+            series.to_hdf(path, key='data', format=format)
+            result = pd.read_hdf(path, key='data', mode='r')
+        tm.assert_series_equal(result, series)
+
+    def test_read_py2_hdf_file_in_py3(self):
+        # GH 16781
+
+        # tests reading a PeriodIndex DataFrame written in Python2 in Python3
+
+        # the file was generated in Python 2.7 like so:
+        #
+        # df = pd.DataFrame([1.,2,3], index=pd.PeriodIndex(
+        #              ['2015-01-01', '2015-01-02', '2015-01-05'], freq='B'))
+        # df.to_hdf('periodindex_0.20.1_x86_64_darwin_2.7.13.h5', 'p')
+
+        expected = pd.DataFrame([1., 2, 3], index=pd.PeriodIndex(
+            ['2015-01-01', '2015-01-02', '2015-01-05'], freq='B'))
+
+        with ensure_clean_store(
+                tm.get_data_path(
+                    'legacy_hdf/periodindex_0.20.1_x86_64_darwin_2.7.13.h5'),
+                mode='r') as store:
+            result = store['p']
+            assert_frame_equal(result, expected)
+
 
 class TestHDFComplexValues(Base):
     # GH10447

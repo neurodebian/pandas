@@ -1508,7 +1508,7 @@ class NDFrame(PandasObject, SelectionMixin):
 
         `to_latex`-specific options:
 
-        bold_rows : boolean, default True
+        bold_rows : boolean, default False
             Make the row labels bold in the output
         column_format : str, default None
             The columns format as specified in `LaTeX table format
@@ -1557,7 +1557,7 @@ it is assumed to be aliases for the column names.')
     @Appender(_shared_docs['to_latex'] % _shared_doc_kwargs)
     def to_latex(self, buf=None, columns=None, col_space=None, header=True,
                  index=True, na_rep='NaN', formatters=None, float_format=None,
-                 sparsify=None, index_names=True, bold_rows=True,
+                 sparsify=None, index_names=True, bold_rows=False,
                  column_format=None, longtable=None, escape=None,
                  encoding=None, decimal='.', multicolumn=None,
                  multicolumn_format=None, multirow=None):
@@ -3379,12 +3379,12 @@ it is assumed to be aliases for the column names.')
         -------
         casted : type of caller
         """
-        if isinstance(dtype, collections.Mapping):
+        if is_dict_like(dtype):
             if self.ndim == 1:  # i.e. Series
-                if len(dtype) > 1 or list(dtype.keys())[0] != self.name:
+                if len(dtype) > 1 or self.name not in dtype:
                     raise KeyError('Only the Series name can be used for '
                                    'the key in Series dtype mappings.')
-                new_type = list(dtype.values())[0]
+                new_type = dtype[self.name]
                 return self.astype(new_type, copy, errors, **kwargs)
             elif self.ndim > 2:
                 raise NotImplementedError(

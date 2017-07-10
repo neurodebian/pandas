@@ -158,6 +158,12 @@ class TestDataFramePlots(TestPlotBase):
         df = DataFrame({"A": [1, 2, 3]})
         _check_plot_works(df.plot, color=['red'])
 
+    def test_rgb_tuple_color(self):
+        # GH 16695
+        df = DataFrame({'x': [1, 2], 'y': [3, 4]})
+        _check_plot_works(df.plot, x='x', y='y', color=(1, 0, 0))
+        _check_plot_works(df.plot, x='x', y='y', color=(1, 0, 0, 0.5))
+
     def test_color_empty_string(self):
         df = DataFrame(randn(10, 2))
         with pytest.raises(ValueError):
@@ -914,6 +920,24 @@ class TestDataFramePlots(TestPlotBase):
         # GH 6951
         axes = df.plot(x='x', y='y', kind='scatter', subplots=True)
         self._check_axes_shape(axes, axes_num=1, layout=(1, 1))
+
+    @slow
+    def test_plot_scatter_with_categorical_data(self):
+        # GH 16199
+        df = pd.DataFrame({'x': [1, 2, 3, 4],
+                           'y': pd.Categorical(['a', 'b', 'a', 'c'])})
+
+        with pytest.raises(ValueError) as ve:
+            df.plot(x='x', y='y', kind='scatter')
+        ve.match('requires y column to be numeric')
+
+        with pytest.raises(ValueError) as ve:
+            df.plot(x='y', y='x', kind='scatter')
+        ve.match('requires x column to be numeric')
+
+        with pytest.raises(ValueError) as ve:
+            df.plot(x='y', y='y', kind='scatter')
+        ve.match('requires x column to be numeric')
 
     @slow
     def test_plot_scatter_with_c(self):
