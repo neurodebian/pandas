@@ -3,15 +3,14 @@ from pandas.compat import range
 from pandas import compat
 import numpy as np
 
-from pandas.types.generic import ABCSeries, ABCDatetimeIndex, ABCPeriod
-from pandas.tseries.tools import to_datetime, normalize_date
+from pandas.core.dtypes.generic import ABCSeries, ABCDatetimeIndex, ABCPeriod
+from pandas.core.tools.datetimes import to_datetime, normalize_date
 from pandas.core.common import AbstractMethodError
 
 # import after tools, dateutil check
 from dateutil.relativedelta import relativedelta, weekday
 from dateutil.easter import easter
-import pandas.tslib as tslib
-from pandas.tslib import Timestamp, OutOfBoundsDatetime, Timedelta
+from pandas._libs import tslib, Timestamp, OutOfBoundsDatetime, Timedelta
 
 import functools
 import operator
@@ -155,14 +154,14 @@ class DateOffset(object):
     DateOffsets can be created to move dates forward a given number of
     valid dates.  For example, Bday(2) can be added to a date to move
     it two business days forward.  If the date does not start on a
-    valid date, first it is moved to a valid date.  Thus psedo code
+    valid date, first it is moved to a valid date.  Thus pseudo code
     is:
 
     def __add__(date):
       date = rollback(date) # does nothing if date is valid
       return date + <n number of periods>
 
-    When a date offset is created for a negitive number of periods,
+    When a date offset is created for a negative number of periods,
     the date is first rolled forward.  The pseudo code is:
 
     def __add__(date):
@@ -1652,6 +1651,7 @@ class WeekDay(object):
     SAT = 5
     SUN = 6
 
+
 _int_to_weekday = {
     WeekDay.MON: 'MON',
     WeekDay.TUE: 'TUE',
@@ -1923,6 +1923,7 @@ class BQuarterEnd(QuarterOffset):
             return False
         modMonth = (dt.month - self.startingMonth) % 3
         return BMonthEnd().onOffset(dt) and modMonth == 0
+
 
 _int_to_month = tslib._MONTH_ALIASES
 _month_to_int = dict((v, k) for k, v in _int_to_month.items())
@@ -2710,6 +2711,9 @@ class Tick(SingleConstructorOffset):
             return self.apply(other)
         except ApplyTypeError:
             return NotImplemented
+        except OverflowError:
+            raise OverflowError("the add operation between {} and {} "
+                                "will overflow".format(self, other))
 
     def __eq__(self, other):
         if isinstance(other, compat.string_types):
@@ -2748,14 +2752,26 @@ class Tick(SingleConstructorOffset):
 
     def apply(self, other):
         # Timestamp can handle tz and nano sec, thus no need to use apply_wraps
-        if isinstance(other, (datetime, np.datetime64, date)):
+        if isinstance(other, Timestamp):
+
+            # GH 15126
+            # in order to avoid a recursive
+            # call of __add__ and __radd__ if there is
+            # an exception, when we call using the + operator,
+            # we directly call the known method
+            result = other.__add__(self)
+            if result == NotImplemented:
+                raise OverflowError
+            return result
+        elif isinstance(other, (datetime, np.datetime64, date)):
             return as_timestamp(other) + self
+
         if isinstance(other, timedelta):
             return other + self.delta
         elif isinstance(other, type(self)):
             return type(self)(self.n + other.n)
-        else:
-            raise ApplyTypeError('Unhandled type: %s' % type(other).__name__)
+
+        raise ApplyTypeError('Unhandled type: %s' % type(other).__name__)
 
     _prefix = 'undefined'
 
@@ -2783,6 +2799,7 @@ def _delta_to_tick(delta):
             return Micro(nanos // 1000)
         else:  # pragma: no cover
             return Nano(nanos)
+
 
 _delta_to_nanoseconds = tslib._delta_to_nanoseconds
 
@@ -2915,6 +2932,7 @@ def generate_range(start=None, end=None, periods=None,
             if next_date >= cur:
                 raise ValueError('Offset %s did not decrement date' % offset)
             cur = next_date
+
 
 prefix_mapping = dict((offset._prefix, offset) for offset in [
     YearBegin,                 # 'AS'

@@ -217,7 +217,7 @@ calling ``sort_index``, of course). Here is a more complex example:
                                        ('one', 'two')],
                                       names=['first', 'second'])
    df = pd.DataFrame(np.random.randn(8, 4), index=index, columns=columns)
-   df2 = df.ix[[0, 1, 2, 4, 5, 7]]
+   df2 = df.iloc[[0, 1, 2, 4, 5, 7]]
    df2
 
 As mentioned above, ``stack`` can be called with a ``level`` argument to select
@@ -265,8 +265,8 @@ the right thing:
 Reshaping by Melt
 -----------------
 
-The :func:`~pandas.melt` function is useful to massage a
-DataFrame into a format where one or more columns are identifier variables,
+The top-level :func:``melt` and :func:`~DataFrame.melt` functions are useful to
+massage a DataFrame into a format where one or more columns are identifier variables,
 while all other columns, considered measured variables, are "unpivoted" to the
 row axis, leaving just two non-identifier columns, "variable" and "value". The
 names of those columns can be customized by supplying the ``var_name`` and
@@ -281,10 +281,11 @@ For instance,
                           'height' : [5.5, 6.0],
                           'weight' : [130, 150]})
    cheese
-   pd.melt(cheese, id_vars=['first', 'last'])
-   pd.melt(cheese, id_vars=['first', 'last'], var_name='quantity')
+   cheese.melt(id_vars=['first', 'last'])
+   cheese.melt(id_vars=['first', 'last'], var_name='quantity')
 
-Another way to transform is to use the ``wide_to_long`` panel data convenience function.
+Another way to transform is to use the ``wide_to_long`` panel data convenience
+function.
 
 .. ipython:: python
 
@@ -322,6 +323,10 @@ Pivot tables
 ------------
 
 .. _reshaping.pivot:
+
+While ``pivot`` provides general purpose pivoting of DataFrames with various
+data types (strings, numerics, etc.), Pandas also provides the ``pivot_table``
+function for pivoting with aggregation of numeric data.
 
 The function ``pandas.pivot_table`` can be used to create spreadsheet-style pivot
 tables. See the :ref:`cookbook<cookbook.pivot>` for some advanced strategies
@@ -512,7 +517,15 @@ Alternatively we can specify custom bin-edges:
 
 .. ipython:: python
 
-   pd.cut(ages, bins=[0, 18, 35, 70])
+   c = pd.cut(ages, bins=[0, 18, 35, 70])
+   c
+
+.. versionadded:: 0.20.0
+
+If the ``bins`` keyword is an ``IntervalIndex``, then these will be
+used to bin the passed data.
+
+   pd.cut([25, 20, 50], bins=c.categories)
 
 
 .. _reshaping.dummies:
@@ -646,10 +659,16 @@ handling of NaN:
    because of an ordering bug. See also
    `Here <https://github.com/numpy/numpy/issues/641>`__
 
-.. ipython:: python
+.. code-block:: ipython
 
-   pd.factorize(x, sort=True)
-   np.unique(x, return_inverse=True)[::-1]
+    In [2]: pd.factorize(x, sort=True)
+    Out[2]:
+    (array([ 2,  2, -1,  3,  0,  1]),
+     Index([3.14, inf, u'A', u'B'], dtype='object'))
+
+    In [3]: np.unique(x, return_inverse=True)[::-1]
+    Out[3]: (array([3, 3, 0, 4, 1, 2]), array([nan, 3.14, inf, 'A', 'B'], dtype=object))
+
 
 .. note::
     If you just want to handle one column as a categorical variable (like R's factor),

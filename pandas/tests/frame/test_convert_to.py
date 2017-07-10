@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function
-
-from numpy import nan
+import pytest
 import numpy as np
 
 from pandas import compat
@@ -10,13 +8,10 @@ from pandas import (DataFrame, Series, MultiIndex, Timestamp,
                     date_range)
 
 import pandas.util.testing as tm
-
 from pandas.tests.frame.common import TestData
 
 
-class TestDataFrameConvertTo(tm.TestCase, TestData):
-
-    _multiprocess_can_split_ = True
+class TestDataFrameConvertTo(TestData):
 
     def test_to_dict(self):
         test_data = {
@@ -27,31 +22,31 @@ class TestDataFrameConvertTo(tm.TestCase, TestData):
 
         for k, v in compat.iteritems(test_data):
             for k2, v2 in compat.iteritems(v):
-                self.assertEqual(v2, recons_data[k][k2])
+                assert v2 == recons_data[k][k2]
 
         recons_data = DataFrame(test_data).to_dict("l")
 
         for k, v in compat.iteritems(test_data):
             for k2, v2 in compat.iteritems(v):
-                self.assertEqual(v2, recons_data[k][int(k2) - 1])
+                assert v2 == recons_data[k][int(k2) - 1]
 
         recons_data = DataFrame(test_data).to_dict("s")
 
         for k, v in compat.iteritems(test_data):
             for k2, v2 in compat.iteritems(v):
-                self.assertEqual(v2, recons_data[k][k2])
+                assert v2 == recons_data[k][k2]
 
         recons_data = DataFrame(test_data).to_dict("sp")
         expected_split = {'columns': ['A', 'B'], 'index': ['1', '2', '3'],
-                          'data': [[1.0, '1'], [2.0, '2'], [nan, '3']]}
+                          'data': [[1.0, '1'], [2.0, '2'], [np.nan, '3']]}
         tm.assert_dict_equal(recons_data, expected_split)
 
         recons_data = DataFrame(test_data).to_dict("r")
         expected_records = [{'A': 1.0, 'B': '1'},
                             {'A': 2.0, 'B': '2'},
-                            {'A': nan, 'B': '3'}]
-        tm.assertIsInstance(recons_data, list)
-        self.assertEqual(len(recons_data), 3)
+                            {'A': np.nan, 'B': '3'}]
+        assert isinstance(recons_data, list)
+        assert len(recons_data) == 3
         for l, r in zip(recons_data, expected_records):
             tm.assert_dict_equal(l, r)
 
@@ -60,7 +55,7 @@ class TestDataFrameConvertTo(tm.TestCase, TestData):
 
         for k, v in compat.iteritems(test_data):
             for k2, v2 in compat.iteritems(v):
-                self.assertEqual(v2, recons_data[k2][k])
+                assert v2 == recons_data[k2][k]
 
     def test_to_dict_timestamp(self):
 
@@ -77,10 +72,10 @@ class TestDataFrameConvertTo(tm.TestCase, TestData):
         expected_records_mixed = [{'A': tsmp, 'B': 1},
                                   {'A': tsmp, 'B': 2}]
 
-        self.assertEqual(test_data.to_dict(orient='records'),
-                         expected_records)
-        self.assertEqual(test_data_mixed.to_dict(orient='records'),
-                         expected_records_mixed)
+        assert (test_data.to_dict(orient='records') ==
+                expected_records)
+        assert (test_data_mixed.to_dict(orient='records') ==
+                expected_records_mixed)
 
         expected_series = {
             'A': Series([tsmp, tsmp], name='A'),
@@ -116,16 +111,16 @@ class TestDataFrameConvertTo(tm.TestCase, TestData):
 
     def test_to_dict_invalid_orient(self):
         df = DataFrame({'A': [0, 1]})
-        self.assertRaises(ValueError, df.to_dict, orient='xinvalid')
+        pytest.raises(ValueError, df.to_dict, orient='xinvalid')
 
     def test_to_records_dt64(self):
         df = DataFrame([["one", "two", "three"],
                         ["four", "five", "six"]],
                        index=date_range("2012-01-01", "2012-01-02"))
-        self.assertEqual(df.to_records()['index'][0], df.index[0])
+        assert df.to_records()['index'][0] == df.index[0]
 
         rs = df.to_records(convert_datetime64=False)
-        self.assertEqual(rs['index'][0], df.index.values[0])
+        assert rs['index'][0] == df.index.values[0]
 
     def test_to_records_with_multindex(self):
         # GH3189
@@ -134,8 +129,8 @@ class TestDataFrameConvertTo(tm.TestCase, TestData):
         data = np.zeros((8, 4))
         df = DataFrame(data, index=index)
         r = df.to_records(index=True)['level_0']
-        self.assertTrue('bar' in r)
-        self.assertTrue('one' not in r)
+        assert 'bar' in r
+        assert 'one' not in r
 
     def test_to_records_with_Mapping_type(self):
         import email
@@ -161,16 +156,16 @@ class TestDataFrameConvertTo(tm.TestCase, TestData):
         df = DataFrame(np.random.randn(3, 3))
         df.index.name = 'X'
         rs = df.to_records()
-        self.assertIn('X', rs.dtype.fields)
+        assert 'X' in rs.dtype.fields
 
         df = DataFrame(np.random.randn(3, 3))
         rs = df.to_records()
-        self.assertIn('index', rs.dtype.fields)
+        assert 'index' in rs.dtype.fields
 
         df.index = MultiIndex.from_tuples([('a', 'x'), ('a', 'y'), ('b', 'z')])
         df.index.names = ['A', None]
         rs = df.to_records()
-        self.assertIn('level_0', rs.dtype.fields)
+        assert 'level_0' in rs.dtype.fields
 
     def test_to_records_with_unicode_index(self):
         # GH13172
@@ -179,3 +174,33 @@ class TestDataFrameConvertTo(tm.TestCase, TestData):
             .to_records()
         expected = np.rec.array([('x', 'y')], dtype=[('a', 'O'), ('b', 'O')])
         tm.assert_almost_equal(result, expected)
+
+    def test_to_records_with_unicode_column_names(self):
+        # xref issue: https://github.com/numpy/numpy/issues/2407
+        # Issue #11879. to_records used to raise an exception when used
+        # with column names containing non ascii caracters in Python 2
+        result = DataFrame(data={u"accented_name_é": [1.0]}).to_records()
+
+        # Note that numpy allows for unicode field names but dtypes need
+        # to be specified using dictionnary intsead of list of tuples.
+        expected = np.rec.array(
+            [(0, 1.0)],
+            dtype={"names": ["index", u"accented_name_é"],
+                   "formats": ['<i8', '<f8']}
+        )
+        tm.assert_almost_equal(result, expected)
+
+
+@pytest.mark.parametrize('tz', ['UTC', 'GMT', 'US/Eastern'])
+def test_to_records_datetimeindex_with_tz(tz):
+    # GH13937
+    dr = date_range('2016-01-01', periods=10,
+                    freq='S', tz=tz)
+
+    df = DataFrame({'datetime': dr}, index=dr)
+
+    expected = df.to_records()
+    result = df.tz_convert("UTC").to_records()
+
+    # both converted to UTC, so they are equal
+    tm.assert_numpy_array_equal(result, expected)

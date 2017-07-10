@@ -10,25 +10,26 @@ import os
 import abc
 import numpy as np
 
-from pandas.types.common import (is_integer, is_float,
-                                 is_bool, is_list_like)
+from pandas.core.dtypes.common import (
+    is_integer, is_float,
+    is_bool, is_list_like)
 
 from pandas.core.frame import DataFrame
 from pandas.io.parsers import TextParser
+from pandas.errors import EmptyDataError
 from pandas.io.common import (_is_url, _urlopen, _validate_header_arg,
-                              EmptyDataError, get_filepath_or_buffer,
-                              _NA_VALUES)
-from pandas.tseries.period import Period
-from pandas import json
+                              get_filepath_or_buffer, _NA_VALUES)
+from pandas.core.indexes.period import Period
+import pandas._libs.json as json
 from pandas.compat import (map, zip, reduce, range, lrange, u, add_metaclass,
-                           string_types)
+                           string_types, OrderedDict)
 from pandas.core import config
-from pandas.formats.printing import pprint_thing
+from pandas.io.formats.printing import pprint_thing
 import pandas.compat as compat
 import pandas.compat.openpyxl_compat as openpyxl_compat
 from warnings import warn
 from distutils.version import LooseVersion
-from pandas.util.decorators import Appender
+from pandas.util._decorators import Appender
 from textwrap import fill
 
 __all__ = ["read_excel", "ExcelWriter", "ExcelFile"]
@@ -87,6 +88,14 @@ converters : dict, default None
     either be integers or column labels, values are functions that take one
     input argument, the Excel cell content, and return the transformed
     content.
+dtype : Type name or dict of column -> type, default None
+    Data type for data or columns. E.g. {'a': np.float64, 'b': np.int32}
+    Use `str` or `object` to preserve and not interpret dtype.
+    If converters are specified, they will be applied INSTEAD
+    of dtype conversion.
+
+    .. versionadded:: 0.20.0
+
 true_values : list, default None
     Values to consider as True
 
@@ -184,8 +193,8 @@ def read_excel(io, sheetname=0, header=0, skiprows=None, skip_footer=0,
                index_col=None, names=None, parse_cols=None, parse_dates=False,
                date_parser=None, na_values=None, thousands=None,
                convert_float=True, has_index_names=None, converters=None,
-               true_values=None, false_values=None, engine=None, squeeze=False,
-               **kwds):
+               dtype=None, true_values=None, false_values=None, engine=None,
+               squeeze=False, **kwds):
 
     if not isinstance(io, ExcelFile):
         io = ExcelFile(io, engine=engine)
@@ -195,7 +204,7 @@ def read_excel(io, sheetname=0, header=0, skiprows=None, skip_footer=0,
         index_col=index_col, parse_cols=parse_cols, parse_dates=parse_dates,
         date_parser=date_parser, na_values=na_values, thousands=thousands,
         convert_float=convert_float, has_index_names=has_index_names,
-        skip_footer=skip_footer, converters=converters,
+        skip_footer=skip_footer, converters=converters, dtype=dtype,
         true_values=true_values, false_values=false_values, squeeze=squeeze,
         **kwds)
 
@@ -235,9 +244,8 @@ class ExcelFile(object):
         # to get_filepath_or_buffer()
         if _is_url(io):
             io = _urlopen(io)
-        # Deal with S3 urls, path objects, etc. Will convert them to
-        # buffer or path string
-        io, _, _ = get_filepath_or_buffer(io)
+        elif not isinstance(io, (ExcelFile, xlrd.Book)):
+            io, _, _ = get_filepath_or_buffer(io)
 
         if engine == 'xlrd' and isinstance(io, xlrd.Book):
             self.book = io
@@ -318,7 +326,7 @@ class ExcelFile(object):
                      parse_cols=None, parse_dates=False, date_parser=None,
                      na_values=None, thousands=None, convert_float=True,
                      true_values=None, false_values=None, verbose=False,
-                     squeeze=False, **kwds):
+                     dtype=None, squeeze=False, **kwds):
 
         skipfooter = kwds.pop('skipfooter', None)
         if skipfooter is not None:
@@ -335,13 +343,10 @@ class ExcelFile(object):
         if 'chunksize' in kwds:
             raise NotImplementedError("chunksize keyword of read_excel "
                                       "is not implemented")
-        if parse_dates:
-            raise NotImplementedError("parse_dates keyword of read_excel "
-                                      "is not implemented")
 
-        if date_parser is not None:
-            raise NotImplementedError("date_parser keyword of read_excel "
-                                      "is not implemented")
+        if parse_dates is True and index_col is None:
+            warn("The 'parse_dates=True' keyword of read_excel was provided"
+                 " without an 'index_col' keyword value.")
 
         import xlrd
         from xlrd import (xldate, XL_CELL_DATE,
@@ -418,9 +423,9 @@ class ExcelFile(object):
             sheets = [sheetname]
 
         # handle same-type duplicates.
-        sheets = list(set(sheets))
+        sheets = list(OrderedDict.fromkeys(sheets).keys())
 
-        output = {}
+        output = OrderedDict()
 
         for asheetname in sheets:
             if verbose:
@@ -501,6 +506,7 @@ class ExcelFile(object):
                                     skiprows=skiprows,
                                     skipfooter=skip_footer,
                                     squeeze=squeeze,
+                                    dtype=dtype,
                                     **kwds)
 
                 output[asheetname] = parser.read()
@@ -534,6 +540,22 @@ class ExcelFile(object):
         self.close()
 
 
+def _validate_freeze_panes(freeze_panes):
+    if freeze_panes is not None:
+        if (
+            len(freeze_panes) == 2 and
+            all(isinstance(item, int) for item in freeze_panes)
+        ):
+            return True
+
+        raise ValueError("freeze_panes must be of form (row, column)"
+                         " where row and column are integers")
+
+    # freeze_panes wasn't specified, return False so it won't be applied
+    # to output sheet
+    return False
+
+
 def _trim_excel_header(row):
     # trim header row so auto-index inference works
     # xlrd uses '' , openpyxl None
@@ -550,7 +572,7 @@ def _fill_mi_header(row, control_row):
     ----------
     row : list
         List of items in a single row.
-    constrol_row : list of boolean
+    control_row : list of boolean
         Helps to determine if particular column is in same parent index as the
         previous value. Used to stop propagation of empty cells between
         different indexes.
@@ -684,7 +706,8 @@ class ExcelWriter(object):
         pass
 
     @abc.abstractmethod
-    def write_cells(self, cells, sheet_name=None, startrow=0, startcol=0):
+    def write_cells(self, cells, sheet_name=None, startrow=0, startcol=0,
+                    freeze_panes=None):
         """
         Write given formated cells into Excel an excel sheet
 
@@ -696,6 +719,8 @@ class ExcelWriter(object):
             Name of Excel sheet, if None, then use self.cur_sheet
         startrow: upper left cell row to dump data frame
         startcol: upper left cell column to dump data frame
+        freeze_panes: integer tuple of length 2
+            contains the bottom-most row and right-most column to freeze
         """
         pass
 
@@ -779,9 +804,15 @@ class _Openpyxl1Writer(ExcelWriter):
 
         # Create workbook object with default optimized_write=True.
         self.book = Workbook()
+
         # Openpyxl 1.6.1 adds a dummy sheet. We remove it.
         if self.book.worksheets:
-            self.book.remove_sheet(self.book.worksheets[0])
+            try:
+                self.book.remove(self.book.worksheets[0])
+            except AttributeError:
+
+                # compat
+                self.book.remove_sheet(self.book.worksheets[0])
 
     def save(self):
         """
@@ -789,7 +820,8 @@ class _Openpyxl1Writer(ExcelWriter):
         """
         return self.book.save(self.path)
 
-    def write_cells(self, cells, sheet_name=None, startrow=0, startcol=0):
+    def write_cells(self, cells, sheet_name=None, startrow=0, startcol=0,
+                    freeze_panes=None):
         # Write the frame cells using openpyxl.
         from openpyxl.cell import get_column_letter
 
@@ -871,11 +903,13 @@ class _Openpyxl1Writer(ExcelWriter):
 
         return xls_style
 
+
 register_writer(_Openpyxl1Writer)
 
 
 class _OpenpyxlWriter(_Openpyxl1Writer):
     engine = 'openpyxl'
+
 
 register_writer(_OpenpyxlWriter)
 
@@ -887,7 +921,8 @@ class _Openpyxl20Writer(_Openpyxl1Writer):
     engine = 'openpyxl20'
     openpyxl_majorver = 2
 
-    def write_cells(self, cells, sheet_name=None, startrow=0, startcol=0):
+    def write_cells(self, cells, sheet_name=None, startrow=0, startcol=0,
+                    freeze_panes=None):
         # Write the frame cells using openpyxl.
         from openpyxl.cell import get_column_letter
 
@@ -902,7 +937,7 @@ class _Openpyxl20Writer(_Openpyxl1Writer):
 
         for cell in cells:
             colletter = get_column_letter(startcol + cell.col + 1)
-            xcell = wks.cell("%s%s" % (colletter, startrow + cell.row + 1))
+            xcell = wks["%s%s" % (colletter, startrow + cell.row + 1)]
             xcell.value = _conv_value(cell.val)
             style_kwargs = {}
 
@@ -943,7 +978,7 @@ class _Openpyxl20Writer(_Openpyxl1Writer):
                                 # Ignore first cell. It is already handled.
                                 continue
                             colletter = get_column_letter(col)
-                            xcell = wks.cell("%s%s" % (colletter, row))
+                            xcell = wks["%s%s" % (colletter, row)]
                             xcell.style = xcell.style.copy(**style_kwargs)
 
     @classmethod
@@ -1294,7 +1329,8 @@ class _Openpyxl22Writer(_Openpyxl20Writer):
     engine = 'openpyxl22'
     openpyxl_majorver = 2
 
-    def write_cells(self, cells, sheet_name=None, startrow=0, startcol=0):
+    def write_cells(self, cells, sheet_name=None, startrow=0, startcol=0,
+                    freeze_panes=None):
         # Write the frame cells using openpyxl.
         sheet_name = self._get_sheet_name(sheet_name)
 
@@ -1306,6 +1342,10 @@ class _Openpyxl22Writer(_Openpyxl20Writer):
             wks = self.book.create_sheet()
             wks.title = sheet_name
             self.sheets[sheet_name] = wks
+
+        if _validate_freeze_panes(freeze_panes):
+            wks.freeze_panes = wks.cell(row=freeze_panes[0] + 1,
+                                        column=freeze_panes[1] + 1)
 
         for cell in cells:
             xcell = wks.cell(
@@ -1353,6 +1393,7 @@ class _Openpyxl22Writer(_Openpyxl20Writer):
                             for k, v in style_kwargs.items():
                                 setattr(xcell, k, v)
 
+
 register_writer(_Openpyxl22Writer)
 
 
@@ -1378,7 +1419,8 @@ class _XlwtWriter(ExcelWriter):
         """
         return self.book.save(self.path)
 
-    def write_cells(self, cells, sheet_name=None, startrow=0, startcol=0):
+    def write_cells(self, cells, sheet_name=None, startrow=0, startcol=0,
+                    freeze_panes=None):
         # Write the frame cells using xlwt.
 
         sheet_name = self._get_sheet_name(sheet_name)
@@ -1388,6 +1430,11 @@ class _XlwtWriter(ExcelWriter):
         else:
             wks = self.book.add_sheet(sheet_name)
             self.sheets[sheet_name] = wks
+
+        if _validate_freeze_panes(freeze_panes):
+            wks.set_panes_frozen(True)
+            wks.set_horz_split_pos(freeze_panes[0])
+            wks.set_vert_split_pos(freeze_panes[1])
 
         style_dict = {}
 
@@ -1476,6 +1523,7 @@ class _XlwtWriter(ExcelWriter):
 
         return style
 
+
 register_writer(_XlwtWriter)
 
 
@@ -1499,11 +1547,12 @@ class _XlsxWriter(ExcelWriter):
         """
         Save workbook to disk.
         """
+
         return self.book.close()
 
-    def write_cells(self, cells, sheet_name=None, startrow=0, startcol=0):
+    def write_cells(self, cells, sheet_name=None, startrow=0, startcol=0,
+                    freeze_panes=None):
         # Write the frame cells using xlsxwriter.
-
         sheet_name = self._get_sheet_name(sheet_name)
 
         if sheet_name in self.sheets:
@@ -1513,6 +1562,9 @@ class _XlsxWriter(ExcelWriter):
             self.sheets[sheet_name] = wks
 
         style_dict = {}
+
+        if _validate_freeze_panes(freeze_panes):
+            wks.freeze_panes(*(freeze_panes))
 
         for cell in cells:
             val = _conv_value(cell.val)
@@ -1587,5 +1639,6 @@ class _XlsxWriter(ExcelWriter):
             xl_format.set_border()
 
         return xl_format
+
 
 register_writer(_XlsxWriter)

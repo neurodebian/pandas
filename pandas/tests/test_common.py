@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import nose
+import pytest
+
 import numpy as np
 
 from pandas import Series, Timestamp
@@ -8,12 +9,10 @@ from pandas.compat import range, lmap
 import pandas.core.common as com
 import pandas.util.testing as tm
 
-_multiprocess_can_split_ = True
-
 
 def test_mut_exclusive():
     msg = "mutually exclusive arguments: '[ab]' and '[ab]'"
-    with tm.assertRaisesRegexp(TypeError, msg):
+    with tm.assert_raises_regex(TypeError, msg):
         com._mut_exclusive(a=1, b=2)
     assert com._mut_exclusive(a=1, b=None) == 1
     assert com._mut_exclusive(major=None, major_axis=None) is None
@@ -145,21 +144,21 @@ def test_random_state():
     import numpy.random as npr
     # Check with seed
     state = com._random_state(5)
-    tm.assert_equal(state.uniform(), npr.RandomState(5).uniform())
+    assert state.uniform() == npr.RandomState(5).uniform()
 
     # Check with random state object
     state2 = npr.RandomState(10)
-    tm.assert_equal(
-        com._random_state(state2).uniform(), npr.RandomState(10).uniform())
+    assert (com._random_state(state2).uniform() ==
+            npr.RandomState(10).uniform())
 
     # check with no arg random state
     assert com._random_state() is np.random
 
     # Error for floats or strings
-    with tm.assertRaises(ValueError):
+    with pytest.raises(ValueError):
         com._random_state('test')
 
-    with tm.assertRaises(ValueError):
+    with pytest.raises(ValueError):
         com._random_state(5.5)
 
 
@@ -196,8 +195,3 @@ def test_dict_compat():
     assert (com._dict_compat(data_datetime64) == expected)
     assert (com._dict_compat(expected) == expected)
     assert (com._dict_compat(data_unchanged) == data_unchanged)
-
-
-if __name__ == '__main__':
-    nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
-                   exit=False)

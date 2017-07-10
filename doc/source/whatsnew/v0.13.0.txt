@@ -274,7 +274,6 @@ Float64Index API Change
   .. ipython:: python
 
      s[3]
-     s.ix[3]
      s.loc[3]
 
   The only positional indexing is via ``iloc``
@@ -290,7 +289,6 @@ Float64Index API Change
   .. ipython:: python
 
      s[2:4]
-     s.ix[2:4]
      s.loc[2:4]
      s.iloc[2:4]
 
@@ -359,11 +357,11 @@ HDFStore API Changes
   .. ipython:: python
 
      path = 'test.h5'
-     df = DataFrame(randn(10,2))
+     df = pd.DataFrame(np.random.randn(10,2))
      df.to_hdf(path,'df_table',format='table')
      df.to_hdf(path,'df_table2',append=True)
      df.to_hdf(path,'df_fixed')
-     with get_store(path) as store:
+     with pd.HDFStore(path) as store:
         print(store)
 
   .. ipython:: python

@@ -15,8 +15,9 @@ import sys
 import struct
 from dateutil.relativedelta import relativedelta
 
-from pandas.types.common import (is_categorical_dtype, is_datetime64_dtype,
-                                 _ensure_object)
+from pandas.core.dtypes.common import (
+    is_categorical_dtype, is_datetime64_dtype,
+    _ensure_object)
 
 from pandas.core.base import StringMixin
 from pandas.core.categorical import Categorical
@@ -26,12 +27,15 @@ import datetime
 from pandas import compat, to_timedelta, to_datetime, isnull, DatetimeIndex
 from pandas.compat import lrange, lmap, lzip, text_type, string_types, range, \
     zip, BytesIO
-from pandas.util.decorators import Appender
+from pandas.util._decorators import Appender
 import pandas as pd
 
 from pandas.io.common import get_filepath_or_buffer, BaseIterator
-from pandas.lib import max_len_string_array, infer_dtype
-from pandas.tslib import NaT, Timestamp
+from pandas._libs.lib import max_len_string_array, infer_dtype
+from pandas._libs.tslib import NaT, Timestamp
+
+VALID_ENCODINGS = ('ascii', 'us-ascii', 'latin-1', 'latin_1', 'iso-8859-1',
+                   'iso8859-1', '8859', 'cp819', 'latin', 'latin1', 'L1')
 
 _version_error = ("Version of given Stata file is not 104, 105, 108, "
                   "111 (Stata 7SE), 113 (Stata 8/9), 114 (Stata 10/11), "
@@ -45,7 +49,7 @@ convert_categoricals : boolean, defaults to True
 
 _encoding_params = """\
 encoding : string, None or encoding
-    Encoding used to parse the files. None defaults to iso-8859-1."""
+    Encoding used to parse the files. None defaults to latin-1."""
 
 _statafile_processing_params2 = """\
 index : identifier of index column
@@ -169,9 +173,12 @@ def read_stata(filepath_or_buffer, convert_dates=True,
     if iterator or chunksize:
         data = reader
     else:
-        data = reader.read()
-        reader.close()
+        try:
+            data = reader.read()
+        finally:
+            reader.close()
     return data
+
 
 _date_formats = ["%tc", "%tC", "%td", "%d", "%tw", "%tm", "%tq", "%th", "%ty"]
 
@@ -455,6 +462,7 @@ conversion range. This may result in a loss of precision in the saved data.
 
 class ValueLabelTypeMismatch(Warning):
     pass
+
 
 value_label_mismatch_doc = """
 Stata value labels (pandas categories) must be strings. Column {0} contains
@@ -812,9 +820,14 @@ class StataMissingValue(StringMixin):
 
 
 class StataParser(object):
-    _default_encoding = 'iso-8859-1'
+    _default_encoding = 'latin-1'
 
     def __init__(self, encoding):
+        if encoding is not None:
+            if encoding not in VALID_ENCODINGS:
+                raise ValueError('Unknown encoding. Only latin-1 and ascii '
+                                 'supported.')
+
         self._encoding = encoding
 
         # type          code.
@@ -932,7 +945,7 @@ class StataReader(StataParser, BaseIterator):
                  convert_categoricals=True, index=None,
                  convert_missing=False, preserve_dtypes=True,
                  columns=None, order_categoricals=True,
-                 encoding='iso-8859-1', chunksize=None):
+                 encoding='latin-1', chunksize=None):
         super(StataReader, self).__init__(encoding)
         self.col_sizes = ()
 
@@ -945,6 +958,10 @@ class StataReader(StataParser, BaseIterator):
         self._preserve_dtypes = preserve_dtypes
         self._columns = columns
         self._order_categoricals = order_categoricals
+        if encoding is not None:
+            if encoding not in VALID_ENCODINGS:
+                raise ValueError('Unknown encoding. Only latin-1 and  ascii '
+                                 'supported.')
         self._encoding = encoding
         self._chunksize = chunksize
 
@@ -1358,7 +1375,8 @@ class StataReader(StataParser, BaseIterator):
 
     def _read_strls(self):
         self.path_or_buf.seek(self.seek_strls)
-        self.GSO = {0: ''}
+        # Wrap v_o in a string to allow uint64 values as keys on 32bit OS
+        self.GSO = {'0': ''}
         while True:
             if self.path_or_buf.read(3) != b'GSO':
                 break
@@ -1383,7 +1401,8 @@ class StataReader(StataParser, BaseIterator):
                 if self.format_version == 117:
                     encoding = self._encoding or self._default_encoding
                 va = va[0:-1].decode(encoding)
-            self.GSO[v_o] = va
+            # Wrap v_o in a string to allow uint64 values as keys on 32bit OS
+            self.GSO[str(v_o)] = va
 
     # legacy
     @Appender('DEPRECATED: ' + _data_method_doc)
@@ -1619,7 +1638,8 @@ class StataReader(StataParser, BaseIterator):
         for i, typ in enumerate(self.typlist):
             if typ != 'Q':
                 continue
-            data.iloc[:, i] = [self.GSO[k] for k in data.iloc[:, i]]
+            # Wrap v_o in a string to allow uint64 values as keys on 32bit OS
+            data.iloc[:, i] = [self.GSO[str(k)] for k in data.iloc[:, i]]
         return data
 
     def _do_select_columns(self, data, columns):
@@ -1851,7 +1871,7 @@ class StataWriter(StataParser):
     write_index : bool
         Write the index to Stata dataset.
     encoding : str
-        Default is latin-1. Unicode is not supported
+        Default is latin-1. Only latin-1 and ascii are supported.
     byteorder : str
         Can be ">", "<", "little", or "big". default is `sys.byteorder`
     time_stamp : datetime
@@ -2154,9 +2174,15 @@ class StataWriter(StataParser):
             time_stamp = datetime.datetime.now()
         elif not isinstance(time_stamp, datetime.datetime):
             raise ValueError("time_stamp should be datetime type")
-        self._file.write(
-            self._null_terminate(time_stamp.strftime("%d %b %Y %H:%M"))
-        )
+        # GH #13856
+        # Avoid locale-specific month conversion
+        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug',
+                  'Sep', 'Oct', 'Nov', 'Dec']
+        month_lookup = {i + 1: month for i, month in enumerate(months)}
+        ts = (time_stamp.strftime("%d ") +
+              month_lookup[time_stamp.month] +
+              time_stamp.strftime(" %Y %H:%M"))
+        self._file.write(self._null_terminate(ts))
 
     def _write_descriptors(self, typlist=None, varlist=None, srtlist=None,
                            fmtlist=None, lbllist=None):

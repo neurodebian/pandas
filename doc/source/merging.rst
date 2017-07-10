@@ -13,7 +13,7 @@
 
    import matplotlib.pyplot as plt
    plt.close('all')
-   import pandas.util.doctools as doctools
+   import pandas.util._doctools as doctools
    p = doctools.TablePlotter()
 
 
@@ -132,7 +132,7 @@ means that we can now do stuff like select out each chunk by key:
 
 .. ipython:: python
 
-   result.ix['y']
+   result.loc['y']
 
 It's not a stretch to see how this can be very useful. More detail on this
 functionality below.
@@ -693,6 +693,29 @@ either the left or right tables, the values in the joined table will be
           labels=['left', 'right'], vertical=False);
    plt.close('all');
 
+Here is another example with duplicate join keys in DataFrames:
+
+.. ipython:: python
+
+   left = pd.DataFrame({'A' : [1,2], 'B' : [2, 2]})
+
+   right = pd.DataFrame({'A' : [4,5,6], 'B': [2,2,2]})
+
+   result = pd.merge(left, right, on='B', how='outer')
+
+.. ipython:: python
+   :suppress:
+
+   @savefig merging_merge_on_key_dup.png
+   p.plot([left, right], result,
+          labels=['left', 'right'], vertical=False);
+   plt.close('all');
+
+.. warning::
+
+  Joining / merging on duplicate keys can cause a returned frame that is the multiplication of the row dimensions,
+  may result in memory overflow. It is the user' s responsibility to manage duplicate values in keys before joining large DataFrames.
+
 .. _merging.indicator:
 
 The merge indicator
@@ -722,6 +745,79 @@ The ``indicator`` argument will also accept string arguments, in which case the 
 
    pd.merge(df1, df2, on='col1', how='outer', indicator='indicator_column')
 
+
+.. _merging.dtypes:
+
+Merge Dtypes
+~~~~~~~~~~~~
+
+.. versionadded:: 0.19.0
+
+Merging will preserve the dtype of the join keys.
+
+.. ipython:: python
+
+   left = pd.DataFrame({'key': [1], 'v1': [10]})
+   left
+   right = pd.DataFrame({'key': [1, 2], 'v1': [20, 30]})
+   right
+
+We are able to preserve the join keys
+
+.. ipython:: python
+
+   pd.merge(left, right, how='outer')
+   pd.merge(left, right, how='outer').dtypes
+
+Of course if you have missing values that are introduced, then the
+resulting dtype will be upcast.
+
+.. ipython:: python
+
+   pd.merge(left, right, how='outer', on='key')
+   pd.merge(left, right, how='outer', on='key').dtypes
+
+.. versionadded:: 0.20.0
+
+Merging will preserve ``category`` dtypes of the mergands. See also the section on :ref:`categoricals <categorical.merge>`
+
+The left frame.
+
+.. ipython:: python
+
+   X = pd.Series(np.random.choice(['foo', 'bar'], size=(10,)))
+   X = X.astype('category', categories=['foo', 'bar'])
+
+   left = pd.DataFrame({'X': X,
+                        'Y': np.random.choice(['one', 'two', 'three'], size=(10,))})
+   left
+   left.dtypes
+
+The right frame.
+
+.. ipython:: python
+
+   right = pd.DataFrame({'X': pd.Series(['foo', 'bar']).astype('category', categories=['foo', 'bar']),
+                         'Z': [1, 2]})
+   right
+   right.dtypes
+
+The merged result
+
+.. ipython:: python
+
+   result = pd.merge(left, right, how='outer')
+   result
+   result.dtypes
+
+.. note::
+
+   The category dtypes must be *exactly* the same, meaning the same categories and the ordered attribute.
+   Otherwise the result will coerce to ``object`` dtype.
+
+.. note::
+
+   Merging on ``category`` dtypes that are the same can be quite performant compared to ``object`` dtype merging.
 
 .. _merging.join.index:
 
