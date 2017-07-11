@@ -6,20 +6,21 @@ import warnings
 
 import numpy as np
 
-from pandas.types.generic import ABCSeries
-from pandas.types.common import (is_integer,
-                                 is_period_arraylike,
-                                 is_timedelta64_dtype,
-                                 is_datetime64_dtype)
+from pandas.core.dtypes.generic import ABCSeries
+from pandas.core.dtypes.common import (
+    is_integer,
+    is_period_arraylike,
+    is_timedelta64_dtype,
+    is_datetime64_dtype)
 
 import pandas.core.algorithms as algos
 from pandas.core.algorithms import unique
 from pandas.tseries.offsets import DateOffset
-from pandas.util.decorators import cache_readonly, deprecate_kwarg
+from pandas.util._decorators import cache_readonly, deprecate_kwarg
 import pandas.tseries.offsets as offsets
-import pandas.lib as lib
-import pandas.tslib as tslib
-from pandas.tslib import Timedelta
+
+from pandas._libs import lib, tslib
+from pandas._libs.tslib import Timedelta
 from pytz import AmbiguousTimeError
 
 
@@ -38,32 +39,55 @@ class FreqGroup(object):
     FR_NS = 12000
 
 
-US_RESO = 0
-MS_RESO = 1
-S_RESO = 2
-T_RESO = 3
-H_RESO = 4
-D_RESO = 5
+RESO_NS = 0
+RESO_US = 1
+RESO_MS = 2
+RESO_SEC = 3
+RESO_MIN = 4
+RESO_HR = 5
+RESO_DAY = 6
 
 
 class Resolution(object):
 
-    # defined in period.pyx
-    # note that these are different from freq codes
-    RESO_US = US_RESO
-    RESO_MS = MS_RESO
-    RESO_SEC = S_RESO
-    RESO_MIN = T_RESO
-    RESO_HR = H_RESO
-    RESO_DAY = D_RESO
+    RESO_US = RESO_US
+    RESO_MS = RESO_MS
+    RESO_SEC = RESO_SEC
+    RESO_MIN = RESO_MIN
+    RESO_HR = RESO_HR
+    RESO_DAY = RESO_DAY
 
     _reso_str_map = {
+        RESO_NS: 'nanosecond',
         RESO_US: 'microsecond',
         RESO_MS: 'millisecond',
         RESO_SEC: 'second',
         RESO_MIN: 'minute',
         RESO_HR: 'hour',
-        RESO_DAY: 'day'}
+        RESO_DAY: 'day'
+    }
+
+    # factor to multiply a value by to convert it to the next finer grained
+    # resolution
+    _reso_mult_map = {
+        RESO_NS: None,
+        RESO_US: 1000,
+        RESO_MS: 1000,
+        RESO_SEC: 1000,
+        RESO_MIN: 60,
+        RESO_HR: 60,
+        RESO_DAY: 24
+    }
+
+    _reso_str_bump_map = {
+        'D': 'H',
+        'H': 'T',
+        'T': 'S',
+        'S': 'L',
+        'L': 'U',
+        'U': 'N',
+        'N': None
+    }
 
     _str_reso_map = dict([(v, k) for k, v in compat.iteritems(_reso_str_map)])
 
@@ -159,6 +183,47 @@ class Resolution(object):
         True
         """
         return cls.get_reso(cls.get_str_from_freq(freq))
+
+    @classmethod
+    def get_stride_from_decimal(cls, value, freq):
+        """
+        Convert freq with decimal stride into a higher freq with integer stride
+
+        Parameters
+        ----------
+        value : integer or float
+        freq : string
+            Frequency string
+
+        Raises
+        ------
+        ValueError
+            If the float cannot be converted to an integer at any resolution.
+
+        Example
+        -------
+        >>> Resolution.get_stride_from_decimal(1.5, 'T')
+        (90, 'S')
+
+        >>> Resolution.get_stride_from_decimal(1.04, 'H')
+        (3744, 'S')
+
+        >>> Resolution.get_stride_from_decimal(1, 'D')
+        (1, 'D')
+        """
+
+        if np.isclose(value % 1, 0):
+            return int(value), freq
+        else:
+            start_reso = cls.get_reso_from_freq(freq)
+            if start_reso == 0:
+                raise ValueError(
+                    "Could not convert to integer offset at any resolution"
+                )
+
+            next_value = cls._reso_mult_map[start_reso] * value
+            next_name = cls._reso_str_bump_map[freq]
+            return cls.get_stride_from_decimal(next_value, next_name)
 
 
 def get_to_timestamp_base(base):
@@ -472,12 +537,17 @@ def to_offset(freq):
                                          splitted[2::4]):
                 if sep != '' and not sep.isspace():
                     raise ValueError('separator must be spaces')
-                offset = get_offset(name)
+                prefix = _lite_rule_alias.get(name) or name
                 if stride_sign is None:
                     stride_sign = -1 if stride.startswith('-') else 1
                 if not stride:
                     stride = 1
+                if prefix in Resolution._reso_str_bump_map.keys():
+                    stride, name = Resolution.get_stride_from_decimal(
+                        float(stride), prefix
+                    )
                 stride = int(stride)
+                offset = get_offset(name)
                 offset = offset * int(np.fabs(stride) * stride_sign)
                 if delta is None:
                     delta = offset
@@ -493,7 +563,9 @@ def to_offset(freq):
 
 
 # hack to handle WOM-1MON
-opattern = re.compile(r'([\-]?\d*)\s*([A-Za-z]+([\-][\dA-Za-z\-]+)?)')
+opattern = re.compile(
+    r'([\-]?\d*|[\-]?\d*\.\d*)\s*([A-Za-z]+([\-][\dA-Za-z\-]+)?)'
+)
 
 
 def _base_and_stride(freqstr):
@@ -588,6 +660,7 @@ def get_standard_freq(freq):
            "instead.")
     warnings.warn(msg, FutureWarning, stacklevel=2)
     return to_offset(freq).rule_code
+
 
 # ---------------------------------------------------------------------
 # Period codes
@@ -723,6 +796,7 @@ def infer_freq(index, warn=True):
 
     inferer = _FrequencyInferer(index, warn=warn)
     return inferer.get_freq()
+
 
 _ONE_MICRO = long(1000)
 _ONE_MILLI = _ONE_MICRO * 1000

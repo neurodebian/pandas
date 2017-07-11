@@ -2,14 +2,14 @@
 
 CACHE_File="$HOME/.cache/cython_files.tar"
 PYX_CACHE_DIR="$HOME/.cache/pyxfiles"
-pyx_file_list=`find ${TRAVIS_BUILD_DIR} -name "*.pyx" -o -name "*.pxd"`
+pyx_file_list=`find ${TRAVIS_BUILD_DIR} -name "*.pyx" -o -name "*.pxd" -o -name "*.pxi.in"`
 
 rm -rf $CACHE_File
 rm -rf $PYX_CACHE_DIR
 
 home_dir=$(pwd)
 
-mkdir $PYX_CACHE_DIR
+mkdir -p $PYX_CACHE_DIR
 rsync -Rv $pyx_file_list $PYX_CACHE_DIR
 
 echo "pyx files:"

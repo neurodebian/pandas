@@ -46,7 +46,7 @@ data with an arbitrary number of dimensions in lower dimensional data
 structures like Series (1d) and DataFrame (2d).
 
 In this section, we will show what exactly we mean by "hierarchical" indexing
-and how it integrates with the all of the pandas indexing functionality
+and how it integrates with all of the pandas indexing functionality
 described above and in prior sections. Later, when discussing :ref:`group by
 <groupby>` and :ref:`pivoting and reshaping data <reshaping>`, we'll show
 non-trivial applications to illustrate how it aids in structuring data for
@@ -59,7 +59,7 @@ Creating a MultiIndex (hierarchical index) object
 
 The ``MultiIndex`` object is the hierarchical analogue of the standard
 ``Index`` object which typically stores the axis labels in pandas objects. You
-can think of ``MultiIndex`` an array of tuples where each tuple is unique. A
+can think of ``MultiIndex`` as an array of tuples where each tuple is unique. A
 ``MultiIndex`` can be created from a list of arrays (using
 ``MultiIndex.from_arrays``), an array of tuples (using
 ``MultiIndex.from_tuples``), or a crossed set of iterables (using
@@ -136,7 +136,7 @@ can find yourself working with hierarchically-indexed data without creating a
 may wish to generate your own ``MultiIndex`` when preparing the data set.
 
 Note that how the index is displayed by be controlled using the
-``multi_sparse`` option in ``pandas.set_printoptions``:
+``multi_sparse`` option in ``pandas.set_options()``:
 
 .. ipython:: python
 
@@ -175,35 +175,40 @@ completely analogous way to selecting a column in a regular DataFrame:
 See :ref:`Cross-section with hierarchical index <advanced.xs>` for how to select
 on a deeper level.
 
-.. note::
+.. _advanced.shown_levels:
 
-   The repr of a ``MultiIndex`` shows ALL the defined levels of an index, even
-   if the they are not actually used. When slicing an index, you may notice this.
-   For example:
+Defined Levels
+~~~~~~~~~~~~~~
 
-   .. ipython:: python
+The repr of a ``MultiIndex`` shows ALL the defined levels of an index, even
+if the they are not actually used. When slicing an index, you may notice this.
+For example:
 
-      # original multi-index
-      df.columns
+.. ipython:: python
 
-      # sliced
-      df[['foo','qux']].columns
+   # original multi-index
+   df.columns
 
-   This is done to avoid a recomputation of the levels in order to make slicing
-   highly performant. If you want to see the actual used levels.
+   # sliced
+   df[['foo','qux']].columns
 
-   .. ipython:: python
+This is done to avoid a recomputation of the levels in order to make slicing
+highly performant. If you want to see the actual used levels.
 
-      df[['foo','qux']].columns.values
+.. ipython:: python
 
-      # for a specific level
-      df[['foo','qux']].columns.get_level_values(0)
+   df[['foo','qux']].columns.values
 
-   To reconstruct the multiindex with only the used levels
+   # for a specific level
+   df[['foo','qux']].columns.get_level_values(0)
 
-   .. ipython:: python
+To reconstruct the multiindex with only the used levels
 
-      pd.MultiIndex.from_tuples(df[['foo','qux']].columns.values)
+.. versionadded:: 0.20.0
+
+.. ipython:: python
+
+   df[['foo','qux']].columns.remove_unused_levels()
 
 Data alignment and using ``reindex``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -230,7 +235,7 @@ of tuples:
 Advanced indexing with hierarchical index
 -----------------------------------------
 
-Syntactically integrating ``MultiIndex`` in advanced indexing with ``.loc/.ix`` is a
+Syntactically integrating ``MultiIndex`` in advanced indexing with ``.loc`` is a
 bit challenging, but we've made every effort to do so. for example the
 following works as you would expect:
 
@@ -258,7 +263,7 @@ Passing a list of labels or tuples works similar to reindexing:
 
 .. ipython:: python
 
-   df.ix[[('bar', 'two'), ('qux', 'one')]]
+   df.loc[[('bar', 'two'), ('qux', 'one')]]
 
 .. _advanced.mi_slicers:
 
@@ -288,7 +293,7 @@ As usual, **both sides** of the slicers are included as this is label indexing.
 
    .. code-block:: python
 
-      df.loc[(slice('A1','A3'),.....),:]
+      df.loc[(slice('A1','A3'),.....), :]
 
    rather than this:
 
@@ -317,43 +322,43 @@ Basic multi-index slicing using slices, lists, and labels.
 
 .. ipython:: python
 
-   dfmi.loc[(slice('A1','A3'),slice(None), ['C1','C3']),:]
+   dfmi.loc[(slice('A1','A3'), slice(None), ['C1', 'C3']), :]
 
 You can use a ``pd.IndexSlice`` to have a more natural syntax using ``:`` rather than using ``slice(None)``
 
 .. ipython:: python
 
    idx = pd.IndexSlice
-   dfmi.loc[idx[:,:,['C1','C3']],idx[:,'foo']]
+   dfmi.loc[idx[:, :, ['C1', 'C3']], idx[:, 'foo']]
 
 It is possible to perform quite complicated selections using this method on multiple
 axes at the same time.
 
 .. ipython:: python
 
-   dfmi.loc['A1',(slice(None),'foo')]
-   dfmi.loc[idx[:,:,['C1','C3']],idx[:,'foo']]
+   dfmi.loc['A1', (slice(None), 'foo')]
+   dfmi.loc[idx[:, :, ['C1', 'C3']], idx[:, 'foo']]
 
 Using a boolean indexer you can provide selection related to the *values*.
 
 .. ipython:: python
 
-   mask = dfmi[('a','foo')]>200
-   dfmi.loc[idx[mask,:,['C1','C3']],idx[:,'foo']]
+   mask = dfmi[('a', 'foo')] > 200
+   dfmi.loc[idx[mask, :, ['C1', 'C3']], idx[:, 'foo']]
 
 You can also specify the ``axis`` argument to ``.loc`` to interpret the passed
 slicers on a single axis.
 
 .. ipython:: python
 
-   dfmi.loc(axis=0)[:,:,['C1','C3']]
+   dfmi.loc(axis=0)[:, :, ['C1', 'C3']]
 
 Furthermore you can *set* the values using these methods
 
 .. ipython:: python
 
    df2 = dfmi.copy()
-   df2.loc(axis=0)[:,:,['C1','C3']] = -10
+   df2.loc(axis=0)[:, :, ['C1', 'C3']] = -10
    df2
 
 You can use a right-hand-side of an alignable object as well.
@@ -361,7 +366,7 @@ You can use a right-hand-side of an alignable object as well.
 .. ipython:: python
 
    df2 = dfmi.copy()
-   df2.loc[idx[:,:,['C1','C3']],:] = df2*1000
+   df2.loc[idx[:, :, ['C1', 'C3']], :] = df2 * 1000
    df2
 
 .. _advanced.xs:
@@ -528,12 +533,14 @@ return a copy of the data rather than a view:
    jim joe
    1   z    0.64094
 
+.. _advanced.unsorted:
+
 Furthermore if you try to index something that is not fully lexsorted, this can raise:
 
 .. code-block:: ipython
 
     In [5]: dfm.loc[(0,'y'):(1, 'z')]
-    KeyError: 'Key length (2) was greater than MultiIndex lexsort depth (1)'
+    UnsortedIndexError: 'Key length (2) was greater than MultiIndex lexsort depth (1)'
 
 The ``is_lexsorted()`` method on an ``Index`` show if the index is sorted, and the ``lexsort_depth`` property returns the sort depth:
 
@@ -602,7 +609,7 @@ intended to work on boolean indices and may return unexpected results.
 
    ser = pd.Series(np.random.randn(10))
    ser.take([False, False, True, True])
-   ser.ix[[0, 1]]
+   ser.iloc[[0, 1]]
 
 Finally, as a small note on performance, because the ``take`` method handles
 a narrower range of inputs, it can offer performance that is a good deal
@@ -618,7 +625,7 @@ faster than fancy indexing.
    timeit arr.take(indexer, axis=0)
 
    ser = pd.Series(arr[:, 0])
-   timeit ser.ix[indexer]
+   timeit ser.iloc[indexer]
    timeit ser.take(indexer)
 
 .. _indexing.index_types:
@@ -659,7 +666,7 @@ Setting the index, will create create a ``CategoricalIndex``
    df2 = df.set_index('B')
    df2.index
 
-Indexing with ``__getitem__/.iloc/.loc/.ix`` works similarly to an ``Index`` with duplicates.
+Indexing with ``__getitem__/.iloc/.loc`` works similarly to an ``Index`` with duplicates.
 The indexers MUST be in the category or the operation will raise.
 
 .. ipython:: python
@@ -757,14 +764,12 @@ same.
    sf = pd.Series(range(5), index=indexf)
    sf
 
-Scalar selection for ``[],.ix,.loc`` will always be label based. An integer will match an equal float index (e.g. ``3`` is equivalent to ``3.0``)
+Scalar selection for ``[],.loc`` will always be label based. An integer will match an equal float index (e.g. ``3`` is equivalent to ``3.0``)
 
 .. ipython:: python
 
    sf[3]
    sf[3.0]
-   sf.ix[3]
-   sf.ix[3.0]
    sf.loc[3]
    sf.loc[3.0]
 
@@ -781,7 +786,6 @@ Slicing is ALWAYS on the values of the index, for ``[],ix,loc`` and ALWAYS posit
 .. ipython:: python
 
    sf[2:4]
-   sf.ix[2:4]
    sf.loc[2:4]
    sf.iloc[2:4]
 
@@ -811,14 +815,6 @@ In non-float indexes, slicing using floats will raise a ``TypeError``
       In [3]: pd.Series(range(5)).iloc[3.0]
       TypeError: cannot do positional indexing on <class 'pandas.indexes.range.RangeIndex'> with these indexers [3.0] of <type 'float'>
 
-   Further the treatment of ``.ix`` with a float indexer on a non-float index, will be label based, and thus coerce the index.
-
-   .. ipython:: python
-
-      s2 = pd.Series([1, 2, 3], index=list('abc'))
-      s2
-      s2.ix[1.0] = 10
-      s2
 
 Here is a typical use-case for using this type of indexing. Imagine that you have a somewhat
 irregular timedelta-like indexing scheme, but the data is recorded as floats. This could for
@@ -853,3 +849,180 @@ Of course if you need integer based selection, then use ``iloc``
 .. ipython:: python
 
    dfir.iloc[0:5]
+
+.. _indexing.intervallindex:
+
+IntervalIndex
+~~~~~~~~~~~~~
+
+.. versionadded:: 0.20.0
+
+.. warning::
+
+   These indexing behaviors are provisional and may change in a future version of pandas.
+
+.. ipython:: python
+
+   df = pd.DataFrame({'A': [1, 2, 3, 4]},
+                      index=pd.IntervalIndex.from_breaks([0, 1, 2, 3, 4]))
+   df
+
+Label based indexing via ``.loc`` along the edges of an interval works as you would expect,
+selecting that particular interval.
+
+.. ipython:: python
+
+   df.loc[2]
+   df.loc[[2, 3]]
+
+If you select a lable *contained* within an interval, this will also select the interval.
+
+.. ipython:: python
+
+   df.loc[2.5]
+   df.loc[[2.5, 3.5]]
+
+
+Miscellaneous indexing FAQ
+--------------------------
+
+Integer indexing
+~~~~~~~~~~~~~~~~
+
+Label-based indexing with integer axis labels is a thorny topic. It has been
+discussed heavily on mailing lists and among various members of the scientific
+Python community. In pandas, our general viewpoint is that labels matter more
+than integer locations. Therefore, with an integer axis index *only*
+label-based indexing is possible with the standard tools like ``.loc``. The
+following code will generate exceptions:
+
+.. code-block:: python
+
+   s = pd.Series(range(5))
+   s[-1]
+   df = pd.DataFrame(np.random.randn(5, 4))
+   df
+   df.loc[-2:]
+
+This deliberate decision was made to prevent ambiguities and subtle bugs (many
+users reported finding bugs when the API change was made to stop "falling back"
+on position-based indexing).
+
+Non-monotonic indexes require exact matches
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If the index of a ``Series`` or ``DataFrame`` is monotonically increasing or decreasing, then the bounds
+of a label-based slice can be outside the range of the index, much like slice indexing a
+normal Python ``list``. Monotonicity of an index can be tested with the ``is_monotonic_increasing`` and
+``is_monotonic_decreasing`` attributes.
+
+.. ipython:: python
+
+    df = pd.DataFrame(index=[2,3,3,4,5], columns=['data'], data=list(range(5)))
+    df.index.is_monotonic_increasing
+
+    # no rows 0 or 1, but still returns rows 2, 3 (both of them), and 4:
+    df.loc[0:4, :]
+
+    # slice is are outside the index, so empty DataFrame is returned
+    df.loc[13:15, :]
+
+On the other hand, if the index is not monotonic, then both slice bounds must be
+*unique* members of the index.
+
+.. ipython:: python
+
+    df = pd.DataFrame(index=[2,3,1,4,3,5], columns=['data'], data=list(range(6)))
+    df.index.is_monotonic_increasing
+
+    # OK because 2 and 4 are in the index
+    df.loc[2:4, :]
+
+.. code-block:: python
+
+    # 0 is not in the index
+    In [9]: df.loc[0:4, :]
+    KeyError: 0
+
+    # 3 is not a unique label
+    In [11]: df.loc[2:3, :]
+    KeyError: 'Cannot get right slice bound for non-unique label: 3'
+
+:meth:`Index.is_monotonic_increasing` and :meth:`Index.is_monotonic_decreasing` only check that
+an index is weakly monotonic. To check for strict montonicity, you can combine one of those with
+:meth:`Index.is_unique`
+
+.. ipython:: python
+
+   weakly_monotonic = pd.Index(['a', 'b', 'c', 'c'])
+   weakly_monotonic
+   weakly_monotonic.is_monotonic_increasing
+   weakly_monotonic.is_monotonic_increasing & weakly_monotonic.is_unique
+
+Endpoints are inclusive
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Compared with standard Python sequence slicing in which the slice endpoint is
+not inclusive, label-based slicing in pandas **is inclusive**. The primary
+reason for this is that it is often not possible to easily determine the
+"successor" or next element after a particular label in an index. For example,
+consider the following Series:
+
+.. ipython:: python
+
+   s = pd.Series(np.random.randn(6), index=list('abcdef'))
+   s
+
+Suppose we wished to slice from ``c`` to ``e``, using integers this would be
+
+.. ipython:: python
+
+   s[2:5]
+
+However, if you only had ``c`` and ``e``, determining the next element in the
+index can be somewhat complicated. For example, the following does not work:
+
+::
+
+    s.loc['c':'e'+1]
+
+A very common use case is to limit a time series to start and end at two
+specific dates. To enable this, we made the design design to make label-based
+slicing include both endpoints:
+
+.. ipython:: python
+
+    s.loc['c':'e']
+
+This is most definitely a "practicality beats purity" sort of thing, but it is
+something to watch out for if you expect label-based slicing to behave exactly
+in the way that standard Python integer slicing works.
+
+
+Indexing potentially changes underlying Series dtype
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The different indexing operation can potentially change the dtype of a ``Series``.
+
+.. ipython:: python
+
+   series1 = pd.Series([1, 2, 3])
+   series1.dtype
+   res = series1[[0,4]]
+   res.dtype
+   res
+
+.. ipython:: python
+
+   series2 = pd.Series([True])
+   series2.dtype
+   res = series2.reindex_like(series1)
+   res.dtype
+   res
+
+This is because the (re)indexing operations above silently inserts ``NaNs`` and the ``dtype``
+changes accordingly.  This can cause some issues when using ``numpy`` ``ufuncs``
+such as ``numpy.logical_and``.
+
+See the `this old issue <https://github.com/pydata/pandas/issues/2388>`__ for a more
+detailed discussion.

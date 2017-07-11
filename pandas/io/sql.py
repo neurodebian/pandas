@@ -11,17 +11,18 @@ import warnings
 import re
 import numpy as np
 
-import pandas.lib as lib
-from pandas.types.missing import isnull
-from pandas.types.dtypes import DatetimeTZDtype
-from pandas.types.common import (is_list_like, is_dict_like,
-                                 is_datetime64tz_dtype)
+import pandas._libs.lib as lib
+from pandas.core.dtypes.missing import isnull
+from pandas.core.dtypes.dtypes import DatetimeTZDtype
+from pandas.core.dtypes.common import (
+    is_list_like, is_dict_like,
+    is_datetime64tz_dtype)
 
 from pandas.compat import (map, zip, raise_with_traceback,
                            string_types, text_type)
 from pandas.core.api import DataFrame, Series
 from pandas.core.base import PandasObject
-from pandas.tseries.tools import to_datetime
+from pandas.core.tools.datetimes import to_datetime
 
 from contextlib import contextmanager
 
@@ -214,7 +215,7 @@ def read_sql_table(table_name, con, schema=None, index_col=None,
     index_col : string or list of strings, optional, default: None
         Column(s) to set as index(MultiIndex)
     coerce_float : boolean, default True
-        Attempt to convert values to non-string, non-numeric objects (like
+        Attempt to convert values of non-string, non-numeric objects (like
         decimal.Decimal) to floating point. Can result in loss of Precision.
     parse_dates : list or dict, default: None
         - List of column names to parse as dates
@@ -289,7 +290,7 @@ def read_sql_query(sql, con, index_col=None, coerce_float=True, params=None,
     index_col : string or list of strings, optional, default: None
         Column(s) to set as index(MultiIndex)
     coerce_float : boolean, default True
-        Attempt to convert values to non-string, non-numeric objects (like
+        Attempt to convert values of non-string, non-numeric objects (like
         decimal.Decimal) to floating point, useful for SQL result sets
     params : list, tuple or dict, optional, default: None
         List of parameters to pass to execute method.  The syntax used
@@ -348,7 +349,7 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
     index_col : string or list of strings, optional, default: None
         Column(s) to set as index(MultiIndex)
     coerce_float : boolean, default True
-        Attempt to convert values to non-string, non-numeric objects (like
+        Attempt to convert values of non-string, non-numeric objects (like
         decimal.Decimal) to floating point, useful for SQL result sets
     params : list, tuple or dict, optional, default: None
         List of parameters to pass to execute method.  The syntax used
@@ -494,6 +495,7 @@ def has_table(table_name, con, flavor=None, schema=None):
     """
     pandas_sql = pandasSQL_builder(con, flavor=flavor, schema=schema)
     return pandas_sql.has_table(table_name)
+
 
 table_exists = has_table
 
@@ -748,8 +750,9 @@ class SQLTable(PandasObject):
         if self.index is not None:
             for i, idx_label in enumerate(self.index):
                 idx_type = dtype_mapper(
-                    self.frame.index.get_level_values(i))
-                column_names_and_types.append((idx_label, idx_type, True))
+                    self.frame.index._get_level_values(i))
+                column_names_and_types.append((text_type(idx_label),
+                                              idx_type, True))
 
         column_names_and_types += [
             (text_type(self.frame.columns[i]),
@@ -986,7 +989,7 @@ class SQLDatabase(PandasSQL):
         index_col : string, optional, default: None
             Column to set as index
         coerce_float : boolean, default True
-            Attempt to convert values to non-string, non-numeric objects
+            Attempt to convert values of non-string, non-numeric objects
             (like decimal.Decimal) to floating point. This can result in
             loss of precision.
         parse_dates : list or dict, default: None
@@ -1048,7 +1051,7 @@ class SQLDatabase(PandasSQL):
         index_col : string, optional, default: None
             Column name to use as index for the returned DataFrame object.
         coerce_float : boolean, default True
-            Attempt to convert values to non-string, non-numeric objects (like
+            Attempt to convert values of non-string, non-numeric objects (like
             decimal.Decimal) to floating point, useful for SQL result sets
         params : list, tuple or dict, optional, default: None
             List of parameters to pass to execute method.  The syntax used
@@ -1219,7 +1222,7 @@ _SQL_TYPES = {
 
 def _get_unicode_name(name):
     try:
-        uname = name.encode("utf-8", "strict").decode("utf-8")
+        uname = text_type(name).encode("utf-8", "strict").decode("utf-8")
     except UnicodeError:
         raise ValueError("Cannot convert identifier to UTF-8: '%s'" % name)
     return uname

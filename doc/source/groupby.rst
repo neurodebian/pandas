@@ -94,10 +94,20 @@ The mapping can be specified many different ways:
   - For DataFrame objects, a string indicating a column to be used to group. Of
     course ``df.groupby('A')`` is just syntactic sugar for
     ``df.groupby(df['A'])``, but it makes life simpler
+  - For DataFrame objects, a string indicating an index level to be used to group.
   - A list of any of the above things
 
 Collectively we refer to the grouping objects as the **keys**. For example,
 consider the following DataFrame:
+
+.. note::
+
+   .. versionadded:: 0.20
+
+   A string passed to ``groupby`` may refer to either a column or an index level.
+   If a string matches both a column name and an index level name then a warning is
+   issued and the column takes precedence. This will result in an ambiguity error
+   in a future version.
 
 .. ipython:: python
 
@@ -237,17 +247,6 @@ the length of the ``groups`` dict, so it is largely just a convenience:
    gb.aggregate  gb.count      gb.cumprod    gb.dtype      gb.first      gb.groups     gb.hist       gb.max        gb.min        gb.nth        gb.prod       gb.resample   gb.sum        gb.var
    gb.apply      gb.cummax     gb.cumsum     gb.fillna     gb.gender     gb.head       gb.indices    gb.mean       gb.name       gb.ohlc       gb.quantile   gb.size       gb.tail       gb.weight
 
-
-.. ipython:: python
-   :suppress:
-
-   df = pd.DataFrame({'A' : ['foo', 'bar', 'foo', 'bar',
-                             'foo', 'bar', 'foo', 'foo'],
-                      'B' : ['one', 'one', 'two', 'three',
-                             'two', 'two', 'one', 'three'],
-                      'C' : np.random.randn(8),
-                      'D' : np.random.randn(8)})
-
 .. _groupby.multiindex:
 
 GroupBy with MultiIndex
@@ -289,7 +288,9 @@ chosen level:
 
    s.sum(level='second')
 
-Also as of v0.6, grouping with multiple levels is supported.
+.. versionadded:: 0.6
+
+Grouping with multiple levels is supported.
 
 .. ipython:: python
    :suppress:
@@ -306,7 +307,55 @@ Also as of v0.6, grouping with multiple levels is supported.
    s
    s.groupby(level=['first', 'second']).sum()
 
+.. versionadded:: 0.20
+
+Index level names may be supplied as keys.
+
+.. ipython:: python
+
+   s.groupby(['first', 'second']).sum()
+
 More on the ``sum`` function and aggregation later.
+
+Grouping DataFrame with Index Levels and Columns
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+A DataFrame may be grouped by a combination of columns and index levels by
+specifying the column names as strings and the index levels as ``pd.Grouper``
+objects.
+
+.. ipython:: python
+
+   arrays = [['bar', 'bar', 'baz', 'baz', 'foo', 'foo', 'qux', 'qux'],
+             ['one', 'two', 'one', 'two', 'one', 'two', 'one', 'two']]
+
+   index = pd.MultiIndex.from_arrays(arrays, names=['first', 'second'])
+
+   df = pd.DataFrame({'A': [1, 1, 1, 1, 2, 2, 3, 3],
+                      'B': np.arange(8)},
+                     index=index)
+
+   df
+
+The following example groups ``df`` by the ``second`` index level and
+the ``A`` column.
+
+.. ipython:: python
+
+   df.groupby([pd.Grouper(level=1), 'A']).sum()
+
+Index levels may also be specified by name.
+
+.. ipython:: python
+
+   df.groupby([pd.Grouper(level='second'), 'A']).sum()
+
+.. versionadded:: 0.20
+
+Index level names may be specified as keys directly to ``groupby``.
+
+.. ipython:: python
+
+   df.groupby(['second', 'A']).sum()
 
 DataFrame column selection in GroupBy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -314,6 +363,16 @@ DataFrame column selection in GroupBy
 Once you have created the GroupBy object from a DataFrame, for example, you
 might want to do something different for each of the columns. Thus, using
 ``[]`` similar to getting a column from a DataFrame, you can do:
+
+.. ipython:: python
+   :suppress:
+
+   df = pd.DataFrame({'A' : ['foo', 'bar', 'foo', 'bar',
+                             'foo', 'bar', 'foo', 'foo'],
+                      'B' : ['one', 'one', 'two', 'three',
+                             'two', 'two', 'one', 'three'],
+                      'C' : np.random.randn(8),
+                      'D' : np.random.randn(8)})
 
 .. ipython:: python
 
@@ -380,7 +439,9 @@ Aggregation
 -----------
 
 Once the GroupBy object has been created, several methods are available to
-perform a computation on the grouped data.
+perform a computation on the grouped data. These operations are similar to the
+:ref:`aggregating API <basics.aggregate>`, :ref:`window functions API <stats.aggregate>`,
+and :ref:`resample API <timeseries.aggregate>`.
 
 An obvious one is aggregation via the ``aggregate`` or equivalently ``agg`` method:
 
@@ -443,7 +504,7 @@ index are the group names and whose values are the sizes of each group.
 Applying multiple functions at once
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-With grouped Series you can also pass a list or dict of functions to do
+With grouped ``Series`` you can also pass a list or dict of functions to do
 aggregation with, outputting a DataFrame:
 
 .. ipython:: python
@@ -451,23 +512,35 @@ aggregation with, outputting a DataFrame:
    grouped = df.groupby('A')
    grouped['C'].agg([np.sum, np.mean, np.std])
 
-If a dict is passed, the keys will be used to name the columns. Otherwise the
-function's name (stored in the function object) will be used.
-
-.. ipython:: python
-
-   grouped['D'].agg({'result1' : np.sum,
-                     'result2' : np.mean})
-
-On a grouped DataFrame, you can pass a list of functions to apply to each
+On a grouped ``DataFrame``, you can pass a list of functions to apply to each
 column, which produces an aggregated result with a hierarchical index:
 
 .. ipython:: python
 
    grouped.agg([np.sum, np.mean, np.std])
 
-Passing a dict of functions has different behavior by default, see the next
-section.
+
+The resulting aggregations are named for the functions themselves. If you
+need to rename, then you can add in a chained operation for a ``Series`` like this:
+
+.. ipython:: python
+
+   (grouped['C'].agg([np.sum, np.mean, np.std])
+                .rename(columns={'sum': 'foo',
+                                 'mean': 'bar',
+                                 'std': 'baz'})
+   )
+
+For a grouped ``DataFrame``, you can rename in a similar manner:
+
+.. ipython:: python
+
+   (grouped.agg([np.sum, np.mean, np.std])
+           .rename(columns={'sum': 'foo',
+                            'mean': 'bar',
+                            'std': 'baz'})
+    )
+
 
 Applying different functions to DataFrame columns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -521,9 +594,21 @@ Transformation
 --------------
 
 The ``transform`` method returns an object that is indexed the same (same size)
-as the one being grouped. Thus, the passed transform function should return a
-result that is the same size as the group chunk. For example, suppose we wished
-to standardize the data within each group:
+as the one being grouped. The transform function must:
+
+* Return a result that is either the same size as the group chunk or
+  broadcastable to the size of the group chunk (e.g., a scalar,
+  ``grouped.transform(lambda x: x.iloc[-1])``).
+* Operate column-by-column on the group chunk.  The transform is applied to
+  the first group chunk using chunk.apply.
+* Not perform in-place operations on the group chunk. Group chunks should
+  be treated as immutable, and changes to a group chunk may produce unexpected
+  results. For example, when using ``fillna``, ``inplace`` must be ``False``
+  (``grouped.transform(lambda x: x.fillna(inplace=False))``).
+* (Optionally) operates on the entire group chunk. If this is supported, a
+  fast path is used starting from the *second* chunk.
+
+For example, suppose we wished to standardize the data within each group:
 
 .. ipython:: python
 
@@ -560,6 +645,21 @@ We can also visually compare the original and transformed data sets.
 
    @savefig groupby_transform_plot.png
    compare.plot()
+
+Transformation functions that have lower dimension outputs are broadcast to
+match the shape of the input array.
+
+.. ipython:: python
+
+   data_range = lambda x: x.max() - x.min()
+   ts.groupby(key).transform(data_range)
+
+Alternatively the built-in methods can be could be used to produce the same
+outputs
+
+.. ipython:: python
+
+   ts.groupby(key).transform('max') - ts.groupby(key).transform('min')
 
 Another common data transform is to replace missing data with the group mean.
 
@@ -605,8 +705,9 @@ and that the transformed data contains no NAs.
 
 .. note::
 
-   Some functions when applied to a groupby object will automatically transform the input, returning
-   an object of the same shape as the original. Passing ``as_index=False`` will not affect these transformation methods.
+   Some functions when applied to a groupby object will automatically transform
+   the input, returning an object of the same shape as the original. Passing
+   ``as_index=False`` will not affect these transformation methods.
 
    For example: ``fillna, ffill, bfill, shift``.
 
@@ -751,7 +852,7 @@ next). This enables some operations to be carried out rather succinctly:
    tsdf = pd.DataFrame(np.random.randn(1000, 3),
                        index=pd.date_range('1/1/2000', periods=1000),
                        columns=['A', 'B', 'C'])
-   tsdf.ix[::2] = np.nan
+   tsdf.iloc[::2] = np.nan
    grouped = tsdf.groupby(lambda x: x.year)
    grouped.fillna(method='pad')
 
@@ -1021,12 +1122,36 @@ To see the order in which each row appears within its group, use the
 
 .. ipython:: python
 
-   df = pd.DataFrame(list('aaabba'), columns=['A'])
-   df
+   dfg = pd.DataFrame(list('aaabba'), columns=['A'])
+   dfg
 
-   df.groupby('A').cumcount()
+   dfg.groupby('A').cumcount()
 
-   df.groupby('A').cumcount(ascending=False)  # kwarg only
+   dfg.groupby('A').cumcount(ascending=False)
+
+.. _groupby.ngroup:
+
+Enumerate groups
+~~~~~~~~~~~~~~~~
+
+.. versionadded:: 0.20.2
+
+To see the ordering of the groups (as opposed to the order of rows
+within a group given by ``cumcount``) you can use the ``ngroup``
+method.
+
+Note that the numbers given to the groups match the order in which the
+groups would be seen when iterating over the groupby object, not the
+order they are first observed.
+
+.. ipython:: python
+
+   dfg = pd.DataFrame(list('aaabba'), columns=['A'])
+   dfg
+
+   dfg.groupby('A').ngroup()
+
+   dfg.groupby('A').ngroup(ascending=False)
 
 Plotting
 ~~~~~~~~
@@ -1075,14 +1200,41 @@ Regroup columns of a DataFrame according to their sum, and sum the aggregated on
    df
    df.groupby(df.sum(), axis=1).sum()
 
+.. _groupby.multicolumn_factorization
+
+Multi-column factorization
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By using ``.ngroup()``, we can extract information about the groups in
+a way similar to :func:`factorize` (as described further in the
+:ref:`reshaping API <reshaping.factorization>`) but which applies
+naturally to multiple columns of mixed type and different
+sources. This can be useful as an intermediate categorical-like step
+in processing, when the relationships between the group rows are more
+important than their content, or as input to an algorithm which only
+accepts the integer encoding. (For more information about support in
+pandas for full categorical data, see the :ref:`Categorical
+introduction <categorical>` and the
+:ref:`API documentation <api.categorical>`.)
+
+.. ipython:: python
+
+    dfg = pd.DataFrame({"A": [1, 1, 2, 3, 2], "B": list("aaaba")})
+
+    dfg
+
+    dfg.groupby(["A", "B"]).ngroup()
+
+    dfg.groupby(["A", [0, 0, 0, 1, 1]]).ngroup()
+
 Groupby by Indexer to 'resample' data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Resampling produces new hypothetical samples(resamples) from already existing observed data or from a model that generates data. These new samples are similar to the pre-existing samples.
+Resampling produces new hypothetical samples (resamples) from already existing observed data or from a model that generates data. These new samples are similar to the pre-existing samples.
 
 In order to resample to work on indices that are non-datetimelike , the following procedure can be utilized.
 
-In the following examples, **df.index // 5** returns a binary array which is used to determine what get's selected for the groupby operation.
+In the following examples, **df.index // 5** returns a binary array which is used to determine what gets selected for the groupby operation.
 
 .. note:: The below example shows how we can downsample by consolidation of samples into fewer samples. Here by using **df.index // 5**, we are aggregating the samples in bins. By applying **std()** function, we aggregate the information contained in many samples into a small subset of values which is their standard deviation thereby reducing the number of samples.
 

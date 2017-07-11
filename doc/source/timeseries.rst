@@ -113,7 +113,7 @@ For example:
    pd.Period('2012-05', freq='D')
 
 ``Timestamp`` and ``Period`` can be the index. Lists of ``Timestamp`` and
-``Period`` are automatically coerce to ``DatetimeIndex`` and ``PeriodIndex``
+``Period`` are automatically coerced to ``DatetimeIndex`` and ``PeriodIndex``
 respectively.
 
 .. ipython:: python
@@ -247,12 +247,15 @@ Return NaT for input when unparseable
     Out[6]: DatetimeIndex(['2009-07-31', 'NaT'], dtype='datetime64[ns]', freq=None)
 
 
+.. _timeseries.converting.epoch:
+
 Epoch Timestamps
 ~~~~~~~~~~~~~~~~
 
 It's also possible to convert integer or float epoch times. The default unit
 for these is nanoseconds (since these are how ``Timestamp`` s are stored). However,
-often epochs are stored in another ``unit`` which can be specified:
+often epochs are stored in another ``unit`` which can be specified. These are computed
+from the starting point specified by the :ref:`Origin Parameter <timeseries.origin>`.
 
 Typical epoch stored units
 
@@ -264,17 +267,63 @@ Typical epoch stored units
    pd.to_datetime([1349720105100, 1349720105200, 1349720105300,
                    1349720105400, 1349720105500 ], unit='ms')
 
-These *work*, but the results may be unexpected.
-
-.. ipython:: python
-
-   pd.to_datetime([1])
-
-   pd.to_datetime([1, 3.14], unit='s')
-
 .. note::
 
    Epoch times will be rounded to the nearest nanosecond.
+
+.. warning::
+
+   Conversion of float epoch times can lead to inaccurate and unexpected results.
+   :ref:`Python floats <python:tut-fp-issues>` have about 15 digits precision in
+   decimal. Rounding during conversion from float to high precision ``Timestamp`` is
+   unavoidable. The only way to achieve exact precision is to use a fixed-width
+   types (e.g. an int64).
+
+   .. ipython:: python
+
+      pd.to_datetime([1490195805.433, 1490195805.433502912], unit='s')
+      pd.to_datetime(1490195805433502912, unit='ns')
+
+.. _timeseries.converting.epoch_inverse:
+
+From Timestamps to Epoch
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+To invert the operation from above, namely, to convert from a ``Timestamp`` to a 'unix' epoch:
+
+.. ipython:: python
+
+   stamps = pd.date_range('2012-10-08 18:15:05', periods=4, freq='D')
+   stamps
+
+We convert the ``DatetimeIndex`` to an ``int64`` array, then divide by the conversion unit.
+
+.. ipython:: python
+
+   stamps.view('int64') // pd.Timedelta(1, unit='s')
+
+.. _timeseries.origin:
+
+Using the Origin Parameter
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. versionadded:: 0.20.0
+
+Using the ``origin`` parameter, one can specify an alternative starting point for creation
+of a ``DatetimeIndex``.
+
+Start with 1960-01-01 as the starting date
+
+.. ipython:: python
+
+   pd.to_datetime([1, 2, 3], unit='D', origin=pd.Timestamp('1960-01-01'))
+
+The default is set at ``origin='unix'``, which defaults to ``1970-01-01 00:00:00``.
+Commonly called 'unix epoch' or POSIX time.
+
+.. ipython:: python
+
+   pd.to_datetime([1, 2, 3], unit='D')
 
 .. _timeseries.daterange:
 
@@ -358,8 +407,8 @@ See :ref:`here <timeseries.oob>` for ways to represent data outside these bound.
 
 .. _timeseries.datetimeindex:
 
-DatetimeIndex
--------------
+Indexing
+--------
 
 One of the main uses for ``DatetimeIndex`` is as an index for pandas objects.
 The ``DatetimeIndex`` class contains many timeseries related optimizations:
@@ -399,8 +448,8 @@ intelligent functionality like selection, slicing, etc.
 
 .. _timeseries.partialindexing:
 
-DatetimeIndex Partial String Indexing
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Partial String Indexing
+~~~~~~~~~~~~~~~~~~~~~~~
 
 You can pass in dates and strings that parse to dates as indexing parameters:
 
@@ -457,22 +506,6 @@ We are stopping on the included end-point as it is part of the index
 
    dft['2013-1-15':'2013-1-15 12:30:00']
 
-.. warning::
-
-   The following selection will raise a ``KeyError``; otherwise this selection methodology
-   would be inconsistent with other selection methods in pandas (as this is not a *slice*, nor does it
-   resolve to one)
-
-   .. code-block:: python
-
-      dft['2013-1-15 12:30:00']
-
-   To select a single row, use ``.loc``
-
-   .. ipython:: python
-
-      dft.loc['2013-1-15 12:30:00']
-
 .. versionadded:: 0.18.0
 
 DatetimeIndex Partial String Indexing also works on DataFrames with a ``MultiIndex``. For example:
@@ -491,12 +524,86 @@ DatetimeIndex Partial String Indexing also works on DataFrames with a ``MultiInd
    dft2 = dft2.swaplevel(0, 1).sort_index()
    dft2.loc[idx[:, '2013-01-05'], :]
 
-Datetime Indexing
-~~~~~~~~~~~~~~~~~
+.. _timeseries.slice_vs_exact_match:
 
-Indexing a ``DateTimeIndex`` with a partial string depends on the "accuracy" of the period, in other words how specific the interval is in relation to the frequency of the index. In contrast, indexing with datetime objects is exact, because the objects have exact meaning. These also follow the semantics of *including both endpoints*.
+Slice vs. exact match
+~~~~~~~~~~~~~~~~~~~~~
 
-These ``datetime`` objects  are specific ``hours, minutes,`` and ``seconds`` even though they were not explicitly specified (they are ``0``).
+.. versionchanged:: 0.20.0
+
+The same string used as an indexing parameter can be treated either as a slice or as an exact match depending on the resolution of an index. If the string is less accurate than the index, it will be treated as a slice, otherwise as an exact match.
+
+For example, let us consider ``Series`` object which index has minute resolution.
+
+.. ipython:: python
+
+    series_minute = pd.Series([1, 2, 3],
+                              pd.DatetimeIndex(['2011-12-31 23:59:00',
+                                                '2012-01-01 00:00:00',
+                                                '2012-01-01 00:02:00']))
+    series_minute.index.resolution
+
+A timestamp string less accurate than a minute gives a ``Series`` object.
+
+.. ipython:: python
+
+    series_minute['2011-12-31 23']
+
+A timestamp string with minute resolution (or more accurate), gives a scalar instead, i.e. it is not casted to a slice.
+
+.. ipython:: python
+
+    series_minute['2011-12-31 23:59']
+    series_minute['2011-12-31 23:59:00']
+
+If index resolution is second, then, the minute-accurate timestamp gives a ``Series``.
+
+.. ipython:: python
+
+    series_second = pd.Series([1, 2, 3],
+                              pd.DatetimeIndex(['2011-12-31 23:59:59',
+                                                '2012-01-01 00:00:00',
+                                                '2012-01-01 00:00:01']))
+    series_second.index.resolution
+    series_second['2011-12-31 23:59']
+
+If the timestamp string is treated as a slice, it can be used to index ``DataFrame`` with ``[]`` as well.
+
+.. ipython:: python
+
+    dft_minute = pd.DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6]},
+                               index=series_minute.index)
+    dft_minute['2011-12-31 23']
+
+
+.. warning::
+
+   However if the string is treated as an exact match, the selection in ``DataFrame``'s ``[]`` will be column-wise and not row-wise, see :ref:`Indexing Basics <indexing.basics>`. For example ``dft_minute['2011-12-31 23:59']`` will raise ``KeyError`` as ``'2012-12-31 23:59'`` has the same resolution as index and there is no column with such name:
+
+   To *always* have unambiguous selection, whether the row is treated as a slice or a single selection, use ``.loc``.
+
+   .. ipython:: python
+
+     dft_minute.loc['2011-12-31 23:59']
+
+Note also that ``DatetimeIndex`` resolution cannot be less precise than day.
+
+.. ipython:: python
+
+    series_monthly = pd.Series([1, 2, 3],
+                              pd.DatetimeIndex(['2011-12',
+                                                '2012-01',
+                                                '2012-02']))
+    series_monthly.index.resolution
+    series_monthly['2011-12'] # returns Series
+
+
+Exact Indexing
+~~~~~~~~~~~~~~
+
+As discussed in previous section, indexing a ``DateTimeIndex`` with a partial string depends on the "accuracy" of the period, in other words how specific the interval is in relation to the resolution of the index. In contrast, indexing with ``Timestamp`` or ``datetime`` objects is exact, because the objects have exact meaning. These also follow the semantics of *including both endpoints*.
+
+These ``Timestamp`` and ``datetime`` objects have exact ``hours, minutes,`` and ``seconds``, even though they were not explicitly specified (they are ``0``).
 
 .. ipython:: python
 
@@ -525,10 +632,10 @@ regularity will result in a ``DatetimeIndex`` (but frequency is lost):
 
    ts[[0, 2, 6]].index
 
-.. _timeseries.offsets:
+.. _timeseries.components:
 
 Time/Date Components
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+--------------------
 
 There are several time/date properties that one can access from ``Timestamp`` or a collection of timestamps like a ``DateTimeIndex``.
 
@@ -549,10 +656,10 @@ There are several time/date properties that one can access from ``Timestamp`` or
     dayofyear,"The ordinal day of year"
     weekofyear,"The week ordinal of the year"
     week,"The week ordinal of the year"
-    dayofweek,"The numer of the day of the week with Monday=0, Sunday=6"
+    dayofweek,"The number of the day of the week with Monday=0, Sunday=6"
     weekday,"The number of the day of the week with Monday=0, Sunday=6"
     weekday_name,"The name of the day in a week (ex: Friday)"
-    quarter,"Quarter of the date: Jan=Mar = 1, Apr-Jun = 2, etc."
+    quarter,"Quarter of the date: Jan-Mar = 1, Apr-Jun = 2, etc."
     days_in_month,"The number of days in the month of the datetime"
     is_month_start,"Logical indicating if first day of month (defined by frequency)"
     is_month_end,"Logical indicating if last day of month (defined by frequency)"
@@ -563,6 +670,8 @@ There are several time/date properties that one can access from ``Timestamp`` or
     is_leap_year,"Logical indicating if the date belongs to a leap year"
 
 Furthermore, if you have a ``Series`` with datetimelike values, then you can access these properties via the ``.dt`` accessor, see the :ref:`docs <basics.dt_accessors>`
+
+.. _timeseries.offsets:
 
 DateOffset objects
 ------------------
@@ -628,12 +737,12 @@ We could have done the same thing with ``DateOffset``:
 
 The key features of a ``DateOffset`` object are:
 
-  - it can be added / subtracted to/from a datetime object to obtain a
-    shifted date
-  - it can be multiplied by an integer (positive or negative) so that the
-    increment will be applied multiple times
-  - it has ``rollforward`` and ``rollback`` methods for moving a date forward
-    or backward to the next or previous "offset date"
+- it can be added / subtracted to/from a datetime object to obtain a
+  shifted date
+- it can be multiplied by an integer (positive or negative) so that the
+  increment will be applied multiple times
+- it has ``rollforward`` and ``rollback`` methods for moving a date forward
+  or backward to the next or previous "offset date"
 
 Subclasses of ``DateOffset`` define the ``apply`` function which dictates
 custom date increment logic, such as adding business days:
@@ -745,7 +854,7 @@ used exactly like a ``Timedelta`` - see the
 
 Note that some offsets (such as ``BQuarterEnd``) do not have a
 vectorized implementation.  They can still be used but may
-calculate significantly slower and will raise a ``PerformanceWarning``
+calculate significantly slower and will show a ``PerformanceWarning``
 
 .. ipython:: python
    :okwarning:
@@ -755,8 +864,8 @@ calculate significantly slower and will raise a ``PerformanceWarning``
 
 .. _timeseries.custombusinessdays:
 
-Custom Business Days (Experimental)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Custom Business Days
+~~~~~~~~~~~~~~~~~~~~
 
 The ``CDay`` or ``CustomBusinessDay`` class provides a parametric
 ``BusinessDay`` class which can be used to create customized business day
@@ -785,7 +894,7 @@ Let's map to the weekday names
 
     pd.Series(dts.weekday, dts).map(pd.Series('Mon Tue Wed Thu Fri Sat Sun'.split()))
 
-As of v0.14 holiday calendars can be used to provide the list of holidays.  See the
+Holiday calendars can be used to provide the list of holidays.  See the
 :ref:`holiday calendar<timeseries.holiday>` section for more information.
 
 .. ipython:: python
@@ -1286,15 +1395,17 @@ secondly data into 5-minutely data). This is extremely common in, but not
 limited to, financial applications.
 
 ``.resample()`` is a time-based groupby, followed by a reduction method on each of its groups.
+See some :ref:`cookbook examples <cookbook.resample>` for some advanced strategies
 
 Starting in version 0.18.1, the ``resample()`` function can be used directly from
-DataFrameGroupBy objects, see the :ref:`groupby docs <groupby.transform.window_resample>`.
+``DataFrameGroupBy`` objects, see the :ref:`groupby docs <groupby.transform.window_resample>`.
 
 .. note::
 
-   ``.resample()`` is similar to using a ``.rolling()`` operation with a time-based offset, see a discussion `here <stats.moments.ts-versus-resampling>`
+   ``.resample()`` is similar to using a ``.rolling()`` operation with a time-based offset, see a discussion :ref:`here <stats.moments.ts-versus-resampling>`
 
-See some :ref:`cookbook examples <cookbook.resample>` for some advanced strategies
+Basics
+~~~~~~
 
 .. ipython:: python
 
@@ -1408,11 +1519,13 @@ We can instead only resample those groups where we have points as follows:
 
     ts.groupby(partial(round, freq='3T')).sum()
 
+.. _timeseries.aggregate:
+
 Aggregation
 ~~~~~~~~~~~
 
-Similar to :ref:`groupby aggregates <groupby.aggregate>` and the :ref:`window functions <stats.aggregate>`, a ``Resampler`` can be selectively
-resampled.
+Similar to the :ref:`aggregating API <basics.aggregate>`, :ref:`groupby API <groupby.aggregate>`, and  the :ref:`window functions API <stats.aggregate>`,
+a ``Resampler`` can be selectively resampled.
 
 Resampling a ``DataFrame``, the default will be to act on all columns with the same function.
 
@@ -1437,14 +1550,6 @@ You can pass a list or dict of functions to do aggregation with, outputting a Da
 .. ipython:: python
 
    r['A'].agg([np.sum, np.mean, np.std])
-
-If a dict is passed, the keys will be used to name the columns. Otherwise the
-function's name (stored in the function object) will be used.
-
-.. ipython:: python
-
-   r['A'].agg({'result1' : np.sum,
-               'result2' : np.mean})
 
 On a resampled DataFrame, you can pass a list of functions to apply to each
 column, which produces an aggregated result with a hierarchical index:
