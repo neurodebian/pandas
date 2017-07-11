@@ -9,8 +9,8 @@ pytables
 Origin: NeuroDebian
 Last-Update: 2014-02-04
 
---- a/pandas/io/tests/test_pytables.py
-+++ b/pandas/io/tests/test_pytables.py
+--- a/pandas/tests/io/test_pytables.py
++++ b/pandas/tests/io/test_pytables.py
 @@ -3318,9 +3318,13 @@ class TestHDFStore(Base, tm.TestCase):
  
              # big selector along the columns

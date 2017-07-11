@@ -1,11 +1,15 @@
 --- a/pandas/__init__.py
 +++ b/pandas/__init__.py
-@@ -59,7 +59,4 @@ test = NoseTester().test
- del NoseTester
+@@ -80,11 +80,7 @@ tslib = _DeprecatedModule(deprmod='panda
+                                  'NaTType': 'type(pandas.NaT)',
+                                  'OutOfBoundsDatetime': 'pandas.errors.OutOfBoundsDatetime'})
  
- # use the closest tagged version if possible
+-# use the closest tagged version if possible
 -from ._version import get_versions
 -v = get_versions()
--__version__ = v.get('closest-tag',v['version'])
+-__version__ = v.get('closest-tag', v['version'])
 -del get_versions, v
 +from .__version import version as __version__
+ 
+ # module level doc-string
+ __doc__ = """
