@@ -7,6 +7,8 @@ pandas (0.20.3-1) unstable; urgency=medium
   * debian/{control,rules}
     - upstream switched to use pytest instead of nose
     - enabled back all the tests for now
+  * debian/*.install
+    - no .so at the first level of subdirectories, now present on the third
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 10 Jul 2017 20:00:59 -0400
 
