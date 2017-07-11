@@ -4,6 +4,9 @@ pandas (0.20.3-1) unstable; urgency=medium
   * debian/patches
     - updated some, removed changeset*, and disabled possibly fixed upstream
       ones
+  * debian/{control,rules}
+    - upstream switched to use pytest instead of nose
+    - enabled back all the tests for now
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 10 Jul 2017 20:00:59 -0400
 

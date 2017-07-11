@@ -1,0 +1,11 @@
+--- a/pandas/tests/test_downstream.py
++++ b/pandas/tests/test_downstream.py
+@@ -72,7 +72,7 @@ def test_scikit_learn(df):
+     clf.fit(digits.data[:-1], digits.target[:-1])
+     clf.predict(digits.data[-1:])
+ 
+-
++@tm.network
+ def test_seaborn():
+ 
+     seaborn = import_module('seaborn')

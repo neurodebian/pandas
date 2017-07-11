@@ -7,3 +7,5 @@ deb_skip_sequencelike_on_armel
 # deb_skip_test_pytables_failure
 # up_buggy_overflows
 # 858260.patch
+up_print_versions
+up_network_seaborn
