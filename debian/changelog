@@ -1,3 +1,10 @@
+pandas (0.20.3-2) unstable; urgency=medium
+
+  * debian/control
+    - boosted policy to 4.0.0 (I think we should be ok)
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 12 Sep 2017 19:14:16 -0400
+
 pandas (0.20.3-1) unstable; urgency=medium
 
   * Fresh upstream release
