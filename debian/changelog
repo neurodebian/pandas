@@ -2,8 +2,12 @@ pandas (0.20.3-2) unstable; urgency=medium
 
   * debian/control
     - boosted policy to 4.0.0 (I think we should be ok)
+    - drop statsmodels from build-depends to altogether avoid the circular
+      build-depends (Closes: #875805)
+  * Diane Trout:
+    - Add dateutil-2.6.1-fixed-ambiguous-tz-dst-be.patch (Closes: #875807)
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 12 Sep 2017 19:14:16 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 21 Sep 2017 16:11:29 -0400
 
 pandas (0.20.3-1) unstable; urgency=medium
 
