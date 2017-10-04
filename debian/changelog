@@ -1,3 +1,11 @@
+pandas (0.20.3-3) UNRELEASED; urgency=medium
+
+  * Team upload.
+  * Ignore test results for architectures that are known to fail
+    (Concerns bug #877419)
+
+ -- Andreas Tille <tille@debian.org>  Wed, 04 Oct 2017 15:04:26 +0200
+
 pandas (0.20.3-2) unstable; urgency=medium
 
   * debian/control
