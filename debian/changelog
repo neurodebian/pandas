@@ -1,3 +1,10 @@
+pandas (0.20.3-4) UNRELEASED; urgency=medium
+
+  * Team upload.
+  * Moved packaging from pkg-exppsy to Debian Science
+
+ -- Andreas Tille <tille@debian.org>  Fri, 13 Oct 2017 20:32:33 +0200
+
 pandas (0.20.3-3) UNRELEASED; urgency=medium
 
   * Team upload.
