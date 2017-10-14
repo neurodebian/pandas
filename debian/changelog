@@ -1,10 +1,10 @@
-pandas (0.20.3-4) UNRELEASED; urgency=medium
+pandas (0.20.3-4) unstable; urgency=medium
 
   * Mark those tests @pytest.mark.intel that pass only on Intel architectures
   * d/rules: try to exclude tests that were marked "intel"
     (Concerns bug #877419)
 
- -- Andreas Tille <tille@debian.org>  Sat, 14 Oct 2017 19:42:59 +0200
+ -- Andreas Tille <tille@debian.org>  Sat, 14 Oct 2017 19:49:01 +0200
 
 pandas (0.20.3-3) unstable; urgency=medium
 
