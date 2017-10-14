@@ -1,0 +1,111 @@
+Description: Mark those tests @pytest.mark.intel that pass only on Intel architectures
+Author: Andreas Tille <tille@debian.org>
+Last-Update Sat, 14 Oct 2017 19:42:59 +0200
+Bug-Debian: https://bugs.debian.org/877419
+
+--- a/pandas/tests/test_algos.py
++++ b/pandas/tests/test_algos.py
+@@ -747,6 +747,7 @@ class TestValueCounts(object):
+             expected = Series([2, 1, 1], index=[5., 10.3, np.nan])
+             tm.assert_series_equal(result, expected)
+ 
++    @pytest.mark.intel
+     def test_value_counts_normalized(self):
+         # GH12558
+         s = Series([1, 2, np.nan, np.nan, np.nan])
+--- a/pandas/tests/test_resample.py
++++ b/pandas/tests/test_resample.py
+@@ -2152,6 +2152,7 @@ class TestDatetimeIndex(Base):
+ 
+         assert_frame_equal(frame.resample('60s').mean(), frame_3s)
+ 
++    @pytest.mark.intel
+     def test_resample_timedelta_values(self):
+         # GH 13119
+         # check that timedelta dtype is preserved when NaT values are
+@@ -2169,6 +2170,7 @@ class TestDatetimeIndex(Base):
+         res = df['time'].resample('2D').first()
+         tm.assert_series_equal(res, exp)
+ 
++    @pytest.mark.intel
+     def test_resample_datetime_values(self):
+         # GH 13119
+         # check that datetime dtype is preserved when NaT values are
+--- a/pandas/tests/dtypes/test_cast.py
++++ b/pandas/tests/dtypes/test_cast.py
+@@ -67,6 +67,7 @@ class TestMaybeDowncast(object):
+             tm.assert_almost_equal(result, np.array([], dtype=np.int64))
+             assert result.dtype == np.int64
+ 
++    @pytest.mark.intel
+     def test_datetimelikes_nan(self):
+         arr = np.array([1, 2, np.nan])
+         exp = np.array([1, 2, np.datetime64('NaT')], dtype='datetime64[ns]')
+--- a/pandas/tests/frame/test_indexing.py
++++ b/pandas/tests/frame/test_indexing.py
+@@ -2607,6 +2607,7 @@ class TestDataFrameIndexing(TestData):
+         result = a.where(do_not_replace, b)
+         assert_frame_equal(result, expected)
+ 
++    @pytest.mark.intel
+     def test_where_datetime(self):
+ 
+         # GH 3311
+--- a/pandas/tests/series/test_indexing.py
++++ b/pandas/tests/series/test_indexing.py
+@@ -1378,6 +1378,7 @@ class TestSeriesIndexing(TestData):
+         expected = Series([5, 11, 2, 5, 11, 2], index=[0, 1, 2, 0, 1, 2])
+         assert_series_equal(comb, expected)
+ 
++    @pytest.mark.intel
+     def test_where_datetime(self):
+         s = Series(date_range('20130102', periods=2))
+         expected = Series([10, 10], dtype='datetime64[ns]')
+@@ -1407,6 +1408,7 @@ class TestSeriesIndexing(TestData):
+         expected = Series([pd.NaT, s[1]])
+         assert_series_equal(rs, expected)
+ 
++    @pytest.mark.intel
+     def test_where_timedelta(self):
+         s = Series([1, 2], dtype='timedelta64[ns]')
+         expected = Series([10, 10], dtype='timedelta64[ns]')
+--- a/pandas/tests/frame/test_operators.py
++++ b/pandas/tests/frame/test_operators.py
+@@ -177,6 +177,7 @@ class TestDataFrameOperators(TestData):
+             df)), 'b': date_range('20100101', periods=len(df))})
+         check(df, df2)
+ 
++    @pytest.mark.intel
+     def test_timestamp_compare(self):
+         # make sure we can compare Timestamps on the right AND left hand side
+         # GH4982
+--- a/pandas/tests/groupby/test_aggregate.py
++++ b/pandas/tests/groupby/test_aggregate.py
+@@ -131,6 +131,7 @@ class TestGroupByAggregate(object):
+         grouped = df.groupby(df.index.month)
+         list(grouped)
+ 
++    @pytest.mark.intel
+     def test_agg_dict_parameter_cast_result_dtypes(self):
+         # GH 12821
+ 
+--- a/pandas/tests/series/test_constructors.py
++++ b/pandas/tests/series/test_constructors.py
+@@ -828,6 +828,7 @@ class TestSeriesConstructors(TestData):
+         series[2] = val
+         assert isnull(series[2])
+ 
++    @pytest.mark.intel
+     def test_NaT_cast(self):
+         # GH10747
+         result = Series([np.nan]).astype('M8[ns]')
+--- a/pandas/tests/series/test_period.py
++++ b/pandas/tests/series/test_period.py
+@@ -94,6 +94,7 @@ class TestSeriesPeriod(object):
+         series[2] = val
+         assert isnull(series[2])
+ 
++    @pytest.mark.intel
+     def test_NaT_cast(self):
+         result = Series([np.nan]).astype('period[D]')
+         expected = Series([NaT])

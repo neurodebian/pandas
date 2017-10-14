@@ -25,7 +25,10 @@ UVER_PYSHORT := $(shell echo $(UVER_PY) | sed -e 's,+git.*,,g')
 MIN_CYTHONVER = 0.23
 
 ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH), arm64 armel armhf mips mips64el mipsel s390x alpha hppa powerpc ppc64))
-	EXCLUDE_TESTS_ARCH := --exclude 'test(test_value_counts_normalized|test_resample_timedelta_values|test_resample_datetime_values|test_datetimelikes_nan|test_where_datetime|test_timestamp_compare|test_agg_dict_parameter_cast_result_dtypes|test_NaT_cast|test_where_datetime|test_where_timedelta)'
+	# EXCLUDE_TESTS_ARCH := --exclude 'test(test_value_counts_normalized|test_resample_timedelta_values|test_resample_datetime_values|test_datetimelikes_nan|test_where_datetime|test_timestamp_compare|test_agg_dict_parameter_cast_result_dtypes|test_NaT_cast|test_where_datetime|test_where_timedelta)'
+	# unfortunately this leads to:
+	#	pytest.py: error: unrecognized arguments: --exclude
+	EXCLUDE_TESTS_ARCH := -m "not intel"
 else
 	EXCLUDE_TESTS_ARCH :=
 endif
