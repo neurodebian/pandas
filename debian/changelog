@@ -1,3 +1,12 @@
+pandas (0.20.3-5) unstable; urgency=medium
+
+  * Make sure remainings of nose tests will not fail. That's a pretty stupid
+    patch since the tests are not using nose any more only some remaining
+    exceptions.  Hope it will work anyway.
+    (Concerns bug #877419)
+
+ -- Andreas Tille <tille@debian.org>  Mon, 16 Oct 2017 21:57:45 +0200
+
 pandas (0.20.3-4) unstable; urgency=medium
 
   * Mark those tests @pytest.mark.intel that pass only on Intel architectures
