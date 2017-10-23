@@ -1,3 +1,11 @@
+pandas (0.20.3-6) UNRELEASED; urgency=medium
+
+  * Team upload.
+  * Ignore test errors on some architectures
+    (Concerns bug #877419)
+
+ -- Andreas Tille <tille@debian.org>  Mon, 23 Oct 2017 08:40:23 +0200
+
 pandas (0.20.3-5) unstable; urgency=medium
 
   * Make sure remainings of nose tests will not fail. That's a pretty stupid
