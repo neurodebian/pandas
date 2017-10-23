@@ -1,4 +1,4 @@
-pandas (0.20.3-6) UNRELEASED; urgency=medium
+pandas (0.20.3-6) unstable; urgency=medium
 
   * Team upload.
   * Ignore test errors on some architectures
@@ -8,7 +8,7 @@ pandas (0.20.3-6) UNRELEASED; urgency=medium
   * DEP3 for Google Analytics patch
   * Complete Google Analytics patch
 
- -- Andreas Tille <tille@debian.org>  Mon, 23 Oct 2017 08:40:23 +0200
+ -- Andreas Tille <tille@debian.org>  Mon, 23 Oct 2017 09:05:27 +0200
 
 pandas (0.20.3-5) unstable; urgency=medium
 
