@@ -2,6 +2,7 @@ pandas (0.20.3-7) UNRELEASED; urgency=medium
 
   * Team upload.
   * debhelper 9
+  * Use Debian packaged mathjax
 
  -- Andreas Tille <tille@debian.org>  Mon, 23 Oct 2017 14:18:56 +0200
 

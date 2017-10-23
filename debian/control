@@ -135,7 +135,9 @@ Description: data structures for "relational" or "labeled" data - Python 3
 Package: python-pandas-doc
 Architecture: all
 Section: doc
-Depends: ${misc:Depends}, libjs-jquery
+Depends: ${misc:Depends},
+         libjs-jquery,
+         libjs-mathjax
 Suggests: python-pandas
 Description: documentation and examples for pandas
  This package contains documentation and example scripts for
