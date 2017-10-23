@@ -1,4 +1,4 @@
-pandas (0.20.3-7) UNRELEASED; urgency=medium
+pandas (0.20.3-7) unstable; urgency=medium
 
   * Team upload.
   * debhelper 9
@@ -7,7 +7,7 @@ pandas (0.20.3-7) UNRELEASED; urgency=medium
   * Remove redundant/outdated XS-Testsuite: autopkgtest
   * Exclude one more test and de-activate non-working ignore of test errors
 
- -- Andreas Tille <tille@debian.org>  Mon, 23 Oct 2017 14:18:56 +0200
+ -- Andreas Tille <tille@debian.org>  Mon, 23 Oct 2017 17:33:55 +0200
 
 pandas (0.20.3-6) unstable; urgency=medium
 
