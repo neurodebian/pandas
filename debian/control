@@ -108,7 +108,6 @@ Recommends: python3-scipy,
             python3-tz,
             python3-bs4,
             python3-html5lib,
-            python3-six,
             python3-lxml,
             python3-html5lib,
 Suggests: python-pandas-doc
