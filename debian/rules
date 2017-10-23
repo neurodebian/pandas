@@ -137,8 +137,9 @@ endif
 	#TODO -rm doc/_build/html/_static/jquery.js
 	dh_installdocs -A *.md
 
-#override_dh_installchangelogs:
-#	dh_installchangelogs doc/whats_new.rst
+override_dh_install:
+	dh_install
+	find debian -name __pycache__ | xargs rm -rf
 
 ## remove .so libraries from main package, and call dh_numpy*
 ## while removing 2 if not present
