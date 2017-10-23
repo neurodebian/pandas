@@ -1,0 +1,11 @@
+--- a/doc/source/conf.py
++++ b/doc/source/conf.py
+@@ -62,6 +62,8 @@ extensions = ['sphinx.ext.autodoc',
+               'nbsphinx',
+               ]
+ 
++mathjax_path='MathJax.js'
++
+ exclude_patterns = ['**.ipynb_checkpoints']
+ 
+ with open("index.rst") as f:
