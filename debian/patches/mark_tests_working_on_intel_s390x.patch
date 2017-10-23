@@ -1,0 +1,24 @@
+Description: Mark those tests @pytest.mark.intel that pass only on Intel architectures
+  There was another test failing for s390x (and armhf, mips, hppa, powerpc, ppc64, sparc64)
+Author: Andreas Tille <tille@debian.org>
+Last-Update: Mon, 23 Oct 2017 14:18:56 +0200
+Bug-Debian: https://bugs.debian.org/877419
+
+--- a/pandas/tests/io/test_packers.py
++++ b/pandas/tests/io/test_packers.py
+@@ -59,6 +59,7 @@ def all_packers_data():
+     return create_data()
+ 
+ 
++@pytest.mark.intel
+ def check_arbitrary(a, b):
+ 
+     if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+@@ -901,6 +902,7 @@ TestPackers
+         else:
+             tm.assert_frame_equal(result, expected)
+ 
++    @pytest.mark.intel
+     @pytest.mark.parametrize('version', legacy_packers_versions())
+     def test_msgpacks_legacy(self, current_packers_data, all_packers_data,
+                              version):

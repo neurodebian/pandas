@@ -156,7 +156,8 @@ override_dh_python3: _dh_python3
 override_dh_compress:
 	dh_compress -X.py -X.html -X.pdf -X.css -X.jpg -X.txt -X.js -X.json -X.rtc -Xobjects.inv
 
-ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),  armhf mips s390x hppa powerpc ppc64 sparc64))
-override_dh_auto_test:
-	dh_auto_test || true
-endif
+# This has no effect at all since the tests are run in binary-arch instead of auto_test ...
+#ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),  armhf mips s390x hppa powerpc ppc64 sparc64))
+#override_dh_auto_test:
+#	dh_auto_test || true
+#endif
