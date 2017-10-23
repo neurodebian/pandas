@@ -6,6 +6,7 @@ pandas (0.20.3-6) UNRELEASED; urgency=medium
   * Remove __pycache__ remainings from testing
   * Standards-Version: 4.1.1
   * DEP3 for Google Analytics patch
+  * Complete Google Analytics patch
 
  -- Andreas Tille <tille@debian.org>  Mon, 23 Oct 2017 08:40:23 +0200
 
