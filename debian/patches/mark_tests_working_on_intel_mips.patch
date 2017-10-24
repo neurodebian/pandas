@@ -1,0 +1,25 @@
+Description: Mark those tests @pytest.mark.intel that pass only on Intel architectures
+  There was another test failing for mips and powerpc
+Author: Andreas Tille <tille@debian.org>
+Last-Update: Tue, 24 Oct 2017 21:19:06 +0200
+Bug-Debian: https://bugs.debian.org/877419
+
+--- a/pandas/tests/io/parser/skiprows.py
++++ b/pandas/tests/io/parser/skiprows.py
+@@ -9,6 +9,8 @@ from datetime import datetime
+ 
+ import numpy as np
+ 
++import pytest
++
+ import pandas.util.testing as tm
+ 
+ from pandas import DataFrame
+@@ -200,6 +202,7 @@ line 22",2
+         df = self.read_csv(StringIO(data), skiprows=2)
+         tm.assert_frame_equal(df, expected)
+ 
++    @pytest.mark.intel
+     def test_skiprows_callable(self):
+         data = 'a\n1\n2\n3\n4\n5'
+ 

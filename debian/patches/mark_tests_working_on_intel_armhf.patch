@@ -1,0 +1,16 @@
+Description: Mark those tests @pytest.mark.intel that pass only on Intel architectures
+  There was another test failing for armhf
+Author: Andreas Tille <tille@debian.org>
+Last-Update: Tue, 24 Oct 2017 21:19:06 +0200
+Bug-Debian: https://bugs.debian.org/877419
+
+--- a/pandas/tests/io/test_pytables.py
++++ b/pandas/tests/io/test_pytables.py
+@@ -1184,6 +1184,7 @@ class TestHDFStore(Base):
+                 reloaded_panel = read_hdf(path, 'panel_with_missing')
+                 tm.assert_panel_equal(panel_with_missing, reloaded_panel)
+ 
++    @pytest.mark.intel
+     def test_append_frame_column_oriented(self):
+ 
+         with ensure_clean_store(self.path) as store:
