@@ -1,9 +1,9 @@
-pandas (0.20.3-10) UNRELEASED; urgency=medium
+pandas (0.20.3-10) unstable; urgency=medium
 
   * Team upload.
   * Exclude more tests failing on mips, armhf and powerpc
 
- -- Andreas Tille <tille@debian.org>  Tue, 24 Oct 2017 21:19:06 +0200
+ -- Andreas Tille <tille@debian.org>  Tue, 24 Oct 2017 21:26:02 +0200
 
 pandas (0.20.3-9) unstable; urgency=medium
 
