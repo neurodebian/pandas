@@ -34,7 +34,11 @@ Bug-Debian: https://bugs.debian.org/877419
          # Issue #11879. to_records used to raise an exception when used
 --- a/pandas/tests/indexes/datetimes/test_formats.py
 +++ b/pandas/tests/indexes/datetimes/test_formats.py
-@@ -5,7 +5,7 @@ import numpy as np
+@@ -2,10 +2,11 @@ from pandas import DatetimeIndex
+ 
+ import numpy as np
+ 
++import pytest
  import pandas.util.testing as tm
  import pandas as pd
  
@@ -45,7 +49,11 @@ Bug-Debian: https://bugs.debian.org/877419
  
 --- a/pandas/tests/indexes/period/test_formats.py
 +++ b/pandas/tests/indexes/period/test_formats.py
-@@ -5,7 +5,7 @@ import numpy as np
+@@ -2,10 +2,11 @@ from pandas import PeriodIndex
+ 
+ import numpy as np
+ 
++import pytest
  import pandas.util.testing as tm
  import pandas as pd
  
