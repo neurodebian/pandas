@@ -1,0 +1,33 @@
+From 5f2b96bb637f6ddeec169c5ef8ad20013a03c853 Mon Sep 17 00:00:00 2001
+From: Eric Wieser <wieser.eric@gmail.com>
+Date: Sat, 15 Jul 2017 13:30:03 +0100
+Subject: [PATCH] TST: Don't assert that a bug exists in numpy (#16940)
+
+Better to ignore the warning from the bug, rather than assert the bug is still there
+
+After this change, numpy/numpy#9412 _could_ be backported to fix the bug
+---
+ pandas/tests/test_algos.py | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/pandas/tests/test_algos.py b/pandas/tests/test_algos.py
+index 9504d2a9426..993dcc4f527 100644
+--- a/pandas/tests/test_algos.py
++++ b/pandas/tests/test_algos.py
+@@ -2,6 +2,7 @@
+ 
+ import numpy as np
+ import pytest
++import warnings
+ 
+ from numpy.random import RandomState
+ from numpy import nan
+@@ -127,7 +128,7 @@ def test_unsortable(self):
+         arr = np.array([1, 2, datetime.now(), 0, 3], dtype=object)
+         if compat.PY2 and not pd._np_version_under1p10:
+             # RuntimeWarning: tp_compare didn't return -1 or -2 for exception
+-            with tm.assert_produces_warning(RuntimeWarning):
++            with warnings.catch_warnings():
+                 pytest.raises(TypeError, algos.safe_sort, arr)
+         else:
+             pytest.raises(TypeError, algos.safe_sort, arr)
