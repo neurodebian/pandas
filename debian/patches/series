@@ -3,6 +3,7 @@ deb_doc_donotoverride_PYTHONPATH
 deb_skip_stata_on_bigendians
 deb_disable_googleanalytics
 deb_skip_sequencelike_on_armel
+deb_fix_test_failure_test_basic_indexing
 # Try to skip -- migth have been addressed upstream
 # deb_skip_test_pytables_failure
 # up_buggy_overflows

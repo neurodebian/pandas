@@ -1,0 +1,43 @@
+Purpose: Avoid FTBFS:
+	=================================== FAILURES ===================================
+	____________________ TestSeriesIndexing.test_basic_indexing ____________________
+	
+	self = <pandas.tests.series.test_indexing.TestSeriesIndexing object at 0x7f01582c04e0>
+	
+	    def test_basic_indexing(self):
+	        s = Series(np.random.randn(5), index=['a', 'b', 'a', 'a', 'b'])
+	    
+	        pytest.raises(IndexError, s.__getitem__, 5)
+	        pytest.raises(IndexError, s.__setitem__, 5, 0)
+	    
+	        pytest.raises(KeyError, s.__getitem__, 'c')
+	    
+	        s = s.sort_index()
+	    
+	        pytest.raises(IndexError, s.__getitem__, 5)
+	>       pytest.raises(IndexError, s.__setitem__, 5, 0)
+	E       Failed: DID NOT RAISE <class 'IndexError'>
+	../debian/tmp/usr/lib/python3/dist-packages/pandas/tests/series/test_indexing.py:1631: Failed
+Reference:
+	1. https://github.com/pandas-dev/pandas/issues/17046
+	2. https://github.com/pandas-dev/pandas/pull/17724
+Forward: Not needed. Already fixed in newer releases.
+By: Mo Zhou <cdluminate@gmail.com>, Jan 20 2018
+Note: Please remove this patch when version >= 0.21.
+
+diff --git a/pandas/core/dtypes/common.py b/pandas/core/dtypes/common.py
+index 2eebf37..f538eaf 100644
+--- a/pandas/core/dtypes/common.py
++++ b/pandas/core/dtypes/common.py
+@@ -1155,7 +1155,10 @@ def _is_unorderable_exception(e):
+     """
+ 
+     if PY36:
+-        return "'>' not supported between instances of" in str(e)
++        # Temporary fix for Debian, reference:
++        # https://github.com/pandas-dev/pandas/pull/17724
++        return any("'{}' not supported between instances of".format(op) in
++                   str(e) for op in ('>', '<'))
+ 
+     elif PY3:
+         return 'unorderable' in str(e)
