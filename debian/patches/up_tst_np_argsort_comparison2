@@ -7,23 +7,11 @@ Subject: [PATCH] # Issue 17046 # #    modified:
  message in # TestMixedIntIndex.test_argsort and #
  TestMixedIntIndex.test_numpy_argsort
 
----
- doc/source/whatsnew/v0.21.0.txt   | 1 +
- pandas/tests/indexes/test_base.py | 4 ++--
- 2 files changed, 3 insertions(+), 2 deletions(-)
+Modified: Mo Zhou <cdluminate@gmail.com>
+Modification Note: Part of the original patch doesn't apply.
+ Removed modification to doc/source/whatsnew/v0.21.0.txt from the original
+ patch.
 
-diff --git a/doc/source/whatsnew/v0.21.0.txt b/doc/source/whatsnew/v0.21.0.txt
-index 91d3e9e7b93..e4c50ec93f9 100644
---- a/doc/source/whatsnew/v0.21.0.txt
-+++ b/doc/source/whatsnew/v0.21.0.txt
-@@ -259,6 +259,7 @@ Indexing
- - Fixes bug where indexing with ``np.inf`` caused an ``OverflowError`` to be raised (:issue:`16957`)
- - Bug in reindexing on an empty ``CategoricalIndex`` (:issue:`16770`)
- - Fixes ``DataFrame.loc`` for setting with alignment and tz-aware ``DatetimeIndex`` (:issue:`16889`)
-+- Fixes ``test_argsort``, ``test_numpy_argsort`` to cover both `>` and `<` in the error message (:issue:`17046`)
-  
- I/O
- ^^^
 diff --git a/pandas/tests/indexes/test_base.py b/pandas/tests/indexes/test_base.py
 index 692cdd49579..842e8fea0df 100644
 --- a/pandas/tests/indexes/test_base.py
