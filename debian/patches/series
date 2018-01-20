@@ -10,6 +10,8 @@ deb_skip_sequencelike_on_armel
 up_print_versions
 up_network_seaborn
 up_tst_dont_assert_that_a_bug_exists_in_numpy
+up_tst_np_argsort_comparison1
+up_tst_np_argsort_comparison2
 dateutil-2.6.1-fixed-ambiguous-tz-dst-be.patch
 mark_tests_working_on_intel.patch
 mark_tests_working_on_intel_s390x.patch
