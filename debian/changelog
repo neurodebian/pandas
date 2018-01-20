@@ -3,6 +3,7 @@ pandas (0.20.3-11) unstable; urgency=medium
   * Team upload.
   * Cherry-pick upstream commit 5f2b96bb637f6ddeec169c5ef8ad20013a03c853
     to workaround a numpy bug. (Closes: #884294)
+  * Cherry-pick upstream commits to fix test failure caused by test_argsort().
 
  -- Mo Zhou <cdluminate@gmail.com>  Sat, 20 Jan 2018 09:00:31 +0000
 
