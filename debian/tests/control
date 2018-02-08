@@ -15,6 +15,7 @@ Depends: python-all,
          python-xlwt,
          python-bs4,
          python-html5lib,
+         python-pytest,
          xauth,
          xvfb
 
@@ -29,5 +30,6 @@ Depends: python3-all,
          python3-tk,
          python3-tz,
          python3-bs4,
+         python3-pytest,
          xauth,
          xvfb
