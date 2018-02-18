@@ -10,10 +10,10 @@ deb_fix_test_failure_test_basic_indexing
 # 858260.patch
 up_print_versions
 up_network_seaborn
-up_tst_dont_assert_that_a_bug_exists_in_numpy
-up_tst_np_argsort_comparison2
-dateutil-2.6.1-fixed-ambiguous-tz-dst-be.patch
-mark_tests_working_on_intel.patch
+# does not apply to 0.22 but kept around since next one might have it
+# up_tst_dont_assert_that_a_bug_exists_in_numpy
+# disabled since majority seems adopted but might be not all
+#mark_tests_working_on_intel.patch
 mark_tests_working_on_intel_s390x.patch
 mark_tests_working_on_intel_mips.patch
 mark_tests_working_on_intel_armhf.patch

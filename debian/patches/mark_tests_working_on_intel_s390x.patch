@@ -14,7 +14,7 @@ Bug-Debian: https://bugs.debian.org/877419
  def check_arbitrary(a, b):
  
      if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
-@@ -901,6 +902,7 @@ TestPackers
+@@ -910,6 +911,7 @@ TestPackers
          else:
              tm.assert_frame_equal(result, expected)
  
@@ -24,7 +24,7 @@ Bug-Debian: https://bugs.debian.org/877419
                               version):
 --- a/pandas/tests/frame/test_convert_to.py
 +++ b/pandas/tests/frame/test_convert_to.py
-@@ -175,6 +175,7 @@ class TestDataFrameConvertTo(TestData):
+@@ -136,6 +136,7 @@ class TestDataFrameConvertTo(TestData):
          expected = np.rec.array([('x', 'y')], dtype=[('a', 'O'), ('b', 'O')])
          tm.assert_almost_equal(result, expected)
  
@@ -64,11 +64,11 @@ Bug-Debian: https://bugs.debian.org/877419
                           '2017-01-03'], freq='D')
 --- a/pandas/tests/dtypes/test_cast.py
 +++ b/pandas/tests/dtypes/test_cast.py
-@@ -137,6 +137,7 @@ class TestInferDtype(object):
-             dtype, val = infer_dtype_from_scalar(data)
-             assert dtype == np.object_
+@@ -173,6 +173,7 @@ class TestInferDtype(object):
+         with pytest.raises(ValueError):
+             infer_dtype_from_scalar(np.array([1]))
  
 +    @pytest.mark.intel
      @pytest.mark.parametrize(
-         "arr, expected",
-         [('foo', np.object_),
+         "arr, expected, pandas_dtype",
+         [('foo', np.object_, False),

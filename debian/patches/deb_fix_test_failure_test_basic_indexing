@@ -25,11 +25,9 @@ Forward: Not needed. Already fixed in newer releases.
 By: Mo Zhou <cdluminate@gmail.com>, Jan 20 2018
 Note: Please remove this patch when version >= 0.21.
 
-diff --git a/pandas/core/dtypes/common.py b/pandas/core/dtypes/common.py
-index 2eebf37..f538eaf 100644
 --- a/pandas/core/dtypes/common.py
 +++ b/pandas/core/dtypes/common.py
-@@ -1155,7 +1155,10 @@ def _is_unorderable_exception(e):
+@@ -1192,7 +1192,10 @@ def _is_unorderable_exception(e):
      """
  
      if PY36:
