@@ -2,10 +2,10 @@ import pytest
 
 import pandas as pd
 from pandas.util import testing as tm
+import numpy as np
 
 
 class TestTimedeltaIndexing(object):
-
     def test_boolean_indexing(self):
         # GH 14946
         df = pd.DataFrame({'x': range(10)})
@@ -40,3 +40,31 @@ class TestTimedeltaIndexing(object):
                                 dtype="int64")
 
         tm.assert_frame_equal(expected, df)
+
+    def test_string_indexing(self):
+        # GH 16896
+        df = pd.DataFrame({'x': range(3)},
+                          index=pd.to_timedelta(range(3), unit='days'))
+        expected = df.iloc[0]
+        sliced = df.loc['0 days']
+        tm.assert_series_equal(sliced, expected)
+
+    @pytest.mark.parametrize(
+        "value",
+        [None, pd.NaT, np.nan])
+    def test_masked_setitem(self, value):
+        # issue (#18586)
+        series = pd.Series([0, 1, 2], dtype='timedelta64[ns]')
+        series[series == series[0]] = value
+        expected = pd.Series([pd.NaT, 1, 2], dtype='timedelta64[ns]')
+        tm.assert_series_equal(series, expected)
+
+    @pytest.mark.parametrize(
+        "value",
+        [None, pd.NaT, np.nan])
+    def test_listlike_setitem(self, value):
+        # issue (#18586)
+        series = pd.Series([0, 1, 2], dtype='timedelta64[ns]')
+        series.iloc[0] = value
+        expected = pd.Series([pd.NaT, 1, 2], dtype='timedelta64[ns]')
+        tm.assert_series_equal(series, expected)

@@ -13,9 +13,9 @@ from pandas.core.dtypes.common import (
     is_timedelta64_dtype,
     is_timedelta64_ns_dtype,
     _ensure_int64)
-from pandas.core.dtypes.missing import isnull
+from pandas.core.dtypes.missing import isna
 from pandas.core.dtypes.generic import ABCSeries
-from pandas.core.common import _maybe_box, _values_from_object, is_bool_indexer
+from pandas.core.common import _maybe_box, _values_from_object
 
 from pandas.core.indexes.base import Index
 from pandas.core.indexes.numeric import Int64Index
@@ -36,6 +36,26 @@ from pandas._libs import (lib, index as libindex, tslib as libts,
                           join as libjoin, Timedelta, NaT, iNaT)
 
 
+def _field_accessor(name, alias, docstring=None):
+    def f(self):
+        if self.hasnans:
+            result = np.empty(len(self), dtype='float64')
+            mask = self._isnan
+            imask = ~mask
+            result.flat[imask] = np.array([getattr(Timedelta(val), alias)
+                                           for val in self.asi8[imask]])
+            result[mask] = np.nan
+        else:
+            result = np.array([getattr(Timedelta(val), alias)
+                               for val in self.asi8], dtype='int64')
+
+        return Index(result, name=self.name)
+
+    f.__name__ = name
+    f.__doc__ = docstring
+    return property(f)
+
+
 def _td_index_cmp(opname, nat_result=False):
     """
     Wrap comparison operations to convert timedelta-like to timedelta64
@@ -51,7 +71,7 @@ def _td_index_cmp(opname, nat_result=False):
                 # failed to parse as timedelta
                 raise TypeError(msg.format(type(other)))
             result = func(other)
-            if isnull(other):
+            if isna(other):
                 result.fill(nat_result)
         else:
             if not is_list_like(other):
@@ -114,6 +134,13 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, TimelikeOps, Int64Index):
 
     To learn more about the frequency strings, please see `this link
     <http://pandas.pydata.org/pandas-docs/stable/timeseries.html#offset-aliases>`__.
+
+    See Also
+    ---------
+    Index : The base pandas Index type
+    Timedelta : Represents a duration between two dates or times.
+    DatetimeIndex : Index of datetime64 data
+    PeriodIndex : Index of Period data
     """
 
     _typ = 'timedeltaindex'
@@ -180,8 +207,8 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, TimelikeOps, Int64Index):
             if is_float(periods):
                 periods = int(periods)
             elif not is_integer(periods):
-                raise ValueError('Periods must be a number, got %s' %
-                                 str(periods))
+                msg = 'periods must be a number, got {periods}'
+                raise TypeError(msg.format(periods=periods))
 
         if data is None and freq is None:
             raise ValueError("Must provide freq argument if no data is "
@@ -234,7 +261,8 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, TimelikeOps, Int64Index):
     @classmethod
     def _generate(cls, start, end, periods, name, offset, closed=None):
         if com._count_not_none(start, end, periods) != 2:
-            raise ValueError('Must specify two of start, end, or periods')
+            raise ValueError('Of the three parameters: start, end, and '
+                             'periods, exactly two must be specified')
 
         if start is not None:
             start = Timedelta(start)
@@ -331,7 +359,7 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, TimelikeOps, Int64Index):
         if opstr in ['__div__', '__truediv__', '__floordiv__']:
             if _is_convertible_to_td(other):
                 other = Timedelta(other)
-                if isnull(other):
+                if isna(other):
                     raise NotImplementedError(
                         "division by pd.NaT not implemented")
 
@@ -353,7 +381,8 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, TimelikeOps, Int64Index):
         else:
             other = Timestamp(other)
             i8 = self.asi8
-            result = checked_add_with_arr(i8, other.value)
+            result = checked_add_with_arr(i8, other.value,
+                                          arr_mask=self._isnan)
             result = self._maybe_mask_results(result, fill_value=iNaT)
         return DatetimeIndex(result, name=self.name, copy=False)
 
@@ -372,46 +401,17 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, TimelikeOps, Int64Index):
                                     nat_rep=na_rep,
                                     justify='all').get_result()
 
-    def _get_field(self, m):
-
-        values = self.asi8
-        hasnans = self.hasnans
-        if hasnans:
-            result = np.empty(len(self), dtype='float64')
-            mask = self._isnan
-            imask = ~mask
-            result.flat[imask] = np.array(
-                [getattr(Timedelta(val), m) for val in values[imask]])
-            result[mask] = np.nan
-        else:
-            result = np.array([getattr(Timedelta(val), m)
-                               for val in values], dtype='int64')
-        return Index(result, name=self.name)
-
-    @property
-    def days(self):
-        """ Number of days for each element. """
-        return self._get_field('days')
-
-    @property
-    def seconds(self):
-        """ Number of seconds (>= 0 and less than 1 day) for each element. """
-        return self._get_field('seconds')
-
-    @property
-    def microseconds(self):
-        """
-        Number of microseconds (>= 0 and less than 1 second) for each
-        element. """
-        return self._get_field('microseconds')
-
-    @property
-    def nanoseconds(self):
-        """
-        Number of nanoseconds (>= 0 and less than 1 microsecond) for each
-        element.
-        """
-        return self._get_field('nanoseconds')
+    days = _field_accessor("days", "days",
+                           " Number of days for each element. ")
+    seconds = _field_accessor("seconds", "seconds",
+                              " Number of seconds (>= 0 and less than 1 day) "
+                              "for each element. ")
+    microseconds = _field_accessor("microseconds", "microseconds",
+                                   "\nNumber of microseconds (>= 0 and less "
+                                   "than 1 second) for each\nelement. ")
+    nanoseconds = _field_accessor("nanoseconds", "nanoseconds",
+                                  "\nNumber of nanoseconds (>= 0 and less "
+                                  "than 1 microsecond) for each\nelement.\n")
 
     @property
     def components(self):
@@ -430,7 +430,7 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, TimelikeOps, Int64Index):
         hasnans = self.hasnans
         if hasnans:
             def f(x):
-                if isnull(x):
+                if isna(x):
                     return [np.nan] * len(columns)
                 return x.components
         else:
@@ -682,16 +682,16 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, TimelikeOps, Int64Index):
         -------
         loc : int
         """
-        if is_bool_indexer(key) or is_timedelta64_dtype(key):
+        if is_list_like(key):
             raise TypeError
 
-        if isnull(key):
+        if isna(key):
             key = NaT
 
         if tolerance is not None:
             # try converting tolerance now, so errors don't get swallowed by
             # the try/except clauses below
-            tolerance = self._convert_tolerance(tolerance)
+            tolerance = self._convert_tolerance(tolerance, np.asarray(key))
 
         if _is_convertible_to_td(key):
             key = Timedelta(key)
@@ -842,11 +842,11 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, TimelikeOps, Int64Index):
         if _is_convertible_to_td(item):
             try:
                 item = Timedelta(item)
-            except:
+            except Exception:
                 pass
 
         freq = None
-        if isinstance(item, (Timedelta, libts.NaTType)):
+        if isinstance(item, Timedelta) or item is NaT:
 
             # check freq can be preserved on edge cases
             if self.freq is not None:
@@ -960,22 +960,22 @@ def _generate_regular_range(start, end, periods, offset):
 def timedelta_range(start=None, end=None, periods=None, freq='D',
                     name=None, closed=None):
     """
-    Return a fixed frequency timedelta index, with day as the default
+    Return a fixed frequency TimedeltaIndex, with day as the default
     frequency
 
     Parameters
     ----------
     start : string or timedelta-like, default None
-        Left bound for generating dates
-    end : string or datetime-like, default None
-        Right bound for generating dates
-    periods : integer or None, default None
-        If None, must specify start and end
+        Left bound for generating timedeltas
+    end : string or timedelta-like, default None
+        Right bound for generating timedeltas
+    periods : integer, default None
+        Number of periods to generate
     freq : string or DateOffset, default 'D' (calendar daily)
         Frequency strings can have multiples, e.g. '5H'
-    name : str, default None
-        Name of the resulting index
-    closed : string or None, default None
+    name : string, default None
+        Name of the resulting TimedeltaIndex
+    closed : string, default None
         Make the interval closed with respect to the given frequency to
         the 'left', 'right', or both sides (None)
 
@@ -985,11 +985,34 @@ def timedelta_range(start=None, end=None, periods=None, freq='D',
 
     Notes
     -----
-    2 of start, end, or periods must be specified.
+    Of the three parameters: ``start``, ``end``, and ``periods``, exactly two
+    must be specified.
 
     To learn more about the frequency strings, please see `this link
     <http://pandas.pydata.org/pandas-docs/stable/timeseries.html#offset-aliases>`__.
+
+    Examples
+    --------
+
+    >>> pd.timedelta_range(start='1 day', periods=4)
+    TimedeltaIndex(['1 days', '2 days', '3 days', '4 days'],
+                   dtype='timedelta64[ns]', freq='D')
+
+    The ``closed`` parameter specifies which endpoint is included.  The default
+    behavior is to include both endpoints.
+
+    >>> pd.timedelta_range(start='1 day', periods=4, closed='right')
+    TimedeltaIndex(['2 days', '3 days', '4 days'],
+                   dtype='timedelta64[ns]', freq='D')
+
+    The ``freq`` parameter specifies the frequency of the TimedeltaIndex.
+    Only fixed frequencies can be passed, non-fixed frequencies such as
+    'M' (month end) will raise.
+
+    >>> pd.timedelta_range(start='1 day', end='2 days', freq='6H')
+    TimedeltaIndex(['1 days 00:00:00', '1 days 06:00:00', '1 days 12:00:00',
+                    '1 days 18:00:00', '2 days 00:00:00'],
+                   dtype='timedelta64[ns]', freq='6H')
     """
     return TimedeltaIndex(start=start, end=end, periods=periods,
-                          freq=freq, name=name,
-                          closed=closed)
+                          freq=freq, name=name, closed=closed)

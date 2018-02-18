@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import division, print_function
 
+from distutils.version import LooseVersion
 from functools import partial
 
 import pytest
@@ -8,7 +9,7 @@ import warnings
 import numpy as np
 
 import pandas as pd
-from pandas import Series, isnull, _np_version_under1p9
+from pandas import Series, isna
 from pandas.core.dtypes.common import is_integer_dtype
 import pandas.core.nanops as nanops
 import pandas.util.testing as tm
@@ -181,12 +182,17 @@ class TestnanopsDataFrame(object):
                                    check_dtype=check_dtype)
 
     def check_fun_data(self, testfunc, targfunc, testarval, targarval,
-                       targarnanval, check_dtype=True, **kwargs):
+                       targarnanval, check_dtype=True, empty_targfunc=None,
+                       **kwargs):
         for axis in list(range(targarval.ndim)) + [None]:
             for skipna in [False, True]:
                 targartempval = targarval if skipna else targarnanval
-                try:
+                if skipna and empty_targfunc and isna(targartempval).all():
+                    targ = empty_targfunc(targartempval, axis=axis, **kwargs)
+                else:
                     targ = targfunc(targartempval, axis=axis, **kwargs)
+
+                try:
                     res = testfunc(testarval, axis=axis, skipna=skipna,
                                    **kwargs)
                     self.check_results(targ, res, axis,
@@ -218,10 +224,11 @@ class TestnanopsDataFrame(object):
         except ValueError:
             return
         self.check_fun_data(testfunc, targfunc, testarval2, targarval2,
-                            targarnanval2, check_dtype=check_dtype, **kwargs)
+                            targarnanval2, check_dtype=check_dtype,
+                            empty_targfunc=empty_targfunc, **kwargs)
 
     def check_fun(self, testfunc, targfunc, testar, targar=None,
-                  targarnan=None, **kwargs):
+                  targarnan=None, empty_targfunc=None, **kwargs):
         if targar is None:
             targar = testar
         if targarnan is None:
@@ -231,7 +238,8 @@ class TestnanopsDataFrame(object):
         targarnanval = getattr(self, targarnan)
         try:
             self.check_fun_data(testfunc, targfunc, testarval, targarval,
-                                targarnanval, **kwargs)
+                                targarnanval, empty_targfunc=empty_targfunc,
+                                **kwargs)
         except BaseException as exc:
             exc.args += ('testar: %s' % testar, 'targar: %s' % targar,
                          'targarnan: %s' % targarnan)
@@ -328,7 +336,8 @@ class TestnanopsDataFrame(object):
 
     def test_nansum(self):
         self.check_funs(nanops.nansum, np.sum, allow_str=False,
-                        allow_date=False, allow_tdelta=True, check_dtype=False)
+                        allow_date=False, allow_tdelta=True, check_dtype=False,
+                        empty_targfunc=np.nansum)
 
     def test_nanmean(self):
         self.check_funs(nanops.nanmean, np.mean, allow_complex=False,
@@ -340,15 +349,13 @@ class TestnanopsDataFrame(object):
         # In the previous implementation mean can overflow for int dtypes, it
         # is now consistent with numpy
 
-        # numpy < 1.9.0 is not computing this correctly
-        if not _np_version_under1p9:
-            for a in [2 ** 55, -2 ** 55, 20150515061816532]:
-                s = Series(a, index=range(500), dtype=np.int64)
-                result = s.mean()
-                np_result = s.values.mean()
-                assert result == a
-                assert result == np_result
-                assert result.dtype == np.float64
+        for a in [2 ** 55, -2 ** 55, 20150515061816532]:
+            s = Series(a, index=range(500), dtype=np.int64)
+            result = s.mean()
+            np_result = s.values.mean()
+            assert result == a
+            assert result == np_result
+            assert result.dtype == np.float64
 
     def test_returned_dtype(self):
 
@@ -408,7 +415,7 @@ class TestnanopsDataFrame(object):
     def _argminmax_wrap(self, value, axis=None, func=None):
         res = func(value, axis)
         nans = np.min(value, axis)
-        nullnan = isnull(nans)
+        nullnan = isna(nans)
         if res.ndim:
             res[nullnan] = -1
         elif (hasattr(nullnan, 'all') and nullnan.all() or
@@ -463,8 +470,12 @@ class TestnanopsDataFrame(object):
                             allow_tdelta=False)
 
     def test_nanprod(self):
+        if LooseVersion(np.__version__) < LooseVersion("1.10.0"):
+            raise pytest.skip("np.nanprod added in 1.10.0")
+
         self.check_funs(nanops.nanprod, np.prod, allow_str=False,
-                        allow_date=False, allow_tdelta=False)
+                        allow_date=False, allow_tdelta=False,
+                        empty_targfunc=np.nanprod)
 
     def check_nancorr_nancov_2d(self, checkfun, targ0, targ1, **kwargs):
         res00 = checkfun(self.arr_float_2d, self.arr_float1_2d, **kwargs)

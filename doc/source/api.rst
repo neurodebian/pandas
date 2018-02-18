@@ -99,6 +99,7 @@ HDFStore: PyTables (HDF5)
    HDFStore.append
    HDFStore.get
    HDFStore.select
+   HDFStore.info
 
 Feather
 ~~~~~~~
@@ -107,6 +108,14 @@ Feather
    :toctree: generated/
 
    read_feather
+
+Parquet
+~~~~~~~
+
+.. autosummary::
+   :toctree: generated/
+
+   read_parquet
 
 SAS
 ~~~
@@ -186,7 +195,9 @@ Top-level missing data
 .. autosummary::
    :toctree: generated/
 
+   isna
    isnull
+   notna
    notnull
 
 Top-level conversions
@@ -210,6 +221,14 @@ Top-level dealing with datetimelike
    period_range
    timedelta_range
    infer_freq
+
+Top-level dealing with intervals
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+   :toctree: generated/
+
+   interval_range
 
 Top-level evaluation
 ~~~~~~~~~~~~~~~~~~~~
@@ -269,9 +288,10 @@ Conversion
    :toctree: generated/
 
    Series.astype
+   Series.infer_objects
    Series.copy
-   Series.isnull
-   Series.notnull
+   Series.isna
+   Series.notna
 
 Indexing, iteration
 ~~~~~~~~~~~~~~~~~~~
@@ -408,6 +428,7 @@ Reindexing / Selection / Label manipulation
    Series.reset_index
    Series.sample
    Series.select
+   Series.set_axis
    Series.take
    Series.tail
    Series.truncate
@@ -624,7 +645,15 @@ strings and apply several methods to it. These can be accessed like
 Categorical
 ~~~~~~~~~~~
 
-If the Series is of dtype ``category``, ``Series.cat`` can be used to change the the categorical
+The dtype of a ``Categorical`` can be described by a :class:`pandas.api.types.CategoricalDtype`.
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_without_autosummary.rst
+
+   api.types.CategoricalDtype
+
+If the Series is of dtype ``CategoricalDtype``, ``Series.cat`` can be used to change the categorical
 data. This accessor is similar to the ``Series.dt`` or ``Series.str`` and has the
 following usable methods and properties:
 
@@ -776,9 +805,10 @@ Conversion
 
    DataFrame.astype
    DataFrame.convert_objects
+   DataFrame.infer_objects
    DataFrame.copy
-   DataFrame.isnull
-   DataFrame.notnull
+   DataFrame.isna
+   DataFrame.notna
 
 Indexing, iteration
 ~~~~~~~~~~~~~~~~~~~
@@ -1095,8 +1125,8 @@ Conversion
 
    Panel.astype
    Panel.copy
-   Panel.isnull
-   Panel.notnull
+   Panel.isna
+   Panel.notna
 
 Getting and setting
 ~~~~~~~~~~~~~~~~~~~
@@ -1268,7 +1298,7 @@ Index
 -----
 
 **Many of these methods or variants thereof are available on the objects
-that contain an index (Series/Dataframe) and those should most likely be
+that contain an index (Series/DataFrame) and those should most likely be
 used before calling these methods directly.**
 
 .. autosummary::
@@ -1339,8 +1369,8 @@ Missing Values
 
    Index.fillna
    Index.dropna
-   Index.isnull
-   Index.notnull
+   Index.isna
+   Index.notna
 
 Conversion
 ~~~~~~~~~~
@@ -1351,6 +1381,7 @@ Conversion
    Index.tolist
    Index.to_datetime
    Index.to_series
+   Index.to_frame
 
 Sorting
 ~~~~~~~
@@ -1392,6 +1423,20 @@ Selecting
    Index.isin
    Index.slice_indexer
    Index.slice_locs
+
+.. _api.numericindex:
+
+Numeric Index
+-------------
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_without_autosummary.rst
+
+   RangeIndex
+   Int64Index
+   UInt64Index
+   Float64Index
 
 .. _api.categoricalindex:
 
@@ -1552,6 +1597,7 @@ Conversion
    DatetimeIndex.to_perioddelta
    DatetimeIndex.to_pydatetime
    DatetimeIndex.to_series
+   DatetimeIndex.to_frame
 
 TimedeltaIndex
 --------------
@@ -1584,6 +1630,245 @@ Conversion
    TimedeltaIndex.round
    TimedeltaIndex.floor
    TimedeltaIndex.ceil
+   TimedeltaIndex.to_frame
+
+.. currentmodule:: pandas
+
+PeriodIndex
+--------------
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_without_autosummary.rst
+
+   PeriodIndex
+
+Attributes
+~~~~~~~~~~
+.. autosummary::
+    :toctree: generated/
+
+    PeriodIndex.day
+    PeriodIndex.dayofweek
+    PeriodIndex.dayofyear
+    PeriodIndex.days_in_month
+    PeriodIndex.daysinmonth
+    PeriodIndex.end_time
+    PeriodIndex.freq
+    PeriodIndex.freqstr
+    PeriodIndex.hour
+    PeriodIndex.is_leap_year
+    PeriodIndex.minute
+    PeriodIndex.month
+    PeriodIndex.quarter
+    PeriodIndex.qyear
+    PeriodIndex.second
+    PeriodIndex.start_time
+    PeriodIndex.week
+    PeriodIndex.weekday
+    PeriodIndex.weekofyear
+    PeriodIndex.year
+
+Methods
+~~~~~~~
+.. autosummary::
+    :toctree: generated/
+
+    PeriodIndex.asfreq
+    PeriodIndex.strftime
+    PeriodIndex.to_timestamp
+    PeriodIndex.tz_convert
+    PeriodIndex.tz_localize
+
+Scalars
+-------
+
+Period
+~~~~~~
+.. autosummary::
+    :toctree: generated/
+
+    Period
+
+Attributes
+~~~~~~~~~~
+.. autosummary::
+    :toctree: generated/
+
+    Period.day
+    Period.dayofweek
+    Period.dayofyear
+    Period.days_in_month
+    Period.daysinmonth
+    Period.end_time
+    Period.freq
+    Period.freqstr
+    Period.hour
+    Period.is_leap_year
+    Period.minute
+    Period.month
+    Period.ordinal
+    Period.quarter
+    Period.qyear
+    Period.second
+    Period.start_time
+    Period.week
+    Period.weekday
+    Period.weekofyear
+    Period.year
+
+Methods
+~~~~~~~
+.. autosummary::
+    :toctree: generated/
+
+    Period.asfreq
+    Period.now
+    Period.strftime
+    Period.to_timestamp
+
+Timestamp
+~~~~~~~~~
+.. autosummary::
+    :toctree: generated/
+
+    Timestamp
+
+Properties
+~~~~~~~~~~
+.. autosummary::
+    :toctree: generated/
+
+    Timestamp.asm8
+    Timestamp.day
+    Timestamp.dayofweek
+    Timestamp.dayofyear
+    Timestamp.days_in_month
+    Timestamp.daysinmonth
+    Timestamp.hour
+    Timestamp.is_leap_year
+    Timestamp.is_month_end
+    Timestamp.is_month_start
+    Timestamp.is_quarter_end
+    Timestamp.is_quarter_start
+    Timestamp.is_year_end
+    Timestamp.is_year_start
+    Timestamp.max
+    Timestamp.microsecond
+    Timestamp.min
+    Timestamp.month
+    Timestamp.nanosecond
+    Timestamp.quarter
+    Timestamp.resolution
+    Timestamp.second
+    Timestamp.tz
+    Timestamp.tzinfo
+    Timestamp.value
+    Timestamp.weekday_name
+    Timestamp.weekofyear
+    Timestamp.year
+
+Methods
+~~~~~~~
+.. autosummary::
+    :toctree: generated/
+
+    Timestamp.astimezone
+    Timestamp.ceil
+    Timestamp.combine
+    Timestamp.ctime
+    Timestamp.date
+    Timestamp.dst
+    Timestamp.floor
+    Timestamp.freq
+    Timestamp.freqstr
+    Timestamp.fromordinal
+    Timestamp.fromtimestamp
+    Timestamp.isocalendar
+    Timestamp.isoformat
+    Timestamp.isoweekday
+    Timestamp.normalize
+    Timestamp.now
+    Timestamp.replace
+    Timestamp.round
+    Timestamp.strftime
+    Timestamp.strptime
+    Timestamp.time
+    Timestamp.timestamp
+    Timestamp.timetuple
+    Timestamp.timetz
+    Timestamp.to_datetime64
+    Timestamp.to_julian_date
+    Timestamp.to_period
+    Timestamp.to_pydatetime
+    Timestamp.today
+    Timestamp.toordinal
+    Timestamp.tz_convert
+    Timestamp.tz_localize
+    Timestamp.tzname
+    Timestamp.utcfromtimestamp
+    Timestamp.utcnow
+    Timestamp.utcoffset
+    Timestamp.utctimetuple
+    Timestamp.weekday
+
+Interval
+~~~~~~~~
+.. autosummary::
+    :toctree: generated/
+
+    Interval
+
+Properties
+~~~~~~~~~~
+.. autosummary::
+    :toctree generated/
+
+    Interval.closed
+    Interval.closed_left
+    Interval.closed_right
+    Interval.left
+    Interval.mid
+    Interval.open_left
+    Interval.open_right
+    Interval.right
+
+Timedelta
+~~~~~~~~~
+.. autosummary::
+    :toctree: generated/
+
+    Timedelta
+
+Properties
+~~~~~~~~~~
+.. autosummary::
+    :toctree generated/
+
+    Timedelta.asm8
+    Timedelta.components
+    Timedelta.days
+    Timedelta.freq
+    Timedelta.max
+    Timedelta.microseconds
+    Timedelta.min
+    Timedelta.nanoseconds
+    Timedelta.resolution
+    Timedelta.seconds
+    Timedelta.value
+
+Methods
+~~~~~~~
+.. autosummary::
+    :toctree generated/
+
+    Timedelta.ceil
+    Timedelta.floor
+    Timedelta.isoformat
+    Timedelta.round
+    Timedelta.to_pytimedelta
+    Timedelta.to_timedelta64
+    Timedelta.total_seconds
 
 Window
 ------
@@ -1690,6 +1975,7 @@ Function application
    GroupBy.apply
    GroupBy.aggregate
    GroupBy.transform
+   GroupBy.pipe
 
 Computations / Descriptive Stats
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1740,6 +2026,7 @@ application to columns of a specific data type.
    DataFrameGroupBy.diff
    DataFrameGroupBy.ffill
    DataFrameGroupBy.fillna
+   DataFrameGroupBy.filter
    DataFrameGroupBy.hist
    DataFrameGroupBy.idxmax
    DataFrameGroupBy.idxmin
@@ -1809,6 +2096,7 @@ Upsampling
    Resampler.backfill
    Resampler.bfill
    Resampler.pad
+   Resampler.nearest
    Resampler.fillna
    Resampler.asfreq
    Resampler.interpolate
@@ -1855,6 +2143,7 @@ Style Application
 
    Styler.apply
    Styler.applymap
+   Styler.where
    Styler.format
    Styler.set_precision
    Styler.set_table_styles
@@ -1884,6 +2173,17 @@ Style Export and Import
    Styler.render
    Styler.export
    Styler.use
+
+Plotting
+~~~~~~~~
+
+.. currentmodule:: pandas
+
+.. autosummary::
+   :toctree: generated/
+
+   plotting.register_matplotlib_converters
+   plotting.deregister_matplotlib_converters
 
 .. currentmodule:: pandas
 

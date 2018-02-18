@@ -7,16 +7,14 @@ of the parsers defined in parsers.py
 
 import pytest
 
+import pandas as pd
 import pandas.util.testing as tm
 
 
 class CompressionTests(object):
 
     def test_zip(self):
-        try:
-            import zipfile
-        except ImportError:
-            pytest.skip('need zipfile to run')
+        import zipfile
 
         with open(self.csv1, 'rb') as data_file:
             data = data_file.read()
@@ -65,10 +63,7 @@ class CompressionTests(object):
                               f, compression='zip')
 
     def test_gzip(self):
-        try:
-            import gzip
-        except ImportError:
-            pytest.skip('need gzip to run')
+        import gzip
 
         with open(self.csv1, 'rb') as data_file:
             data = data_file.read()
@@ -94,10 +89,7 @@ class CompressionTests(object):
             tm.assert_frame_equal(result, expected)
 
     def test_bz2(self):
-        try:
-            import bz2
-        except ImportError:
-            pytest.skip('need bz2 to run')
+        import bz2
 
         with open(self.csv1, 'rb') as data_file:
             data = data_file.read()
@@ -165,6 +157,19 @@ class CompressionTests(object):
             tm.assert_frame_equal(expected, df)
 
         inputs[3].close()
+
+    def test_read_csv_compressed_utf16_example(self):
+        # GH18071
+        path = tm.get_data_path('utf16_ex_small.zip')
+
+        result = self.read_csv(path, encoding='utf-16',
+                               compression='zip', sep='\t')
+        expected = pd.DataFrame({
+            u'Country': [u'Venezuela', u'Venezuela'],
+            u'Twitter': [u'Hugo Chávez Frías', u'Henrique Capriles R.']
+        })
+
+        tm.assert_frame_equal(result, expected)
 
     def test_invalid_compression(self):
         msg = 'Unrecognized compression type: sfark'

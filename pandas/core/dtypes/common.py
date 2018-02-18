@@ -11,7 +11,8 @@ from .dtypes import (CategoricalDtype, CategoricalDtypeType,
                      ExtensionDtype)
 from .generic import (ABCCategorical, ABCPeriodIndex,
                       ABCDatetimeIndex, ABCSeries,
-                      ABCSparseArray, ABCSparseSeries)
+                      ABCSparseArray, ABCSparseSeries, ABCCategoricalIndex,
+                      ABCIndexClass)
 from .inference import is_string_like
 from .inference import *  # noqa
 
@@ -392,13 +393,15 @@ def is_timedelta64_dtype(arr_or_dtype):
     False
     >>> is_timedelta64_dtype(pd.Series([], dtype="timedelta64[ns]"))
     True
+    >>> is_timedelta64_dtype('0 days')
+    False
     """
 
     if arr_or_dtype is None:
         return False
     try:
         tipo = _get_dtype_type(arr_or_dtype)
-    except ValueError:
+    except:
         return False
     return issubclass(tipo, np.timedelta64)
 
@@ -687,6 +690,40 @@ def is_dtype_equal(source, target):
         # invalid comparison
         # object == category will hit this
         return False
+
+
+def is_dtype_union_equal(source, target):
+    """
+    Check whether two arrays have compatible dtypes to do a union.
+    numpy types are checked with ``is_dtype_equal``. Extension types are
+    checked separately.
+
+    Parameters
+    ----------
+    source : The first dtype to compare
+    target : The second dtype to compare
+
+    Returns
+    ----------
+    boolean : Whether or not the two dtypes are equal.
+
+    >>> is_dtype_equal("int", int)
+    True
+
+    >>> is_dtype_equal(CategoricalDtype(['a', 'b'],
+    ...                CategoricalDtype(['b', 'c']))
+    True
+
+    >>> is_dtype_equal(CategoricalDtype(['a', 'b'],
+    ...                CategoricalDtype(['b', 'c'], ordered=True))
+    False
+    """
+    source = _get_dtype(source)
+    target = _get_dtype(target)
+    if is_categorical_dtype(source) and is_categorical_dtype(target):
+        # ordered False for both
+        return source.ordered is target.ordered
+    return is_dtype_equal(source, target)
 
 
 def is_any_int_dtype(arr_or_dtype):
@@ -1543,6 +1580,16 @@ def is_bool_dtype(arr_or_dtype):
     except ValueError:
         # this isn't even a dtype
         return False
+
+    if isinstance(arr_or_dtype, ABCIndexClass):
+
+        # TODO(jreback)
+        # we don't have a boolean Index class
+        # so its object, we need to infer to
+        # guess this
+        return (arr_or_dtype.is_object and
+                arr_or_dtype.inferred_type == 'boolean')
+
     return issubclass(tipo, np.bool_)
 
 
@@ -1658,7 +1705,9 @@ def _coerce_to_dtype(dtype):
     """
 
     if is_categorical_dtype(dtype):
-        dtype = CategoricalDtype()
+        categories = getattr(dtype, 'categories', None)
+        ordered = getattr(dtype, 'ordered', False)
+        dtype = CategoricalDtype(categories=categories, ordered=ordered)
     elif is_datetime64tz_dtype(dtype):
         dtype = DatetimeTZDtype(dtype)
     elif is_period_dtype(dtype):
@@ -1713,6 +1762,8 @@ def _get_dtype(arr_or_dtype):
             return PeriodDtype.construct_from_string(arr_or_dtype)
         elif is_interval_dtype(arr_or_dtype):
             return IntervalDtype.construct_from_string(arr_or_dtype)
+    elif isinstance(arr_or_dtype, (ABCCategorical, ABCCategoricalIndex)):
+        return arr_or_dtype.dtype
 
     if hasattr(arr_or_dtype, 'dtype'):
         arr_or_dtype = arr_or_dtype.dtype
@@ -1839,10 +1890,10 @@ def _validate_date_like_dtype(dtype):
     try:
         typ = np.datetime_data(dtype)[0]
     except ValueError as e:
-        raise TypeError('%s' % e)
+        raise TypeError('{error}'.format(error=e))
     if typ != 'generic' and typ != 'ns':
-        raise ValueError('%r is too specific of a frequency, try passing %r' %
-                         (dtype.name, dtype.type.__name__))
+        msg = '{name!r} is too specific of a frequency, try passing {type!r}'
+        raise ValueError(msg.format(name=dtype.name, type=dtype.type.__name__))
 
 
 _string_dtypes = frozenset(map(_get_dtype_from_object, (binary_type,
@@ -1909,6 +1960,6 @@ def pandas_dtype(dtype):
     if dtype in [object, np.object_, 'object', 'O']:
         return npdtype
     elif npdtype.kind == 'O':
-        raise TypeError('dtype {0} not understood'.format(dtype))
+        raise TypeError('dtype {dtype} not understood'.format(dtype=dtype))
 
     return npdtype

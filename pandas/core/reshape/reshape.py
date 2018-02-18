@@ -1,7 +1,8 @@
 # pylint: disable=E1101,E1103
 # pylint: disable=W0703,W0622,W0613,W0201
-from pandas.compat import range, zip
+from pandas.compat import range, text_type, zip
 from pandas import compat
+from functools import partial
 import itertools
 import re
 
@@ -10,9 +11,9 @@ import numpy as np
 from pandas.core.dtypes.common import (
     _ensure_platform_int,
     is_list_like, is_bool_dtype,
-    needs_i8_conversion)
+    needs_i8_conversion, is_sparse)
 from pandas.core.dtypes.cast import maybe_promote
-from pandas.core.dtypes.missing import notnull
+from pandas.core.dtypes.missing import notna
 import pandas.core.dtypes.concat as _concat
 
 from pandas.core.series import Series
@@ -31,7 +32,7 @@ from pandas._libs import algos as _algos, reshape as _reshape
 
 from pandas.core.frame import _shared_docs
 from pandas.util._decorators import Appender
-from pandas.core.index import MultiIndex, _get_na_value
+from pandas.core.index import Index, MultiIndex, _get_na_value
 
 
 class _Unstacker(object):
@@ -48,23 +49,23 @@ class _Unstacker(object):
     >>> import pandas as pd
     >>> index = pd.MultiIndex.from_tuples([('one', 'a'), ('one', 'b'),
     ...                                    ('two', 'a'), ('two', 'b')])
-    >>> s = pd.Series(np.arange(1.0, 5.0), index=index)
+    >>> s = pd.Series(np.arange(1, 5, dtype=np.int64), index=index)
     >>> s
-    one  a   1
-         b   2
-    two  a   3
-         b   4
-    dtype: float64
+    one  a    1
+         b    2
+    two  a    3
+         b    4
+    dtype: int64
 
     >>> s.unstack(level=-1)
-         a   b
+         a  b
     one  1  2
     two  3  4
 
     >>> s.unstack(level=0)
        one  two
-    a  1   2
-    b  3   4
+    a    1    3
+    b    2    4
 
     Returns
     -------
@@ -75,10 +76,15 @@ class _Unstacker(object):
                  fill_value=None):
 
         self.is_categorical = None
+        self.is_sparse = is_sparse(values)
         if values.ndim == 1:
             if isinstance(values, Categorical):
                 self.is_categorical = values
                 values = np.array(values)
+            elif self.is_sparse:
+                # XXX: Makes SparseArray *dense*, but it's supposedly
+                # a single column at a time, so it's "doable"
+                values = values.values
             values = values[:, np.newaxis]
         self.values = values
         self.value_columns = value_columns
@@ -91,8 +97,8 @@ class _Unstacker(object):
 
         if isinstance(self.index, MultiIndex):
             if index._reference_duplicate_name(level):
-                msg = ("Ambiguous reference to {0}. The index "
-                       "names are not unique.".format(level))
+                msg = ("Ambiguous reference to {level}. The index "
+                       "names are not unique.".format(level=level))
                 raise ValueError(msg)
 
         self.level = self.index._get_level_number(level)
@@ -177,7 +183,8 @@ class _Unstacker(object):
                                   ordered=ordered)
                       for i in range(values.shape[-1])]
 
-        return DataFrame(values, index=index, columns=columns)
+        klass = SparseDataFrame if self.is_sparse else DataFrame
+        return klass(values, index=index, columns=columns)
 
     def get_new_values(self):
         values = self.values
@@ -229,7 +236,7 @@ class _Unstacker(object):
             sorted_values = sorted_values.astype(name, copy=False)
 
         # fill in our values & mask
-        f = getattr(_reshape, "unstack_{}".format(name))
+        f = getattr(_reshape, "unstack_{name}".format(name=name))
         f(sorted_values,
           mask.view('u1'),
           stride,
@@ -285,7 +292,7 @@ class _Unstacker(object):
                           names=self.new_index_names, verify_integrity=False)
 
 
-def _unstack_multiple(data, clocs):
+def _unstack_multiple(data, clocs, fill_value=None):
     if len(clocs) == 0:
         return data
 
@@ -311,15 +318,19 @@ def _unstack_multiple(data, clocs):
     recons_labels = decons_obs_group_ids(comp_ids, obs_ids, shape, clabels,
                                          xnull=False)
 
-    dummy_index = MultiIndex(levels=rlevels + [obs_ids],
-                             labels=rlabels + [comp_ids],
-                             names=rnames + ['__placeholder__'],
-                             verify_integrity=False)
+    if rlocs == []:
+        # Everything is in clocs, so the dummy df has a regular index
+        dummy_index = Index(obs_ids, name='__placeholder__')
+    else:
+        dummy_index = MultiIndex(levels=rlevels + [obs_ids],
+                                 labels=rlabels + [comp_ids],
+                                 names=rnames + ['__placeholder__'],
+                                 verify_integrity=False)
 
     if isinstance(data, Series):
         dummy = data.copy()
         dummy.index = dummy_index
-        unstacked = dummy.unstack('__placeholder__')
+        unstacked = dummy.unstack('__placeholder__', fill_value=fill_value)
         new_levels = clevels
         new_names = cnames
         new_labels = recons_labels
@@ -336,7 +347,7 @@ def _unstack_multiple(data, clocs):
         dummy = data.copy()
         dummy.index = dummy_index
 
-        unstacked = dummy.unstack('__placeholder__')
+        unstacked = dummy.unstack('__placeholder__', fill_value=fill_value)
         if isinstance(unstacked, Series):
             unstcols = unstacked.index
         else:
@@ -446,7 +457,12 @@ def _slow_pivot(index, columns, values):
 
 def unstack(obj, level, fill_value=None):
     if isinstance(level, (tuple, list)):
-        return _unstack_multiple(obj, level)
+        if len(level) != 1:
+            # _unstack_multiple only handles MultiIndexes,
+            # and isn't needed for a single level
+            return _unstack_multiple(obj, level, fill_value=fill_value)
+        else:
+            level = level[0]
 
     if isinstance(obj, DataFrame):
         if isinstance(obj.index, MultiIndex):
@@ -460,36 +476,12 @@ def unstack(obj, level, fill_value=None):
 
 
 def _unstack_frame(obj, level, fill_value=None):
-    from pandas.core.internals import BlockManager, make_block
-
     if obj._is_mixed_type:
-        unstacker = _Unstacker(np.empty(obj.shape, dtype=bool),  # dummy
-                               obj.index, level=level,
-                               value_columns=obj.columns)
-        new_columns = unstacker.get_new_columns()
-        new_index = unstacker.get_new_index()
-        new_axes = [new_columns, new_index]
-
-        new_blocks = []
-        mask_blocks = []
-        for blk in obj._data.blocks:
-            blk_items = obj._data.items[blk.mgr_locs.indexer]
-            bunstacker = _Unstacker(blk.values.T, obj.index, level=level,
-                                    value_columns=blk_items,
-                                    fill_value=fill_value)
-            new_items = bunstacker.get_new_columns()
-            new_placement = new_columns.get_indexer(new_items)
-            new_values, mask = bunstacker.get_new_values()
-
-            mblk = make_block(mask.T, placement=new_placement)
-            mask_blocks.append(mblk)
-
-            newb = make_block(new_values.T, placement=new_placement)
-            new_blocks.append(newb)
-
-        result = DataFrame(BlockManager(new_blocks, new_axes))
-        mask_frame = DataFrame(BlockManager(mask_blocks, new_axes))
-        return result.loc[:, mask_frame.sum(0) > 0]
+        unstacker = partial(_Unstacker, index=obj.index,
+                            level=level, fill_value=fill_value)
+        blocks = obj._data.unstack(unstacker)
+        klass = type(obj)
+        return klass(blocks)
     else:
         unstacker = _Unstacker(obj.values, obj.index, level=level,
                                value_columns=obj.columns,
@@ -516,8 +508,8 @@ def stack(frame, level=-1, dropna=True):
     N, K = frame.shape
     if isinstance(frame.columns, MultiIndex):
         if frame.columns._reference_duplicate_name(level):
-            msg = ("Ambiguous reference to {0}. The column "
-                   "names are not unique.".format(level))
+            msg = ("Ambiguous reference to {level}. The column "
+                   "names are not unique.".format(level=level))
             raise ValueError(msg)
 
     # Will also convert negative level numbers and check if out of bounds.
@@ -547,10 +539,12 @@ def stack(frame, level=-1, dropna=True):
 
     new_values = frame.values.ravel()
     if dropna:
-        mask = notnull(new_values)
+        mask = notna(new_values)
         new_values = new_values[mask]
         new_index = new_index[mask]
-    return Series(new_values, index=new_index)
+
+    klass = type(frame)._constructor_sliced
+    return klass(new_values, index=new_index)
 
 
 def stack_multiple(frame, level, dropna=True):
@@ -747,7 +741,7 @@ def melt(frame, id_vars=None, value_vars=None, var_name=None,
             if len(frame.columns.names) == len(set(frame.columns.names)):
                 var_name = frame.columns.names
             else:
-                var_name = ['variable_%s' % i
+                var_name = ['variable_{i}'.format(i=i)
                             for i in range(len(frame.columns.names))]
         else:
             var_name = [frame.columns.name if frame.columns.name is not None
@@ -789,18 +783,18 @@ def lreshape(data, groups, dropna=True, label=None):
     >>> import pandas as pd
     >>> data = pd.DataFrame({'hr1': [514, 573], 'hr2': [545, 526],
     ...                      'team': ['Red Sox', 'Yankees'],
-    ...                      'year1': [2007, 2008], 'year2': [2008, 2008]})
+    ...                      'year1': [2007, 2007], 'year2': [2008, 2008]})
     >>> data
        hr1  hr2     team  year1  year2
     0  514  545  Red Sox   2007   2008
     1  573  526  Yankees   2007   2008
 
     >>> pd.lreshape(data, {'year': ['year1', 'year2'], 'hr': ['hr1', 'hr2']})
-          team   hr  year
-    0  Red Sox  514  2007
-    1  Yankees  573  2007
-    2  Red Sox  545  2008
-    3  Yankees  526  2008
+          team  year   hr
+    0  Red Sox  2007  514
+    1  Yankees  2007  573
+    2  Red Sox  2008  545
+    3  Yankees  2008  526
 
     Returns
     -------
@@ -835,14 +829,14 @@ def lreshape(data, groups, dropna=True, label=None):
     if dropna:
         mask = np.ones(len(mdata[pivot_cols[0]]), dtype=bool)
         for c in pivot_cols:
-            mask &= notnull(mdata[c])
+            mask &= notna(mdata[c])
         if not mask.all():
             mdata = dict((k, v[mask]) for k, v in compat.iteritems(mdata))
 
     return DataFrame(mdata, columns=id_cols + pivot_cols)
 
 
-def wide_to_long(df, stubnames, i, j, sep="", suffix='\d+'):
+def wide_to_long(df, stubnames, i, j, sep="", suffix=r'\d+'):
     r"""
     Wide panel to long format. Less flexible but more user-friendly than melt.
 
@@ -905,11 +899,12 @@ def wide_to_long(df, stubnames, i, j, sep="", suffix='\d+'):
     ...                   })
     >>> df["id"] = df.index
     >>> df
-    A1970 A1980  B1970  B1980         X  id
+      A1970 A1980  B1970  B1980         X  id
     0     a     d    2.5    3.2 -1.085631   0
     1     b     e    1.2    1.3  0.997345   1
     2     c     f    0.7    0.1  0.282978   2
     >>> pd.wide_to_long(df, ["A", "B"], i="id", j="year")
+    ... # doctest: +NORMALIZE_WHITESPACE
                     X  A    B
     id year
     0  1970 -1.085631  a  2.5
@@ -940,6 +935,7 @@ def wide_to_long(df, stubnames, i, j, sep="", suffix='\d+'):
     8      3      3  2.1  2.9
     >>> l = pd.wide_to_long(df, stubnames='ht', i=['famid', 'birth'], j='age')
     >>> l
+    ... # doctest: +NORMALIZE_WHITESPACE
                       ht
     famid birth age
     1     1     1    2.8
@@ -979,41 +975,44 @@ def wide_to_long(df, stubnames, i, j, sep="", suffix='\d+'):
 
     Less wieldy column names are also handled
 
+    >>> np.random.seed(0)
     >>> df = pd.DataFrame({'A(quarterly)-2010': np.random.rand(3),
     ...                    'A(quarterly)-2011': np.random.rand(3),
     ...                    'B(quarterly)-2010': np.random.rand(3),
     ...                    'B(quarterly)-2011': np.random.rand(3),
     ...                    'X' : np.random.randint(3, size=3)})
     >>> df['id'] = df.index
-    >>> df
-      A(quarterly)-2010 A(quarterly)-2011 B(quarterly)-2010 B(quarterly)-2011
-    0          0.531828          0.724455          0.322959          0.293714
-    1          0.634401          0.611024          0.361789          0.630976
-    2          0.849432          0.722443          0.228263          0.092105
-    \
+    >>> df # doctest: +NORMALIZE_WHITESPACE, +ELLIPSIS
+       A(quarterly)-2010  A(quarterly)-2011  B(quarterly)-2010  ...
+    0           0.548814           0.544883           0.437587  ...
+    1           0.715189           0.423655           0.891773  ...
+    2           0.602763           0.645894           0.963663  ...
        X  id
     0  0   0
     1  1   1
-    2  2   2
-    >>> pd.wide_to_long(df, ['A(quarterly)', 'B(quarterly)'],
-                        i='id', j='year', sep='-')
-             X     A(quarterly)  B(quarterly)
+    2  1   2
+
+    >>> pd.wide_to_long(df, ['A(quarterly)', 'B(quarterly)'], i='id',
+    ...                 j='year', sep='-')
+    ... # doctest: +NORMALIZE_WHITESPACE
+             X  A(quarterly)  B(quarterly)
     id year
-    0  2010  0       0.531828       0.322959
-    1  2010  2       0.634401       0.361789
-    2  2010  2       0.849432       0.228263
-    0  2011  0       0.724455       0.293714
-    1  2011  2       0.611024       0.630976
-    2  2011  2       0.722443       0.092105
+    0  2010  0      0.548814     0.437587
+    1  2010  1      0.715189     0.891773
+    2  2010  1      0.602763     0.963663
+    0  2011  0      0.544883     0.383442
+    1  2011  1      0.423655     0.791725
+    2  2011  1      0.645894     0.528895
 
     If we have many columns, we could also use a regex to find our
     stubnames and pass that list on to wide_to_long
 
-    >>> stubnames = set([match[0] for match in
-                        df.columns.str.findall('[A-B]\(.*\)').values
-                        if match != [] ])
+    >>> stubnames = sorted(
+    ...     set([match[0] for match in df.columns.str.findall(
+    ...         r'[A-B]\(.*\)').values if match != [] ])
+    ... )
     >>> list(stubnames)
-    ['B(quarterly)', 'A(quarterly)']
+    ['A(quarterly)', 'B(quarterly)']
 
     Notes
     -----
@@ -1022,7 +1021,8 @@ def wide_to_long(df, stubnames, i, j, sep="", suffix='\d+'):
     in a typicaly case.
     """
     def get_var_names(df, stub, sep, suffix):
-        regex = "^{0}{1}{2}".format(re.escape(stub), re.escape(sep), suffix)
+        regex = "^{stub}{sep}{suffix}".format(
+            stub=re.escape(stub), sep=re.escape(sep), suffix=suffix)
         return df.filter(regex=regex).columns.tolist()
 
     def melt_stub(df, stub, i, j, value_vars, sep):
@@ -1080,7 +1080,7 @@ def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False,
     prefix : string, list of strings, or dict of strings, default None
         String to append DataFrame column names
         Pass a list with length equal to the number of columns
-        when calling get_dummies on a DataFrame. Alternativly, `prefix`
+        when calling get_dummies on a DataFrame. Alternatively, `prefix`
         can be a dictionary mapping column names to prefixes.
     prefix_sep : string, default '_'
         If appending prefix, separator/delimiter to use. Or pass a
@@ -1095,8 +1095,6 @@ def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False,
         Whether the dummy columns should be sparse or not.  Returns
         SparseDataFrame if `data` is a Series or if all columns are included.
         Otherwise returns a DataFrame with some SparseBlocks.
-
-        .. versionadded:: 0.16.1
     drop_first : bool, default False
         Whether to get k-1 dummies out of k categorical levels by removing the
         first level.
@@ -1133,7 +1131,7 @@ def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False,
     2  0  0    1
 
     >>> df = pd.DataFrame({'A': ['a', 'b', 'a'], 'B': ['b', 'a', 'c'],
-                        'C': [1, 2, 3]})
+    ...                    'C': [1, 2, 3]})
 
     >>> pd.get_dummies(df, prefix=['col1', 'col2'])
        C  col1_a  col1_b  col2_a  col2_b  col2_c
@@ -1149,7 +1147,7 @@ def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False,
     3  1  0  0
     4  1  0  0
 
-    >>> pd.get_dummies(pd.Series(list('abcaa')), drop_first=True))
+    >>> pd.get_dummies(pd.Series(list('abcaa')), drop_first=True)
        b  c
     0  0  0
     1  1  0
@@ -1175,13 +1173,14 @@ def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False,
 
         # validate prefixes and separator to avoid silently dropping cols
         def check_len(item, name):
-            length_msg = ("Length of '{0}' ({1}) did not match the length of "
-                          "the columns being encoded ({2}).")
+            len_msg = ("Length of '{name}' ({len_item}) did not match the "
+                       "length of the columns being encoded ({len_enc}).")
 
             if is_list_like(item):
                 if not len(item) == len(columns_to_encode):
-                    raise ValueError(length_msg.format(name, len(item),
-                                                       len(columns_to_encode)))
+                    len_msg = len_msg.format(name=name, len_item=len(item),
+                                             len_enc=len(columns_to_encode))
+                    raise ValueError(len_msg)
 
         check_len(prefix, 'prefix')
         check_len(prefix_sep, 'prefix_sep')
@@ -1248,7 +1247,10 @@ def _get_dummies_1d(data, prefix, prefix_sep='_', dummy_na=False,
     number_of_cols = len(levels)
 
     if prefix is not None:
-        dummy_cols = ['%s%s%s' % (prefix, prefix_sep, v) for v in levels]
+        dummy_strs = [u'{prefix}{sep}{level}' if isinstance(v, text_type)
+                      else '{prefix}{sep}{level}' for v in levels]
+        dummy_cols = [dummy_str.format(prefix=prefix, sep=prefix_sep, level=v)
+                      for dummy_str, v in zip(dummy_strs, levels)]
     else:
         dummy_cols = levels
 

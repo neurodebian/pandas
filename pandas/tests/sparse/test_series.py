@@ -1,18 +1,19 @@
 # pylint: disable-msg=E1101,W0612
 
 import operator
+from datetime import datetime
+
 import pytest
 
 from numpy import nan
 import numpy as np
 import pandas as pd
 
-from pandas import Series, DataFrame, bdate_range
-from pandas.core.common import isnull
+from pandas import (Series, DataFrame, bdate_range,
+                    isna, compat, _np_version_under1p12)
 from pandas.tseries.offsets import BDay
 import pandas.util.testing as tm
 from pandas.compat import range
-from pandas import compat
 from pandas.core.reshape.util import cartesian_product
 
 import pandas.core.sparse.frame as spf
@@ -58,6 +59,10 @@ def _test_data2_zero():
 
 class TestSparseSeries(SharedWithSparse):
 
+    series_klass = SparseSeries
+    # SharedWithSparse tests use generic, series_klass-agnostic assertion
+    _assert_series_equal = staticmethod(tm.assert_sp_series_equal)
+
     def setup_method(self, method):
         arr, index = _test_data1()
 
@@ -87,6 +92,24 @@ class TestSparseSeries(SharedWithSparse):
                                       fill_value=0)
         self.ziseries2 = SparseSeries(arr, index=index, kind='integer',
                                       fill_value=0)
+
+    def test_constructor_dict_input(self):
+        # gh-16905
+        constructor_dict = {1: 1.}
+        index = [0, 1, 2]
+
+        # Series with index passed in
+        series = pd.Series(constructor_dict)
+        expected = SparseSeries(series, index=index)
+
+        result = SparseSeries(constructor_dict, index=index)
+        tm.assert_sp_series_equal(result, expected)
+
+        # Series with index and dictionary with no index
+        expected = SparseSeries(series)
+
+        result = SparseSeries(constructor_dict)
+        tm.assert_sp_series_equal(result, expected)
 
     def test_constructor_dtype(self):
         arr = SparseSeries([np.nan, 1, 2, np.nan])
@@ -290,7 +313,7 @@ class TestSparseSeries(SharedWithSparse):
         sp = SparseSeries(data, np.arange(100))
         sp = sp.reindex(np.arange(200))
         assert (sp.loc[:99] == data).all()
-        assert isnull(sp.loc[100:]).all()
+        assert isna(sp.loc[100:]).all()
 
         data = np.nan
         sp = SparseSeries(data, np.arange(100))
@@ -442,15 +465,22 @@ class TestSparseSeries(SharedWithSparse):
         expected = self.btseries.to_dense()[dt]
         tm.assert_almost_equal(result, expected)
 
-        tm.assert_almost_equal(self.bseries.get_value(10), self.bseries[10])
+        with tm.assert_produces_warning(FutureWarning,
+                                        check_stacklevel=False):
+            tm.assert_almost_equal(
+                self.bseries.get_value(10), self.bseries[10])
 
     def test_set_value(self):
 
         idx = self.btseries.index[7]
-        self.btseries.set_value(idx, 0)
+        with tm.assert_produces_warning(FutureWarning,
+                                        check_stacklevel=False):
+            self.btseries.set_value(idx, 0)
         assert self.btseries[idx] == 0
 
-        self.iseries.set_value('foobar', 0)
+        with tm.assert_produces_warning(FutureWarning,
+                                        check_stacklevel=False):
+            self.iseries.set_value('foobar', 0)
         assert self.iseries.index[-1] == 'foobar'
         assert self.iseries['foobar'] == 0
 
@@ -498,20 +528,27 @@ class TestSparseSeries(SharedWithSparse):
         exp = pd.Series(np.repeat(nan, 5))
         tm.assert_series_equal(sp.take([0, 1, 2, 3, 4]), exp)
 
+        with tm.assert_produces_warning(FutureWarning):
+            sp.take([1, 5], convert=True)
+
+        with tm.assert_produces_warning(FutureWarning):
+            sp.take([1, 5], convert=False)
+
     def test_numpy_take(self):
         sp = SparseSeries([1.0, 2.0, 3.0])
         indices = [1, 2]
 
-        tm.assert_series_equal(np.take(sp, indices, axis=0).to_dense(),
-                               np.take(sp.to_dense(), indices, axis=0))
+        if not _np_version_under1p12:
+            tm.assert_series_equal(np.take(sp, indices, axis=0).to_dense(),
+                                   np.take(sp.to_dense(), indices, axis=0))
 
-        msg = "the 'out' parameter is not supported"
-        tm.assert_raises_regex(ValueError, msg, np.take,
-                               sp, indices, out=np.empty(sp.shape))
+            msg = "the 'out' parameter is not supported"
+            tm.assert_raises_regex(ValueError, msg, np.take,
+                                   sp, indices, out=np.empty(sp.shape))
 
-        msg = "the 'mode' parameter is not supported"
-        tm.assert_raises_regex(ValueError, msg, np.take,
-                               sp, indices, mode='clip')
+            msg = "the 'mode' parameter is not supported"
+            tm.assert_raises_regex(ValueError, msg, np.take,
+                                   sp, indices, out=None, mode='clip')
 
     def test_setitem(self):
         self.bseries[5] = 7.
@@ -1268,11 +1305,11 @@ class TestSparseSeriesScipyInteraction(object):
         tm.assert_series_equal(sparse.value_counts(dropna=False),
                                dense.value_counts(dropna=False))
 
-    def test_isnull(self):
+    def test_isna(self):
         # GH 8276
         s = pd.SparseSeries([np.nan, np.nan, 1, 2, np.nan], name='xxx')
 
-        res = s.isnull()
+        res = s.isna()
         exp = pd.SparseSeries([True, True, False, False, True], name='xxx',
                               fill_value=True)
         tm.assert_sp_series_equal(res, exp)
@@ -1280,16 +1317,16 @@ class TestSparseSeriesScipyInteraction(object):
         # if fill_value is not nan, True can be included in sp_values
         s = pd.SparseSeries([np.nan, 0., 1., 2., 0.], name='xxx',
                             fill_value=0.)
-        res = s.isnull()
+        res = s.isna()
         assert isinstance(res, pd.SparseSeries)
         exp = pd.Series([True, False, False, False, False], name='xxx')
         tm.assert_series_equal(res.to_dense(), exp)
 
-    def test_isnotnull(self):
+    def test_notna(self):
         # GH 8276
         s = pd.SparseSeries([np.nan, np.nan, 1, 2, np.nan], name='xxx')
 
-        res = s.isnotnull()
+        res = s.notna()
         exp = pd.SparseSeries([False, False, True, True, False], name='xxx',
                               fill_value=False)
         tm.assert_sp_series_equal(res, exp)
@@ -1297,7 +1334,7 @@ class TestSparseSeriesScipyInteraction(object):
         # if fill_value is not nan, True can be included in sp_values
         s = pd.SparseSeries([np.nan, 0., 1., 2., 0.], name='xxx',
                             fill_value=0.)
-        res = s.isnotnull()
+        res = s.notna()
         assert isinstance(res, pd.SparseSeries)
         exp = pd.Series([False, True, True, True, True], name='xxx')
         tm.assert_series_equal(res.to_dense(), exp)
@@ -1357,7 +1394,42 @@ class TestSparseSeriesAnalytics(object):
         # numpy passes in 'axis=None' or `axis=-1'
         funcs = ['sum', 'cumsum', 'var', 'mean',
                  'prod', 'cumprod', 'std', 'argsort',
-                 'argmin', 'argmax', 'min', 'max']
+                 'min', 'max']
         for func in funcs:
             for series in ('bseries', 'zbseries'):
                 getattr(np, func)(getattr(self, series))
+
+    def test_deprecated_numpy_func_call(self):
+        # NOTE: These should be add to the 'test_numpy_func_call' test above
+        # once the behavior of argmin/argmax is corrected.
+        funcs = ['argmin', 'argmax']
+        for func in funcs:
+            for series in ('bseries', 'zbseries'):
+                with tm.assert_produces_warning(FutureWarning,
+                                                check_stacklevel=False):
+                    getattr(np, func)(getattr(self, series))
+
+                with tm.assert_produces_warning(FutureWarning,
+                                                check_stacklevel=False):
+                    getattr(getattr(self, series), func)()
+
+    def test_deprecated_reindex_axis(self):
+        # https://github.com/pandas-dev/pandas/issues/17833
+        with tm.assert_produces_warning(FutureWarning) as m:
+            self.bseries.reindex_axis([0, 1, 2])
+        assert 'reindex' in str(m[0].message)
+
+
+@pytest.mark.parametrize(
+    'datetime_type', (np.datetime64,
+                      pd.Timestamp,
+                      lambda x: datetime.strptime(x, '%Y-%m-%d')))
+def test_constructor_dict_datetime64_index(datetime_type):
+    # GH 9456
+    dates = ['1984-02-19', '1988-11-06', '1989-12-03', '1990-03-15']
+    values = [42544017.198965244, 1234565, 40512335.181958228, -1]
+
+    result = SparseSeries(dict(zip(map(datetime_type, dates), values)))
+    expected = SparseSeries(values, map(pd.Timestamp, dates))
+
+    tm.assert_sp_series_equal(result, expected)

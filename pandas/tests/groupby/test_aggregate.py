@@ -234,6 +234,27 @@ class TestGroupByAggregate(object):
         expected = grouped.mean()
         tm.assert_frame_equal(result, expected)
 
+    def test_aggregate_float64_no_int64(self):
+        # see gh-11199
+        df = DataFrame({"a": [1, 2, 3, 4, 5],
+                        "b": [1, 2, 2, 4, 5],
+                        "c": [1, 2, 3, 4, 5]})
+
+        expected = DataFrame({"a": [1, 2.5, 4, 5]},
+                             index=[1, 2, 4, 5])
+        expected.index.name = "b"
+
+        result = df.groupby("b")[["a"]].mean()
+        tm.assert_frame_equal(result, expected)
+
+        expected = DataFrame({"a": [1, 2.5, 4, 5],
+                              "c": [1, 2.5, 4, 5]},
+                             index=[1, 2, 4, 5])
+        expected.index.name = "b"
+
+        result = df.groupby("b")[["a", "c"]].mean()
+        tm.assert_frame_equal(result, expected)
+
     def test_aggregate_api_consistency(self):
         # GH 9052
         # make sure that the aggregates via dict
@@ -541,7 +562,7 @@ class TestGroupByAggregate(object):
             exp.name = 'C'
 
             result = op(grouped)['C']
-            if not tm._incompat_bottleneck_version(name):
+            if name in ['sum', 'prod']:
                 assert_series_equal(result, exp)
 
         _testit('count')
@@ -589,6 +610,16 @@ class TestGroupByAggregate(object):
         df.groupby(level=0, axis='columns').mean()
         df.groupby(level=0, axis='columns').mean()
         df.groupby(level=0, axis='columns').mean()
+
+    def test_cython_agg_return_dict(self):
+        # GH 16741
+        ts = self.df.groupby('A')['B'].agg(
+            lambda x: x.value_counts().to_dict())
+        expected = Series([{'two': 1, 'one': 1, 'three': 1},
+                           {'two': 2, 'one': 2, 'three': 1}],
+                          index=Index(['bar', 'foo'], name='A'),
+                          name='B')
+        assert_series_equal(ts, expected)
 
     def test_cython_fail_agg(self):
         dr = bdate_range('1/1/2000', periods=50)
@@ -778,26 +809,60 @@ class TestGroupByAggregate(object):
                 exc.args += ('operation: %s' % op, )
                 raise
 
-    def test_cython_agg_empty_buckets(self):
-        ops = [('mean', np.mean),
-               ('median', lambda x: np.median(x) if len(x) > 0 else np.nan),
-               ('var', lambda x: np.var(x, ddof=1)),
-               ('add', lambda x: np.sum(x) if len(x) > 0 else np.nan),
-               ('prod', np.prod),
-               ('min', np.min),
-               ('max', np.max), ]
-
+    @pytest.mark.parametrize('op, targop', [
+        ('mean', np.mean),
+        ('median', lambda x: np.median(x) if len(x) > 0 else np.nan),
+        ('var', lambda x: np.var(x, ddof=1)),
+        ('min', np.min),
+        ('max', np.max), ]
+    )
+    def test_cython_agg_empty_buckets(self, op, targop):
         df = pd.DataFrame([11, 12, 13])
         grps = range(0, 55, 5)
 
-        for op, targop in ops:
-            result = df.groupby(pd.cut(df[0], grps))._cython_agg_general(op)
-            expected = df.groupby(pd.cut(df[0], grps)).agg(lambda x: targop(x))
-            try:
-                tm.assert_frame_equal(result, expected)
-            except BaseException as exc:
-                exc.args += ('operation: %s' % op,)
-                raise
+        # calling _cython_agg_general directly, instead of via the user API
+        # which sets different values for min_count, so do that here.
+        result = df.groupby(pd.cut(df[0], grps))._cython_agg_general(op)
+        expected = df.groupby(pd.cut(df[0], grps)).agg(lambda x: targop(x))
+        try:
+            tm.assert_frame_equal(result, expected)
+        except BaseException as exc:
+            exc.args += ('operation: %s' % op,)
+            raise
+
+    def test_cython_agg_empty_buckets_nanops(self):
+        # GH-18869 can't call nanops on empty groups, so hardcode expected
+        # for these
+        df = pd.DataFrame([11, 12, 13], columns=['a'])
+        grps = range(0, 25, 5)
+        # add / sum
+        result = df.groupby(pd.cut(df['a'], grps))._cython_agg_general('add')
+        intervals = pd.interval_range(0, 20, freq=5)
+        expected = pd.DataFrame(
+            {"a": [0, 0, 36, 0]},
+            index=pd.CategoricalIndex(intervals, name='a', ordered=True))
+        tm.assert_frame_equal(result, expected)
+
+        # prod
+        result = df.groupby(pd.cut(df['a'], grps))._cython_agg_general('prod')
+        expected = pd.DataFrame(
+            {"a": [1, 1, 1716, 1]},
+            index=pd.CategoricalIndex(intervals, name='a', ordered=True))
+        tm.assert_frame_equal(result, expected)
+
+    @pytest.mark.xfail(reason="GH-18869: agg func not called on empty groups.")
+    def test_agg_category_nansum(self):
+        categories = ['a', 'b', 'c']
+        df = pd.DataFrame({"A": pd.Categorical(['a', 'a', 'b'],
+                                               categories=categories),
+                           'B': [1, 2, 3]})
+        result = df.groupby("A").B.agg(np.nansum)
+        expected = pd.Series([3, 3, 0],
+                             index=pd.CategoricalIndex(['a', 'b', 'c'],
+                                                       categories=categories,
+                                                       name='A'),
+                             name='B')
+        tm.assert_series_equal(result, expected)
 
     def test_agg_over_numpy_arrays(self):
         # GH 3788
@@ -844,3 +909,20 @@ class TestGroupByAggregate(object):
         ts = df['B'].iloc[2]
         assert ts == grouped.last()['B'].iloc[0]
         assert ts == grouped.apply(lambda x: x.iloc[-1])[0]
+
+    def test_sum_uint64_overflow(self):
+        # see gh-14758
+
+        # Convert to uint64 and don't overflow
+        df = pd.DataFrame([[1, 2], [3, 4], [5, 6]],
+                          dtype=object) + 9223372036854775807
+
+        index = pd.Index([9223372036854775808, 9223372036854775810,
+                          9223372036854775812], dtype=np.uint64)
+        expected = pd.DataFrame({1: [9223372036854775809,
+                                     9223372036854775811,
+                                     9223372036854775813]}, index=index)
+
+        expected.index.name = 0
+        result = df.groupby(0).sum()
+        tm.assert_frame_equal(result, expected)

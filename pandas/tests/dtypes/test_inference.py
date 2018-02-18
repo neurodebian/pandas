@@ -9,6 +9,7 @@ from warnings import catch_warnings
 import collections
 import re
 from datetime import datetime, date, timedelta, time
+from decimal import Decimal
 import numpy as np
 import pytz
 import pytest
@@ -17,7 +18,7 @@ import pandas as pd
 from pandas._libs import tslib, lib
 from pandas import (Series, Index, DataFrame, Timedelta,
                     DatetimeIndex, TimedeltaIndex, Timestamp,
-                    Panel, Period, Categorical)
+                    Panel, Period, Categorical, isna)
 from pandas.compat import u, PY2, PY3, StringIO, lrange
 from pandas.core.dtypes import inference
 from pandas.core.dtypes.common import (
@@ -35,8 +36,12 @@ from pandas.core.dtypes.common import (
     is_scipy_sparse,
     _ensure_int32,
     _ensure_categorical)
-from pandas.core.dtypes.missing import isnull
 from pandas.util import testing as tm
+
+
+@pytest.fixture(params=[True, False], ids=lambda val: str(val))
+def coerce(request):
+    return request.param
 
 
 def test_is_sequence():
@@ -58,7 +63,7 @@ def test_is_sequence():
 def test_is_list_like():
     passes = ([], [1], (1, ), (1, 2), {'a': 1}, set([1, 'a']), Series([1]),
               Series([]), Series(['a']).str)
-    fails = (1, '2', object())
+    fails = (1, '2', object(), str)
 
     for p in passes:
         assert inference.is_list_like(p)
@@ -239,6 +244,9 @@ class TestInference(object):
         arr = arr.astype(object)
         assert lib.infer_dtype(arr) == compare
 
+        # object array of bytes with missing values
+        assert lib.infer_dtype([b'a', np.nan, b'c'], skipna=True) == compare
+
     def test_isinf_scalar(self):
         # GH 11352
         assert lib.isposinf_scalar(float('inf'))
@@ -337,44 +345,38 @@ class TestInference(object):
         exp = np.array([2**63], dtype=np.uint64)
         tm.assert_numpy_array_equal(lib.maybe_convert_numeric(arr, set()), exp)
 
-    def test_convert_numeric_uint64_nan(self):
-        msg = 'uint64 array detected'
-        cases = [(np.array([2**63, np.nan], dtype=object), set()),
-                 (np.array([str(2**63), np.nan], dtype=object), set()),
-                 (np.array([np.nan, 2**63], dtype=object), set()),
-                 (np.array([np.nan, str(2**63)], dtype=object), set()),
-                 (np.array([2**63, 2**63 + 1], dtype=object), set([2**63])),
-                 (np.array([str(2**63), str(2**63 + 1)],
-                           dtype=object), set([2**63]))]
+    @pytest.mark.parametrize("arr", [
+        np.array([2**63, np.nan], dtype=object),
+        np.array([str(2**63), np.nan], dtype=object),
+        np.array([np.nan, 2**63], dtype=object),
+        np.array([np.nan, str(2**63)], dtype=object)])
+    def test_convert_numeric_uint64_nan(self, coerce, arr):
+        expected = arr.astype(float) if coerce else arr.copy()
+        result = lib.maybe_convert_numeric(arr, set(),
+                                           coerce_numeric=coerce)
+        tm.assert_almost_equal(result, expected)
 
-        for coerce in (True, False):
-            for arr, na_values in cases:
-                if coerce:
-                    with tm.assert_raises_regex(ValueError, msg):
-                        lib.maybe_convert_numeric(arr, na_values,
-                                                  coerce_numeric=coerce)
-                else:
-                    tm.assert_numpy_array_equal(lib.maybe_convert_numeric(
-                        arr, na_values), arr)
+    def test_convert_numeric_uint64_nan_values(self, coerce):
+        arr = np.array([2**63, 2**63 + 1], dtype=object)
+        na_values = set([2**63])
 
-    def test_convert_numeric_int64_uint64(self):
-        msg = 'uint64 and negative values detected'
-        cases = [np.array([2**63, -1], dtype=object),
-                 np.array([str(2**63), -1], dtype=object),
-                 np.array([str(2**63), str(-1)], dtype=object),
-                 np.array([-1, 2**63], dtype=object),
-                 np.array([-1, str(2**63)], dtype=object),
-                 np.array([str(-1), str(2**63)], dtype=object)]
+        expected = (np.array([np.nan, 2**63 + 1], dtype=float)
+                    if coerce else arr.copy())
+        result = lib.maybe_convert_numeric(arr, na_values,
+                                           coerce_numeric=coerce)
+        tm.assert_almost_equal(result, expected)
 
-        for coerce in (True, False):
-            for case in cases:
-                if coerce:
-                    with tm.assert_raises_regex(ValueError, msg):
-                        lib.maybe_convert_numeric(case, set(),
-                                                  coerce_numeric=coerce)
-                else:
-                    tm.assert_numpy_array_equal(lib.maybe_convert_numeric(
-                        case, set()), case)
+    @pytest.mark.parametrize("case", [
+        np.array([2**63, -1], dtype=object),
+        np.array([str(2**63), -1], dtype=object),
+        np.array([str(2**63), str(-1)], dtype=object),
+        np.array([-1, 2**63], dtype=object),
+        np.array([-1, str(2**63)], dtype=object),
+        np.array([str(-1), str(2**63)], dtype=object)])
+    def test_convert_numeric_int64_uint64(self, case, coerce):
+        expected = case.astype(float) if coerce else case.copy()
+        result = lib.maybe_convert_numeric(case, set(), coerce_numeric=coerce)
+        tm.assert_almost_equal(result, expected)
 
     def test_maybe_convert_objects_uint64(self):
         # see gh-4471
@@ -414,6 +416,12 @@ class TestTypeInference(object):
         result = lib.infer_dtype([])
         assert result == 'empty'
 
+        # GH 18004
+        arr = np.array([np.array([], dtype=object),
+                        np.array([], dtype=object)])
+        result = lib.infer_dtype(arr)
+        assert result == 'empty'
+
     def test_integers(self):
         arr = np.array([1, 2, 3, np.int64(4), np.int32(5)], dtype='O')
         result = lib.infer_dtype(arr)
@@ -444,6 +452,10 @@ class TestTypeInference(object):
         result = lib.infer_dtype(arr)
         assert result == 'boolean'
 
+        arr = np.array([True, np.nan, False], dtype='O')
+        result = lib.infer_dtype(arr, skipna=True)
+        assert result == 'boolean'
+
     def test_floats(self):
         arr = np.array([1., 2., 3., np.float64(4), np.float32(5)], dtype='O')
         result = lib.infer_dtype(arr)
@@ -462,11 +474,36 @@ class TestTypeInference(object):
         result = lib.infer_dtype(arr)
         assert result == 'floating'
 
+    def test_decimals(self):
+        # GH15690
+        arr = np.array([Decimal(1), Decimal(2), Decimal(3)])
+        result = lib.infer_dtype(arr)
+        assert result == 'decimal'
+
+        arr = np.array([1.0, 2.0, Decimal(3)])
+        result = lib.infer_dtype(arr)
+        assert result == 'mixed'
+
+        arr = np.array([Decimal(1), Decimal('NaN'), Decimal(3)])
+        result = lib.infer_dtype(arr)
+        assert result == 'decimal'
+
+        arr = np.array([Decimal(1), np.nan, Decimal(3)], dtype='O')
+        result = lib.infer_dtype(arr)
+        assert result == 'decimal'
+
     def test_string(self):
         pass
 
     def test_unicode(self):
-        pass
+        arr = [u'a', np.nan, u'c']
+        result = lib.infer_dtype(arr)
+        assert result == 'mixed'
+
+        arr = [u'a', np.nan, u'c']
+        result = lib.infer_dtype(arr, skipna=True)
+        expected = 'unicode' if PY2 else 'string'
+        assert result == expected
 
     def test_datetime(self):
 
@@ -704,9 +741,16 @@ class TestTypeInference(object):
 
     def test_date(self):
 
-        dates = [date(2012, 1, x) for x in range(1, 20)]
+        dates = [date(2012, 1, day) for day in range(1, 20)]
         index = Index(dates)
         assert index.inferred_type == 'date'
+
+        dates = [date(2012, 1, day) for day in range(1, 20)] + [np.nan]
+        result = lib.infer_dtype(dates)
+        assert result == 'mixed'
+
+        result = lib.infer_dtype(dates, skipna=True)
+        assert result == 'date'
 
     def test_to_object_array_tuples(self):
         r = (5, 6)
@@ -1003,7 +1047,7 @@ def test_nan_to_nat_conversions():
 
     s = df['B'].copy()
     s._data = s._data.setitem(indexer=tuple([slice(8, 9)]), value=np.nan)
-    assert (isnull(s[8]))
+    assert (isna(s[8]))
 
     # numpy < 1.7.0 is wrong
     from distutils.version import LooseVersion
