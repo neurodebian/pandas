@@ -320,7 +320,11 @@ class TestDataFrameBlockInternals(TestData):
         column = df.columns[0]
 
         # use the default copy=True, change a column
-        blocks = df.as_blocks()
+
+        # deprecated 0.21.0
+        with tm.assert_produces_warning(FutureWarning,
+                                        check_stacklevel=False):
+            blocks = df.as_blocks()
         for dtype, _df in blocks.items():
             if column in _df:
                 _df.loc[:, column] = _df[column] + 1
@@ -334,7 +338,11 @@ class TestDataFrameBlockInternals(TestData):
         column = df.columns[0]
 
         # use the copy=False, change a column
-        blocks = df.as_blocks(copy=False)
+
+        # deprecated 0.21.0
+        with tm.assert_produces_warning(FutureWarning,
+                                        check_stacklevel=False):
+            blocks = df.as_blocks(copy=False)
         for dtype, _df in blocks.items():
             if column in _df:
                 _df.loc[:, column] = _df[column] + 1
@@ -495,6 +503,32 @@ starting,ending,measure
         mixed2 = mixed1._convert(datetime=True)
         assert_frame_equal(mixed1, mixed2)
 
+    def test_infer_objects(self):
+        # GH 11221
+        df = DataFrame({'a': ['a', 1, 2, 3],
+                        'b': ['b', 2.0, 3.0, 4.1],
+                        'c': ['c', datetime(2016, 1, 1),
+                              datetime(2016, 1, 2),
+                              datetime(2016, 1, 3)],
+                        'd': [1, 2, 3, 'd']},
+                       columns=['a', 'b', 'c', 'd'])
+        df = df.iloc[1:].infer_objects()
+
+        assert df['a'].dtype == 'int64'
+        assert df['b'].dtype == 'float64'
+        assert df['c'].dtype == 'M8[ns]'
+        assert df['d'].dtype == 'object'
+
+        expected = DataFrame({'a': [1, 2, 3],
+                              'b': [2.0, 3.0, 4.1],
+                              'c': [datetime(2016, 1, 1),
+                                    datetime(2016, 1, 2),
+                                    datetime(2016, 1, 3)],
+                              'd': [2, 3, 'd']},
+                             columns=['a', 'b', 'c', 'd'])
+        # reconstruct frame to verify inference is same
+        tm.assert_frame_equal(df.reset_index(drop=True), expected)
+
     def test_stale_cached_series_bug_473(self):
 
         # this is chained, but ok
@@ -507,7 +541,7 @@ starting,ending,measure
             repr(Y)
             result = Y.sum()  # noqa
             exp = Y['g'].sum()  # noqa
-            assert pd.isnull(Y['g']['c'])
+            assert pd.isna(Y['g']['c'])
 
     def test_get_X_columns(self):
         # numeric and object columns
@@ -540,6 +574,6 @@ starting,ending,measure
 
         myid = 100
 
-        first = len(df.loc[pd.isnull(df[myid]), [myid]])
-        second = len(df.loc[pd.isnull(df[myid]), [myid]])
+        first = len(df.loc[pd.isna(df[myid]), [myid]])
+        second = len(df.loc[pd.isna(df[myid]), [myid]])
         assert first == second == 0

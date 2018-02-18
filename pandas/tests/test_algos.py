@@ -14,7 +14,7 @@ import pandas as pd
 
 from pandas import compat
 from pandas._libs import (groupby as libgroupby, algos as libalgos,
-                          hashtable)
+                          hashtable as ht)
 from pandas._libs.hashtable import unique_label_indices
 from pandas.compat import lrange, range
 import pandas.core.algorithms as algos
@@ -57,93 +57,6 @@ class TestMatch(object):
         result = Series(algos.match(to_match, values, np.nan))
         expected = Series(np.array([1, 0, np.nan, 0, 1, 2, np.nan]))
         tm.assert_series_equal(result, expected)
-
-
-class TestSafeSort(object):
-
-    def test_basic_sort(self):
-        values = [3, 1, 2, 0, 4]
-        result = algos.safe_sort(values)
-        expected = np.array([0, 1, 2, 3, 4])
-        tm.assert_numpy_array_equal(result, expected)
-
-        values = list("baaacb")
-        result = algos.safe_sort(values)
-        expected = np.array(list("aaabbc"))
-        tm.assert_numpy_array_equal(result, expected)
-
-        values = []
-        result = algos.safe_sort(values)
-        expected = np.array([])
-        tm.assert_numpy_array_equal(result, expected)
-
-    def test_labels(self):
-        values = [3, 1, 2, 0, 4]
-        expected = np.array([0, 1, 2, 3, 4])
-
-        labels = [0, 1, 1, 2, 3, 0, -1, 4]
-        result, result_labels = algos.safe_sort(values, labels)
-        expected_labels = np.array([3, 1, 1, 2, 0, 3, -1, 4], dtype=np.intp)
-        tm.assert_numpy_array_equal(result, expected)
-        tm.assert_numpy_array_equal(result_labels, expected_labels)
-
-        # na_sentinel
-        labels = [0, 1, 1, 2, 3, 0, 99, 4]
-        result, result_labels = algos.safe_sort(values, labels,
-                                                na_sentinel=99)
-        expected_labels = np.array([3, 1, 1, 2, 0, 3, 99, 4], dtype=np.intp)
-        tm.assert_numpy_array_equal(result, expected)
-        tm.assert_numpy_array_equal(result_labels, expected_labels)
-
-        # out of bound indices
-        labels = [0, 101, 102, 2, 3, 0, 99, 4]
-        result, result_labels = algos.safe_sort(values, labels)
-        expected_labels = np.array([3, -1, -1, 2, 0, 3, -1, 4], dtype=np.intp)
-        tm.assert_numpy_array_equal(result, expected)
-        tm.assert_numpy_array_equal(result_labels, expected_labels)
-
-        labels = []
-        result, result_labels = algos.safe_sort(values, labels)
-        expected_labels = np.array([], dtype=np.intp)
-        tm.assert_numpy_array_equal(result, expected)
-        tm.assert_numpy_array_equal(result_labels, expected_labels)
-
-    def test_mixed_integer(self):
-        values = np.array(['b', 1, 0, 'a', 0, 'b'], dtype=object)
-        result = algos.safe_sort(values)
-        expected = np.array([0, 0, 1, 'a', 'b', 'b'], dtype=object)
-        tm.assert_numpy_array_equal(result, expected)
-
-        values = np.array(['b', 1, 0, 'a'], dtype=object)
-        labels = [0, 1, 2, 3, 0, -1, 1]
-        result, result_labels = algos.safe_sort(values, labels)
-        expected = np.array([0, 1, 'a', 'b'], dtype=object)
-        expected_labels = np.array([3, 1, 0, 2, 3, -1, 1], dtype=np.intp)
-        tm.assert_numpy_array_equal(result, expected)
-        tm.assert_numpy_array_equal(result_labels, expected_labels)
-
-    def test_unsortable(self):
-        # GH 13714
-        arr = np.array([1, 2, datetime.now(), 0, 3], dtype=object)
-        if compat.PY2 and not pd._np_version_under1p10:
-            # RuntimeWarning: tp_compare didn't return -1 or -2 for exception
-            with tm.assert_produces_warning(RuntimeWarning):
-                pytest.raises(TypeError, algos.safe_sort, arr)
-        else:
-            pytest.raises(TypeError, algos.safe_sort, arr)
-
-    def test_exceptions(self):
-        with tm.assert_raises_regex(TypeError,
-                                    "Only list-like objects are allowed"):
-            algos.safe_sort(values=1)
-
-        with tm.assert_raises_regex(TypeError,
-                                    "Only list-like objects or None"):
-            algos.safe_sort(values=[0, 1, 2], labels=1)
-
-        with tm.assert_raises_regex(ValueError,
-                                    "values should be unique"):
-            algos.safe_sort(values=[0, 1, 2, 1], labels=[0, 1])
 
 
 class TestFactorize(object):
@@ -259,12 +172,12 @@ class TestFactorize(object):
         # rizer.factorize should not raise an exception if na_sentinel indexes
         # outside of reverse_indexer
         key = np.array([1, 2, 1, np.nan], dtype='O')
-        rizer = hashtable.Factorizer(len(key))
+        rizer = ht.Factorizer(len(key))
         for na_sentinel in (-1, 20):
             ids = rizer.factorize(key, sort=True, na_sentinel=na_sentinel)
             expected = np.array([0, 1, 0, na_sentinel], dtype='int32')
             assert len(set(key)) == len(set(expected))
-            tm.assert_numpy_array_equal(pd.isnull(key),
+            tm.assert_numpy_array_equal(pd.isna(key),
                                         expected == na_sentinel)
 
         # nan still maps to na_sentinel when sort=False
@@ -276,7 +189,7 @@ class TestFactorize(object):
 
         expected = np.array([2, -1, 0], dtype='int32')
         assert len(set(key)) == len(set(expected))
-        tm.assert_numpy_array_equal(pd.isnull(key), expected == na_sentinel)
+        tm.assert_numpy_array_equal(pd.isna(key), expected == na_sentinel)
 
     def test_complex_sorting(self):
         # gh 12666 - check no segfault
@@ -502,6 +415,15 @@ class TestUnique(object):
         expected = pd.Categorical(list('abc'))
         tm.assert_categorical_equal(result, expected)
 
+    @pytest.mark.parametrize("arg ,expected", [
+        (('1', '1', '2'), np.array(['1', '2'], dtype=object)),
+        (('foo',), np.array(['foo'], dtype=object))
+    ])
+    def test_tuple_with_strings(self, arg, expected):
+        # see GH 17108
+        result = pd.unique(arg)
+        tm.assert_numpy_array_equal(result, expected)
+
 
 class TestIsin(object):
 
@@ -585,6 +507,25 @@ class TestIsin(object):
         expected[0] = True
         expected[1] = True
         tm.assert_numpy_array_equal(result, expected)
+
+    def test_categorical_from_codes(self):
+        # GH 16639
+        vals = np.array([0, 1, 2, 0])
+        cats = ['a', 'b', 'c']
+        Sd = pd.Series(pd.Categorical(1).from_codes(vals, cats))
+        St = pd.Series(pd.Categorical(1).from_codes(np.array([0, 1]), cats))
+        expected = np.array([True, True, False, True])
+        result = algos.isin(Sd, St)
+        tm.assert_numpy_array_equal(expected, result)
+
+    @pytest.mark.parametrize("empty", [[], pd.Series(), np.array([])])
+    def test_empty(self, empty):
+        # see gh-16991
+        vals = pd.Index(["a", "b"])
+        expected = np.array([False, False])
+
+        result = algos.isin(vals, empty)
+        tm.assert_numpy_array_equal(expected, result)
 
 
 class TestValueCounts(object):
@@ -819,55 +760,57 @@ class TestDuplicated(object):
         expected = np.array(trues + trues)
         tm.assert_numpy_array_equal(result, expected)
 
-    def test_numeric_object_likes(self):
-        cases = [np.array([1, 2, 1, 5, 3,
-                           2, 4, 1, 5, 6]),
-                 np.array([1.1, 2.2, 1.1, np.nan, 3.3,
-                           2.2, 4.4, 1.1, np.nan, 6.6]),
-                 np.array([1 + 1j, 2 + 2j, 1 + 1j, 5 + 5j, 3 + 3j,
-                           2 + 2j, 4 + 4j, 1 + 1j, 5 + 5j, 6 + 6j]),
-                 np.array(['a', 'b', 'a', 'e', 'c',
-                           'b', 'd', 'a', 'e', 'f'], dtype=object),
-                 np.array([1, 2**63, 1, 3**5, 10,
-                           2**63, 39, 1, 3**5, 7], dtype=np.uint64)]
-
+    @pytest.mark.parametrize('case', [
+        np.array([1, 2, 1, 5, 3,
+                  2, 4, 1, 5, 6]),
+        np.array([1.1, 2.2, 1.1, np.nan, 3.3,
+                  2.2, 4.4, 1.1, np.nan, 6.6]),
+        pytest.mark.xfail(reason="Complex bug. GH 16399")(
+            np.array([1 + 1j, 2 + 2j, 1 + 1j, 5 + 5j, 3 + 3j,
+                     2 + 2j, 4 + 4j, 1 + 1j, 5 + 5j, 6 + 6j])
+        ),
+        np.array(['a', 'b', 'a', 'e', 'c',
+                  'b', 'd', 'a', 'e', 'f'], dtype=object),
+        np.array([1, 2**63, 1, 3**5, 10, 2**63, 39, 1, 3**5, 7],
+                 dtype=np.uint64),
+    ])
+    def test_numeric_object_likes(self, case):
         exp_first = np.array([False, False, True, False, False,
                               True, False, True, True, False])
         exp_last = np.array([True, True, True, True, False,
                              False, False, False, False, False])
         exp_false = exp_first | exp_last
 
-        for case in cases:
-            res_first = algos.duplicated(case, keep='first')
+        res_first = algos.duplicated(case, keep='first')
+        tm.assert_numpy_array_equal(res_first, exp_first)
+
+        res_last = algos.duplicated(case, keep='last')
+        tm.assert_numpy_array_equal(res_last, exp_last)
+
+        res_false = algos.duplicated(case, keep=False)
+        tm.assert_numpy_array_equal(res_false, exp_false)
+
+        # index
+        for idx in [pd.Index(case), pd.Index(case, dtype='category')]:
+            res_first = idx.duplicated(keep='first')
             tm.assert_numpy_array_equal(res_first, exp_first)
 
-            res_last = algos.duplicated(case, keep='last')
+            res_last = idx.duplicated(keep='last')
             tm.assert_numpy_array_equal(res_last, exp_last)
 
-            res_false = algos.duplicated(case, keep=False)
+            res_false = idx.duplicated(keep=False)
             tm.assert_numpy_array_equal(res_false, exp_false)
 
-            # index
-            for idx in [pd.Index(case), pd.Index(case, dtype='category')]:
-                res_first = idx.duplicated(keep='first')
-                tm.assert_numpy_array_equal(res_first, exp_first)
+        # series
+        for s in [Series(case), Series(case, dtype='category')]:
+            res_first = s.duplicated(keep='first')
+            tm.assert_series_equal(res_first, Series(exp_first))
 
-                res_last = idx.duplicated(keep='last')
-                tm.assert_numpy_array_equal(res_last, exp_last)
+            res_last = s.duplicated(keep='last')
+            tm.assert_series_equal(res_last, Series(exp_last))
 
-                res_false = idx.duplicated(keep=False)
-                tm.assert_numpy_array_equal(res_false, exp_false)
-
-            # series
-            for s in [Series(case), Series(case, dtype='category')]:
-                res_first = s.duplicated(keep='first')
-                tm.assert_series_equal(res_first, Series(exp_first))
-
-                res_last = s.duplicated(keep='last')
-                tm.assert_series_equal(res_last, Series(exp_last))
-
-                res_false = s.duplicated(keep=False)
-                tm.assert_series_equal(res_false, Series(exp_false))
+            res_false = s.duplicated(keep=False)
+            tm.assert_series_equal(res_false, Series(exp_false))
 
     def test_datetime_likes(self):
 
@@ -1065,14 +1008,14 @@ class TestHashTable(object):
 
     def test_lookup_nan(self):
         xs = np.array([2.718, 3.14, np.nan, -7, 5, 2, 3])
-        m = hashtable.Float64HashTable()
+        m = ht.Float64HashTable()
         m.map_locations(xs)
         tm.assert_numpy_array_equal(m.lookup(xs), np.arange(len(xs),
                                                             dtype=np.int64))
 
     def test_lookup_overflow(self):
         xs = np.array([1, 2, 2**63], dtype=np.uint64)
-        m = hashtable.UInt64HashTable()
+        m = ht.UInt64HashTable()
         m.map_locations(xs)
         tm.assert_numpy_array_equal(m.lookup(xs), np.arange(len(xs),
                                                             dtype=np.int64))
@@ -1086,25 +1029,35 @@ class TestHashTable(object):
         # Test for memory errors after internal vector
         # reallocations (pull request #7157)
 
-        def _test_vector_resize(htable, uniques, dtype, nvals):
+        def _test_vector_resize(htable, uniques, dtype, nvals, safely_resizes):
             vals = np.array(np.random.randn(1000), dtype=dtype)
-            # get_labels appends to the vector
+            # get_labels may append to uniques
             htable.get_labels(vals[:nvals], uniques, 0, -1)
-            # to_array resizes the vector
-            uniques.to_array()
-            htable.get_labels(vals, uniques, 0, -1)
+            # to_array() set an external_view_exists flag on uniques.
+            tmp = uniques.to_array()
+            oldshape = tmp.shape
+            # subsequent get_labels() calls can no longer append to it
+            # (for all but StringHashTables + ObjectVector)
+            if safely_resizes:
+                htable.get_labels(vals, uniques, 0, -1)
+            else:
+                with pytest.raises(ValueError) as excinfo:
+                    htable.get_labels(vals, uniques, 0, -1)
+                assert str(excinfo.value).startswith('external reference')
+            uniques.to_array()   # should not raise here
+            assert tmp.shape == oldshape
 
         test_cases = [
-            (hashtable.PyObjectHashTable, hashtable.ObjectVector, 'object'),
-            (hashtable.StringHashTable, hashtable.ObjectVector, 'object'),
-            (hashtable.Float64HashTable, hashtable.Float64Vector, 'float64'),
-            (hashtable.Int64HashTable, hashtable.Int64Vector, 'int64'),
-            (hashtable.UInt64HashTable, hashtable.UInt64Vector, 'uint64')]
+            (ht.PyObjectHashTable, ht.ObjectVector, 'object', False),
+            (ht.StringHashTable, ht.ObjectVector, 'object', True),
+            (ht.Float64HashTable, ht.Float64Vector, 'float64', False),
+            (ht.Int64HashTable, ht.Int64Vector, 'int64', False),
+            (ht.UInt64HashTable, ht.UInt64Vector, 'uint64', False)]
 
-        for (tbl, vect, dtype) in test_cases:
+        for (tbl, vect, dtype, safely_resizes) in test_cases:
             # resizing to empty is a special case
-            _test_vector_resize(tbl(), vect(), dtype, 0)
-            _test_vector_resize(tbl(), vect(), dtype, 10)
+            _test_vector_resize(tbl(), vect(), dtype, 0, safely_resizes)
+            _test_vector_resize(tbl(), vect(), dtype, 10, safely_resizes)
 
 
 def test_quantile():
@@ -1179,19 +1132,19 @@ def test_pad_backfill_object_segfault():
 
     result = libalgos.pad_object(old, new)
     expected = np.array([-1], dtype=np.int64)
-    assert (np.array_equal(result, expected))
+    tm.assert_numpy_array_equal(result, expected)
 
     result = libalgos.pad_object(new, old)
     expected = np.array([], dtype=np.int64)
-    assert (np.array_equal(result, expected))
+    tm.assert_numpy_array_equal(result, expected)
 
     result = libalgos.backfill_object(old, new)
     expected = np.array([-1], dtype=np.int64)
-    assert (np.array_equal(result, expected))
+    tm.assert_numpy_array_equal(result, expected)
 
     result = libalgos.backfill_object(new, old)
     expected = np.array([], dtype=np.int64)
-    assert (np.array_equal(result, expected))
+    tm.assert_numpy_array_equal(result, expected)
 
 
 def test_arrmap():
@@ -1208,7 +1161,7 @@ class TestTseriesUtil(object):
     def test_reindex(self):
         pass
 
-    def test_isnull(self):
+    def test_isna(self):
         pass
 
     def test_groupby(self):
@@ -1266,7 +1219,7 @@ def test_is_lexsorted():
                   1, 1, 1, 1, 1, 1, 1,
                   1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                   0, 0, 0, 0, 0, 0, 0,
-                  0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                  0, 0, 0, 0, 0, 0, 0, 0, 0], dtype='int64'),
         np.array([30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16,
                   15, 14,
                   13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 30, 29, 28,
@@ -1278,18 +1231,9 @@ def test_is_lexsorted():
                   7, 6, 5, 4, 3, 2, 1, 0, 30, 29, 28, 27, 26, 25, 24, 23, 22,
                   21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7,
                   6, 5,
-                  4, 3, 2, 1, 0])]
+                  4, 3, 2, 1, 0], dtype='int64')]
 
     assert (not libalgos.is_lexsorted(failure))
-
-# def test_get_group_index():
-#     a = np.array([0, 1, 2, 0, 2, 1, 0, 0], dtype=np.int64)
-#     b = np.array([1, 0, 3, 2, 0, 2, 3, 0], dtype=np.int64)
-#     expected = np.array([1, 4, 11, 2, 8, 6, 3, 0], dtype=np.int64)
-
-#     result = lib.get_group_index([a, b], (3, 4))
-
-#     assert(np.array_equal(result, expected))
 
 
 def test_groupsort_indexer():
@@ -1299,14 +1243,22 @@ def test_groupsort_indexer():
     result = libalgos.groupsort_indexer(a, 1000)[0]
 
     # need to use a stable sort
+    # np.argsort returns int, groupsort_indexer
+    # always returns int64
     expected = np.argsort(a, kind='mergesort')
-    assert (np.array_equal(result, expected))
+    expected = expected.astype(np.int64)
+
+    tm.assert_numpy_array_equal(result, expected)
 
     # compare with lexsort
+    # np.lexsort returns int, groupsort_indexer
+    # always returns int64
     key = a * 1000 + b
     result = libalgos.groupsort_indexer(key, 1000000)[0]
     expected = np.lexsort((b, a))
-    assert (np.array_equal(result, expected))
+    expected = expected.astype(np.int64)
+
+    tm.assert_numpy_array_equal(result, expected)
 
 
 def test_infinity_sort():

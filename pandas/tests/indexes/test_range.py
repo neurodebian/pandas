@@ -10,7 +10,7 @@ from pandas.compat import range, u, PY3
 
 import numpy as np
 
-from pandas import (notnull, Series, Index, Float64Index,
+from pandas import (isna, notna, Series, Index, Float64Index,
                     Int64Index, RangeIndex)
 
 import pandas.util.testing as tm
@@ -25,7 +25,8 @@ class TestRangeIndex(Numeric):
     _compat_props = ['shape', 'ndim', 'size', 'itemsize']
 
     def setup_method(self, method):
-        self.indices = dict(index=RangeIndex(0, 20, 2, name='foo'))
+        self.indices = dict(index=RangeIndex(0, 20, 2, name='foo'),
+                            index_dec=RangeIndex(18, -1, -2, name='bar'))
         self.setup_indices()
 
     def create_index(self):
@@ -172,16 +173,16 @@ class TestRangeIndex(Numeric):
         copy = RangeIndex(orig)
         copy.name = 'copy'
 
-        assert orig.name, 'original'
-        assert copy.name, 'copy'
+        assert orig.name == 'original'
+        assert copy.name == 'copy'
 
         new = Index(copy)
-        assert new.name, 'copy'
+        assert new.name == 'copy'
 
         new.name = 'new'
-        assert orig.name, 'original'
-        assert new.name, 'copy'
-        assert new.name, 'new'
+        assert orig.name == 'original'
+        assert copy.name == 'copy'
+        assert new.name == 'new'
 
     def test_numeric_compat2(self):
         # validate that we are handling the RangeIndex overrides to numeric ops
@@ -273,7 +274,7 @@ class TestRangeIndex(Numeric):
             expected = "RangeIndex(start=0, stop=5, step=1, name='Foo')"
         else:
             expected = "RangeIndex(start=0, stop=5, step=1, name=u'Foo')"
-        assert result, expected
+        assert result == expected
 
         result = eval(result)
         tm.assert_index_equal(result, i, exact=True)
@@ -311,8 +312,8 @@ class TestRangeIndex(Numeric):
             # either depending on numpy version
             result = idx.delete(len(idx))
 
-    def test_view(self):
-        super(TestRangeIndex, self).test_view()
+    def test_view(self, indices):
+        super(TestRangeIndex, self).test_view(indices)
 
         i = RangeIndex(0, name='Foo')
         i_view = i.view()
@@ -610,6 +611,21 @@ class TestRangeIndex(Numeric):
                                                 other.values)))
         tm.assert_index_equal(result, expected)
 
+        # reversed (GH 17296)
+        result = other.intersection(self.index)
+        tm.assert_index_equal(result, expected)
+
+        # GH 17296: intersect two decreasing RangeIndexes
+        first = RangeIndex(10, -2, -2)
+        other = RangeIndex(5, -4, -1)
+        expected = first.astype(int).intersection(other.astype(int))
+        result = first.intersection(other).astype(int)
+        tm.assert_index_equal(result, expected)
+
+        # reversed
+        result = other.intersection(first).astype(int)
+        tm.assert_index_equal(result, expected)
+
         index = RangeIndex(5)
 
         # intersect of non-overlapping indices
@@ -638,15 +654,6 @@ class TestRangeIndex(Numeric):
         result = index.intersection(other)
         expected = RangeIndex(0, 0, 1)
         tm.assert_index_equal(result, expected)
-
-    def test_intersect_str_dates(self):
-        dt_dates = [datetime(2012, 2, 9), datetime(2012, 2, 22)]
-
-        i1 = Index(dt_dates, dtype=object)
-        i2 = Index(['aa'], dtype=object)
-        res = i2.intersection(i1)
-
-        assert len(res) == 0
 
     def test_union_noncomparable(self):
         from datetime import datetime, timedelta
@@ -929,7 +936,7 @@ class TestRangeIndex(Numeric):
 
     def test_where(self):
         i = self.create_index()
-        result = i.where(notnull(i))
+        result = i.where(notna(i))
         expected = i
         tm.assert_index_equal(result, expected)
 
@@ -951,3 +958,58 @@ class TestRangeIndex(Numeric):
         for klass in klasses:
             result = i.where(klass(cond))
             tm.assert_index_equal(result, expected)
+
+    def test_append(self):
+        # GH16212
+        RI = RangeIndex
+        I64 = Int64Index
+        F64 = Float64Index
+        OI = Index
+        cases = [([RI(1, 12, 5)], RI(1, 12, 5)),
+                 ([RI(0, 6, 4)], RI(0, 6, 4)),
+                 ([RI(1, 3), RI(3, 7)], RI(1, 7)),
+                 ([RI(1, 5, 2), RI(5, 6)], RI(1, 6, 2)),
+                 ([RI(1, 3, 2), RI(4, 7, 3)], RI(1, 7, 3)),
+                 ([RI(-4, 3, 2), RI(4, 7, 2)], RI(-4, 7, 2)),
+                 ([RI(-4, -8), RI(-8, -12)], RI(-8, -12)),
+                 ([RI(-4, -8), RI(3, -4)], RI(3, -8)),
+                 ([RI(-4, -8), RI(3, 5)], RI(3, 5)),
+                 ([RI(-4, -2), RI(3, 5)], I64([-4, -3, 3, 4])),
+                 ([RI(-2,), RI(3, 5)], RI(3, 5)),
+                 ([RI(2,), RI(2)], I64([0, 1, 0, 1])),
+                 ([RI(2,), RI(2, 5), RI(5, 8, 4)], RI(0, 6)),
+                 ([RI(2,), RI(3, 5), RI(5, 8, 4)], I64([0, 1, 3, 4, 5])),
+                 ([RI(-2, 2), RI(2, 5), RI(5, 8, 4)], RI(-2, 6)),
+                 ([RI(3,), I64([-1, 3, 15])], I64([0, 1, 2, -1, 3, 15])),
+                 ([RI(3,), F64([-1, 3.1, 15.])], F64([0, 1, 2, -1, 3.1, 15.])),
+                 ([RI(3,), OI(['a', None, 14])], OI([0, 1, 2, 'a', None, 14])),
+                 ([RI(3, 1), OI(['a', None, 14])], OI(['a', None, 14]))
+                 ]
+
+        for indices, expected in cases:
+            result = indices[0].append(indices[1:])
+            tm.assert_index_equal(result, expected, exact=True)
+
+            if len(indices) == 2:
+                # Append single item rather than list
+                result2 = indices[0].append(indices[1])
+                tm.assert_index_equal(result2, expected, exact=True)
+
+    @pytest.mark.parametrize('start,stop,step',
+                             [(0, 400, 3), (500, 0, -6), (-10**6, 10**6, 4),
+                              (10**6, -10**6, -4), (0, 10, 20)])
+    def test_max_min(self, start, stop, step):
+        # GH17607
+        idx = RangeIndex(start, stop, step)
+        expected = idx._int64index.max()
+        result = idx.max()
+        assert result == expected
+
+        expected = idx._int64index.min()
+        result = idx.min()
+        assert result == expected
+
+        # empty
+        idx = RangeIndex(start, stop, -step)
+        assert isna(idx.max())
+        assert isna(idx.min())

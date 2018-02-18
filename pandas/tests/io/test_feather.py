@@ -27,11 +27,11 @@ class TestFeather(object):
             with ensure_clean() as path:
                 to_feather(df, path)
 
-    def check_round_trip(self, df):
+    def check_round_trip(self, df, **kwargs):
 
         with ensure_clean() as path:
             to_feather(df, path)
-            result = read_feather(path)
+            result = read_feather(path, **kwargs)
             assert_frame_equal(result, df)
 
     def test_error(self):
@@ -98,6 +98,12 @@ class TestFeather(object):
         df = pd.DataFrame({'a': pd.period_range('2013', freq='M', periods=3)})
         self.check_error_on_write(df, ValueError)
 
+    @pytest.mark.skipif(fv < '0.4.0', reason='new in 0.4.0')
+    def test_rw_nthreads(self):
+
+        df = pd.DataFrame({'A': np.arange(100000)})
+        self.check_round_trip(df, nthreads=2)
+
     def test_write_with_index(self):
 
         df = pd.DataFrame({'A': [1, 2, 3]})
@@ -125,13 +131,11 @@ class TestFeather(object):
         df.columns = pd.MultiIndex.from_tuples([('a', 1), ('a', 2), ('b', 1)]),
         self.check_error_on_write(df, ValueError)
 
-    @pytest.mark.xfail(reason="feather currently doesn't work with pathlib")
     def test_path_pathlib(self):
         df = tm.makeDataFrame().reset_index()
         result = tm.round_trip_pathlib(df.to_feather, pd.read_feather)
         tm.assert_frame_equal(df, result)
 
-    @pytest.mark.xfail(reason="feather currently doesn't work with localpath")
     def test_path_localpath(self):
         df = tm.makeDataFrame().reset_index()
         result = tm.round_trip_localpath(df.to_feather, pd.read_feather)

@@ -7,6 +7,8 @@ Test output formatting for Series/DataFrame, including to_string & reprs
 from __future__ import print_function
 import re
 
+import pytz
+import dateutil
 import itertools
 from operator import methodcaller
 import os
@@ -207,6 +209,33 @@ class TestDataFrameFormatting(object):
         with option_context("display.chop_threshold", None):
             assert repr(df) == '     0    1\n0  0.1  0.5\n1  0.5 -0.1'
 
+    def test_repr_chop_threshold_column_below(self):
+        # GH 6839: validation case
+
+        df = pd.DataFrame([[10, 20, 30, 40],
+                           [8e-10, -1e-11, 2e-9, -2e-11]]).T
+
+        with option_context("display.chop_threshold", 0):
+            assert repr(df) == ('      0             1\n'
+                                '0  10.0  8.000000e-10\n'
+                                '1  20.0 -1.000000e-11\n'
+                                '2  30.0  2.000000e-09\n'
+                                '3  40.0 -2.000000e-11')
+
+        with option_context("display.chop_threshold", 1e-8):
+            assert repr(df) == ('      0             1\n'
+                                '0  10.0  0.000000e+00\n'
+                                '1  20.0  0.000000e+00\n'
+                                '2  30.0  0.000000e+00\n'
+                                '3  40.0  0.000000e+00')
+
+        with option_context("display.chop_threshold", 5e-11):
+            assert repr(df) == ('      0             1\n'
+                                '0  10.0  8.000000e-10\n'
+                                '1  20.0  0.000000e+00\n'
+                                '2  30.0  2.000000e-09\n'
+                                '3  40.0  0.000000e+00')
+
     def test_repr_obeys_max_seq_limit(self):
         with option_context("display.max_seq_items", 2000):
             assert len(printing.pprint_thing(lrange(1000))) > 1000
@@ -273,7 +302,7 @@ class TestDataFrameFormatting(object):
         df = DataFrame('hello', lrange(1000), lrange(5))
 
         with option_context('mode.sim_interactive', False, 'display.width', 0,
-                            'display.height', 0, 'display.max_rows', 5000):
+                            'display.max_rows', 5000):
             assert not has_truncated_repr(df)
             assert not has_expanded_repr(df)
 
@@ -1548,17 +1577,15 @@ c  10  11  12  13  14\
 
     def test_pprint_pathological_object(self):
         """
-        if the test fails, the stack will overflow and nose crash,
-        but it won't hang.
+        If the test fails, it at least won't hang.
         """
 
         class A:
-
             def __getitem__(self, key):
                 return 3  # obviously simplified
 
         df = DataFrame([A()])
-        repr(df)  # just don't dine
+        repr(df)  # just don't die
 
     def test_float_trim_zeros(self):
         vals = [2.08430917305e+10, 3.52205017305e+10, 2.30674817305e+10,
@@ -2508,10 +2535,6 @@ class TestStringRepTimestamp(object):
         assert str(ts_nanos_micros) == "1970-01-01 00:00:00.000001200"
 
     def test_tz_pytz(self):
-        tm._skip_if_no_pytz()
-
-        import pytz
-
         dt_date = datetime(2013, 1, 2, tzinfo=pytz.utc)
         assert str(dt_date) == str(Timestamp(dt_date))
 
@@ -2522,8 +2545,6 @@ class TestStringRepTimestamp(object):
         assert str(dt_datetime_us) == str(Timestamp(dt_datetime_us))
 
     def test_tz_dateutil(self):
-        tm._skip_if_no_dateutil()
-        import dateutil
         utc = dateutil.tz.tzutc()
 
         dt_date = datetime(2013, 1, 2, tzinfo=utc)

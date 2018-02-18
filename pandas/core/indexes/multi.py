@@ -19,11 +19,13 @@ from pandas.core.dtypes.common import (
     is_iterator,
     is_list_like,
     is_scalar)
-from pandas.core.dtypes.missing import isnull, array_equivalent
+from pandas.core.dtypes.missing import isna, array_equivalent
 from pandas.errors import PerformanceWarning, UnsortedIndexError
-from pandas.core.common import (_values_from_object,
+from pandas.core.common import (_any_not_none,
+                                _values_from_object,
                                 is_bool_indexer,
-                                is_null_slice)
+                                is_null_slice,
+                                is_true_slices)
 
 import pandas.core.base as base
 from pandas.util._decorators import (Appender, cache_readonly,
@@ -67,6 +69,34 @@ class MultiIndex(Index):
         Copy the meta-data
     verify_integrity : boolean, default True
         Check that the levels/labels are consistent and valid
+
+    Examples
+    ---------
+    A new ``MultiIndex`` is typically constructed using one of the helper
+    methods :meth:`MultiIndex.from_arrays`, :meth:`MultiIndex.from_product`
+    and :meth:`MultiIndex.from_tuples`. For example (using ``.from_arrays``):
+
+    >>> arrays = [[1, 1, 2, 2], ['red', 'blue', 'red', 'blue']]
+    >>> pd.MultiIndex.from_arrays(arrays, names=('number', 'color'))
+    MultiIndex(levels=[[1, 2], ['blue', 'red']],
+           labels=[[0, 0, 1, 1], [1, 0, 1, 0]],
+           names=['number', 'color'])
+
+    See further examples for how to construct a MultiIndex in the doc strings
+    of the mentioned helper methods.
+
+    Notes
+    -----
+    See the `user guide
+    <http://pandas.pydata.org/pandas-docs/stable/advanced.html>`_ for more.
+
+    See Also
+    --------
+    MultiIndex.from_arrays  : Convert list of arrays to MultiIndex
+    MultiIndex.from_product : Create a MultiIndex from the cartesian product
+                              of iterables
+    MultiIndex.from_tuples  : Convert list of tuples to a MultiIndex
+    Index : The base pandas Index type
     """
 
     # initialize to zero-length tuples to make everything work
@@ -90,12 +120,6 @@ class MultiIndex(Index):
             raise ValueError('Length of levels and labels must be the same.')
         if len(levels) == 0:
             raise ValueError('Must pass non-zero number of levels/labels')
-        if len(levels) == 1:
-            if names:
-                name = names[0]
-            else:
-                name = None
-            return Index(levels[0], name=name, copy=True).take(labels[0])
 
         result = object.__new__(MultiIndex)
 
@@ -422,6 +446,17 @@ class MultiIndex(Index):
                               **kwargs)
         return self._shallow_copy(values, **kwargs)
 
+    @Appender(_index_shared_docs['__contains__'] % _index_doc_kwargs)
+    def __contains__(self, key):
+        hash(key)
+        try:
+            self.get_loc(key)
+            return True
+        except (LookupError, TypeError):
+            return False
+
+    contains = __contains__
+
     @Appender(_index_shared_docs['_shallow_copy'])
     def _shallow_copy(self, values=None, **kwargs):
         if values is not None:
@@ -464,9 +499,13 @@ class MultiIndex(Index):
         *this is in internal routine*
 
         """
+
+        # for implementations with no useful getsizeof (PyPy)
+        objsize = 24
+
         level_nbytes = sum((i.memory_usage(deep=deep) for i in self.levels))
         label_nbytes = sum((i.nbytes for i in self.labels))
-        names_nbytes = sum((getsizeof(i) for i in self.names))
+        names_nbytes = sum((getsizeof(i, objsize) for i in self.names))
         result = level_nbytes + label_nbytes + names_nbytes
 
         # include our engine hashtable
@@ -482,7 +521,7 @@ class MultiIndex(Index):
                                             max_seq_items=False)),
             ('labels', ibase.default_pprint(self._labels,
                                             max_seq_items=False))]
-        if not all(name is None for name in self.names):
+        if _any_not_none(*self.names):
             attrs.append(('names', ibase.default_pprint(self.names)))
         if self.sortorder is not None:
             attrs.append(('sortorder', ibase.default_pprint(self.sortorder)))
@@ -491,7 +530,7 @@ class MultiIndex(Index):
     def _format_space(self):
         return "\n%s" % (' ' * (len(self.__class__.__name__) + 1))
 
-    def _format_data(self):
+    def _format_data(self, name=None):
         # we are formatting thru the attributes
         return None
 
@@ -707,13 +746,14 @@ class MultiIndex(Index):
             # we have mixed types and np.lexsort is not happy
             return Index(self.values).is_monotonic
 
-    @property
+    @cache_readonly
     def is_monotonic_decreasing(self):
         """
         return if the index is monotonic decreasing (only equal or
         decreasing) values.
         """
-        return False
+        # monotonic decreasing if and only if reverse is monotonic increasing
+        return self[::-1].is_monotonic_increasing
 
     @cache_readonly
     def is_unique(self):
@@ -780,10 +820,11 @@ class MultiIndex(Index):
 
         return duplicated_int64(ids, keep)
 
-    @Appender(ibase._index_shared_docs['fillna'])
     def fillna(self, value=None, downcast=None):
-        # isnull is not implemented for MultiIndex
-        raise NotImplementedError('isnull is not defined for MultiIndex')
+        """
+        fillna is not implemented for MultiIndex
+        """
+        raise NotImplementedError('isna is not defined for MultiIndex')
 
     @Appender(_index_shared_docs['dropna'])
     def dropna(self, how='any'):
@@ -883,15 +924,34 @@ class MultiIndex(Index):
     def get_level_values(self, level):
         """
         Return vector of label values for requested level,
-        equal to the length of the index
+        equal to the length of the index.
 
         Parameters
         ----------
-        level : int or level name
+        level : int or str
+            ``level`` is either the integer position of the level in the
+            MultiIndex, or the name of the level.
 
         Returns
         -------
         values : Index
+            ``values`` is a level of this MultiIndex converted to
+            a single :class:`Index` (or subclass thereof).
+
+        Examples
+        ---------
+
+        Create a MultiIndex:
+
+        >>> mi = pd.MultiIndex.from_arrays((list('abc'), list('def')))
+        >>> mi.names = ['level_1', 'level_2']
+
+        Get level values by supplying level as either integer or name:
+
+        >>> mi.get_level_values(0)
+        Index(['a', 'b', 'c'], dtype='object', name='level_1')
+        >>> mi.get_level_values('level_2')
+        Index(['d', 'e', 'f'], dtype='object', name='level_2')
         """
         level = self._get_level_number(level)
         values = self._get_level_values(level)
@@ -919,7 +979,7 @@ class MultiIndex(Index):
 
             else:
                 # weird all NA case
-                formatted = [pprint_thing(na if isnull(x) else x,
+                formatted = [pprint_thing(na if isna(x) else x,
                                           escape_chars=('\t', '\r', '\n'))
                              for x in algos.take_1d(lev._values, lab)]
             stringified_levels.append(formatted)
@@ -963,18 +1023,18 @@ class MultiIndex(Index):
 
     def to_frame(self, index=True):
         """
-        Create a DataFrame with the columns the levels of the MultiIndex
+        Create a DataFrame with the levels of the MultiIndex as columns.
 
         .. versionadded:: 0.20.0
 
         Parameters
         ----------
         index : boolean, default True
-            return this MultiIndex as the index
+            Set the index of the returned DataFrame as the original MultiIndex.
 
         Returns
         -------
-        DataFrame
+        DataFrame : a DataFrame containing the original MultiIndex data.
         """
 
         from pandas import DataFrame
@@ -1035,12 +1095,6 @@ class MultiIndex(Index):
         """
         return self.lexsort_depth == self.nlevels
 
-    def is_lexsorted_for_tuple(self, tup):
-        """
-        Return True if we are correctly lexsorted given the passed tuple
-        """
-        return len(tup) <= self.lexsort_depth
-
     @cache_readonly
     def lexsort_depth(self):
         if self.sortorder is not None:
@@ -1085,10 +1139,6 @@ class MultiIndex(Index):
         MultiIndex.from_product : Make a MultiIndex from cartesian product
                                   of iterables
         """
-        if len(arrays) == 1:
-            name = None if names is None else names[0]
-            return Index(arrays[0], name=name)
-
         # Check if lengths of all arrays are equal or not,
         # raise ValueError, if not
         for i in range(1, len(arrays)):
@@ -1331,17 +1381,6 @@ class MultiIndex(Index):
     @property
     def levshape(self):
         return tuple(len(x) for x in self.levels)
-
-    @Appender(_index_shared_docs['__contains__'] % _index_doc_kwargs)
-    def __contains__(self, key):
-        hash(key)
-        try:
-            self.get_loc(key)
-            return True
-        except LookupError:
-            return False
-
-    contains = __contains__
 
     def __reduce__(self):
         """Necessary for making this object picklable"""
@@ -1702,7 +1741,8 @@ class MultiIndex(Index):
                 raise ValueError("level must have same length as ascending")
 
             from pandas.core.sorting import lexsort_indexer
-            indexer = lexsort_indexer(self.labels, orders=ascending)
+            indexer = lexsort_indexer([self.labels[lev] for lev in level],
+                                      orders=ascending)
 
         # level ordering
         else:
@@ -1887,7 +1927,9 @@ class MultiIndex(Index):
     def slice_locs(self, start=None, end=None, step=None, kind=None):
         """
         For an ordered MultiIndex, compute the slice locations for input
-        labels. They can be tuples representing partial levels, e.g. for a
+        labels.
+
+        The input labels can be tuples representing partial levels, e.g. for a
         MultiIndex with 3 levels, you can pass a single value (corresponding to
         the first level), or a 1-, 2-, or 3-tuple.
 
@@ -1907,7 +1949,32 @@ class MultiIndex(Index):
 
         Notes
         -----
-        This function assumes that the data is sorted by the first level
+        This method only works if the MultiIndex is properly lex-sorted. So,
+        if only the first 2 levels of a 3-level MultiIndex are lexsorted,
+        you can only pass two levels to ``.slice_locs``.
+
+        Examples
+        --------
+        >>> mi = pd.MultiIndex.from_arrays([list('abbd'), list('deff')],
+        ...                                names=['A', 'B'])
+
+        Get the slice locations from the beginning of 'b' in the first level
+        until the end of the multiindex:
+
+        >>> mi.slice_locs(start='b')
+        (1, 4)
+
+        Like above, but stop at the end of 'b' in the first level and 'f' in
+        the second level:
+
+        >>> mi.slice_locs(start='b', end=('b', 'f'))
+        (1, 3)
+
+        See Also
+        --------
+        MultiIndex.get_loc : Get location for a label or a tuple of labels.
+        MultiIndex.get_locs : Get location for a label/slice/list/mask or a
+                              sequence of such.
         """
         # This function adds nothing to its parent implementation (the magic
         # happens in get_slice_bound method), but it adds meaningful doc.
@@ -1945,18 +2012,43 @@ class MultiIndex(Index):
 
     def get_loc(self, key, method=None):
         """
-        Get integer location, slice or boolean mask for requested label or
-        tuple.  If the key is past the lexsort depth, the return may be a
-        boolean mask array, otherwise it is always a slice or int.
+        Get location for a label or a tuple of labels as an integer, slice or
+        boolean mask.
 
         Parameters
         ----------
-        key : label or tuple
+        key : label or tuple of labels (one for each level)
         method : None
 
         Returns
         -------
         loc : int, slice object or boolean mask
+            If the key is past the lexsort depth, the return may be a
+            boolean mask array, otherwise it is always a slice or int.
+
+        Examples
+        ---------
+        >>> mi = pd.MultiIndex.from_arrays([list('abb'), list('def')])
+
+        >>> mi.get_loc('b')
+        slice(1, 3, None)
+
+        >>> mi.get_loc(('b', 'e'))
+        1
+
+        Notes
+        ------
+        The key cannot be a slice, list of same-level labels, a boolean mask,
+        or a sequence of such. If you want to use those, use
+        :meth:`MultiIndex.get_locs` instead.
+
+        See also
+        --------
+        Index.get_loc : get_loc method for (single-level) index.
+        MultiIndex.slice_locs : Get slice location given start label(s) and
+                                end label(s).
+        MultiIndex.get_locs : Get location for a label/slice/list/mask or a
+                              sequence of such.
         """
         if method is not None:
             raise NotImplementedError('only the default get_loc method is '
@@ -2031,16 +2123,43 @@ class MultiIndex(Index):
 
     def get_loc_level(self, key, level=0, drop_level=True):
         """
-        Get integer location slice for requested label or tuple
+        Get both the location for the requested label(s) and the
+        resulting sliced index.
 
         Parameters
         ----------
-        key : label or tuple
-        level : int/level name or list thereof
+        key : label or sequence of labels
+        level : int/level name or list thereof, optional
+        drop_level : bool, default True
+            if ``False``, the resulting index will not drop any level.
 
         Returns
         -------
-        loc : int or slice object
+        loc : A 2-tuple where the elements are:
+              Element 0: int, slice object or boolean array
+              Element 1: The resulting sliced multiindex/index. If the key
+              contains all levels, this will be ``None``.
+
+        Examples
+        --------
+        >>> mi = pd.MultiIndex.from_arrays([list('abb'), list('def')],
+        ...                                names=['A', 'B'])
+
+        >>> mi.get_loc_level('b')
+        (slice(1, 3, None), Index(['e', 'f'], dtype='object', name='B'))
+
+        >>> mi.get_loc_level('e', level='B')
+        (array([False,  True, False], dtype=bool),
+        Index(['b'], dtype='object', name='A'))
+
+        >>> mi.get_loc_level(['b', 'e'])
+        (1, None)
+
+        See Also
+        ---------
+        MultiIndex.get_loc  : Get location for a label or a tuple of labels.
+        MultiIndex.get_locs : Get location for a label/slice/list/mask or a
+                              sequence of such
         """
 
         def maybe_droplevels(indexer, levels, drop_level):
@@ -2250,28 +2369,48 @@ class MultiIndex(Index):
             j = labels.searchsorted(loc, side='right')
             return slice(i, j)
 
-    def get_locs(self, tup):
+    def get_locs(self, seq):
         """
-        Given a tuple of slices/lists/labels/boolean indexer to a level-wise
-        spec produce an indexer to extract those locations
+        Get location for a given label/slice/list/mask or a sequence of such as
+        an array of integers.
 
         Parameters
         ----------
-        key : tuple of (slices/list/labels)
+        seq : label/slice/list/mask or a sequence of such
+           You should use one of the above for each level.
+           If a level should not be used, set it to ``slice(None)``.
 
         Returns
         -------
-        locs : integer list of locations or boolean indexer suitable
-               for passing to iloc
+        locs : array of integers suitable for passing to iloc
+
+        Examples
+        ---------
+        >>> mi = pd.MultiIndex.from_arrays([list('abb'), list('def')])
+
+        >>> mi.get_locs('b')
+        array([1, 2], dtype=int64)
+
+        >>> mi.get_locs([slice(None), ['e', 'f']])
+        array([1, 2], dtype=int64)
+
+        >>> mi.get_locs([[True, False, True], slice('e', 'f')])
+        array([2], dtype=int64)
+
+        See also
+        --------
+        MultiIndex.get_loc : Get location for a label or a tuple of labels.
+        MultiIndex.slice_locs : Get slice location given start label(s) and
+                                end label(s).
         """
 
         # must be lexsorted to at least as many levels
-        if not self.is_lexsorted_for_tuple(tup):
-            raise UnsortedIndexError('MultiIndex Slicing requires the index '
-                                     'to be fully lexsorted tuple len ({0}), '
-                                     'lexsort depth ({1})'
-                                     .format(len(tup), self.lexsort_depth))
-
+        true_slices = [i for (i, s) in enumerate(is_true_slices(seq)) if s]
+        if true_slices and true_slices[-1] >= self.lexsort_depth:
+            raise UnsortedIndexError('MultiIndex slicing requires the index '
+                                     'to be lexsorted: slicing on levels {0}, '
+                                     'lexsort depth {1}'
+                                     .format(true_slices, self.lexsort_depth))
         # indexer
         # this is the list of all values that we want to select
         n = len(self)
@@ -2299,7 +2438,7 @@ class MultiIndex(Index):
                 return indexer
             return indexer & idxr
 
-        for i, k in enumerate(tup):
+        for i, k in enumerate(seq):
 
             if is_bool_indexer(k):
                 # a boolean indexer, must be the same length!

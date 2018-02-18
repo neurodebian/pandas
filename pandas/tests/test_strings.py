@@ -11,7 +11,7 @@ from numpy.random import randint
 
 from pandas.compat import range, u
 import pandas.compat as compat
-from pandas import (Index, Series, DataFrame, isnull, MultiIndex, notnull)
+from pandas import Index, Series, DataFrame, isna, MultiIndex, notna
 
 from pandas.util.testing import assert_series_equal
 import pandas.util.testing as tm
@@ -49,7 +49,7 @@ class TestStringMethods(object):
 
             for el in s:
                 # each element of the series is either a basestring/str or nan
-                assert isinstance(el, compat.string_types) or isnull(el)
+                assert isinstance(el, compat.string_types) or isna(el)
 
         # desired behavior is to iterate until everything would be nan on the
         # next iter so make sure the last element of the iterator was 'l' in
@@ -1413,7 +1413,7 @@ class TestStringMethods(object):
         values = Series(['foo', 'fooo', 'fooooo', np.nan, 'fooooooo'])
 
         result = values.str.len()
-        exp = values.map(lambda x: len(x) if notnull(x) else NA)
+        exp = values.map(lambda x: len(x) if notna(x) else NA)
         tm.assert_series_equal(result, exp)
 
         # mixed
@@ -1431,7 +1431,7 @@ class TestStringMethods(object):
             'fooooooo')])
 
         result = values.str.len()
-        exp = values.map(lambda x: len(x) if notnull(x) else NA)
+        exp = values.map(lambda x: len(x) if notna(x) else NA)
         tm.assert_series_equal(result, exp)
 
     def test_findall(self):
@@ -2086,6 +2086,18 @@ class TestStringMethods(object):
         tm.assert_index_equal(result, exp)
         assert result.nlevels == 2
 
+    def test_split_nan_expand(self):
+        # gh-18450
+        s = Series(["foo,bar,baz", NA])
+        result = s.str.split(",", expand=True)
+        exp = DataFrame([["foo", "bar", "baz"], [NA, NA, NA]])
+        tm.assert_frame_equal(result, exp)
+
+        # check that these are actually np.nan and not None
+        # TODO see GH 18463
+        # tm.assert_frame_equal does not differentiate
+        assert all(np.isnan(x) for x in result.iloc[1])
+
     def test_split_with_name(self):
         # GH 12617
 
@@ -2102,12 +2114,12 @@ class TestStringMethods(object):
         idx = Index(['a,b', 'c,d'], name='xxx')
         res = idx.str.split(',')
         exp = Index([['a', 'b'], ['c', 'd']], name='xxx')
-        assert res.nlevels, 1
+        assert res.nlevels == 1
         tm.assert_index_equal(res, exp)
 
         res = idx.str.split(',', expand=True)
         exp = MultiIndex.from_tuples([('a', 'b'), ('c', 'd')])
-        assert res.nlevels, 2
+        assert res.nlevels == 2
         tm.assert_index_equal(res, exp)
 
     def test_partition_series(self):
@@ -2247,13 +2259,13 @@ class TestStringMethods(object):
         idx = Index(['a,b', 'c,d'], name='xxx')
         res = idx.str.partition(',')
         exp = MultiIndex.from_tuples([('a', ',', 'b'), ('c', ',', 'd')])
-        assert res.nlevels, 3
+        assert res.nlevels == 3
         tm.assert_index_equal(res, exp)
 
         # should preserve name
         res = idx.str.partition(',', expand=False)
         exp = Index(np.array([('a', ',', 'b'), ('c', ',', 'd')]), name='xxx')
-        assert res.nlevels, 1
+        assert res.nlevels == 1
         tm.assert_index_equal(res, exp)
 
     def test_pipe_failures(self):
@@ -2281,7 +2293,7 @@ class TestStringMethods(object):
                                   (3, 0, -1)]:
             try:
                 result = values.str.slice(start, stop, step)
-                expected = Series([s[start:stop:step] if not isnull(s) else NA
+                expected = Series([s[start:stop:step] if not isna(s) else NA
                                    for s in values])
                 tm.assert_series_equal(result, expected)
             except:
@@ -2482,6 +2494,19 @@ class TestStringMethods(object):
 
         result = values.str.split('_').str.get(1)
         expected = Series([u('b'), u('d'), np.nan, u('g')])
+        tm.assert_series_equal(result, expected)
+
+        # bounds testing
+        values = Series(['1_2_3_4_5', '6_7_8_9_10', '11_12'])
+
+        # positive index
+        result = values.str.split('_').str.get(2)
+        expected = Series(['3', '8', np.nan])
+        tm.assert_series_equal(result, expected)
+
+        # negative index
+        result = values.str.split('_').str.get(-3)
+        expected = Series(['3', '8', np.nan])
         tm.assert_series_equal(result, expected)
 
     def test_more_contains(self):

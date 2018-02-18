@@ -2,9 +2,14 @@ import numpy as np
 from pandas._libs import (index as libindex,
                           algos as libalgos, join as libjoin)
 from pandas.core.dtypes.common import (
-    is_dtype_equal, pandas_dtype,
-    is_float_dtype, is_object_dtype,
-    is_integer_dtype, is_scalar)
+    is_dtype_equal,
+    pandas_dtype,
+    is_float_dtype,
+    is_object_dtype,
+    is_integer_dtype,
+    is_bool,
+    is_bool_dtype,
+    is_scalar)
 from pandas.core.common import _asarray_tuplesafe, _values_from_object
 
 from pandas import compat
@@ -56,12 +61,31 @@ class NumericIndex(Index):
         # we will try to coerce to integers
         return self._maybe_cast_indexer(label)
 
-    def _convert_tolerance(self, tolerance):
-        try:
-            return float(tolerance)
-        except ValueError:
-            raise ValueError('tolerance argument for %s must be numeric: %r' %
-                             (type(self).__name__, tolerance))
+    def _convert_for_op(self, value):
+        """ Convert value to be insertable to ndarray """
+
+        if is_bool(value) or is_bool_dtype(value):
+            # force conversion to object
+            # so we don't lose the bools
+            raise TypeError
+
+        return value
+
+    def _convert_tolerance(self, tolerance, target):
+        tolerance = np.asarray(tolerance)
+        if target.size != tolerance.size and tolerance.size > 1:
+            raise ValueError('list-like tolerance size must match '
+                             'target index size')
+        if not np.issubdtype(tolerance.dtype, np.number):
+            if tolerance.ndim > 0:
+                raise ValueError(('tolerance argument for %s must contain '
+                                  'numeric elements if it is list type') %
+                                 (type(self).__name__,))
+            else:
+                raise ValueError(('tolerance argument for %s must be numeric '
+                                  'if it is a scalar: %r') %
+                                 (type(self).__name__, tolerance))
+        return tolerance
 
     @classmethod
     def _assert_safe_casting(cls, data, subarr):
@@ -93,19 +117,21 @@ _num_index_shared_docs['class_descr'] = """
         Make a copy of input ndarray
     name : object
         Name to be stored in the index
+
     Notes
     -----
     An Index instance can **only** contain hashable objects.
+
+    See also
+    --------
+    Index : The base pandas Index type
 """
 
 _int64_descr_args = dict(
     klass='Int64Index',
     ltype='integer',
     dtype='int64',
-    extra="""This is the default index type used
-    by the DataFrame and Series ctors when no explicit
-    index is provided by the user.
-"""
+    extra=''
 )
 
 

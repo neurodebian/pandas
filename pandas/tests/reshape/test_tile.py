@@ -4,11 +4,12 @@ import pytest
 import numpy as np
 from pandas.compat import zip
 
-from pandas import (Series, Index, isnull,
+from pandas import (Series, Index, isna,
                     to_datetime, DatetimeIndex, Timestamp,
                     Interval, IntervalIndex, Categorical,
                     cut, qcut, date_range)
 import pandas.util.testing as tm
+from pandas.api.types import CategoricalDtype as CDT
 
 from pandas.core.algorithms import quantile
 import pandas.core.reshape.tile as tmod
@@ -140,12 +141,12 @@ class TestCut(object):
 
         result_arr = np.asarray(result)
 
-        ex_arr = np.where(isnull(arr), np.nan, result_arr)
+        ex_arr = np.where(isna(arr), np.nan, result_arr)
 
         tm.assert_almost_equal(result_arr, ex_arr)
 
         result = cut(arr, 4, labels=False)
-        ex_result = np.where(isnull(arr), np.nan, result)
+        ex_result = np.where(isna(arr), np.nan, result)
         tm.assert_almost_equal(result, ex_result)
 
     def test_inf_handling(self):
@@ -200,7 +201,7 @@ class TestCut(object):
 
         result = cut(arr, [-1, 0, 1])
 
-        mask = isnull(result)
+        mask = isna(result)
         ex_mask = (arr < -1) | (arr > 1)
         tm.assert_numpy_array_equal(mask, ex_mask)
 
@@ -244,7 +245,7 @@ class TestCut(object):
         arr[:20] = np.nan
 
         result = qcut(arr, 4)
-        assert isnull(result[:20]).all()
+        assert isna(result[:20]).all()
 
     def test_qcut_index(self):
         result = qcut([0, 2], 2)
@@ -299,7 +300,7 @@ class TestCut(object):
         exp_bins = np.linspace(0, 8, num=4).round(3)
         exp_bins[0] -= 0.008
         exp = Series(IntervalIndex.from_breaks(exp_bins, closed='right').take(
-            [0, 0, 0, 1, 1, 1, 2, 2, 2])).astype('category', ordered=True)
+            [0, 0, 0, 1, 1, 1, 2, 2, 2])).astype(CDT(ordered=True))
         tm.assert_series_equal(res, exp)
 
     def test_qcut_return_intervals(self):
@@ -308,7 +309,7 @@ class TestCut(object):
         exp_levels = np.array([Interval(-0.001, 2.664),
                                Interval(2.664, 5.328), Interval(5.328, 8)])
         exp = Series(exp_levels.take([0, 0, 0, 1, 1, 1, 2, 2, 2])).astype(
-            'category', ordered=True)
+            CDT(ordered=True))
         tm.assert_series_equal(res, exp)
 
     def test_series_retbins(self):
@@ -316,14 +317,14 @@ class TestCut(object):
         s = Series(np.arange(4))
         result, bins = cut(s, 2, retbins=True)
         expected = Series(IntervalIndex.from_breaks(
-            [-0.003, 1.5, 3], closed='right').repeat(2)).astype('category',
-                                                                ordered=True)
+            [-0.003, 1.5, 3], closed='right').repeat(2)).astype(
+            CDT(ordered=True))
         tm.assert_series_equal(result, expected)
 
         result, bins = qcut(s, 2, retbins=True)
         expected = Series(IntervalIndex.from_breaks(
-            [-0.001, 1.5, 3], closed='right').repeat(2)).astype('category',
-                                                                ordered=True)
+            [-0.001, 1.5, 3], closed='right').repeat(2)).astype(
+            CDT(ordered=True))
         tm.assert_series_equal(result, expected)
 
     def test_qcut_duplicates_bin(self):
@@ -351,7 +352,7 @@ class TestCut(object):
         result = qcut(s, 1)
         intervals = IntervalIndex([Interval(8.999, 9.0),
                                    Interval(8.999, 9.0)], closed='right')
-        expected = Series(intervals).astype('category', ordered=True)
+        expected = Series(intervals).astype(CDT(ordered=True))
         tm.assert_series_equal(result, expected)
 
         s = Series([-9., -9.])
@@ -361,7 +362,7 @@ class TestCut(object):
         result = qcut(s, 1)
         intervals = IntervalIndex([Interval(-9.001, -9.0),
                                    Interval(-9.001, -9.0)], closed='right')
-        expected = Series(intervals).astype('category', ordered=True)
+        expected = Series(intervals).astype(CDT(ordered=True))
         tm.assert_series_equal(result, expected)
 
         s = Series([0., 0.])
@@ -371,7 +372,7 @@ class TestCut(object):
         result = qcut(s, 1)
         intervals = IntervalIndex([Interval(-0.001, 0.0),
                                    Interval(-0.001, 0.0)], closed='right')
-        expected = Series(intervals).astype('category', ordered=True)
+        expected = Series(intervals).astype(CDT(ordered=True))
         tm.assert_series_equal(result, expected)
 
         s = Series([9])
@@ -380,7 +381,7 @@ class TestCut(object):
         tm.assert_series_equal(result, expected)
         result = qcut(s, 1)
         intervals = IntervalIndex([Interval(8.999, 9.0)], closed='right')
-        expected = Series(intervals).astype('category', ordered=True)
+        expected = Series(intervals).astype(CDT(ordered=True))
         tm.assert_series_equal(result, expected)
 
         s = Series([-9])
@@ -389,7 +390,7 @@ class TestCut(object):
         tm.assert_series_equal(result, expected)
         result = qcut(s, 1)
         intervals = IntervalIndex([Interval(-9.001, -9.0)], closed='right')
-        expected = Series(intervals).astype('category', ordered=True)
+        expected = Series(intervals).astype(CDT(ordered=True))
         tm.assert_series_equal(result, expected)
 
         s = Series([0])
@@ -398,7 +399,7 @@ class TestCut(object):
         tm.assert_series_equal(result, expected)
         result = qcut(s, 1)
         intervals = IntervalIndex([Interval(-0.001, 0.0)], closed='right')
-        expected = Series(intervals).astype('category', ordered=True)
+        expected = Series(intervals).astype(CDT(ordered=True))
         tm.assert_series_equal(result, expected)
 
     def test_single_bin(self):
@@ -450,7 +451,7 @@ class TestCut(object):
                          Timestamp('2013-01-02 08:00:00')),
                 Interval(Timestamp('2013-01-02 08:00:00'),
                          Timestamp('2013-01-03 00:00:00'))]))
-            .astype('category', ordered=True))
+            .astype(CDT(ordered=True)))
 
         tm.assert_series_equal(result, expected)
 
@@ -479,7 +480,7 @@ class TestCut(object):
             Series(IntervalIndex.from_intervals([
                 Interval(Timestamp(bin_data[0]), Timestamp(bin_data[1])),
                 Interval(Timestamp(bin_data[1]), Timestamp(bin_data[2]))]))
-            .astype('category', ordered=True))
+            .astype(CDT(ordered=True)))
 
         for conv in [Timestamp, Timestamp, np.datetime64]:
             bins = [conv(v) for v in bin_data]
@@ -502,9 +503,9 @@ class TestCut(object):
 
         result = cut(date_range('20130102', periods=5),
                      bins=date_range('20130101', periods=2))
-        mask = result.categories.isnull()
+        mask = result.categories.isna()
         tm.assert_numpy_array_equal(mask, np.array([False]))
-        mask = result.isnull()
+        mask = result.isna()
         tm.assert_numpy_array_equal(
             mask, np.array([False, True, True, True, True]))
 

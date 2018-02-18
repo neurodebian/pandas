@@ -17,7 +17,7 @@ from pandas.core.dtypes.common import is_integer_dtype
 from pandas.compat import (lmap, long, zip, range, lrange, lzip,
                            OrderedDict, is_platform_little_endian)
 from pandas import compat
-from pandas import (DataFrame, Index, Series, isnull,
+from pandas import (DataFrame, Index, Series, isna,
                     MultiIndex, Timedelta, Timestamp,
                     date_range)
 import pandas as pd
@@ -224,7 +224,7 @@ class TestDataFrameConstructors(TestData):
 
         assert len(frame) == len(self.ts2)
         assert 'col1' not in frame
-        assert isnull(frame['col3']).all()
+        assert isna(frame['col3']).all()
 
         # Corner cases
         assert len(DataFrame({})) == 0
@@ -258,8 +258,12 @@ class TestDataFrameConstructors(TestData):
         # Dict with None value
         frame_none = DataFrame(dict(a=None), index=[0])
         frame_none_list = DataFrame(dict(a=[None]), index=[0])
-        assert frame_none.get_value(0, 'a') is None
-        assert frame_none_list.get_value(0, 'a') is None
+        with tm.assert_produces_warning(FutureWarning,
+                                        check_stacklevel=False):
+            assert frame_none.get_value(0, 'a') is None
+        with tm.assert_produces_warning(FutureWarning,
+                                        check_stacklevel=False):
+            assert frame_none_list.get_value(0, 'a') is None
         tm.assert_frame_equal(frame_none, frame_none_list)
 
         # GH10856
@@ -279,12 +283,12 @@ class TestDataFrameConstructors(TestData):
         tuples = [(2, 3), (3, 3), (3, 3)]
         mi = MultiIndex.from_tuples(tuples)
         df = DataFrame(index=mi, columns=mi)
-        assert pd.isnull(df).values.ravel().all()
+        assert pd.isna(df).values.ravel().all()
 
         tuples = [(3, 3), (2, 3), (3, 3)]
         mi = MultiIndex.from_tuples(tuples)
         df = DataFrame(index=mi, columns=mi)
-        assert pd.isnull(df).values.ravel().all()
+        assert pd.isna(df).values.ravel().all()
 
     def test_constructor_error_msgs(self):
         msg = "Empty data passed with indices specified."
@@ -509,7 +513,9 @@ class TestDataFrameConstructors(TestData):
         data = {}
         for col in df.columns:
             for row in df.index:
-                data.setdefault(col, {})[row] = df.get_value(row, col)
+                with tm.assert_produces_warning(FutureWarning,
+                                                check_stacklevel=False):
+                    data.setdefault(col, {})[row] = df.get_value(row, col)
 
         result = DataFrame(data, columns=rng)
         tm.assert_frame_equal(result, df)
@@ -517,7 +523,9 @@ class TestDataFrameConstructors(TestData):
         data = {}
         for col in df.columns:
             for row in df.index:
-                data.setdefault(row, {})[col] = df.get_value(row, col)
+                with tm.assert_produces_warning(FutureWarning,
+                                                check_stacklevel=False):
+                    data.setdefault(row, {})[col] = df.get_value(row, col)
 
         result = DataFrame(data, index=rng).T
         tm.assert_frame_equal(result, df)
@@ -625,7 +633,7 @@ class TestDataFrameConstructors(TestData):
 
         assert len(frame.index) == 2
         assert len(frame.columns) == 3
-        assert isnull(frame).values.all()
+        assert isna(frame).values.all()
 
         # cast type
         frame = DataFrame(mat, columns=['A', 'B', 'C'],
@@ -821,7 +829,7 @@ class TestDataFrameConstructors(TestData):
 
         # GH 4851
         # list of 0-dim ndarrays
-        expected = DataFrame({0: range(10)})
+        expected = DataFrame({0: np.arange(10)})
         data = [np.array(x) for x in range(10)]
         result = DataFrame(data)
         tm.assert_frame_equal(result, expected)
@@ -1107,6 +1115,22 @@ class TestDataFrameConstructors(TestData):
         df = DataFrame([arr, s1]).T
         expected = DataFrame({1: s1, 0: arr}, columns=[0, 1])
         tm.assert_frame_equal(df, expected)
+
+    def test_constructor_Series_named_and_columns(self):
+        # GH 9232 validation
+
+        s0 = Series(range(5), name=0)
+        s1 = Series(range(5), name=1)
+
+        # matching name and column gives standard frame
+        tm.assert_frame_equal(pd.DataFrame(s0, columns=[0]),
+                              s0.to_frame())
+        tm.assert_frame_equal(pd.DataFrame(s1, columns=[1]),
+                              s1.to_frame())
+
+        # non-matching produces empty frame
+        assert pd.DataFrame(s0, columns=[1]).empty
+        assert pd.DataFrame(s1, columns=[0]).empty
 
     def test_constructor_Series_differently_indexed(self):
         # name
@@ -1480,7 +1504,7 @@ class TestDataFrameConstructors(TestData):
                 df.iloc[:, i]
 
             # allow single nans to succeed
-            indexer = np.arange(len(df.columns))[isnull(df.columns)]
+            indexer = np.arange(len(df.columns))[isna(df.columns)]
 
             if len(indexer) == 1:
                 tm.assert_series_equal(df.iloc[:, indexer[0]],
@@ -1750,7 +1774,7 @@ class TestDataFrameConstructors(TestData):
 
         # this is actually tricky to create the recordlike arrays and
         # have the dtypes be intact
-        blocks = df.blocks
+        blocks = df._to_dict_of_blocks()
         tuples = []
         columns = []
         dtypes = []
@@ -1825,8 +1849,9 @@ class TestDataFrameConstructors(TestData):
 
         # columns is in a different order here than the actual items iterated
         # from the dict
+        blocks = df._to_dict_of_blocks()
         columns = []
-        for dtype, b in compat.iteritems(df.blocks):
+        for dtype, b in compat.iteritems(blocks):
             columns.extend(b.columns)
 
         asdict = dict((x, y) for x, y in compat.iteritems(df))
@@ -1888,10 +1913,11 @@ class TestDataFrameConstructors(TestData):
         # #2633
         result = DataFrame.from_records([], index='foo',
                                         columns=['foo', 'bar'])
+        expected = Index(['bar'])
 
-        assert np.array_equal(result.columns, ['bar'])
         assert len(result) == 0
         assert result.index.name == 'foo'
+        tm.assert_index_equal(result.columns, expected)
 
     def test_to_frame_with_falsey_names(self):
         # GH 16114
@@ -1901,6 +1927,13 @@ class TestDataFrameConstructors(TestData):
 
         result = DataFrame(Series(name=0)).dtypes
         tm.assert_series_equal(result, expected)
+
+    @pytest.mark.parametrize('dtype', [None, 'uint8', 'category'])
+    def test_constructor_range_dtype(self, dtype):
+        # GH 16804
+        expected = DataFrame({'A': [0, 1, 2, 3, 4]}, dtype=dtype or 'int64')
+        result = DataFrame({'A': range(5)}, dtype=dtype)
+        tm.assert_frame_equal(result, expected)
 
 
 class TestDataFrameConstructorWithDatetimeTZ(TestData):
@@ -1950,7 +1983,7 @@ class TestDataFrameConstructorWithDatetimeTZ(TestData):
 
         # it works!
         d = DataFrame({'A': 'foo', 'B': ts}, index=dr)
-        assert d['B'].isnull().all()
+        assert d['B'].isna().all()
 
     def test_frame_timeseries_to_records(self):
         index = date_range('1/1/2000', periods=10)

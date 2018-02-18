@@ -4,13 +4,13 @@ from pandas.compat import range, lrange
 import operator
 import pytest
 from warnings import catch_warnings
+from distutils.version import LooseVersion
 import numpy as np
 
+from pandas import Series, Index, isna, notna
 from pandas.core.dtypes.common import is_float_dtype
-from pandas import Series, Index, isnull, notnull
 from pandas.core.panel import Panel
 from pandas.core.panel4d import Panel4D
-from pandas.core.series import remove_na
 from pandas.tseries.offsets import BDay
 
 from pandas.util.testing import (assert_frame_equal, assert_series_equal,
@@ -33,21 +33,24 @@ class SafeForLongAndSparse(object):
         tm.equalContents(list(self.panel4d), self.panel4d.labels)
 
     def test_count(self):
-        f = lambda s: notnull(s).sum()
+        f = lambda s: notna(s).sum()
         self._check_stat_op('count', f, obj=self.panel4d, has_skipna=False)
 
     def test_sum(self):
-        self._check_stat_op('sum', np.sum)
+        self._check_stat_op('sum', np.sum, skipna_alternative=np.nansum)
 
     def test_mean(self):
         self._check_stat_op('mean', np.mean)
 
     def test_prod(self):
-        self._check_stat_op('prod', np.prod)
+        if LooseVersion(np.__version__) < LooseVersion("1.10.0"):
+            raise pytest.skip("np.nanprod added in 1.10.0")
+
+        self._check_stat_op('prod', np.prod, skipna_alternative=np.nanprod)
 
     def test_median(self):
         def wrapper(x):
-            if isnull(x).any():
+            if isna(x).any():
                 return np.nan
             return np.median(x)
 
@@ -106,7 +109,8 @@ class SafeForLongAndSparse(object):
 
     #     self._check_stat_op('skew', alt)
 
-    def _check_stat_op(self, name, alternative, obj=None, has_skipna=True):
+    def _check_stat_op(self, name, alternative, obj=None, has_skipna=True,
+                       skipna_alternative=None):
         if obj is None:
             obj = self.panel4d
 
@@ -117,11 +121,9 @@ class SafeForLongAndSparse(object):
         f = getattr(obj, name)
 
         if has_skipna:
-            def skipna_wrapper(x):
-                nona = remove_na(x)
-                if len(nona) == 0:
-                    return np.nan
-                return alternative(nona)
+
+            skipna_wrapper = tm._make_skipna_wrapper(alternative,
+                                                     skipna_alternative)
 
             def wrapper(x):
                 return alternative(np.asarray(x))
@@ -138,7 +140,7 @@ class SafeForLongAndSparse(object):
         with catch_warnings(record=True):
             for i in range(obj.ndim):
                 result = f(axis=i)
-                if not tm._incompat_bottleneck_version(name):
+                if name in ['sum', 'prod']:
                     expected = obj.apply(skipna_wrapper, axis=i)
                     tm.assert_panel_equal(result, expected)
 
@@ -563,8 +565,8 @@ class CheckIndexing(object):
             for item in self.panel4d.items:
                 for mjr in self.panel4d.major_axis[::2]:
                     for mnr in self.panel4d.minor_axis:
-                        result = self.panel4d.get_value(
-                            label, item, mjr, mnr)
+                        result = self.panel4d.loc[
+                            label, item, mjr, mnr]
                         expected = self.panel4d[label][item][mnr][mjr]
                         assert_almost_equal(result, expected)
 
@@ -939,3 +941,8 @@ class TestPanel4d(CheckIndexing, SafeForSparse,
 
     def test_get_attr(self):
         tm.assert_panel_equal(self.panel4d['l1'], self.panel4d.l1)
+
+    # GH issue 15960
+    def test_sort_values(self):
+        pytest.raises(NotImplementedError, self.panel4d.sort_values)
+        pytest.raises(NotImplementedError, self.panel4d.sort_values, 'ItemA')

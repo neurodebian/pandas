@@ -4,12 +4,13 @@ from warnings import catch_warnings
 import datetime
 import itertools
 import pytest
+import pytz
 
 from numpy.random import randn
 import numpy as np
 
 from pandas.core.index import Index, MultiIndex
-from pandas import Panel, DataFrame, Series, notnull, isnull, Timestamp
+from pandas import Panel, DataFrame, Series, notna, isna, Timestamp
 
 from pandas.core.dtypes.common import is_float_dtype, is_integer_dtype
 import pandas.core.common as com
@@ -68,8 +69,6 @@ class TestMultiLevel(Base):
         tm.assert_series_equal(result, self.frame['A'])
 
     def test_append_index(self):
-        tm._skip_if_no_pytz()
-
         idx1 = Index([1.1, 1.2, 1.3])
         idx2 = pd.date_range('2011-01-01', freq='D', periods=3,
                              tz='Asia/Tokyo')
@@ -80,8 +79,7 @@ class TestMultiLevel(Base):
 
         result = idx1.append(midx_lv2)
 
-        # GH 7112
-        import pytz
+        # see gh-7112
         tz = pytz.timezone('Asia/Tokyo')
         expected_tuples = [(1.1, tz.localize(datetime.datetime(2011, 1, 1))),
                            (1.2, tz.localize(datetime.datetime(2011, 1, 2))),
@@ -289,12 +287,12 @@ class TestMultiLevel(Base):
         s = self.ymd['A']
 
         s[2000, 3] = np.nan
-        assert isnull(s.values[42:65]).all()
-        assert notnull(s.values[:42]).all()
-        assert notnull(s.values[65:]).all()
+        assert isna(s.values[42:65]).all()
+        assert notna(s.values[:42]).all()
+        assert notna(s.values[65:]).all()
 
         s[2000, 3, 10] = np.nan
-        assert isnull(s[49])
+        assert isna(s[49])
 
     def test_series_slice_partial(self):
         pass
@@ -1241,7 +1239,8 @@ Thur,Lunch,Yes,51.51,17"""
             'f2', 's1'), ('f2', 's2'), ('f3', 's1'), ('f3', 's2')])
         df = DataFrame(
             [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]], columns=midx)
-        df1 = df.select(lambda u: u[0] in ['f2', 'f3'], axis=1)
+        df1 = df.loc(axis=1)[df.columns.map(
+            lambda u: u[0] in ['f2', 'f3'])]
 
         grouped = df1.groupby(axis=1, level=0)
         result = grouped.sum()
@@ -1394,17 +1393,23 @@ Thur,Lunch,Yes,51.51,17"""
     AGG_FUNCTIONS = ['sum', 'prod', 'min', 'max', 'median', 'mean', 'skew',
                      'mad', 'std', 'var', 'sem']
 
-    def test_series_group_min_max(self):
+    @pytest.mark.parametrize('sort', [True, False])
+    def test_series_group_min_max(self, sort):
+        # GH 17537
         for op, level, skipna in cart_product(self.AGG_FUNCTIONS, lrange(2),
                                               [False, True]):
-            grouped = self.series.groupby(level=level)
+            grouped = self.series.groupby(level=level, sort=sort)
             aggf = lambda x: getattr(x, op)(skipna=skipna)
             # skipna=True
             leftside = grouped.agg(aggf)
             rightside = getattr(self.series, op)(level=level, skipna=skipna)
+            if sort:
+                rightside = rightside.sort_index(level=level)
             tm.assert_series_equal(leftside, rightside)
 
-    def test_frame_group_ops(self):
+    @pytest.mark.parametrize('sort', [True, False])
+    def test_frame_group_ops(self, sort):
+        # GH 17537
         self.frame.iloc[1, [1, 2]] = np.nan
         self.frame.iloc[7, [0, 1]] = np.nan
 
@@ -1417,7 +1422,7 @@ Thur,Lunch,Yes,51.51,17"""
             else:
                 frame = self.frame.T
 
-            grouped = frame.groupby(level=level, axis=axis)
+            grouped = frame.groupby(level=level, axis=axis, sort=sort)
 
             pieces = []
 
@@ -1428,6 +1433,9 @@ Thur,Lunch,Yes,51.51,17"""
             leftside = grouped.agg(aggf)
             rightside = getattr(frame, op)(level=level, axis=axis,
                                            skipna=skipna)
+            if sort:
+                rightside = rightside.sort_index(level=level, axis=axis)
+                frame = frame.sort_index(level=level, axis=axis)
 
             # for good measure, groupby detail
             level_index = frame._get_axis(axis).levels[level]
@@ -1677,24 +1685,31 @@ Thur,Lunch,Yes,51.51,17"""
         expected = self.ymd.reindex(s.index[5:])
         tm.assert_frame_equal(result, expected)
 
-    def test_mixed_depth_get(self):
+    @pytest.mark.parametrize('unicode_strings', [True, False])
+    def test_mixed_depth_get(self, unicode_strings):
+        # If unicode_strings is True, the column labels in dataframe
+        # construction will use unicode strings in Python 2 (pull request
+        # #17099).
+
         arrays = [['a', 'top', 'top', 'routine1', 'routine1', 'routine2'],
                   ['', 'OD', 'OD', 'result1', 'result2', 'result1'],
                   ['', 'wx', 'wy', '', '', '']]
 
+        if unicode_strings:
+            arrays = [[u(s) for s in arr] for arr in arrays]
+
         tuples = sorted(zip(*arrays))
         index = MultiIndex.from_tuples(tuples)
-        df = DataFrame(randn(4, 6), columns=index)
+        df = DataFrame(np.random.randn(4, 6), columns=index)
 
         result = df['a']
-        expected = df['a', '', '']
-        tm.assert_series_equal(result, expected, check_names=False)
-        assert result.name == 'a'
+        expected = df['a', '', ''].rename('a')
+        tm.assert_series_equal(result, expected)
 
         result = df['routine1', 'result1']
         expected = df['routine1', 'result1', '']
-        tm.assert_series_equal(result, expected, check_names=False)
-        assert result.name == ('routine1', 'result1')
+        expected = expected.rename(('routine1', 'result1'))
+        tm.assert_series_equal(result, expected)
 
     def test_mixed_depth_insert(self):
         arrays = [['a', 'top', 'top', 'routine1', 'routine1', 'routine2'],
@@ -1790,7 +1805,7 @@ Thur,Lunch,Yes,51.51,17"""
         expected = self.frame.iloc[[0, 1, 2, 7, 8, 9]]
         tm.assert_frame_equal(result, expected)
 
-        result = self.frame.T.reindex_axis(['foo', 'qux'], axis=1, level=0)
+        result = self.frame.T.reindex(['foo', 'qux'], axis=1, level=0)
         tm.assert_frame_equal(result, expected.T)
 
         result = self.frame.loc[['foo', 'qux']]
@@ -1904,7 +1919,7 @@ Thur,Lunch,Yes,51.51,17"""
         df = DataFrame([[1, 2], [3, 4], [5, 6]], index=mix)
         s = Series({(1, 1): 1, (1, 2): 2})
         df['new'] = s
-        assert df['new'].isnull().all()
+        assert df['new'].isna().all()
 
     def test_join_segfault(self):
         # 1532
@@ -2016,8 +2031,8 @@ Thur,Lunch,Yes,51.51,17"""
                            labels=[[1, 1, 1, 1, -1, 0, 0, 0], [0, 1, 2, 3, 0,
                                                                1, 2, 3]])
 
-        assert isnull(index[4][0])
-        assert isnull(index.values[4][0])
+        assert isna(index[4][0])
+        assert isna(index.values[4][0])
 
     def test_duplicate_groupby_issues(self):
         idx_tp = [('600809', '20061231'), ('600809', '20070331'),
@@ -2132,7 +2147,7 @@ Thur,Lunch,Yes,51.51,17"""
                           '2011-07-19 08:00:00', '2011-07-19 09:00:00'],
              'value': range(6)})
         df.index = pd.to_datetime(df.pop('datetime'), utc=True)
-        df.index = df.index.tz_localize('UTC').tz_convert('US/Pacific')
+        df.index = df.index.tz_convert('US/Pacific')
 
         expected = pd.DatetimeIndex(['2011-07-19 07:00:00',
                                      '2011-07-19 08:00:00',
@@ -2782,4 +2797,27 @@ class TestSorted(Base):
         # sorting series, nan position first
         result = s.sort_index(na_position='first')
         expected = s.iloc[[1, 2, 3, 0]]
+        tm.assert_series_equal(result, expected)
+
+    def test_sort_ascending_list(self):
+        # GH: 16934
+
+        # Set up a Series with a three level MultiIndex
+        arrays = [['bar', 'bar', 'baz', 'baz', 'foo', 'foo', 'qux', 'qux'],
+                  ['one', 'two', 'one', 'two', 'one', 'two', 'one', 'two'],
+                  [4, 3, 2, 1, 4, 3, 2, 1]]
+        tuples = list(zip(*arrays))
+        index = pd.MultiIndex.from_tuples(tuples,
+                                          names=['first', 'second', 'third'])
+        s = pd.Series(range(8), index=index)
+
+        # Sort with boolean ascending
+        result = s.sort_index(level=['third', 'first'], ascending=False)
+        expected = s.iloc[[4, 0, 5, 1, 6, 2, 7, 3]]
+        tm.assert_series_equal(result, expected)
+
+        # Sort with list of boolean ascending
+        result = s.sort_index(level=['third', 'first'],
+                              ascending=[False, True])
+        expected = s.iloc[[0, 4, 1, 5, 2, 6, 3, 7]]
         tm.assert_series_equal(result, expected)

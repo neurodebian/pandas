@@ -1,5 +1,6 @@
 import pytest
 
+import pytz
 import numpy as np
 from datetime import timedelta
 
@@ -306,8 +307,9 @@ class TestDatetimeIndex(object):
         exp = date_range('1/1/2000', periods=10)
         tm.assert_index_equal(rng, exp)
 
-        pytest.raises(ValueError, DatetimeIndex, start='1/1/2000',
-                      periods='foo', freq='D')
+        msg = 'periods must be a number, got foo'
+        with tm.assert_raises_regex(TypeError, msg):
+            DatetimeIndex(start='1/1/2000', periods='foo', freq='D')
 
         pytest.raises(ValueError, DatetimeIndex, start='1/1/2000',
                       end='1/10/2000')
@@ -350,10 +352,7 @@ class TestDatetimeIndex(object):
         pytest.raises(ValueError, DatetimeIndex, periods=10, freq='D')
 
     def test_constructor_datetime64_tzformat(self):
-        # GH 6572
-        tm._skip_if_no_pytz()
-        import pytz
-        # ISO 8601 format results in pytz.FixedOffset
+        # see gh-6572: ISO 8601 format results in pytz.FixedOffset
         for freq in ['AS', 'W-SUN']:
             idx = date_range('2013-01-01T00:00:00-05:00',
                              '2016-01-01T23:59:59-05:00', freq=freq)
@@ -375,8 +374,6 @@ class TestDatetimeIndex(object):
                                      '2016-01-01T23:59:59', freq=freq,
                                      tz='Asia/Tokyo')
             tm.assert_numpy_array_equal(idx.asi8, expected_i8.asi8)
-
-        tm._skip_if_no_dateutil()
 
         # Non ISO 8601 format results in dateutil.tz.tzoffset
         for freq in ['AS', 'W-SUN']:

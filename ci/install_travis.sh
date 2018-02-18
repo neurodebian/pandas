@@ -34,9 +34,9 @@ fi
 
 # install miniconda
 if [ "${TRAVIS_OS_NAME}" == "osx" ]; then
-    time wget http://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O miniconda.sh || exit 1
+    time wget http://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -q -O miniconda.sh || exit 1
 else
-    time wget http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh || exit 1
+    time wget http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -q -O miniconda.sh || exit 1
 fi
 time bash miniconda.sh -b -p "$MINICONDA_DIR" || exit 1
 
@@ -47,14 +47,11 @@ which conda
 echo
 echo "[update conda]"
 conda config --set ssl_verify false || exit 1
-conda config --set always_yes true --set changeps1 false || exit 1
+conda config --set quiet true --set always_yes true --set changeps1 false || exit 1
 conda update -q conda
 
 echo
 echo "[add channels]"
-# add the pandas channel to take priority
-# to add extra packages
-conda config --add channels pandas || exit 1
 conda config --remove channels defaults || exit 1
 conda config --add channels defaults || exit 1
 
@@ -106,11 +103,11 @@ if [ -e ${REQ} ]; then
     time bash $REQ || exit 1
 fi
 
-time conda install -n pandas pytest
-time pip install pytest-xdist
+time conda install -n pandas pytest>=3.1.0
+time pip install pytest-xdist moto
 
 if [ "$LINT" ]; then
-   conda install flake8
+   conda install flake8=3.4.1
    pip install cpplint
 fi
 
@@ -156,6 +153,7 @@ fi
 echo
 echo "[removing installed pandas]"
 conda remove pandas -y --force
+pip uninstall -y pandas
 
 if [ "$BUILD_TEST" ]; then
 

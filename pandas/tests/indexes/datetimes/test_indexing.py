@@ -1,10 +1,11 @@
 import pytest
 
+import pytz
 import numpy as np
 import pandas as pd
 import pandas.util.testing as tm
 import pandas.compat as compat
-from pandas import notnull, Index, DatetimeIndex, datetime, date_range
+from pandas import notna, Index, DatetimeIndex, datetime, date_range
 
 
 class TestDatetimeIndex(object):
@@ -15,29 +16,29 @@ class TestDatetimeIndex(object):
         i = pd.date_range('20130101', periods=3, tz='US/Eastern')
 
         for arr in [np.nan, pd.NaT]:
-            result = i.where(notnull(i), other=np.nan)
+            result = i.where(notna(i), other=np.nan)
             expected = i
             tm.assert_index_equal(result, expected)
 
         i2 = i.copy()
         i2 = Index([pd.NaT, pd.NaT] + i[2:].tolist())
-        result = i.where(notnull(i2), i2)
+        result = i.where(notna(i2), i2)
         tm.assert_index_equal(result, i2)
 
         i2 = i.copy()
         i2 = Index([pd.NaT, pd.NaT] + i[2:].tolist())
-        result = i.where(notnull(i2), i2.values)
+        result = i.where(notna(i2), i2.values)
         tm.assert_index_equal(result, i2)
 
     def test_where_tz(self):
         i = pd.date_range('20130101', periods=3, tz='US/Eastern')
-        result = i.where(notnull(i))
+        result = i.where(notna(i))
         expected = i
         tm.assert_index_equal(result, expected)
 
         i2 = i.copy()
         i2 = Index([pd.NaT, pd.NaT] + i[2:].tolist())
-        result = i.where(notnull(i2))
+        result = i.where(notna(i2))
         expected = i2
         tm.assert_index_equal(result, expected)
 
@@ -97,10 +98,7 @@ class TestDatetimeIndex(object):
         assert result.name == expected.name
         assert result.freq is None
 
-        # GH 7299
-        tm._skip_if_no_pytz()
-        import pytz
-
+        # see gh-7299
         idx = date_range('1/1/2000', periods=3, freq='D', tz='Asia/Tokyo',
                          name='idx')
         with pytest.raises(ValueError):

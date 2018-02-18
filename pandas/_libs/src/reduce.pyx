@@ -1,5 +1,4 @@
 #cython=False
-from numpy cimport *
 import numpy as np
 
 from distutils.version import LooseVersion
@@ -419,7 +418,7 @@ cdef class SeriesGrouper:
 cdef inline _extract_result(object res):
     """ extract the result object, it might be a 0-dim ndarray
         or a len-1 0-dim, or a scalar """
-    if hasattr(res, 'values'):
+    if hasattr(res, 'values') and isinstance(res.values, np.ndarray):
         res = res.values
     if not np.isscalar(res):
         if isinstance(res, np.ndarray):

@@ -8,16 +8,14 @@ from collections import OrderedDict
 
 import pytest
 from pandas.compat import intern
+from pandas.core.common import _all_none
 from pandas.util._move import move_into_mutable_buffer, BadMove, stolenbuf
-from pandas.util._decorators import deprecate_kwarg
+from pandas.util._decorators import deprecate_kwarg, make_signature
 from pandas.util._validators import (validate_args, validate_kwargs,
                                      validate_args_and_kwargs,
                                      validate_bool_kwarg)
 
 import pandas.util.testing as tm
-
-CURRENT_LOCALE = locale.getlocale()
-LOCALE_OVERRIDE = os.environ.get('LOCALE_OVERRIDE', None)
 
 
 class TestDecorators(object):
@@ -412,6 +410,7 @@ class TestLocaleUtils(object):
     @classmethod
     def setup_class(cls):
         cls.locales = tm.get_locales()
+        cls.current_locale = locale.getlocale()
 
         if not cls.locales:
             pytest.skip("No locales found")
@@ -421,6 +420,7 @@ class TestLocaleUtils(object):
     @classmethod
     def teardown_class(cls):
         del cls.locales
+        del cls.current_locale
 
     def test_get_locales(self):
         # all systems should have at least a single locale
@@ -438,17 +438,19 @@ class TestLocaleUtils(object):
             pytest.skip("Only a single locale found, no point in "
                         "trying to test setting another locale")
 
-        if all(x is None for x in CURRENT_LOCALE):
+        if _all_none(*self.current_locale):
             # Not sure why, but on some travis runs with pytest,
             # getlocale() returned (None, None).
-            pytest.skip("CURRENT_LOCALE is not set.")
+            pytest.skip("Current locale is not set.")
 
-        if LOCALE_OVERRIDE is None:
+        locale_override = os.environ.get('LOCALE_OVERRIDE', None)
+
+        if locale_override is None:
             lang, enc = 'it_CH', 'UTF-8'
-        elif LOCALE_OVERRIDE == 'C':
+        elif locale_override == 'C':
             lang, enc = 'en_US', 'ascii'
         else:
-            lang, enc = LOCALE_OVERRIDE.split('.')
+            lang, enc = locale_override.split('.')
 
         enc = codecs.lookup(enc).name
         new_locale = lang, enc
@@ -465,4 +467,18 @@ class TestLocaleUtils(object):
                 assert normalized_locale == new_locale
 
         current_locale = locale.getlocale()
-        assert current_locale == CURRENT_LOCALE
+        assert current_locale == self.current_locale
+
+
+def test_make_signature():
+    # See GH 17608
+    # Case where the func does not have default kwargs
+    sig = make_signature(validate_kwargs)
+    assert sig == (['fname', 'kwargs', 'compat_args'],
+                   ['fname', 'kwargs', 'compat_args'])
+
+    # Case where the func does have default kwargs
+    sig = make_signature(deprecate_kwarg)
+    assert sig == (['old_arg_name', 'new_arg_name',
+                    'mapping=None', 'stacklevel=2'],
+                   ['old_arg_name', 'new_arg_name', 'mapping', 'stacklevel'])

@@ -1,13 +1,14 @@
 from warnings import catch_warnings
 
+import dateutil
 import numpy as np
 from numpy.random import randn
 
 from datetime import datetime
-from pandas.compat import StringIO, iteritems
+from pandas.compat import StringIO, iteritems, PY2
 import pandas as pd
 from pandas import (DataFrame, concat,
-                    read_csv, isnull, Series, date_range,
+                    read_csv, isna, Series, date_range,
                     Index, Panel, MultiIndex, Timestamp,
                     DatetimeIndex)
 from pandas.util import testing as tm
@@ -176,7 +177,9 @@ class TestConcatAppendCommon(ConcatenateBase):
             tm.assert_series_equal(res, exp, check_index_type=True)
 
             # cannot append non-index
-            msg = "cannot concatenate a non-NDFrame object"
+            msg = ('cannot concatenate object of type \"(.+?)\";'
+                   ' only pd.Series, pd.DataFrame, and pd.Panel'
+                   ' \(deprecated\) objs are valid')
             with tm.assert_raises_regex(TypeError, msg):
                 pd.Series(vals1).append(vals2)
 
@@ -679,7 +682,7 @@ class TestConcatAppendCommon(ConcatenateBase):
         tm.assert_series_equal(s1.append(s2, ignore_index=True), s2)
 
         s1 = pd.Series([], dtype='category')
-        s2 = pd.Series([])
+        s2 = pd.Series([], dtype='object')
 
         # different dtype => not-category
         tm.assert_series_equal(pd.concat([s1, s2], ignore_index=True), s2)
@@ -788,8 +791,8 @@ class TestAppend(ConcatenateBase):
         b = df[5:].loc[:, ['strings', 'ints', 'floats']]
 
         appended = a.append(b)
-        assert isnull(appended['strings'][0:4]).all()
-        assert isnull(appended['bools'][5:]).all()
+        assert isna(appended['strings'][0:4]).all()
+        assert isna(appended['bools'][5:]).all()
 
     def test_append_many(self):
         chunks = [self.frame[:5], self.frame[5:10],
@@ -803,7 +806,7 @@ class TestAppend(ConcatenateBase):
         result = chunks[0].append(chunks[1:])
         tm.assert_frame_equal(result.loc[:, self.frame.columns], self.frame)
         assert (result['foo'][15:] == 'bar').all()
-        assert result['foo'][:15].isnull().all()
+        assert result['foo'][:15].isna().all()
 
     def test_append_preserve_index_name(self):
         # #980
@@ -1221,7 +1224,7 @@ class TestConcatenate(ConcatenateBase):
         frames = [baz, empty, empty, df[5:]]
         concatted = concat(frames, axis=0)
 
-        expected = df.loc[:, ['a', 'b', 'c', 'd', 'foo']]
+        expected = df.reindex(columns=['a', 'b', 'c', 'd', 'foo'])
         expected['foo'] = expected['foo'].astype('O')
         expected.loc[0:4, 'foo'] = 'bar'
 
@@ -1591,7 +1594,9 @@ class TestConcatenate(ConcatenateBase):
         s2 = Series(randn(len(dates)), index=dates, name='value')
 
         result = concat([s1, s2], axis=1, ignore_index=True)
-        assert np.array_equal(result.columns, [0, 1])
+        expected = Index([0, 1])
+
+        tm.assert_index_equal(result.columns, expected)
 
     def test_concat_iterables(self):
         from collections import deque, Iterable
@@ -1780,9 +1785,6 @@ bar2,12,13,14,15
 
     def test_concat_tz_series_tzlocal(self):
         # see gh-13583
-        tm._skip_if_no_dateutil()
-        import dateutil
-
         x = [pd.Timestamp('2011-01-01', tz=dateutil.tz.tzlocal()),
              pd.Timestamp('2011-02-01', tz=dateutil.tz.tzlocal())]
         y = [pd.Timestamp('2012-01-01', tz=dateutil.tz.tzlocal()),
@@ -1946,6 +1948,17 @@ bar2,12,13,14,15
                            index=exp_idx)
         tm.assert_frame_equal(result, exp)
 
+    def test_concat_order(self):
+        # GH 17344
+        dfs = [pd.DataFrame(index=range(3), columns=['a', 1, None])]
+        dfs += [pd.DataFrame(index=range(3), columns=[None, 1, 'a'])
+                for i in range(100)]
+        result = pd.concat(dfs).columns
+        expected = dfs[0].columns
+        if PY2:
+            expected = expected.sort_values()
+        tm.assert_index_equal(result, expected)
+
 
 @pytest.mark.parametrize('pdt', [pd.Series, pd.DataFrame, pd.Panel])
 @pytest.mark.parametrize('dt', np.sctypes['float'])
@@ -1970,3 +1983,21 @@ def test_concat_will_upcast(dt, pdt):
                pdt(np.array([5], dtype=dt, ndmin=dims))]
         x = pd.concat(dfs)
         assert x.values.dtype == 'float64'
+
+
+def test_concat_empty_and_non_empty_frame_regression():
+    # GH 18178 regression test
+    df1 = pd.DataFrame({'foo': [1]})
+    df2 = pd.DataFrame({'foo': []})
+    expected = pd.DataFrame({'foo': [1.0]})
+    result = pd.concat([df1, df2])
+    assert_frame_equal(result, expected)
+
+
+def test_concat_empty_and_non_empty_series_regression():
+    # GH 18187 regression test
+    s1 = pd.Series([1])
+    s2 = pd.Series([])
+    expected = s1
+    result = pd.concat([s1, s2])
+    tm.assert_series_equal(result, expected)

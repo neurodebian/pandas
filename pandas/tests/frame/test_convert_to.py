@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 
+from datetime import datetime
+
 import pytest
+import pytz
+import collections
 import numpy as np
 
 from pandas import compat
+from pandas.compat import long
 from pandas import (DataFrame, Series, MultiIndex, Timestamp,
                     date_range)
 
@@ -12,50 +17,6 @@ from pandas.tests.frame.common import TestData
 
 
 class TestDataFrameConvertTo(TestData):
-
-    def test_to_dict(self):
-        test_data = {
-            'A': {'1': 1, '2': 2},
-            'B': {'1': '1', '2': '2', '3': '3'},
-        }
-        recons_data = DataFrame(test_data).to_dict()
-
-        for k, v in compat.iteritems(test_data):
-            for k2, v2 in compat.iteritems(v):
-                assert v2 == recons_data[k][k2]
-
-        recons_data = DataFrame(test_data).to_dict("l")
-
-        for k, v in compat.iteritems(test_data):
-            for k2, v2 in compat.iteritems(v):
-                assert v2 == recons_data[k][int(k2) - 1]
-
-        recons_data = DataFrame(test_data).to_dict("s")
-
-        for k, v in compat.iteritems(test_data):
-            for k2, v2 in compat.iteritems(v):
-                assert v2 == recons_data[k][k2]
-
-        recons_data = DataFrame(test_data).to_dict("sp")
-        expected_split = {'columns': ['A', 'B'], 'index': ['1', '2', '3'],
-                          'data': [[1.0, '1'], [2.0, '2'], [np.nan, '3']]}
-        tm.assert_dict_equal(recons_data, expected_split)
-
-        recons_data = DataFrame(test_data).to_dict("r")
-        expected_records = [{'A': 1.0, 'B': '1'},
-                            {'A': 2.0, 'B': '2'},
-                            {'A': np.nan, 'B': '3'}]
-        assert isinstance(recons_data, list)
-        assert len(recons_data) == 3
-        for l, r in zip(recons_data, expected_records):
-            tm.assert_dict_equal(l, r)
-
-        # GH10844
-        recons_data = DataFrame(test_data).to_dict("i")
-
-        for k, v in compat.iteritems(test_data):
-            for k2, v2 in compat.iteritems(v):
-                assert v2 == recons_data[k2][k]
 
     def test_to_dict_timestamp(self):
 
@@ -178,11 +139,11 @@ class TestDataFrameConvertTo(TestData):
     def test_to_records_with_unicode_column_names(self):
         # xref issue: https://github.com/numpy/numpy/issues/2407
         # Issue #11879. to_records used to raise an exception when used
-        # with column names containing non ascii caracters in Python 2
+        # with column names containing non-ascii characters in Python 2
         result = DataFrame(data={u"accented_name_é": [1.0]}).to_records()
 
         # Note that numpy allows for unicode field names but dtypes need
-        # to be specified using dictionnary intsead of list of tuples.
+        # to be specified using dictionary instead of list of tuples.
         expected = np.rec.array(
             [(0, 1.0)],
             dtype={"names": ["index", u"accented_name_é"],
@@ -190,17 +151,119 @@ class TestDataFrameConvertTo(TestData):
         )
         tm.assert_almost_equal(result, expected)
 
+    @pytest.mark.parametrize('mapping', [
+        dict,
+        collections.defaultdict(list),
+        collections.OrderedDict])
+    def test_to_dict(self, mapping):
+        test_data = {
+            'A': {'1': 1, '2': 2},
+            'B': {'1': '1', '2': '2', '3': '3'},
+        }
 
-@pytest.mark.parametrize('tz', ['UTC', 'GMT', 'US/Eastern'])
-def test_to_records_datetimeindex_with_tz(tz):
-    # GH13937
-    dr = date_range('2016-01-01', periods=10,
-                    freq='S', tz=tz)
+        # GH16122
+        recons_data = DataFrame(test_data).to_dict(into=mapping)
 
-    df = DataFrame({'datetime': dr}, index=dr)
+        for k, v in compat.iteritems(test_data):
+            for k2, v2 in compat.iteritems(v):
+                assert (v2 == recons_data[k][k2])
 
-    expected = df.to_records()
-    result = df.tz_convert("UTC").to_records()
+        recons_data = DataFrame(test_data).to_dict("l", mapping)
 
-    # both converted to UTC, so they are equal
-    tm.assert_numpy_array_equal(result, expected)
+        for k, v in compat.iteritems(test_data):
+            for k2, v2 in compat.iteritems(v):
+                assert (v2 == recons_data[k][int(k2) - 1])
+
+        recons_data = DataFrame(test_data).to_dict("s", mapping)
+
+        for k, v in compat.iteritems(test_data):
+            for k2, v2 in compat.iteritems(v):
+                assert (v2 == recons_data[k][k2])
+
+        recons_data = DataFrame(test_data).to_dict("sp", mapping)
+        expected_split = {'columns': ['A', 'B'], 'index': ['1', '2', '3'],
+                          'data': [[1.0, '1'], [2.0, '2'], [np.nan, '3']]}
+        tm.assert_dict_equal(recons_data, expected_split)
+
+        recons_data = DataFrame(test_data).to_dict("r", mapping)
+        expected_records = [{'A': 1.0, 'B': '1'},
+                            {'A': 2.0, 'B': '2'},
+                            {'A': np.nan, 'B': '3'}]
+        assert isinstance(recons_data, list)
+        assert (len(recons_data) == 3)
+        for l, r in zip(recons_data, expected_records):
+            tm.assert_dict_equal(l, r)
+
+        # GH10844
+        recons_data = DataFrame(test_data).to_dict("i")
+
+        for k, v in compat.iteritems(test_data):
+            for k2, v2 in compat.iteritems(v):
+                assert (v2 == recons_data[k2][k])
+
+        df = DataFrame(test_data)
+        df['duped'] = df[df.columns[0]]
+        recons_data = df.to_dict("i")
+        comp_data = test_data.copy()
+        comp_data['duped'] = comp_data[df.columns[0]]
+        for k, v in compat.iteritems(comp_data):
+            for k2, v2 in compat.iteritems(v):
+                assert (v2 == recons_data[k2][k])
+
+    @pytest.mark.parametrize('mapping', [
+        list,
+        collections.defaultdict,
+        []])
+    def test_to_dict_errors(self, mapping):
+        # GH16122
+        df = DataFrame(np.random.randn(3, 3))
+        with pytest.raises(TypeError):
+            df.to_dict(into=mapping)
+
+    def test_to_dict_not_unique_warning(self):
+        # GH16927: When converting to a dict, if a column has a non-unique name
+        # it will be dropped, throwing a warning.
+        df = DataFrame([[1, 2, 3]], columns=['a', 'a', 'b'])
+        with tm.assert_produces_warning(UserWarning):
+            df.to_dict()
+
+    @pytest.mark.parametrize('tz', ['UTC', 'GMT', 'US/Eastern'])
+    def test_to_records_datetimeindex_with_tz(self, tz):
+        # GH13937
+        dr = date_range('2016-01-01', periods=10,
+                        freq='S', tz=tz)
+
+        df = DataFrame({'datetime': dr}, index=dr)
+
+        expected = df.to_records()
+        result = df.tz_convert("UTC").to_records()
+
+        # both converted to UTC, so they are equal
+        tm.assert_numpy_array_equal(result, expected)
+
+    def test_to_dict_box_scalars(self):
+        # 14216
+        # make sure that we are boxing properly
+        d = {'a': [1], 'b': ['b']}
+
+        result = DataFrame(d).to_dict()
+        assert isinstance(list(result['a'])[0], (int, long))
+        assert isinstance(list(result['b'])[0], (int, long))
+
+        result = DataFrame(d).to_dict(orient='records')
+        assert isinstance(result[0]['a'], (int, long))
+
+    def test_frame_to_dict_tz(self):
+        # GH18372 When converting to dict with orient='records' columns of
+        # datetime that are tz-aware were not converted to required arrays
+        data = [(datetime(2017, 11, 18, 21, 53, 0, 219225, tzinfo=pytz.utc),),
+                (datetime(2017, 11, 18, 22, 6, 30, 61810, tzinfo=pytz.utc,),)]
+        df = DataFrame(list(data), columns=["d", ])
+
+        result = df.to_dict(orient='records')
+        expected = [
+            {'d': Timestamp('2017-11-18 21:53:00.219225+0000', tz=pytz.utc)},
+            {'d': Timestamp('2017-11-18 22:06:30.061810+0000', tz=pytz.utc)},
+        ]
+        tm.assert_dict_equal(result[0], expected[0])
+        tm.assert_dict_equal(result[1], expected[1])

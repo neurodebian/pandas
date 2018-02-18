@@ -56,12 +56,11 @@ from pandas import (Timestamp, Period, Series, DataFrame,  # noqa
                     Index, MultiIndex, Float64Index, Int64Index,
                     Panel, RangeIndex, PeriodIndex, DatetimeIndex, NaT,
                     Categorical, CategoricalIndex)
-from pandas._libs.tslib import NaTType
 from pandas.core.sparse.api import SparseSeries, SparseDataFrame
 from pandas.core.sparse.array import BlockIndex, IntIndex
 from pandas.core.generic import NDFrame
 from pandas.errors import PerformanceWarning
-from pandas.io.common import get_filepath_or_buffer
+from pandas.io.common import get_filepath_or_buffer, _stringify_path
 from pandas.core.internals import BlockManager, make_block, _safe_reshape
 import pandas.core.internals as internals
 
@@ -149,6 +148,7 @@ def to_msgpack(path_or_buf, *args, **kwargs):
         for a in args:
             fh.write(pack(a, **kwargs))
 
+    path_or_buf = _stringify_path(path_or_buf)
     if isinstance(path_or_buf, compat.string_types):
         with open(path_or_buf, mode) as fh:
             writer(fh)
@@ -350,8 +350,11 @@ def unconvert(values, dtype, compress=None):
                 )
                 # fall through to copying `np.fromstring`
 
-    # Copy the string into a numpy array.
-    return np.fromstring(values, dtype=dtype)
+    # Copy the bytes into a numpy array.
+    buf = np.frombuffer(values, dtype=dtype)
+    buf = buf.copy()  # required to not mutate the original data
+    buf.flags.writeable = True
+    return buf
 
 
 def encode(obj):
@@ -469,7 +472,7 @@ def encode(obj):
                     }
 
     elif isinstance(obj, (datetime, date, np.datetime64, timedelta,
-                          np.timedelta64, NaTType)):
+                          np.timedelta64)) or obj is NaT:
         if isinstance(obj, Timestamp):
             tz = obj.tzinfo
             if tz is not None:
@@ -481,7 +484,7 @@ def encode(obj):
                     u'value': obj.value,
                     u'freq': freq,
                     u'tz': tz}
-        if isinstance(obj, NaTType):
+        if obj is NaT:
             return {u'typ': u'nat'}
         elif isinstance(obj, np.timedelta64):
             return {u'typ': u'timedelta64',

@@ -10,6 +10,8 @@ import numpy as np
 from pandas import (DataFrame, Series, date_range, Timedelta, Timestamp,
                     compat, concat, option_context)
 from pandas.compat import u
+from pandas import _np_version_under1p14
+
 from pandas.core.dtypes.dtypes import DatetimeTZDtype
 from pandas.tests.frame.common import TestData
 from pandas.util.testing import (assert_series_equal,
@@ -104,7 +106,7 @@ class TestDataFrameDataTypes(TestData):
                                              ('b', np.float_),
                                              ('c', np.float_)])))
 
-    def test_select_dtypes_include(self):
+    def test_select_dtypes_include_using_list_like(self):
         df = DataFrame({'a': list('abc'),
                         'b': list(range(1, 4)),
                         'c': np.arange(3, 6).astype('u1'),
@@ -145,14 +147,10 @@ class TestDataFrameDataTypes(TestData):
         ei = df[['h', 'i']]
         assert_frame_equal(ri, ei)
 
-        ri = df.select_dtypes(include=['timedelta'])
-        ei = df[['k']]
-        assert_frame_equal(ri, ei)
-
         pytest.raises(NotImplementedError,
                       lambda: df.select_dtypes(include=['period']))
 
-    def test_select_dtypes_exclude(self):
+    def test_select_dtypes_exclude_using_list_like(self):
         df = DataFrame({'a': list('abc'),
                         'b': list(range(1, 4)),
                         'c': np.arange(3, 6).astype('u1'),
@@ -162,7 +160,7 @@ class TestDataFrameDataTypes(TestData):
         ee = df[['a', 'e']]
         assert_frame_equal(re, ee)
 
-    def test_select_dtypes_exclude_include(self):
+    def test_select_dtypes_exclude_include_using_list_like(self):
         df = DataFrame({'a': list('abc'),
                         'b': list(range(1, 4)),
                         'c': np.arange(3, 6).astype('u1'),
@@ -180,6 +178,114 @@ class TestDataFrameDataTypes(TestData):
         r = df.select_dtypes(include=include, exclude=exclude)
         e = df[['b', 'e']]
         assert_frame_equal(r, e)
+
+    def test_select_dtypes_include_using_scalars(self):
+        df = DataFrame({'a': list('abc'),
+                        'b': list(range(1, 4)),
+                        'c': np.arange(3, 6).astype('u1'),
+                        'd': np.arange(4.0, 7.0, dtype='float64'),
+                        'e': [True, False, True],
+                        'f': pd.Categorical(list('abc')),
+                        'g': pd.date_range('20130101', periods=3),
+                        'h': pd.date_range('20130101', periods=3,
+                                           tz='US/Eastern'),
+                        'i': pd.date_range('20130101', periods=3,
+                                           tz='CET'),
+                        'j': pd.period_range('2013-01', periods=3,
+                                             freq='M'),
+                        'k': pd.timedelta_range('1 day', periods=3)})
+
+        ri = df.select_dtypes(include=np.number)
+        ei = df[['b', 'c', 'd', 'k']]
+        assert_frame_equal(ri, ei)
+
+        ri = df.select_dtypes(include='datetime')
+        ei = df[['g']]
+        assert_frame_equal(ri, ei)
+
+        ri = df.select_dtypes(include='datetime64')
+        ei = df[['g']]
+        assert_frame_equal(ri, ei)
+
+        ri = df.select_dtypes(include='category')
+        ei = df[['f']]
+        assert_frame_equal(ri, ei)
+
+        pytest.raises(NotImplementedError,
+                      lambda: df.select_dtypes(include='period'))
+
+    def test_select_dtypes_exclude_using_scalars(self):
+        df = DataFrame({'a': list('abc'),
+                        'b': list(range(1, 4)),
+                        'c': np.arange(3, 6).astype('u1'),
+                        'd': np.arange(4.0, 7.0, dtype='float64'),
+                        'e': [True, False, True],
+                        'f': pd.Categorical(list('abc')),
+                        'g': pd.date_range('20130101', periods=3),
+                        'h': pd.date_range('20130101', periods=3,
+                                           tz='US/Eastern'),
+                        'i': pd.date_range('20130101', periods=3,
+                                           tz='CET'),
+                        'j': pd.period_range('2013-01', periods=3,
+                                             freq='M'),
+                        'k': pd.timedelta_range('1 day', periods=3)})
+
+        ri = df.select_dtypes(exclude=np.number)
+        ei = df[['a', 'e', 'f', 'g', 'h', 'i', 'j']]
+        assert_frame_equal(ri, ei)
+
+        ri = df.select_dtypes(exclude='category')
+        ei = df[['a', 'b', 'c', 'd', 'e', 'g', 'h', 'i', 'j', 'k']]
+        assert_frame_equal(ri, ei)
+
+        pytest.raises(NotImplementedError,
+                      lambda: df.select_dtypes(exclude='period'))
+
+    def test_select_dtypes_include_exclude_using_scalars(self):
+        df = DataFrame({'a': list('abc'),
+                        'b': list(range(1, 4)),
+                        'c': np.arange(3, 6).astype('u1'),
+                        'd': np.arange(4.0, 7.0, dtype='float64'),
+                        'e': [True, False, True],
+                        'f': pd.Categorical(list('abc')),
+                        'g': pd.date_range('20130101', periods=3),
+                        'h': pd.date_range('20130101', periods=3,
+                                           tz='US/Eastern'),
+                        'i': pd.date_range('20130101', periods=3,
+                                           tz='CET'),
+                        'j': pd.period_range('2013-01', periods=3,
+                                             freq='M'),
+                        'k': pd.timedelta_range('1 day', periods=3)})
+
+        ri = df.select_dtypes(include=np.number, exclude='floating')
+        ei = df[['b', 'c', 'k']]
+        assert_frame_equal(ri, ei)
+
+    def test_select_dtypes_include_exclude_mixed_scalars_lists(self):
+        df = DataFrame({'a': list('abc'),
+                        'b': list(range(1, 4)),
+                        'c': np.arange(3, 6).astype('u1'),
+                        'd': np.arange(4.0, 7.0, dtype='float64'),
+                        'e': [True, False, True],
+                        'f': pd.Categorical(list('abc')),
+                        'g': pd.date_range('20130101', periods=3),
+                        'h': pd.date_range('20130101', periods=3,
+                                           tz='US/Eastern'),
+                        'i': pd.date_range('20130101', periods=3,
+                                           tz='CET'),
+                        'j': pd.period_range('2013-01', periods=3,
+                                             freq='M'),
+                        'k': pd.timedelta_range('1 day', periods=3)})
+
+        ri = df.select_dtypes(include=np.number,
+                              exclude=['floating', 'timedelta'])
+        ei = df[['b', 'c']]
+        assert_frame_equal(ri, ei)
+
+        ri = df.select_dtypes(include=[np.number, 'category'],
+                              exclude='floating')
+        ei = df[['b', 'c', 'f', 'k']]
+        assert_frame_equal(ri, ei)
 
     def test_select_dtypes_not_an_attr_but_still_valid_dtype(self):
         df = DataFrame({'a': list('abc'),
@@ -204,18 +310,6 @@ class TestDataFrameDataTypes(TestData):
                                     'include or exclude '
                                     'must be nonempty'):
             df.select_dtypes()
-
-    def test_select_dtypes_raises_on_string(self):
-        df = DataFrame({'a': list('abc'), 'b': list(range(1, 4))})
-        with tm.assert_raises_regex(TypeError, 'include and exclude '
-                                    '.+ non-'):
-            df.select_dtypes(include='object')
-        with tm.assert_raises_regex(TypeError, 'include and exclude '
-                                    '.+ non-'):
-            df.select_dtypes(exclude='object')
-        with tm.assert_raises_regex(TypeError, 'include and exclude '
-                                    '.+ non-'):
-            df.select_dtypes(include=int, exclude='object')
 
     def test_select_dtypes_bad_datetime64(self):
         df = DataFrame({'a': list('abc'),
@@ -290,7 +384,7 @@ class TestDataFrameDataTypes(TestData):
         assert_series_equal(result, expected)
 
         # compat, GH 8722
-        with option_context('use_inf_as_null', True):
+        with option_context('use_inf_as_na', True):
             df = DataFrame([[1]])
             result = df.dtypes
             assert_series_equal(result, Series({0: np.dtype('int64')}))
@@ -439,7 +533,12 @@ class TestDataFrameDataTypes(TestData):
             assert_frame_equal(result, expected)
 
             result = DataFrame([1.12345678901234567890]).astype(tt)
-            expected = DataFrame(['1.12345678901'])
+            if _np_version_under1p14:
+                # < 1.14 truncates
+                expected = DataFrame(['1.12345678901'])
+            else:
+                # >= 1.14 preserves the full repr
+                expected = DataFrame(['1.1234567890123457'])
             assert_frame_equal(result, expected)
 
     @pytest.mark.parametrize("dtype_class", [dict, Series])
@@ -519,6 +618,20 @@ class TestDataFrameDataTypes(TestData):
         result = df.astype({'a': 'str'})
         expected = concat([a1_str, b, a2_str], axis=1)
         assert_frame_equal(result, expected)
+
+    @pytest.mark.parametrize("cls", [
+        pd.api.types.CategoricalDtype,
+        pd.api.types.DatetimeTZDtype,
+        pd.api.types.IntervalDtype
+    ])
+    def test_astype_categoricaldtype_class_raises(self, cls):
+        df = DataFrame({"A": ['a', 'a', 'b', 'c']})
+        xpr = "Expected an instance of {}".format(cls.__name__)
+        with tm.assert_raises_regex(TypeError, xpr):
+            df.astype({"A": cls})
+
+        with tm.assert_raises_regex(TypeError, xpr):
+            df['A'].astype(cls)
 
     def test_timedeltas(self):
         df = DataFrame(dict(A=Series(date_range('2012-1-1', periods=3,
