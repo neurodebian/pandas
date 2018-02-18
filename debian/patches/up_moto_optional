@@ -1,0 +1,65 @@
+--- a/pandas/tests/io/conftest.py
++++ b/pandas/tests/io/conftest.py
+@@ -1,6 +1,10 @@
+ import os
+ 
+-import moto
++try:
++    import moto
++except ImportError:
++    from unittest import SkipTest
++    moto = None
+ import pytest
+ from pandas.io.parsers import read_table
+ 
+@@ -42,6 +46,8 @@ def s3_resource(tips_file, jsonl_file):
+     is yielded by the fixture.
+     """
+     pytest.importorskip('s3fs')
++    if not moto:
++        raise SkipTest("requires moto")
+     moto.mock_s3().start()
+ 
+     test_s3_files = [
+--- a/pandas/tests/io/json/test_compression.py
++++ b/pandas/tests/io/json/test_compression.py
+@@ -1,5 +1,8 @@
+ import pytest
+-import moto
++try:
++    import moto
++except ImportError:
++    moto = None
+ 
+ import pandas as pd
+ from pandas import compat
+@@ -69,6 +72,7 @@ def test_read_zipped_json():
+     assert_frame_equal(uncompressed_df, compressed_df)
+ 
+ 
++@pytest.mark.skipif(not moto, reason="requires moto")
+ @pytest.mark.parametrize('compression', COMPRESSION_TYPES)
+ def test_with_s3_url(compression):
+     boto3 = pytest.importorskip('boto3')
+--- a/pandas/tests/io/test_excel.py
++++ b/pandas/tests/io/test_excel.py
+@@ -12,7 +12,10 @@ from warnings import catch_warnings
+ import numpy as np
+ import pytest
+ from numpy import nan
+-import moto
++try:
++    import moto
++except ImportError:
++    moto = None
+ 
+ import pandas as pd
+ import pandas.util.testing as tm
+@@ -615,6 +618,7 @@ class XlrdTests(ReadingTestsBase):
+         local_table = self.get_exceldf('test1')
+         tm.assert_frame_equal(url_table, local_table)
+ 
++    @pytest.mark.skipif(not moto, reason="requires moto")
+     def test_read_from_s3_url(self):
+         boto3 = pytest.importorskip('boto3')
+         pytest.importorskip('s3fs')

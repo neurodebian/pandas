@@ -18,3 +18,4 @@ mark_tests_working_on_intel_s390x.patch
 mark_tests_working_on_intel_mips.patch
 mark_tests_working_on_intel_armhf.patch
 mathjax-path.patch
+up_moto_optional

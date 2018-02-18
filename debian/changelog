@@ -3,7 +3,9 @@ pandas (0.22.0-1) UNRELEASED; urgency=medium
   * Upstream release
   * debian/patches
     - refreshed many
-    - updated some:
+    - updated some
+    - added
+      - up_moto_optional  to skip tests requiring moto (#777089)
     - removed adopted upstream:
   	  - dateutil-2.6.1-fixed-ambiguous-tz-dst-be.patch
       - up_tst_np_argsort_comparison2
