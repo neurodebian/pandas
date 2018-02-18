@@ -1,0 +1,33 @@
+From 31531b53e1d1bdc7c09ac8b351e1c89fdea8b176 Mon Sep 17 00:00:00 2001
+From: Yaroslav Halchenko <debian@onerussian.com>
+Date: Sun, 18 Feb 2018 18:10:00 -0500
+Subject: [PATCH] BF: mark two tests (test_{statsmodels,seaborn}) as requiring
+ network
+
+---
+ pandas/tests/test_downstream.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/pandas/tests/test_downstream.py b/pandas/tests/test_downstream.py
+index b438d6a61..a595d9f18 100644
+--- a/pandas/tests/test_downstream.py
++++ b/pandas/tests/test_downstream.py
+@@ -53,6 +53,7 @@ def test_xarray(df):
+     assert df.to_xarray() is not None
+ 
+ 
++@tm.network
+ def test_statsmodels():
+ 
+     statsmodels = import_module('statsmodels')  # noqa
+@@ -73,6 +74,7 @@ def test_scikit_learn(df):
+     clf.predict(digits.data[-1:])
+ 
+ 
++@tm.network
+ def test_seaborn():
+ 
+     seaborn = import_module('seaborn')
+-- 
+2.15.1
+

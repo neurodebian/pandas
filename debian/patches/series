@@ -9,7 +9,6 @@ deb_fix_test_failure_test_basic_indexing
 # up_buggy_overflows
 # 858260.patch
 up_print_versions
-up_network_seaborn
 # does not apply to 0.22 but kept around since next one might have it
 # up_tst_dont_assert_that_a_bug_exists_in_numpy
 # disabled since majority seems adopted but might be not all
@@ -19,3 +18,4 @@ mark_tests_working_on_intel_mips.patch
 mark_tests_working_on_intel_armhf.patch
 mathjax-path.patch
 up_moto_optional
+0001-BF-mark-two-tests-test_-statsmodels-seaborn-as-requi.patch
