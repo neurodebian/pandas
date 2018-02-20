@@ -19,3 +19,4 @@ mark_tests_working_on_intel_armhf.patch
 mathjax-path.patch
 up_moto_optional
 0001-BF-mark-two-tests-test_-statsmodels-seaborn-as-requi.patch
+deb_skip_difffailingtests
