@@ -17,6 +17,7 @@ mark_tests_working_on_intel_s390x.patch
 mark_tests_working_on_intel_mips.patch
 mark_tests_working_on_intel_armhf.patch
 mathjax-path.patch
+deb_ndsphinx_optional
 up_moto_optional
 0001-BF-mark-two-tests-test_-statsmodels-seaborn-as-requi.patch
 deb_skip_difffailingtests

@@ -9,6 +9,9 @@ pandas (0.22.0-1) unstable; urgency=medium
       - deb_skip_difffailingtests to skip  two failing tests
         (see https://github.com/pandas-dev/pandas/issues/19774)
       - up_xlwt_optional to skip a test requiring xlwt
+      - deb_ndsphinx_optional to make nbsphinx optional.
+        Make nbsphinx not required in build-depends on systems with
+        older python-sphinx
     - removed adopted upstream:
   	  - dateutil-2.6.1-fixed-ambiguous-tz-dst-be.patch
       - up_tst_np_argsort_comparison2
