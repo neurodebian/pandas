@@ -20,3 +20,4 @@ mathjax-path.patch
 up_moto_optional
 0001-BF-mark-two-tests-test_-statsmodels-seaborn-as-requi.patch
 deb_skip_difffailingtests
+up_xlwt_optional

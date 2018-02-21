@@ -1,4 +1,4 @@
-pandas (0.22.0-1) UNRELEASED; urgency=medium
+pandas (0.22.0-1) unstable; urgency=medium
 
   * Upstream release
   * debian/patches
@@ -8,6 +8,7 @@ pandas (0.22.0-1) UNRELEASED; urgency=medium
       - up_moto_optional  to skip tests requiring moto (#777089)
       - deb_skip_difffailingtests to skip  two failing tests
         (see https://github.com/pandas-dev/pandas/issues/19774)
+      - up_xlwt_optional to skip a test requiring xlwt
     - removed adopted upstream:
   	  - dateutil-2.6.1-fixed-ambiguous-tz-dst-be.patch
       - up_tst_np_argsort_comparison2
@@ -15,7 +16,7 @@ pandas (0.22.0-1) UNRELEASED; urgency=medium
       - mark_tests_working_on_intel.patch
       - up_tst_dont_assert_that_a_bug_exists_in_numpy
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Sat, 17 Feb 2018 20:23:27 -0500
+ -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 20 Feb 2018 21:37:01 -0500
 
 pandas (0.20.3-11) unstable; urgency=medium
 
