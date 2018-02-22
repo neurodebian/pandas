@@ -1,10 +1,12 @@
-pandas (0.22.0-2) UNRELEASED; urgency=medium
+pandas (0.22.0-2) unstable; urgency=medium
 
   * debian/patches 
     - as upstream moved over to pytest from nose, no more nose imports were
       in the code. Just adjusted patches to import nose where needed
   * debian/rules
     - specify LC_ALL=C locale to avoid crash while building docs
+    - add the 0001-TST-pytest-deprecation-warnings-GH17197-17253-reversed.patch
+      to the series if building on a system with an old pytest
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 21 Feb 2018 23:44:58 -0500
 
