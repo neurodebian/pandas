@@ -46,7 +46,7 @@ EXCLUDE_TESTS3.3 :=
 EXCLUDE_TESTS3.4 := $(EXCLUDE_TESTS3.3)
 EXCLUDE_TESTS3.5 := $(EXCLUDE_TESTS3.3)
 
-PYTESTVER := $(shell pytest --version 2>&1 | awk '/This is pytest version/{print $$5;}' | sed sX,XXg)
+PYTESTVER := $(shell pytest --version 2>&1 | awk '/This is pytest version/{print $$5;}' | sed "sX[ ,]XXg")
 
 ADDPATCHES :=
 ADDPATCHES += $(shell dpkg --compare-versions $(PYTESTVER) ge 3.1.0 || echo "0001-TST-pytest-deprecation-warnings-GH17197-17253-reversed.patch" )
@@ -108,8 +108,10 @@ override_dh_auto_build: version_py debian/patch-stamp
 	:
 
 debian/patch-stamp:
-	echo ${ADDPATCHES} >> debian/patches/series
-	quilt push -a
+	if echo "${ADDPATCHES}" | sed -e 's,\s,,g' | grep  '.' ; then \
+       echo ${ADDPATCHES} >> debian/patches/series; \
+	   quilt push -a; \
+    fi
 	touch $@
 
 
