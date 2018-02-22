@@ -1,0 +1,90 @@
+reverted:
+--- a/pandas/tests/computation/test_eval.py
++++ b/pandas/tests/computation/test_eval.py
+@@ -38,14 +38,13 @@ _scalar_skip = 'in', 'not in'
+ 
+ 
+ @pytest.fixture(params=(
+-    pytest.param(engine,
+-                 marks=pytest.mark.skipif(
+-                     engine == 'numexpr' and not _USE_NUMEXPR,
+-                     reason='numexpr enabled->{enabled}, '
+-                            'installed->{installed}'.format(
+-                                enabled=_USE_NUMEXPR,
+-                                installed=_NUMEXPR_INSTALLED)))
+-                 for engine in _engines))  # noqa
++    pytest.mark.skipif(engine == 'numexpr' and not _USE_NUMEXPR,
++                       reason='numexpr enabled->{enabled}, '
++                              'installed->{installed}'.format(
++                                  enabled=_USE_NUMEXPR,
++                                  installed=_NUMEXPR_INSTALLED))(engine)
++                       for engine in _engines  # noqa
++))
+ def engine(request):
+     return request.param
+ 
+--- a/pandas/tests/io/parser/test_network.py
++++ b/pandas/tests/io/parser/test_network.py
+@@ -16,10 +16,8 @@ from pandas.compat import BytesIO
+ @pytest.mark.parametrize(
+     "compression,extension",
+     [('gzip', '.gz'), ('bz2', '.bz2'), ('zip', '.zip'),
+-     pytest.param('xz', '.xz',
+-                  marks=pytest.mark.skipif(not tm._check_if_lzma(),
+-                                           reason='need backports.lzma '
+-                                                  'to run'))])
++     pytest.mark.skipif(not tm._check_if_lzma(),
++                        reason='need backports.lzma to run')(('xz', '.xz'))])
+ @pytest.mark.parametrize('mode', ['explicit', 'infer'])
+ @pytest.mark.parametrize('engine', ['python', 'c'])
+ def test_compressed_urls(salaries_table, compression, extension, mode, engine):
+--- a/pandas/tests/io/test_excel.py
++++ b/pandas/tests/io/test_excel.py
+@@ -2426,10 +2426,8 @@ class TestExcelWriterEngineTests(object)
+ 
+ 
+ @pytest.mark.parametrize('engine', [
+-    pytest.param('xlwt',
+-                 marks=pytest.mark.xfail(reason='xlwt does not support '
+-                                                'openpyxl-compatible '
+-                                                'style dicts')),
++    pytest.mark.xfail('xlwt', reason='xlwt does not support '
++                                     'openpyxl-compatible style dicts'),
+     'xlsxwriter',
+     'openpyxl',
+ ])
+--- a/pandas/tests/io/test_parquet.py
++++ b/pandas/tests/io/test_parquet.py
+@@ -27,14 +27,10 @@ except ImportError:
+ 
+ # setup engines & skips
+ @pytest.fixture(params=[
+-    pytest.param('fastparquet',
+-                 marks=pytest.mark.skipif(not _HAVE_FASTPARQUET,
+-                                          reason='fastparquet is '
+-                                                 'not installed')),
+-    pytest.param('pyarrow',
+-                 marks=pytest.mark.skipif(not _HAVE_PYARROW,
+-                                          reason='pyarrow is '
+-                                                 'not installed'))])
++    pytest.mark.skipif(not _HAVE_FASTPARQUET,
++                       reason='fastparquet is not installed')('fastparquet'),
++    pytest.mark.skipif(not _HAVE_PYARROW,
++                       reason='pyarrow is not installed')('pyarrow')])
+ def engine(request):
+     return request.param
+ 
+--- a/pandas/tests/test_window.py
++++ b/pandas/tests/test_window.py
+@@ -552,9 +552,8 @@ class TestExpanding(Base):
+ 
+     @pytest.mark.parametrize(
+         'expander',
+-        [1, pytest.param('ls', marks=pytest.mark.xfail(
+-                         reason='GH 16425 expanding with '
+-                                'offset not supported'))])
++        [1, pytest.mark.xfail(
++            reason='GH 16425 expanding with offset not supported')('1s')])
+     def test_empty_df_expanding(self, expander):
+         # GH 15819 Verifies that datetime and integer expanding windows can be
+         # applied to empty DataFrames
